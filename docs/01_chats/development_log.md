@@ -32,3 +32,5 @@
 - Updated the TRPC mutation in `src/daemon/router.ts` to accept a boolean `noWait` flag and forward it.
 - Updated `src/cli/commands/messages.ts` with a `--no-wait` flag using `commander`.
 - Verified behavior with an added E2E test in `src/cli/e2e.test.ts` that runs commands effectively without halting the client process.
+- Fixed a bug where `[USER]` messages were logged before previous queue items finished executing. `[USER]` messages are now appended inside the queue task to guarantee atomic execution ordering.
+- Added E2E test to verify correct atomic ordering of `[USER]` and `[LOG]` outputs with the `--no-wait` flag.

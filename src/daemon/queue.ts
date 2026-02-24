@@ -23,12 +23,8 @@ export function getQueue(dir: string): DirectoryQueue {
 }
 
 export async function handleUserMessage(chatId: string, message: string, settings: { chats?: { new?: string; [key: string]: unknown }; [key: string]: unknown } | undefined, cwd: string = process.cwd(), noWait: boolean = false): Promise<void> {
-  const userMsg: UserMessage = {
-    role: 'user',
-    content: message,
-    timestamp: new Date().toISOString()
-  };
-  await appendMessage(chatId, userMsg);
+  // TODO: Immediately persist the user message somewhere (e.g., a crash-recovery log)
+  // before enqueueing it, in case the daemon crashes before processing this queue item.
 
   if (!settings?.chats?.new) {
     throw new Error('No chats.new defined in settings.json');
@@ -37,7 +33,14 @@ export async function handleUserMessage(chatId: string, message: string, setting
   const cmd = settings.chats.new;
   const queue = getQueue(cwd);
 
-  const taskPromise = queue.enqueue(() => {
+  const taskPromise = queue.enqueue(async () => {
+    const userMsg: UserMessage = {
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString()
+    };
+    await appendMessage(chatId, userMsg);
+
     return new Promise<void>((resolve) => {
       const p = spawn(cmd, {
         shell: true,

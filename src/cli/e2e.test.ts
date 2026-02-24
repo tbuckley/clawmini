@@ -137,4 +137,41 @@ describe('E2E CLI Tests', () => {
     const chatLog = fs.readFileSync(path.resolve(e2eDir, '.clawmini/chats/nowait-chat/chat.jsonl'), 'utf8');
     expect(chatLog).toContain('no wait message');
   });
+
+  it('should maintain atomic ordering of user and log messages with --no-wait', async () => {
+    // Override settings to simulate a slow command
+    const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const oldCmd = settings.chats?.new;
+    
+    settings.chats = settings.chats || {};
+    settings.chats.new = 'sleep 0.2 && echo $CLAW_CLI_MESSAGE';
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+
+    await runCli(['chats', 'add', 'order-chat']);
+    
+    // Send two messages consecutively
+    await runCli(['messages', 'send', 'first', '--chat', 'order-chat', '--no-wait']);
+    await runCli(['messages', 'send', 'second', '--chat', 'order-chat', '--no-wait']);
+
+    // Give daemon time to process both
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Restore settings
+    settings.chats.new = oldCmd;
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+
+    const chatLog = fs.readFileSync(path.resolve(e2eDir, '.clawmini/chats/order-chat/chat.jsonl'), 'utf8');
+    const lines = chatLog.trim().split('\n').map(l => JSON.parse(l));
+    
+    expect(lines).toHaveLength(4);
+    expect(lines[0].role).toBe('user');
+    expect(lines[0].content).toBe('first');
+    expect(lines[1].role).toBe('log');
+    expect(lines[1].content.trim()).toBe('first');
+    expect(lines[2].role).toBe('user');
+    expect(lines[2].content).toBe('second');
+    expect(lines[3].role).toBe('log');
+    expect(lines[3].content.trim()).toBe('second');
+  });
 });
