@@ -14,6 +14,7 @@
     "lint:fix": "eslint . --fix",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\"",
+    "check": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/node": "^25.3.0",
     "eslint": "^10.0.1",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.3.0",
