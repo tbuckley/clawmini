@@ -96,4 +96,30 @@ describe('E2E CLI Tests', () => {
     const daemonLog = fs.readFileSync(path.resolve(e2eDir, '.clawmini/daemon.log'), 'utf8');
     expect(daemonLog).toContain('e2e test message');
   });
+
+  it('should send a message to a specific chat', async () => {
+    await runCli(['chats', 'add', 'specific-chat']);
+    const { stdout, code } = await runCli(['messages', 'send', 'specific chat message', '--chat', 'specific-chat']);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('Message sent successfully.');
+
+    // Give daemon time to process
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const chatLog = fs.readFileSync(path.resolve(e2eDir, '.clawmini/chats/specific-chat/chat.jsonl'), 'utf8');
+    expect(chatLog).toContain('specific chat message');
+  });
+
+  it('should view history with tail and --json flag', async () => {
+    const { stdout, code } = await runCli(['messages', 'tail', '--chat', 'specific-chat']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('[USER]');
+    expect(stdout).toContain('specific chat message');
+
+    const { stdout: jsonStdout, code: jsonCode } = await runCli(['messages', 'tail', '--json', '--chat', 'specific-chat']);
+    expect(jsonCode).toBe(0);
+    expect(jsonStdout).toContain('"role":"user"');
+    expect(jsonStdout).toContain('"content":"specific chat message"');
+  });
 });

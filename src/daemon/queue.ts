@@ -22,7 +22,7 @@ export function getQueue(dir: string): DirectoryQueue {
   return queues.get(dir)!;
 }
 
-export async function handleUserMessage(chatId: string, message: string, settings: any, cwd: string = process.cwd()): Promise<void> {
+export async function handleUserMessage(chatId: string, message: string, settings: { chats?: { new?: string; [key: string]: unknown }; [key: string]: unknown } | undefined, cwd: string = process.cwd()): Promise<void> {
   const userMsg: UserMessage = {
     role: 'user',
     content: message,

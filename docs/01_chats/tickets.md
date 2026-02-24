@@ -53,4 +53,4 @@
 - Write E2E tests verifying the `--chat` flag correctly overrides the default chat.
 - Run tests in an isolated sandbox directory, with proper daemon teardown in `afterAll`.
 - Run type-checking (`tsc`) and linter.
-**Status**: not started
+**Status**: complete

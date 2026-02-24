@@ -18,3 +18,10 @@
 - Implemented comprehensive E2E tests in `src/cli/e2e.test.ts` for chat creation, listing, setting default, and deletion in a sandbox environment.
 - Fixed a typescript `any` issue in `src/shared/chats.ts`.
 - Validated logic by running all types, lints, and vitest passes successfully.
+
+## Step 4: CLI Messaging and History Commands
+
+- Updated `messages send` command in `src/cli/commands/messages.ts` to support routing via `--chat <id>`.
+- Implemented `messages tail` command to view history of a given chat id, with support for human-readable output and `--json` raw JSONL output.
+- Fixed TypeScript warnings (unexpected any) in `src/daemon/queue.ts` and `src/daemon/queue.test.ts`.
+- Wrote full E2E test coverage in `src/cli/e2e.test.ts` for sending to specific chats and verifying historical output via tail.
