@@ -18,12 +18,14 @@ const AppRouter = router({
         data: z.object({
           message: z.string(),
           chatId: z.string().optional(),
+          noWait: z.boolean().optional(),
         }),
       })
     )
     .mutation(async ({ input }) => {
       const message = input.data.message;
       const chatId = input.data.chatId ?? await getDefaultChatId();
+      const noWait = input.data.noWait ?? false;
       const settingsPath = getSettingsPath();
 
       let settings;
@@ -34,7 +36,7 @@ const AppRouter = router({
         throw new Error(`Failed to read settings from ${settingsPath}: ${err}`, { cause: err });
       }
 
-      await handleUserMessage(chatId, message, settings);
+      await handleUserMessage(chatId, message, settings, undefined, noWait);
 
       return { success: true };
     }),

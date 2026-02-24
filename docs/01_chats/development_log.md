@@ -25,3 +25,10 @@
 - Implemented `messages tail` command to view history of a given chat id, with support for human-readable output and `--json` raw JSONL output.
 - Fixed TypeScript warnings (unexpected any) in `src/daemon/queue.ts` and `src/daemon/queue.test.ts`.
 - Wrote full E2E test coverage in `src/cli/e2e.test.ts` for sending to specific chats and verifying historical output via tail.
+
+## Step 5: Background Messaging
+
+- Updated `src/daemon/queue.ts` to accept a `noWait` argument, so the daemon immediately returns without awaiting task completion when set.
+- Updated the TRPC mutation in `src/daemon/router.ts` to accept a boolean `noWait` flag and forward it.
+- Updated `src/cli/commands/messages.ts` with a `--no-wait` flag using `commander`.
+- Verified behavior with an added E2E test in `src/cli/e2e.test.ts` that runs commands effectively without halting the client process.

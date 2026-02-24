@@ -54,3 +54,14 @@
 - Run tests in an isolated sandbox directory, with proper daemon teardown in `afterAll`.
 - Run type-checking (`tsc`) and linter.
 **Status**: complete
+
+## Step 5: Background Messaging
+**Description**: Support returning immediately from `messages send` using a `--no-wait` flag. By default, it should wait for the response to finish. The server should queue the message and send it when ready.
+**Tasks**:
+- Update `messages send` to accept `--no-wait`.
+- Update `sendMessage` trpc mutation to accept an optional `noWait` boolean.
+- Update `handleUserMessage` in `src/daemon/queue.ts` to skip awaiting the task execution if `noWait` is true.
+**Verification**:
+- Verify tests.
+- Add E2E test case for `--no-wait` flag.
+**Status**: complete

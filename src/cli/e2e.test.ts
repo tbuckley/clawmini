@@ -122,4 +122,19 @@ describe('E2E CLI Tests', () => {
     expect(jsonStdout).toContain('"role":"user"');
     expect(jsonStdout).toContain('"content":"specific chat message"');
   });
+
+  it('should return immediately with --no-wait flag', async () => {
+    await runCli(['chats', 'add', 'nowait-chat']);
+    
+    const { stdout, code } = await runCli(['messages', 'send', 'no wait message', '--chat', 'nowait-chat', '--no-wait']);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('Message sent successfully.');
+
+    // Give daemon time to process
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const chatLog = fs.readFileSync(path.resolve(e2eDir, '.clawmini/chats/nowait-chat/chat.jsonl'), 'utf8');
+    expect(chatLog).toContain('no wait message');
+  });
 });

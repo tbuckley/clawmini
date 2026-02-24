@@ -8,15 +8,17 @@ messagesCmd
   .command('send <message>')
   .description('Send a new message')
   .option('-c, --chat <id>', 'Specific chat to send the message to')
+  .option('--no-wait', 'Return immediately after the server queues the message')
   .action(async (message, options) => {
     try {
       const trpc = await getDaemonClient();
       await trpc.sendMessage.mutate({
         type: 'send-message',
         client: 'cli',
-        data: { 
+        data: {
           message,
           chatId: options.chat,
+          noWait: !options.wait,
         },
       });
       console.log('Message sent successfully.');
@@ -34,24 +36,29 @@ messagesCmd
   .option('-c, --chat <id>', 'Specific chat to view')
   .action(async (options) => {
     try {
-      const chatId = options.chat ?? await getDefaultChatId();
+      const chatId = options.chat ?? (await getDefaultChatId());
       const messages = await getMessages(chatId, options.lines);
 
       if (options.json) {
-        messages.forEach(msg => console.log(JSON.stringify(msg)));
+        messages.forEach((msg) => console.log(JSON.stringify(msg)));
       } else {
-        messages.forEach(msg => {
+        messages.forEach((msg) => {
           if (msg.role === 'user') {
-            console.log(`[USER] ${msg.timestamp}: ${msg.content}`);
+            console.log(`[USER] ${msg.content}`);
           } else if (msg.role === 'log') {
-            console.log(`[LOG] ${msg.timestamp} [${msg.command}] (Exit: ${msg.exitCode}):`);
-            if (msg.content) console.log(msg.content.trim());
-            if (msg.stderr) console.error(`[STDERR] ${msg.stderr.trim()}`);
+            if (msg.content) {
+              console.log(`[LOG] ${msg.content.trim()}`);
+            } else if (msg.stderr) {
+              console.error(`[STDERR] ${msg.stderr.trim()}`);
+            }
           }
         });
       }
     } catch (err) {
-      console.error('Failed to retrieve messages:', err instanceof Error ? err.message : String(err));
+      console.error(
+        'Failed to retrieve messages:',
+        err instanceof Error ? err.message : String(err)
+      );
       process.exit(1);
     }
   });

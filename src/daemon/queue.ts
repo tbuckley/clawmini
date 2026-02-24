@@ -22,7 +22,7 @@ export function getQueue(dir: string): DirectoryQueue {
   return queues.get(dir)!;
 }
 
-export async function handleUserMessage(chatId: string, message: string, settings: { chats?: { new?: string; [key: string]: unknown }; [key: string]: unknown } | undefined, cwd: string = process.cwd()): Promise<void> {
+export async function handleUserMessage(chatId: string, message: string, settings: { chats?: { new?: string; [key: string]: unknown }; [key: string]: unknown } | undefined, cwd: string = process.cwd(), noWait: boolean = false): Promise<void> {
   const userMsg: UserMessage = {
     role: 'user',
     content: message,
@@ -37,7 +37,7 @@ export async function handleUserMessage(chatId: string, message: string, setting
   const cmd = settings.chats.new;
   const queue = getQueue(cwd);
 
-  return queue.enqueue(() => {
+  const taskPromise = queue.enqueue(() => {
     return new Promise<void>((resolve) => {
       const p = spawn(cmd, {
         shell: true,
@@ -94,4 +94,8 @@ export async function handleUserMessage(chatId: string, message: string, setting
       });
     });
   });
+
+  if (!noWait) {
+    await taskPromise;
+  }
 }
