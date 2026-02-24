@@ -15,7 +15,9 @@ export const initCmd = new Command('init')
     }
 
     const defaultSettings = {
-      'chats.new': 'echo $MESSAGE',
+      chats: {
+        new: 'echo $CLAW_CLI_MESSAGE',
+      },
     };
 
     if (!fs.existsSync(dirPath)) {

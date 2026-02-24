@@ -1,0 +1,42 @@
+import { createTRPCClient, httpLink } from '@trpc/client';
+import type { AppRouter } from '../daemon/router.js';
+import { getSocketPath, getClawminiDir } from '../shared/workspace.js';
+import { createUnixSocketFetch } from '../shared/fetch.js';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+export async function getDaemonClient() {
+  const socketPath = getSocketPath();
+
+  // Check if server is running by verifying socket exists
+  // (A better check would be to ping it, but this is a start)
+  if (!fs.existsSync(socketPath)) {
+    console.log('Daemon not running. Starting daemon...');
+
+    // Start daemon in the background
+    const daemonPath = new URL('../daemon/index.mjs', import.meta.url).pathname;
+    const logFile = fs.openSync(path.join(getClawminiDir(), 'daemon.log'), 'a');
+    const child = spawn(process.execPath, [daemonPath], {
+      detached: true,
+      stdio: ['ignore', logFile, logFile],
+    });
+    child.unref();
+
+    // Wait a moment for the daemon to start and create the socket
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    if (!fs.existsSync(socketPath)) {
+      throw new Error('Failed to start daemon.');
+    }
+  }
+
+  return createTRPCClient<AppRouter>({
+    links: [
+      httpLink({
+        url: 'http://localhost',
+        fetch: createUnixSocketFetch(socketPath),
+      }),
+    ],
+  });
+}
