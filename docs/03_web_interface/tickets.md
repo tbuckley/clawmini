@@ -1,5 +1,7 @@
 # Tickets: Web Interface (`clawmini web`)
 
+In general, prefer shadcn-svelte UI components when they exist.
+
 ## Step 1: Initialize SvelteKit Frontend
 
 - **Description:** Scaffold a new SvelteKit project (e.g., in a `web/` directory) configured with `@sveltejs/adapter-static` and an `index.html` fallback. Set up TailwindCSS and shadcn-svelte. Update the root `package.json` to include a build script that compiles the SvelteKit app and outputs the static assets to `dist/web`.
