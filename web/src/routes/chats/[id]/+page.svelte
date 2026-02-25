@@ -123,12 +123,13 @@
 </script>
 
 <div class="flex flex-col flex-1 h-full overflow-hidden">
-  <div bind:this={chatContainer} onscroll={checkScroll} class="flex-1 overflow-y-auto p-4 space-y-6">
-    {#if liveMessages.length === 0}
-      <div class="h-full flex items-center justify-center text-muted-foreground text-sm">
-        No messages yet. Send a message to start the conversation!
-      </div>
-    {/if}
+  <div bind:this={chatContainer} onscroll={checkScroll} class="flex-1 overflow-y-auto p-4">
+    <div class="w-full max-w-4xl mx-auto space-y-6 flex flex-col min-h-full">
+      {#if liveMessages.length === 0}
+        <div class="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+          No messages yet. Send a message to start the conversation!
+        </div>
+      {/if}
 
     {#each liveMessages as msg (msg.id)}
       <div class="flex flex-col gap-1 {msg.role === 'user' ? 'items-end' : 'items-start'}">
@@ -187,6 +188,7 @@
         </div>
       </div>
     {/each}
+    </div>
   </div>
 
   <div class="p-4 bg-background/80 backdrop-blur-sm border-t shrink-0">
