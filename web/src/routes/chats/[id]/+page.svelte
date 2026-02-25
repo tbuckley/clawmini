@@ -6,6 +6,7 @@
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
   import { tick, onMount, onDestroy } from 'svelte';
+  import { appState } from '$lib/app-state.svelte.js';
 
   let { data } = $props<{ data: PageData }>();
 
@@ -100,25 +101,31 @@
             </div>
           {:else}
             <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm" data-testid="log-message">
-              <div class="font-mono text-xs text-muted-foreground mb-2 flex items-center gap-2">
-                <span>$ {msg.command}</span>
-                {#if msg.exitCode !== 0}
-                  <span class="text-destructive font-bold">Exit: {msg.exitCode}</span>
-                {/if}
-              </div>
-              
-              {#if msg.content}
-                <div class="whitespace-pre-wrap">{msg.content}</div>
-              {:else if msg.stdout}
-                <div class="whitespace-pre-wrap font-mono text-xs mt-2">{msg.stdout}</div>
-              {:else}
-                <div class="whitespace-pre-wrap italic opacity-50 text-xs mt-2">No output</div>
-              {/if}
-
-              {#if msg.stderr}
-                <div class="whitespace-pre-wrap font-mono text-xs mt-2 text-destructive border border-destructive/20 bg-destructive/5 p-2 rounded">
-                  {msg.stderr}
+              {#if appState.debugView}
+                <div class="font-mono text-xs text-muted-foreground mb-2 flex items-center gap-2">
+                  <span>$ {msg.command}</span>
+                  {#if msg.exitCode !== 0}
+                    <span class="text-destructive font-bold">Exit: {msg.exitCode}</span>
+                  {/if}
                 </div>
+                
+                {#if msg.content}
+                  <div class="whitespace-pre-wrap">{msg.content}</div>
+                {:else if msg.stdout}
+                  <div class="whitespace-pre-wrap font-mono text-xs mt-2">{msg.stdout}</div>
+                {:else}
+                  <div class="whitespace-pre-wrap italic opacity-50 text-xs mt-2">No output</div>
+                {/if}
+
+                {#if msg.stderr}
+                  <div class="whitespace-pre-wrap font-mono text-xs mt-2 text-destructive border border-destructive/20 bg-destructive/5 p-2 rounded">
+                    {msg.stderr}
+                  </div>
+                {/if}
+              {:else}
+                {#if msg.content}
+                  <div class="whitespace-pre-wrap">{msg.content}</div>
+                {/if}
               {/if}
             </div>
           {/if}

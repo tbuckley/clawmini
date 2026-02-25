@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import ChatPage from './+page.svelte';
 import type { ChatMessage } from '$lib/types';
+import { appState } from '$lib/app-state.svelte.js';
 
 const mockData = {
   id: 'test-chat',
@@ -38,6 +39,7 @@ const mockData = {
 
 describe('Chat Page', () => {
   it('renders user and log messages distinctly', async () => {
+    appState.debugView = true;
     render(ChatPage, { props: { data: mockData } });
 
     const userMsgs = page.getByTestId('user-message').all();
