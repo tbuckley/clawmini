@@ -1,3 +1,3 @@
 export const appState = $state({
-  debugView: false
+  debugView: false,
 });

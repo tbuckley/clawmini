@@ -32,6 +32,7 @@
   // We sync live messages with initial loaded data whenever the ID changes
   $effect(() => {
     liveMessages = data.messages as ChatMessage[];
+    isScrolledToBottom = true;
     setupSSE(data.id);
   });
 
