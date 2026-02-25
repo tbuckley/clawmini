@@ -225,10 +225,10 @@ describe('E2E CLI Tests', () => {
     expect(lines).toHaveLength(4);
     expect(lines[0].role).toBe('user');
     expect(lines[0].content).toBe('first');
-    expect(lines[1].role).toBe('log');
-    expect(lines[1].content.trim()).toBe('first');
-    expect(lines[2].role).toBe('user');
-    expect(lines[2].content).toBe('second');
+    expect(lines[1].role).toBe('user');
+    expect(lines[1].content).toBe('second');
+    expect(lines[2].role).toBe('log');
+    expect(lines[2].content.trim()).toBe('first');
     expect(lines[3].role).toBe('log');
     expect(lines[3].content.trim()).toBe('second');
   });

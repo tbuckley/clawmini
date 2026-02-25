@@ -168,6 +168,7 @@ export const webCmd = new Command('web')
                 data: {
                   message: body.message,
                   chatId,
+                  noWait: true,
                 },
               });
               res.writeHead(200);
