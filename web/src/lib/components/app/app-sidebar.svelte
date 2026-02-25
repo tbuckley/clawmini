@@ -20,10 +20,12 @@
           {#each chats as chat}
             <Sidebar.MenuItem>
               <Sidebar.MenuButton isActive={currentPath === `/chats/${chat}`}>
-                <a href="/chats/{chat}">
-                  <MessageSquare class="w-4 h-4 mr-2" />
-                  <span data-testid="chat-link">{chat}</span>
-                </a>
+                {#snippet child({ props })}
+                  <a href="/chats/{chat}" {...props}>
+                    <MessageSquare />
+                    <span data-testid="chat-link">{chat}</span>
+                  </a>
+                {/snippet}
               </Sidebar.MenuButton>
             </Sidebar.MenuItem>
           {/each}

@@ -83,8 +83,8 @@
   }
 </script>
 
-<div class="flex flex-col h-full relative">
-  <div bind:this={chatContainer} class="flex-1 overflow-y-auto p-4 space-y-6 pb-24 scroll-smooth">
+<div class="flex flex-col flex-1 h-full overflow-hidden">
+  <div bind:this={chatContainer} class="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
     {#if liveMessages.length === 0}
       <div class="h-full flex items-center justify-center text-muted-foreground text-sm">
         No messages yet. Send a message to start the conversation!
@@ -130,7 +130,7 @@
     {/each}
   </div>
 
-  <div class="absolute bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-sm border-t">
+  <div class="p-4 bg-background/80 backdrop-blur-sm border-t shrink-0">
     <form onsubmit={sendMessage} class="flex items-center gap-2 max-w-4xl mx-auto">
       <Input
         bind:value={inputValue}

@@ -7,7 +7,7 @@
   let { data, children } = $props();
 </script>
 
-<Sidebar.Provider>
+<Sidebar.Provider class="h-svh overflow-hidden">
   <AppSidebar chats={data.chats} currentPath={page.url.pathname} />
 
   <Sidebar.Inset>
@@ -23,7 +23,7 @@
         </div>
       </div>
     </header>
-    <main class="flex-1 overflow-auto bg-muted/20">
+    <main class="flex flex-1 flex-col overflow-hidden bg-muted/20">
       {@render children()}
     </main>
   </Sidebar.Inset>
