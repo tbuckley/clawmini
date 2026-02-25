@@ -94,12 +94,17 @@ export async function handleUserMessage(
   runCommand: RunCommandFn,
   sessionId?: string
 ): Promise<void> {
-  // TODO: Immediately persist the user message somewhere (e.g., a crash-recovery log)
-  // before enqueueing it, in case the daemon crashes before processing this queue item.
-
   if (!settings?.defaultAgent?.commands?.new) {
     throw new Error('No defaultAgent.commands.new defined in settings.json');
   }
+
+  const userMsg: UserMessage = {
+    id: crypto.randomUUID(),
+    role: 'user',
+    content: message,
+    timestamp: new Date().toISOString(),
+  };
+  await appendMessage(chatId, userMsg);
 
   const queue = getQueue(cwd);
 
@@ -116,16 +121,11 @@ export async function handleUserMessage(
       agentSessionSettings
     );
 
-    const userMsg: UserMessage = {
-      role: 'user',
-      content: message,
-      timestamp: new Date().toISOString(),
-    };
-    await appendMessage(chatId, userMsg);
-
     const mainResult = await runCommand({ command, cwd, env });
 
     const logMsg: CommandLogMessage = {
+      id: crypto.randomUUID(),
+      messageId: userMsg.id,
       role: 'log',
       content: mainResult.stdout,
       stderr: '',

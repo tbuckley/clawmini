@@ -225,10 +225,10 @@ describe('E2E CLI Tests', () => {
     expect(lines).toHaveLength(4);
     expect(lines[0].role).toBe('user');
     expect(lines[0].content).toBe('first');
-    expect(lines[1].role).toBe('log');
-    expect(lines[1].content.trim()).toBe('first');
-    expect(lines[2].role).toBe('user');
-    expect(lines[2].content).toBe('second');
+    expect(lines[1].role).toBe('user');
+    expect(lines[1].content).toBe('second');
+    expect(lines[2].role).toBe('log');
+    expect(lines[2].content.trim()).toBe('first');
     expect(lines[3].role).toBe('log');
     expect(lines[3].content.trim()).toBe('second');
   });
@@ -422,6 +422,7 @@ describe('E2E CLI Tests', () => {
     // Simulate daemon appending a message
     const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/api-test-chat/chat.jsonl');
     const mockMessage = {
+      id: 'mock-1',
       role: 'user',
       content: 'sse test message',
       timestamp: new Date().toISOString(),
@@ -439,7 +440,7 @@ describe('E2E CLI Tests', () => {
       }
     }
 
-    expect(sseData).toContain('data: {"role":"user","content":"sse test message"');
+    expect(sseData).toContain('data: {"id":"mock-1","role":"user","content":"sse test message"');
 
     // Close the connection
     await reader.cancel();

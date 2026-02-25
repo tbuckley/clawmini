@@ -11,8 +11,8 @@
   let { data } = $props<{ data: PageData }>();
 
   let inputValue = $state('');
-  let isSending = $state(false);
   let liveMessages = $state<ChatMessage[]>([]);
+  let pendingMessages = $state<{ id: string; content: string; timestamp: string }[]>([]);
   let chatContainer: HTMLElement | undefined = $state();
   let eventSource: EventSource | null = null;
   let isScrolledToBottom = $state(true);
@@ -32,13 +32,14 @@
   // We sync live messages with initial loaded data whenever the ID changes
   $effect(() => {
     liveMessages = data.messages as ChatMessage[];
+    pendingMessages = []; // Clear pending on chat switch
     isScrolledToBottom = true;
     setupSSE(data.id);
   });
 
   // Auto-scroll on new messages
   $effect(() => {
-    if (liveMessages.length > 0 && chatContainer && isScrolledToBottom) {
+    if ((liveMessages.length > 0 || pendingMessages.length > 0) && chatContainer && isScrolledToBottom) {
       tick().then(scrollToBottom);
     }
   });
@@ -61,8 +62,16 @@
       try {
         const newMessage = JSON.parse(event.data);
         // Ensure we don't duplicate messages we just sent and received via SSE
-        if (!liveMessages.find((m) => m.timestamp === newMessage.timestamp && m.role === newMessage.role)) {
+        if (!liveMessages.find((m) => m.id === newMessage.id)) {
           liveMessages = [...liveMessages, newMessage];
+          
+          if (newMessage.role === 'user') {
+            // Remove from pending by matching content
+            const idx = pendingMessages.findIndex(m => m.content === newMessage.content);
+            if (idx !== -1) {
+               pendingMessages = pendingMessages.filter((_, i) => i !== idx);
+            }
+          }
         }
       } catch (e) {
         console.error('Failed to parse SSE message', e);
@@ -78,11 +87,17 @@
 
   async function sendMessage(e: Event) {
     e.preventDefault();
-    if (!inputValue.trim() || isSending) return;
+    if (!inputValue.trim()) return;
 
-    isSending = true;
     const currentInput = inputValue;
     inputValue = '';
+    
+    const pendingMsg = {
+      id: `pending-${Date.now()}-${Math.random()}`,
+      content: currentInput,
+      timestamp: new Date().toISOString()
+    };
+    pendingMessages = [...pendingMessages, pendingMsg];
 
     try {
       await fetch(`/api/chats/${data.id}/messages`, {
@@ -95,10 +110,10 @@
       await invalidate(`app:chat:${data.id}`);
     } catch (err) {
       console.error('Failed to send message:', err);
+      // Remove the specific pending message on failure
+      pendingMessages = pendingMessages.filter((m) => m.id !== pendingMsg.id);
       // Restore input on failure
       inputValue = currentInput;
-    } finally {
-      isSending = false;
     }
   }
 
@@ -115,7 +130,7 @@
       </div>
     {/if}
 
-    {#each liveMessages as msg}
+    {#each liveMessages as msg (msg.id)}
       <div class="flex flex-col gap-1 {msg.role === 'user' ? 'items-end' : 'items-start'}">
         <div class="flex items-baseline gap-2 max-w-[80%] {msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}">
           {#if msg.role === 'user'}
@@ -158,6 +173,20 @@
         </div>
       </div>
     {/each}
+
+    {#each pendingMessages as msg (msg.id)}
+      <div class="flex flex-col gap-1 items-end opacity-50 transition-opacity">
+        <div class="flex items-baseline gap-2 max-w-[80%] flex-row-reverse">
+          <div class="px-4 py-2 rounded-2xl bg-primary text-primary-foreground text-sm" data-testid="pending-message">
+            {msg.content}
+          </div>
+        </div>
+        <div class="text-[10px] text-muted-foreground px-2 flex items-center gap-1">
+          <span class="inline-block w-2 h-2 rounded-full border border-current border-t-transparent animate-spin"></span>
+          Sending...
+        </div>
+      </div>
+    {/each}
   </div>
 
   <div class="p-4 bg-background/80 backdrop-blur-sm border-t shrink-0">
@@ -166,7 +195,6 @@
         bind:value={inputValue}
         placeholder="Type your message..."
         class="flex-1 min-h-[0px] resize-none overflow-hidden h-auto"
-        disabled={isSending}
         onkeydown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -175,7 +203,7 @@
         }}
         data-testid="message-input"
       />
-      <Button type="submit" disabled={isSending || !inputValue.trim()} size="icon" data-testid="send-button">
+      <Button type="submit" disabled={!inputValue.trim()} size="icon" data-testid="send-button">
         <Send class="w-4 h-4" />
         <span class="sr-only">Send</span>
       </Button>

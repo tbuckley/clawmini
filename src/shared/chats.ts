@@ -6,12 +6,15 @@ import { getClawminiDir, getSettingsPath } from './workspace.js';
 export const DEFAULT_CHAT_ID = 'default';
 
 export interface UserMessage {
+  id: string;
   role: 'user';
   content: string;
   timestamp: string;
 }
 
 export interface CommandLogMessage {
+  id: string;
+  messageId: string;
   role: 'log';
   content: string;
   stderr: string;

@@ -54,12 +54,15 @@ describe('chats utilities', () => {
     await createChat('chat1', TEST_DIR);
 
     const msg1: UserMessage = {
+      id: 'msg-1',
       role: 'user',
       content: 'Hello',
       timestamp: new Date().toISOString(),
     };
 
     const msg2: CommandLogMessage = {
+      id: 'log-1',
+      messageId: 'msg-1',
       role: 'log',
       content: 'output',
       stderr: '',
