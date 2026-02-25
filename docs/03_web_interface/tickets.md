@@ -48,7 +48,7 @@ In general, prefer shadcn-svelte UI components when they exist.
 - **Verification:**
   - Add component tests to verify that `UserMessage` and `CommandLogMessage` are rendered with distinct visual styles.
   - All standard checks pass: `npm run format:check && npm run lint && npm run check && npm run test`.
-- **Status:** Not started
+- **Status:** Complete
 
 ## Step 7: Frontend UI - SSE Integration
 

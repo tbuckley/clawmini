@@ -43,3 +43,12 @@
 - Added proxy to SvelteKit vite.config.ts for local dev.
 - Added vitest-browser tests for the AppSidebar.
 - Fixed SvelteKit adapter-static to allow SPA by removing prerender=true.
+## Feb 25, 2026 - Frontend UI - Chat Pane & Message Input (Step 6)
+- Created web/src/lib/types.ts defining ChatMessage, UserMessage, and CommandLogMessage.
+- Implemented web/src/routes/chats/[id]/+page.svelte with actual message history viewing.
+- Designed chat history UI differentiating user messages and log messages.
+- Formatted log message rendering to be mono-spaced and styled error blocks in red.
+- Created fixed bottom input area via fixed layout allowing scrolling of history above it.
+- Implemented sendMessage binding on forms to POST /api/chats/:id/messages endpoints.
+- Authored component specs ensuring distinct elements for different message kinds using vitest-browser-svelte.
+- Note to self: SvelteKit tests mirroring a Svelte route component like +page.svelte must not include a + in their test file name.
