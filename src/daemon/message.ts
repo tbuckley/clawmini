@@ -22,7 +22,7 @@ type RunCommandFn = (args: {
 }) => Promise<RunCommandResult>;
 
 async function resolveSessionState(chatId: string, cwd: string, sessionId?: string) {
-  let chatSettings = await readChatSettings(chatId, cwd);
+  const chatSettings = await readChatSettings(chatId, cwd);
   const agentId =
     typeof chatSettings?.defaultAgent === 'string' ? chatSettings.defaultAgent : 'default';
 
@@ -42,7 +42,7 @@ function prepareCommandAndEnv(
   settings: Settings,
   message: string,
   isNewSession: boolean,
-  agentSessionSettings: any
+  agentSessionSettings: Record<string, unknown> | null
 ): { command: string; env: Record<string, string> } {
   let command = settings.defaultAgent!.commands!.new!;
   let env = {
@@ -60,53 +60,28 @@ function prepareCommandAndEnv(
   return { command, env };
 }
 
-async function extractSessionId(
-  settings: Settings,
+async function runExtractionCommand(
+  name: string,
+  command: string,
   runCommand: RunCommandFn,
   cwd: string,
   env: Record<string, string>,
   mainResult: RunCommandResult
-): Promise<{ sessionId?: string; error?: string }> {
+): Promise<{ result?: string; error?: string }> {
   try {
-    const getSessionResult = await runCommand({
-      command: settings.defaultAgent!.commands!.getSessionId!,
+    const res = await runCommand({
+      command,
       cwd,
       env,
       stdin: mainResult.stdout,
     });
-
-    if (getSessionResult.exitCode === 0) {
-      const extractedSessionId = getSessionResult.stdout.trim();
-      return { sessionId: extractedSessionId };
+    if (res.exitCode === 0) {
+      return { result: res.stdout.trim() };
     } else {
-      return { error: `getSessionId failed: ${getSessionResult.stderr}` };
+      return { error: `${name} failed: ${res.stderr}` };
     }
   } catch (e) {
-    return { error: `getSessionId error: ${(e as Error).message}` };
-  }
-}
-
-async function extractMessageContent(
-  settings: Settings,
-  runCommand: RunCommandFn,
-  cwd: string,
-  env: Record<string, string>,
-  mainResult: RunCommandResult
-): Promise<{ message?: string; error?: string }> {
-  try {
-    const getContentResult = await runCommand({
-      command: settings.defaultAgent!.commands!.getMessageContent!,
-      cwd,
-      env,
-      stdin: mainResult.stdout,
-    });
-    if (getContentResult.exitCode === 0) {
-      return { message: getContentResult.stdout.trim() };
-    } else {
-      return { error: `getMessageContent failed: ${getContentResult.stderr}` };
-    }
-  } catch (e) {
-    return { error: `getMessageContent error: ${(e as Error).message}` };
+    return { error: `${name} error: ${(e as Error).message}` };
   }
 }
 
@@ -168,12 +143,19 @@ export async function handleUserMessage(
     if (mainResult.exitCode === 0) {
       // Save the session id if it's a new session
       if (isNewSession && settings.defaultAgent!.commands?.getSessionId) {
-        const result = await extractSessionId(settings, runCommand, cwd, env, mainResult);
-        if (result.sessionId) {
+        const { result, error } = await runExtractionCommand(
+          'getSessionId',
+          settings.defaultAgent!.commands.getSessionId,
+          runCommand,
+          cwd,
+          env,
+          mainResult
+        );
+        if (result) {
           const newChatSettings = chatSettings ?? {};
           newChatSettings.defaultAgent = agentId;
           newChatSettings.sessions = newChatSettings.sessions || {};
-          const internalSessionId = sessionId ?? crypto.randomUUID();
+          const internalSessionId = sessionId ?? result;
           (newChatSettings.sessions as Record<string, string>)[agentId] = internalSessionId;
           await writeChatSettings(chatId, newChatSettings, cwd);
 
@@ -181,24 +163,31 @@ export async function handleUserMessage(
           await writeAgentSessionSettings(
             agentId,
             internalSessionId,
-            { env: { SESSION_ID: result.sessionId } },
+            { env: { SESSION_ID: result } },
             cwd
           );
         }
-        if (result.error) {
-          errors.push(result.error);
+        if (error) {
+          errors.push(error);
         }
       }
 
       // Try extracting the message content
       if (settings.defaultAgent!.commands?.getMessageContent) {
-        const result = await extractMessageContent(settings, runCommand, cwd, env, mainResult);
-        if (result.message !== undefined) {
-          logMsg.content = result.message;
+        const { result, error } = await runExtractionCommand(
+          'getMessageContent',
+          settings.defaultAgent!.commands.getMessageContent,
+          runCommand,
+          cwd,
+          env,
+          mainResult
+        );
+        if (result !== undefined) {
+          logMsg.content = result;
           logMsg.stdout = mainResult.stdout;
         }
-        if (result.error) {
-          errors.push(result.error);
+        if (error) {
+          errors.push(error);
         }
       }
     }

@@ -41,7 +41,9 @@ describe('workspace utilities', () => {
 
     it('should return getAgentSessionSettingsPath correctly', () => {
       const p = getAgentSessionSettingsPath('test-agent', 'test-session', testDir);
-      expect(p).toBe(path.join(clawminiDir, 'agents', 'test-agent', 'sessions', 'test-session', 'settings.json'));
+      expect(p).toBe(
+        path.join(clawminiDir, 'agents', 'test-agent', 'sessions', 'test-session', 'settings.json')
+      );
     });
   });
 
@@ -54,10 +56,10 @@ describe('workspace utilities', () => {
     it('should write and read chat settings', async () => {
       const data = { theme: 'dark', notifications: true };
       await writeChatSettings('chat-1', data, testDir);
-      
+
       const p = getChatSettingsPath('chat-1', testDir);
       expect(fs.existsSync(p)).toBe(true);
-      
+
       const settings = await readChatSettings('chat-1', testDir);
       expect(settings).toEqual(data);
     });
@@ -66,7 +68,7 @@ describe('workspace utilities', () => {
       const p = getChatSettingsPath('chat-invalid', testDir);
       fs.mkdirSync(path.dirname(p), { recursive: true });
       fs.writeFileSync(p, '{ invalid json', 'utf-8');
-      
+
       const settings = await readChatSettings('chat-invalid', testDir);
       expect(settings).toBeNull();
     });
@@ -81,10 +83,10 @@ describe('workspace utilities', () => {
     it('should write and read agent session settings', async () => {
       const data = { context: 'some context', step: 5 };
       await writeAgentSessionSettings('agent-1', 'session-1', data, testDir);
-      
+
       const p = getAgentSessionSettingsPath('agent-1', 'session-1', testDir);
       expect(fs.existsSync(p)).toBe(true);
-      
+
       const settings = await readAgentSessionSettings('agent-1', 'session-1', testDir);
       expect(settings).toEqual(data);
     });
@@ -93,7 +95,7 @@ describe('workspace utilities', () => {
       const p = getAgentSessionSettingsPath('agent-invalid', 'session-invalid', testDir);
       fs.mkdirSync(path.dirname(p), { recursive: true });
       fs.writeFileSync(p, 'invalid json }', 'utf-8');
-      
+
       const settings = await readAgentSessionSettings('agent-invalid', 'session-invalid', testDir);
       expect(settings).toBeNull();
     });

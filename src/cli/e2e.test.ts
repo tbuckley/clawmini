@@ -253,7 +253,10 @@ describe('E2E CLI Tests', () => {
 
     const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/workflow-chat/chat.jsonl');
     let chatLog = fs.readFileSync(chatLogPath, 'utf8');
-    let lines = chatLog.trim().split('\n').map((l) => JSON.parse(l));
+    let lines = chatLog
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
 
     expect(lines).toHaveLength(2);
     expect(lines[1].command).toBe('echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2');
@@ -269,7 +272,10 @@ describe('E2E CLI Tests', () => {
     await new Promise((resolve) => setTimeout(resolve, 800));
 
     chatLog = fs.readFileSync(chatLogPath, 'utf8');
-    lines = chatLog.trim().split('\n').map((l) => JSON.parse(l));
+    lines = chatLog
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
 
     expect(lines).toHaveLength(4);
     expect(lines[3].command).toBe('echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2');
@@ -284,7 +290,10 @@ describe('E2E CLI Tests', () => {
     await new Promise((resolve) => setTimeout(resolve, 800));
 
     chatLog = fs.readFileSync(chatLogPath, 'utf8');
-    lines = chatLog.trim().split('\n').map((l) => JSON.parse(l));
+    lines = chatLog
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
 
     expect(lines).toHaveLength(6);
     expect(lines[5].stdout).toBeUndefined();

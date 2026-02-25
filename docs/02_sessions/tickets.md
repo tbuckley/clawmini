@@ -49,3 +49,20 @@
 - `npm run lint`
 - `npm run test`
 **Status**: complete
+
+## Ticket 7: DRY Violation in `src/shared/workspace.ts`
+**Priority**: High
+**Description**: The read/write functions for `ChatSettings` and `AgentSessionSettings` contain duplicate file reading, JSON parsing, and directory creation logic. They also unnecessarily use synchronous `fs.existsSync` inside an async function.
+**Verification**:
+- Extract a generic `readJsonFile` and `writeJsonFile` utility.
+- Use `fsPromises.mkdir` natively (with `recursive: true` and swallowing `EEXIST` implicitly) instead of sync directory checking.
+- `npm run format`, `npm run lint`, `npm run check`, `npm run test`.
+**Status**: complete
+
+## Ticket 8: DRY Violation in `src/daemon/message.ts`
+**Priority**: Medium
+**Description**: `extractSessionId` and `extractMessageContent` contain nearly identical execution and error handling logic for running extraction commands.
+**Verification**:
+- Extract a generic `runExtractionCommand` utility.
+- `npm run format`, `npm run lint`, `npm run check`, `npm run test`.
+**Status**: complete
