@@ -41,6 +41,16 @@ export function initDaemon() {
     server.close();
     process.exit(0);
   });
+
+  process.on('exit', () => {
+    if (fs.existsSync(socketPath)) {
+      try {
+        fs.unlinkSync(socketPath);
+      } catch {
+        // Ignore errors during exit cleanup
+      }
+    }
+  });
 }
 
 // Only auto-initialize if run directly

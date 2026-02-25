@@ -95,6 +95,17 @@ const AppRouter = router({
 
       return { success: true };
     }),
+  ping: publicProcedure.query(() => {
+    return { status: 'ok' };
+  }),
+  shutdown: publicProcedure.mutation(() => {
+    // Schedule a shutdown shortly after the response is sent
+    setTimeout(() => {
+      console.log('Shutting down daemon...');
+      process.exit(0);
+    }, 100);
+    return { success: true };
+  }),
 });
 
 export type AppRouter = typeof AppRouter;

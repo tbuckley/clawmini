@@ -6,12 +6,16 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export async function getDaemonClient() {
+export async function getDaemonClient(options: { autoStart?: boolean } = {}) {
+  const { autoStart = true } = options;
   const socketPath = getSocketPath();
 
   // Check if server is running by verifying socket exists
   // (A better check would be to ping it, but this is a start)
   if (!fs.existsSync(socketPath)) {
+    if (!autoStart) {
+      throw new Error('Daemon not running.');
+    }
     console.log('Daemon not running. Starting daemon...');
 
     // Start daemon in the background

@@ -303,4 +303,35 @@ describe('E2E CLI Tests', () => {
     settings.defaultAgent.commands = oldCmds;
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   });
+
+  it('should explicitly start the daemon via up command', async () => {
+    const { stdout, code } = await runCli(['up']);
+    expect(code).toBe(0);
+    // Since the daemon is likely running from previous tests, it should say so
+    expect(stdout).toContain('Daemon is already running.');
+  });
+
+  it('should successfully shut down the daemon', async () => {
+    const { stdout, code } = await runCli(['down']);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('Successfully shut down clawmini daemon.');
+
+    // Wait a brief moment for the daemon to fully shut down and clean up
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Verify socket is gone
+    const socketPath = path.resolve(e2eDir, '.clawmini/daemon.sock');
+    expect(fs.existsSync(socketPath)).toBe(false);
+
+    // Running down again should say it's not running
+    const { stdout: stdoutAgain, code: codeAgain } = await runCli(['down']);
+    expect(codeAgain).toBe(0);
+    expect(stdoutAgain).toContain('Daemon is not running.');
+
+    // Running up after it's been killed should start it
+    const { stdout: stdoutUp, code: codeUp } = await runCli(['up']);
+    expect(codeUp).toBe(0);
+    expect(stdoutUp).toContain('Successfully started clawmini daemon.');
+  });
 });
