@@ -14,7 +14,7 @@
 - **Verification:**
   - Add a CLI test that runs `clawmini web --port 8080` in the background, curls `http://127.0.0.1:8080/`, and asserts a 200 OK response containing the HTML.
   - All standard checks pass: `npm run format:check && npm run lint && npm run check && npm run test`.
-- **Status:** Not started
+- **Status:** Complete
 
 ## Step 3: Implement REST API Endpoints
 

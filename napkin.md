@@ -7,3 +7,4 @@
 - **When testing code that relies on `node:child_process.spawn`** and passing callbacks for side effects, consider mocking `spawn` inside the test and providing a matching mock implementation of your callback directly in the test suite.
 - **When using Zod 4 for Record validation with string keys and string values**, use `z.record(z.string(), z.string())` rather than `z.record(z.string())`, as the newer Zod version requires two arguments for records when explicit types are needed.
 - Updated logMsg construction to map extracted content directly to `content`, and preserve the raw output in `stdout` as per the new `CommandLogMessage` structure.
+- **When building multi-target projects with tsdown and other bundlers (like Vite)**, ensure `tsdown` runs *first* if `clean: true` is enabled in `tsdown.config.ts`, otherwise it will delete the artifacts output by other tools into the `dist` directory.

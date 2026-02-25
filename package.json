@@ -7,7 +7,7 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "npm run build:web && tsdown",
+    "build": "tsdown && npm run build:web",
     "dev:cli": "tsdown --watch",
     "dev:daemon": "tsdown --watch",
     "lint": "eslint -f codeframe .",
