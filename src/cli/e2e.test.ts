@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import type { ChatMessage } from '../shared/chats.js';
 
 const binPath = path.resolve(__dirname, '../../dist/cli/index.mjs');
 const e2eDir = path.resolve(__dirname, '../../e2e-tmp');
@@ -333,5 +334,117 @@ describe('E2E CLI Tests', () => {
     const { stdout: stdoutUp, code: codeUp } = await runCli(['up']);
     expect(codeUp).toBe(0);
     expect(stdoutUp).toContain('Successfully started clawmini daemon.');
+  });
+
+  it('should run web command and serve static files', async () => {
+    const webPort = 8081;
+    const child = spawn('node', [binPath, 'web', '--port', webPort.toString()], {
+      cwd: e2eDir,
+      env: { ...process.env },
+    });
+
+    let output = '';
+    child.stdout.on('data', (d) => {
+      output += d.toString();
+    });
+    child.stderr.on('data', (d) => {
+      output += d.toString();
+    });
+
+    // Wait for the server to start
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        clearInterval(check);
+        reject(new Error('Timeout waiting for web server: ' + output));
+      }, 5000);
+      const check = setInterval(() => {
+        if (output.includes('Clawmini web interface running')) {
+          clearInterval(check);
+          clearTimeout(timeout);
+          resolve();
+        }
+      }, 100);
+    });
+
+    const res = await fetch(`http://127.0.0.1:${webPort}/`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html.toLowerCase()).toContain('<!doctype html>');
+    expect(html).toContain('<html');
+
+    const res404 = await fetch(`http://127.0.0.1:${webPort}/some-non-existent-route`);
+    expect(res404.status).toBe(200); // SPA fallback returns index.html (200 OK)
+    const html404 = await res404.text();
+    expect(html404.toLowerCase()).toContain('<!doctype html>');
+
+    // Create a chat for API testing
+    await runCli(['chats', 'add', 'api-test-chat']);
+
+    // Test GET /api/chats
+    const resChats = await fetch(`http://127.0.0.1:${webPort}/api/chats`);
+    expect(resChats.status).toBe(200);
+    const chats = (await resChats.json()) as string[];
+    expect(chats).toContain('api-test-chat');
+
+    // Test POST /api/chats/:id/messages
+    const resPost = await fetch(`http://127.0.0.1:${webPort}/api/chats/api-test-chat/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'api test message' }),
+    });
+    expect(resPost.status).toBe(200);
+    const postData = (await resPost.json()) as { success: boolean };
+    expect(postData.success).toBe(true);
+
+    // Give daemon time to process
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Test GET /api/chats/:id
+    const resHistory = await fetch(`http://127.0.0.1:${webPort}/api/chats/api-test-chat`);
+    expect(resHistory.status).toBe(200);
+    const history = (await resHistory.json()) as ChatMessage[];
+    expect(history.length).toBeGreaterThan(0);
+    expect(history[0]?.role).toBe('user');
+    expect(history[0]?.content).toBe('api test message');
+
+    // Test SSE endpoint GET /api/chats/:id/stream
+    const sseResponse = await fetch(`http://127.0.0.1:${webPort}/api/chats/api-test-chat/stream`);
+    expect(sseResponse.status).toBe(200);
+    expect(sseResponse.headers.get('content-type')).toContain('text/event-stream');
+
+    // Listen for SSE events
+    if (!sseResponse.body) {
+      throw new Error('SSE response body is null');
+    }
+    const reader = sseResponse.body.getReader();
+    const decoder = new TextDecoder();
+
+    // Simulate daemon appending a message
+    const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/api-test-chat/chat.jsonl');
+    const mockMessage = {
+      role: 'user',
+      content: 'sse test message',
+      timestamp: new Date().toISOString(),
+    };
+    fs.appendFileSync(chatLogPath, JSON.stringify(mockMessage) + '\n');
+
+    // Read the stream to verify the event
+    let sseData = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      sseData += decoder.decode(value, { stream: true });
+      if (sseData.includes('sse test message')) {
+        break;
+      }
+    }
+
+    expect(sseData).toContain('data: {"role":"user","content":"sse test message"');
+
+    // Close the connection
+    await reader.cancel();
+
+    child.kill();
+    await new Promise((resolve) => child.on('close', resolve));
   });
 });
