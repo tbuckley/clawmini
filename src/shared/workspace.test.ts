@@ -4,7 +4,6 @@ import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   getWorkspaceRoot,
-  getClawminiDir,
   getChatSettingsPath,
   getAgentSessionSettingsPath,
   readChatSettings,
