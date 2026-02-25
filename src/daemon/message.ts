@@ -117,6 +117,7 @@ export async function handleUserMessage(
     );
 
     const userMsg: UserMessage = {
+      id: crypto.randomUUID(),
       role: 'user',
       content: message,
       timestamp: new Date().toISOString(),
@@ -126,6 +127,8 @@ export async function handleUserMessage(
     const mainResult = await runCommand({ command, cwd, env });
 
     const logMsg: CommandLogMessage = {
+      id: crypto.randomUUID(),
+      messageId: userMsg.id,
       role: 'log',
       content: mainResult.stdout,
       stderr: '',

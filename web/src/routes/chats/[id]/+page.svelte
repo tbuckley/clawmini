@@ -61,7 +61,7 @@
       try {
         const newMessage = JSON.parse(event.data);
         // Ensure we don't duplicate messages we just sent and received via SSE
-        if (!liveMessages.find((m) => m.timestamp === newMessage.timestamp && m.role === newMessage.role)) {
+        if (!liveMessages.find((m) => m.id === newMessage.id)) {
           liveMessages = [...liveMessages, newMessage];
         }
       } catch (e) {
@@ -115,7 +115,7 @@
       </div>
     {/if}
 
-    {#each liveMessages as msg}
+    {#each liveMessages as msg (msg.id)}
       <div class="flex flex-col gap-1 {msg.role === 'user' ? 'items-end' : 'items-start'}">
         <div class="flex items-baseline gap-2 max-w-[80%] {msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}">
           {#if msg.role === 'user'}

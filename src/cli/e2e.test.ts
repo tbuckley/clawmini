@@ -422,6 +422,7 @@ describe('E2E CLI Tests', () => {
     // Simulate daemon appending a message
     const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/api-test-chat/chat.jsonl');
     const mockMessage = {
+      id: 'mock-1',
       role: 'user',
       content: 'sse test message',
       timestamp: new Date().toISOString(),
@@ -439,7 +440,7 @@ describe('E2E CLI Tests', () => {
       }
     }
 
-    expect(sseData).toContain('data: {"role":"user","content":"sse test message"');
+    expect(sseData).toContain('data: {"id":"mock-1","role":"user","content":"sse test message"');
 
     // Close the connection
     await reader.cancel();

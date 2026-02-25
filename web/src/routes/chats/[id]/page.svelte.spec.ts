@@ -10,11 +10,14 @@ const mockData = {
   chats: [],
   messages: [
     {
+      id: 'msg-1',
       role: 'user',
       content: 'Hello daemon',
       timestamp: new Date().toISOString(),
     },
     {
+      id: 'log-1',
+      messageId: 'msg-1',
       role: 'log',
       content: 'I am the daemon',
       command: 'echo "I am the daemon"',
@@ -25,6 +28,8 @@ const mockData = {
       timestamp: new Date().toISOString(),
     },
     {
+      id: 'log-2',
+      messageId: 'msg-1',
       role: 'log',
       content: '',
       command: 'exit 1',
