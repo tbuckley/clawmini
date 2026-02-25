@@ -5,14 +5,52 @@
   import { Send } from 'lucide-svelte';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
-  import { tick } from 'svelte';
+  import { tick, onMount, onDestroy } from 'svelte';
 
   let { data } = $props<{ data: PageData }>();
 
   let inputValue = $state('');
   let isSending = $state(false);
+  let liveMessages = $state<ChatMessage[]>([]);
+  let chatContainer: HTMLElement | undefined = $state();
+  let eventSource: EventSource | null = null;
 
-  let messages = $derived(data.messages as ChatMessage[]);
+  // We sync live messages with initial loaded data whenever the ID changes
+  $effect(() => {
+    liveMessages = data.messages as ChatMessage[];
+    setupSSE(data.id);
+  });
+
+  // Auto-scroll on new messages
+  $effect(() => {
+    if (liveMessages.length > 0 && chatContainer) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+  });
+
+  function setupSSE(chatId: string) {
+    if (eventSource) {
+      eventSource.close();
+    }
+    eventSource = new EventSource(`/api/chats/${chatId}/stream`);
+    eventSource.onmessage = (event) => {
+      try {
+        const newMessage = JSON.parse(event.data);
+        // Ensure we don't duplicate messages we just sent and received via SSE
+        if (!liveMessages.find((m) => m.timestamp === newMessage.timestamp && m.role === newMessage.role)) {
+          liveMessages = [...liveMessages, newMessage];
+        }
+      } catch (e) {
+        console.error('Failed to parse SSE message', e);
+      }
+    };
+  }
+
+  onDestroy(() => {
+    if (eventSource) {
+      eventSource.close();
+    }
+  });
 
   async function sendMessage(e: Event) {
     e.preventDefault();
@@ -28,6 +66,8 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: currentInput })
       });
+      // SSE should handle the incoming log and user messages now.
+      // But we can still invalidate to be safe.
       await invalidate(`app:chat:${data.id}`);
     } catch (err) {
       console.error('Failed to send message:', err);
@@ -44,14 +84,14 @@
 </script>
 
 <div class="flex flex-col h-full relative">
-  <div class="flex-1 overflow-y-auto p-4 space-y-6 pb-24">
-    {#if messages.length === 0}
+  <div bind:this={chatContainer} class="flex-1 overflow-y-auto p-4 space-y-6 pb-24 scroll-smooth">
+    {#if liveMessages.length === 0}
       <div class="h-full flex items-center justify-center text-muted-foreground text-sm">
         No messages yet. Send a message to start the conversation!
       </div>
     {/if}
 
-    {#each messages as msg}
+    {#each liveMessages as msg}
       <div class="flex flex-col gap-1 {msg.role === 'user' ? 'items-end' : 'items-start'}">
         <div class="flex items-baseline gap-2 max-w-[80%] {msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}">
           {#if msg.role === 'user'}

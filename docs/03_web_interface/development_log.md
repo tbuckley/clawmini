@@ -52,3 +52,9 @@
 - Implemented sendMessage binding on forms to POST /api/chats/:id/messages endpoints.
 - Authored component specs ensuring distinct elements for different message kinds using vitest-browser-svelte.
 - Note to self: SvelteKit tests mirroring a Svelte route component like +page.svelte must not include a + in their test file name.
+## Feb 25, 2026 - Frontend UI - SSE Integration (Step 7)
+- Implemented standard EventSource logic in web/src/routes/chats/[id]/+page.svelte.
+- Refactored data.messages into liveMessages state array synced natively.
+- Connected the component mount and update lifecycle with the GET /api/chats/:id/stream SSE endpoint.
+- Correctly bounded EventSource.onmessage to parse JSON from the socket stream and append new messages.
+- Implemented automatic scroll pinning with Svelte's $effect primitive.
