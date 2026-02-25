@@ -6,3 +6,4 @@
 - **When you need to tear down E2E tests**, explicitly run a cleanup command (e.g., `pkill -f "dist/daemon/index.mjs"`) in the `afterAll` hook to prevent zombie daemon processes from persisting.
 - **When testing code that relies on `node:child_process.spawn`** and passing callbacks for side effects, consider mocking `spawn` inside the test and providing a matching mock implementation of your callback directly in the test suite.
 - **When using Zod 4 for Record validation with string keys and string values**, use `z.record(z.string(), z.string())` rather than `z.record(z.string())`, as the newer Zod version requires two arguments for records when explicit types are needed.
+- Updated logMsg construction to map extracted content directly to `content`, and preserve the raw output in `stdout` as per the new `CommandLogMessage` structure.

@@ -123,13 +123,13 @@ export async function handleUserMessage(
 
     const logMsg: CommandLogMessage = {
       role: 'log',
-      content: mainResult.stdout,
+      content: extractedMessage !== undefined ? extractedMessage : mainResult.stdout,
       stderr: extractionError ? (mainResult.stderr ? mainResult.stderr + '\n' + extractionError : extractionError) : mainResult.stderr,
       timestamp: new Date().toISOString(),
       command,
       cwd,
       exitCode: mainResult.exitCode,
-      ...(extractedMessage && { extractedMessage }),
+      ...(extractedMessage !== undefined && { stdout: mainResult.stdout }),
     };
     await appendMessage(chatId, logMsg);
   });

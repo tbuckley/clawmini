@@ -436,8 +436,8 @@ describe('Daemon Execution Queue', () => {
         'chat1',
         expect.objectContaining({
           role: 'log',
-          content: 'main_output',
-          extractedMessage: 'extracted message content'
+          content: 'extracted message content',
+          stdout: 'main_output'
         })
       );
     });
