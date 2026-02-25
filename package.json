@@ -7,7 +7,7 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "tsdown",
+    "build": "npm run build:web && tsdown",
     "dev:cli": "tsdown --watch",
     "dev:daemon": "tsdown --watch",
     "lint": "eslint -f codeframe .",
@@ -15,7 +15,8 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\"",
     "check": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:web": "cd web && npm run build"
   },
   "dependencies": {
     "@trpc/client": "^11.10.0",

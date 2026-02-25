@@ -5,7 +5,7 @@ import { defineConfig } from 'eslint/config';
 import eslintConfigPrettier from 'eslint-config-prettier';
 
 export default defineConfig([
-  { ignores: ['dist', 'node_modules', '.cladding', '.clawmini'] },
+  { ignores: ['dist', 'node_modules', '.cladding', '.clawmini', '**/.svelte-kit', '**/build', 'web/.svelte-kit'] },
   {
     files: ['**/*.{js,mjs,cjs,ts,mts,cts}'],
     plugins: { js },
