@@ -30,7 +30,7 @@
 - **Verification:**
   - Write a test that connects to the SSE endpoint, simulates a daemon appending a message to the `chat.jsonl` file programmatically, and verifies the event is received.
   - All standard checks pass: `npm run format:check && npm run lint && npm run check && npm run test`.
-- **Status:** Not started
+- **Status:** Complete
 
 ## Step 5: Frontend UI - Layout & Sidebar
 

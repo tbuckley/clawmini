@@ -28,3 +28,11 @@
 - Added comprehensive integration tests in `src/cli/e2e.test.ts` to verify the endpoints correctly read from the file system, list chats, parse the JSON body, and interact with the daemon client.
 - Fixed minor TypeScript errors related to `RegExpMatchArray` bounds and potentially undefined arrays.
 - All verification steps and tests pass successfully.
+
+## Feb 24, 2026 - Server-Sent Events (SSE) Endpoint (Step 4)
+
+- Implemented `GET /api/chats/:id/stream` in `src/cli/commands/web.ts` to push real-time updates to connected clients.
+- Used `node:fs` module's `fs.watch` and `fs.createReadStream` to listen for file changes on the specific chat's `chat.jsonl` log file, handling chunking logic carefully to ensure individual messages are read and streamed accurately as Server-Sent Events.
+- Correctly ensured the stream correctly gracefully initializes a blank chat file using `createChat` if a stream request is made for an empty but valid route, preventing 404 read stream errors.
+- Created robust end-to-end integration tests within `e2e.test.ts` mapping the Web Server's child process flow, executing an programmatic file append, and reading the `EventSource` stream through native Fetch `body.getReader` methods to assert real-time event ingestion.
+- Ensured all standard lint, formatting, typescript compiler, and unit test checks ran smoothly.

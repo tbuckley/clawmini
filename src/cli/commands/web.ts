@@ -3,7 +3,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { listChats, getMessages } from '../../shared/chats.js';
+import { listChats, getMessages, getChatsDir, createChat } from '../../shared/chats.js';
 import { getDaemonClient } from '../client.js';
 
 const mimeTypes: Record<string, string> = {
@@ -72,6 +72,68 @@ export const webCmd = new Command('web')
               res.writeHead(404);
               res.end(JSON.stringify({ error: 'Chat not found' }));
             }
+            return;
+          }
+
+          const streamMatch = urlPath.match(/^\/api\/chats\/([^/]+)\/stream$/);
+          if (req.method === 'GET' && streamMatch && streamMatch[1]) {
+            const chatId = streamMatch[1];
+
+            res.setHeader('Content-Type', 'text/event-stream');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Connection', 'keep-alive');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.flushHeaders();
+
+            const chatsDir = await getChatsDir();
+            const chatFile = path.join(chatsDir, chatId, 'chat.jsonl');
+
+            if (!fs.existsSync(chatFile)) {
+              await createChat(chatId);
+            }
+
+            let currentSize = fs.statSync(chatFile).size;
+
+            const watcher = fs.watch(chatFile, (eventType) => {
+              if (eventType === 'change') {
+                try {
+                  const stat = fs.statSync(chatFile);
+                  if (stat.size > currentSize) {
+                    const stream = fs.createReadStream(chatFile, {
+                      start: currentSize,
+                      end: stat.size - 1,
+                    });
+                    currentSize = stat.size;
+
+                    let buffer = '';
+                    stream.on('data', (chunk) => {
+                      buffer += chunk.toString();
+                      const parts = buffer.split('\n');
+                      buffer = parts.pop() || '';
+                      for (const line of parts) {
+                        if (line.trim()) {
+                          res.write(`data: ${line}\n\n`);
+                        }
+                      }
+                    });
+                    stream.on('end', () => {
+                      if (buffer.trim()) {
+                        res.write(`data: ${buffer}\n\n`);
+                      }
+                    });
+                  }
+                } catch {
+                  // File might be temporarily inaccessible
+                }
+              }
+            });
+
+            req.on('close', () => {
+              watcher.close();
+            });
+
+            // Send an initial ping to establish connection
+            res.write(': connected\n\n');
             return;
           }
 

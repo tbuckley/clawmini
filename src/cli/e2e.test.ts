@@ -407,6 +407,43 @@ describe('E2E CLI Tests', () => {
     expect(history[0]?.role).toBe('user');
     expect(history[0]?.content).toBe('api test message');
 
+    // Test SSE endpoint GET /api/chats/:id/stream
+    const sseResponse = await fetch(`http://127.0.0.1:${webPort}/api/chats/api-test-chat/stream`);
+    expect(sseResponse.status).toBe(200);
+    expect(sseResponse.headers.get('content-type')).toContain('text/event-stream');
+
+    // Listen for SSE events
+    if (!sseResponse.body) {
+      throw new Error('SSE response body is null');
+    }
+    const reader = sseResponse.body.getReader();
+    const decoder = new TextDecoder();
+
+    // Simulate daemon appending a message
+    const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/api-test-chat/chat.jsonl');
+    const mockMessage = {
+      role: 'user',
+      content: 'sse test message',
+      timestamp: new Date().toISOString(),
+    };
+    fs.appendFileSync(chatLogPath, JSON.stringify(mockMessage) + '\n');
+
+    // Read the stream to verify the event
+    let sseData = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      sseData += decoder.decode(value, { stream: true });
+      if (sseData.includes('sse test message')) {
+        break;
+      }
+    }
+
+    expect(sseData).toContain('data: {"role":"user","content":"sse test message"');
+
+    // Close the connection
+    await reader.cancel();
+
     child.kill();
     await new Promise((resolve) => child.on('close', resolve));
   });
