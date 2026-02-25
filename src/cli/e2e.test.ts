@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import type { ChatMessage } from '../shared/chats.js';
 
 const binPath = path.resolve(__dirname, '../../dist/cli/index.mjs');
 const e2eDir = path.resolve(__dirname, '../../e2e-tmp');
@@ -375,6 +376,36 @@ describe('E2E CLI Tests', () => {
     expect(res404.status).toBe(200); // SPA fallback returns index.html (200 OK)
     const html404 = await res404.text();
     expect(html404.toLowerCase()).toContain('<!doctype html>');
+
+    // Create a chat for API testing
+    await runCli(['chats', 'add', 'api-test-chat']);
+
+    // Test GET /api/chats
+    const resChats = await fetch(`http://127.0.0.1:${webPort}/api/chats`);
+    expect(resChats.status).toBe(200);
+    const chats = (await resChats.json()) as string[];
+    expect(chats).toContain('api-test-chat');
+
+    // Test POST /api/chats/:id/messages
+    const resPost = await fetch(`http://127.0.0.1:${webPort}/api/chats/api-test-chat/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'api test message' }),
+    });
+    expect(resPost.status).toBe(200);
+    const postData = (await resPost.json()) as { success: boolean };
+    expect(postData.success).toBe(true);
+
+    // Give daemon time to process
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Test GET /api/chats/:id
+    const resHistory = await fetch(`http://127.0.0.1:${webPort}/api/chats/api-test-chat`);
+    expect(resHistory.status).toBe(200);
+    const history = (await resHistory.json()) as ChatMessage[];
+    expect(history.length).toBeGreaterThan(0);
+    expect(history[0]?.role).toBe('user');
+    expect(history[0]?.content).toBe('api test message');
 
     child.kill();
     await new Promise((resolve) => child.on('close', resolve));

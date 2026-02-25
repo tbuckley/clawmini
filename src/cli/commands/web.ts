@@ -3,6 +3,8 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listChats, getMessages } from '../../shared/chats.js';
+import { getDaemonClient } from '../client.js';
 
 const mimeTypes: Record<string, string> = {
   '.html': 'text/html',
@@ -35,9 +37,93 @@ export const webCmd = new Command('web')
     const __dirname = path.dirname(__filename);
     const webDir = path.resolve(__dirname, '../web');
 
-    const server = http.createServer((req, res) => {
+    const server = http.createServer(async (req, res) => {
       try {
         const urlPath = req.url === '/' ? '/index.html' : req.url?.split('?')[0] || '/';
+
+        // API Routes
+        if (urlPath.startsWith('/api/')) {
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+          if (req.method === 'OPTIONS') {
+            res.writeHead(204);
+            res.end();
+            return;
+          }
+
+          if (req.method === 'GET' && urlPath === '/api/chats') {
+            const chats = await listChats();
+            res.writeHead(200);
+            res.end(JSON.stringify(chats));
+            return;
+          }
+
+          const chatMatch = urlPath.match(/^\/api\/chats\/([^/]+)$/);
+          if (req.method === 'GET' && chatMatch && chatMatch[1]) {
+            const chatId = chatMatch[1];
+            try {
+              const messages = await getMessages(chatId);
+              res.writeHead(200);
+              res.end(JSON.stringify(messages));
+            } catch {
+              res.writeHead(404);
+              res.end(JSON.stringify({ error: 'Chat not found' }));
+            }
+            return;
+          }
+
+          const messageMatch = urlPath.match(/^\/api\/chats\/([^/]+)\/messages$/);
+          if (req.method === 'POST' && messageMatch && messageMatch[1]) {
+            const chatId = messageMatch[1];
+            let bodyStr = '';
+            for await (const chunk of req) {
+              bodyStr += chunk;
+            }
+
+            let body;
+            try {
+              body = JSON.parse(bodyStr);
+            } catch {
+              res.writeHead(400);
+              res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+              return;
+            }
+
+            if (!body.message || typeof body.message !== 'string') {
+              res.writeHead(400);
+              res.end(JSON.stringify({ error: 'Missing or invalid "message" field' }));
+              return;
+            }
+
+            try {
+              const client = await getDaemonClient();
+              await client.sendMessage.mutate({
+                type: 'send-message',
+                client: 'cli',
+                data: {
+                  message: body.message,
+                  chatId,
+                },
+              });
+              res.writeHead(200);
+              res.end(JSON.stringify({ success: true }));
+            } catch (err) {
+              const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+              res.writeHead(500);
+              res.end(JSON.stringify({ error: errorMessage || 'Internal Server Error' }));
+            }
+            return;
+          }
+
+          res.writeHead(404);
+          res.end(JSON.stringify({ error: 'Not Found' }));
+          return;
+        }
+
+        // Static Files
         let filePath = path.join(webDir, urlPath);
 
         // Prevent directory traversal
