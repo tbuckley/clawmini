@@ -28,3 +28,12 @@
 - Passed `sessionId` via TRPC mutation in `src/daemon/router.ts`.
 - Updated unit tests in `src/daemon/message.test.ts` heavily mocking `readChatSettings`, `readAgentSessionSettings`, and `spawn` ensuring test isolation by separating cache directories.
 - All checks (`npm run check`, `npm run test`) passed.
+
+## Completed Ticket 5
+- Modified `runCommand` signature in `src/daemon/message.ts` to return an object `{ stdout, stderr, exitCode }` instead of resolving `void` and internally calling `appendMessage`. Added support for an optional `stdin` argument.
+- Implemented extraction logic inside `handleUserMessage`: after the main command finishes, we spawn `getSessionId` and `getMessageContent` by invoking `runCommand` with `stdin: mainResult.stdout`.
+- Updates the Chat Settings and Agent Session Settings correctly using `writeChatSettings` and `writeAgentSessionSettings` respectively, upon successful execution of `getSessionId`.
+- Propagates any error messages from the extraction commands to `extractionError` which gets gracefully concatenated to `stderr` of the main log output.
+- Refactored `runCommand` in `src/daemon/router.ts` and `src/daemon/message.test.ts` to adhere to the new signature and support piping to `stdin`.
+- Verified changes with extensive unit tests covering the multi-command spawning behavior and state file persistence logic in `src/daemon/message.test.ts`.
+- `npm run check`, `npm run test`, and `npm run lint` all passed successfully.

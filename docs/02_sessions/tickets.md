@@ -38,7 +38,7 @@
 - Add unit tests verifying stdin piping and correct state file updates upon success.
 - `npm run test`
 - `npm run check`
-**Status**: not started
+**Status**: complete
 
 ## Ticket 6: Logging & Final Integration
 **Description**: Update the `CommandLogMessage` structure in the chat log (`chat.jsonl`) to include both raw stdout and extracted message text. Gracefully handle extraction command failures by logging them as `stderr` in `chat.jsonl`. Complete the feature by writing an E2E test covering the full multi-message session workflow.

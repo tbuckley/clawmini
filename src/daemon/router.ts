@@ -3,7 +3,7 @@ import { z } from 'zod';
 import fs from 'node:fs/promises';
 import { getSettingsPath } from '../shared/workspace.js';
 import { handleUserMessage } from './message.js';
-import { getDefaultChatId, appendMessage, type CommandLogMessage } from '../shared/chats.js';
+import { getDefaultChatId } from '../shared/chats.js';
 import { spawn } from 'node:child_process';
 
 const t = initTRPC.create();
@@ -45,13 +45,18 @@ const AppRouter = router({
         settings,
         undefined,
         noWait,
-        async ({ command, cwd, env }) => {
-          return new Promise<void>((resolve) => {
+        async ({ command, cwd, env, stdin }) => {
+          return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
             const p = spawn(command, {
               shell: true,
               cwd,
               env,
             });
+
+            if (stdin) {
+              p.stdin?.write(stdin);
+              p.stdin?.end();
+            }
 
             let stdout = '';
             let stderr = '';
@@ -59,43 +64,29 @@ const AppRouter = router({
             if (p.stdout) {
               p.stdout.on('data', (data) => {
                 stdout += data.toString();
-                process.stdout.write(data);
+                // Only write to terminal if it's the main command (no stdin passed)
+                if (!stdin) {
+                  process.stdout.write(data);
+                }
               });
             }
 
             if (p.stderr) {
               p.stderr.on('data', (data) => {
                 stderr += data.toString();
-                process.stderr.write(data);
+                // Only write to terminal if it's the main command (no stdin passed)
+                if (!stdin) {
+                  process.stderr.write(data);
+                }
               });
             }
 
-            p.on('close', async (code) => {
-              const logMsg: CommandLogMessage = {
-                role: 'log',
-                content: stdout,
-                stderr: stderr,
-                timestamp: new Date().toISOString(),
-                command,
-                cwd,
-                exitCode: code ?? 1,
-              };
-              await appendMessage(chatId, logMsg);
-              resolve();
+            p.on('close', (code) => {
+              resolve({ stdout, stderr, exitCode: code ?? 1 });
             });
 
-            p.on('error', async (err) => {
-              const logMsg: CommandLogMessage = {
-                role: 'log',
-                content: '',
-                stderr: err.toString(),
-                timestamp: new Date().toISOString(),
-                command,
-                cwd,
-                exitCode: 1,
-              };
-              await appendMessage(chatId, logMsg);
-              resolve();
+            p.on('error', (err) => {
+              resolve({ stdout: '', stderr: err.toString(), exitCode: 1 });
             });
           });
         },
