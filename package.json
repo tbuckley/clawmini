@@ -2,6 +2,9 @@
   "name": "clawmini",
   "version": "0.0.1",
   "type": "module",
+  "workspaces": [
+    "web"
+  ],
   "bin": {
     "clawmini": "./dist/cli/index.mjs"
   },
@@ -12,11 +15,11 @@
     "dev:daemon": "tsdown --watch",
     "lint": "eslint -f codeframe .",
     "lint:fix": "eslint . --fix",
-    "format:check": "prettier --check \"src/**/*.ts\"",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "check": "tsc --noEmit",
+    "format:check": "prettier --check \"src/**/*.ts\" \"web/src/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.ts\" \"web/src/**/*.ts\"",
+    "check": "tsc --noEmit && npm run check -w web",
     "test": "vitest run",
-    "build:web": "cd web && npm run build"
+    "build:web": "npm run build -w web"
   },
   "dependencies": {
     "@trpc/client": "^11.10.0",

@@ -34,7 +34,7 @@
 
 ## Step 5: Frontend UI - Layout & Sidebar
 
-- **Description:** In the SvelteKit app, build the main two-pane layout. Implement the Sidebar to fetch and display the list of available chats from `GET /api/chats`. Add client-side routing to navigate to `/chats/:id` and visually highlight the active chat.
+- **Description:** In the SvelteKit app, build the main two-pane layout. Use the shadcn-svelte sidebar component to fetch and display the list of available chats from `GET /api/chats`. Add client-side routing to navigate to `/chats/:id` and visually highlight the active chat.
 - **Verification:**
   - Add basic component/unit tests in the SvelteKit project to ensure the sidebar renders a mock list of chats correctly.
   - All standard checks pass: `npm run format:check && npm run lint && npm run check && npm run test`.
