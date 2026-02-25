@@ -36,3 +36,10 @@
 - Correctly ensured the stream correctly gracefully initializes a blank chat file using `createChat` if a stream request is made for an empty but valid route, preventing 404 read stream errors.
 - Created robust end-to-end integration tests within `e2e.test.ts` mapping the Web Server's child process flow, executing an programmatic file append, and reading the `EventSource` stream through native Fetch `body.getReader` methods to assert real-time event ingestion.
 - Ensured all standard lint, formatting, typescript compiler, and unit test checks ran smoothly.
+## Feb 25, 2026 - Frontend UI - Layout & Sidebar (Step 5)
+- Added missing shadcn-svelte UI components via the CLI.
+- Implemented the main layout in SvelteKit using Sidebar.Provider.
+- Implemented load function in SvelteKit to fetch /api/chats.
+- Added proxy to SvelteKit vite.config.ts for local dev.
+- Added vitest-browser tests for the AppSidebar.
+- Fixed SvelteKit adapter-static to allow SPA by removing prerender=true.

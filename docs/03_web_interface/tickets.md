@@ -40,7 +40,7 @@ In general, prefer shadcn-svelte UI components when they exist.
 - **Verification:**
   - Add basic component/unit tests in the SvelteKit project to ensure the sidebar renders a mock list of chats correctly.
   - All standard checks pass: `npm run format:check && npm run lint && npm run check && npm run test`.
-- **Status:** Not started
+- **Status:** Complete
 
 ## Step 6: Frontend UI - Chat Pane & Message Input
 
