@@ -4,7 +4,7 @@
   import { invalidate } from '$app/navigation';
   import { Send } from 'lucide-svelte';
   import { Button } from '$lib/components/ui/button/index.js';
-  import { Input } from '$lib/components/ui/input/index.js';
+  import { Textarea } from '$lib/components/ui/textarea/index.js';
   import { tick, onMount, onDestroy } from 'svelte';
   import { appState } from '$lib/app-state.svelte.js';
 
@@ -15,6 +15,19 @@
   let liveMessages = $state<ChatMessage[]>([]);
   let chatContainer: HTMLElement | undefined = $state();
   let eventSource: EventSource | null = null;
+  let isScrolledToBottom = $state(true);
+
+  function checkScroll(e: Event) {
+    const target = e.target as HTMLElement;
+    // Allow a 10px threshold for being at the bottom
+    isScrolledToBottom = Math.abs(target.scrollHeight - target.scrollTop - target.clientHeight) < 10;
+  }
+
+  function scrollToBottom() {
+    if (chatContainer) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+  }
 
   // We sync live messages with initial loaded data whenever the ID changes
   $effect(() => {
@@ -24,8 +37,17 @@
 
   // Auto-scroll on new messages
   $effect(() => {
-    if (liveMessages.length > 0 && chatContainer) {
-      chatContainer.scrollTop = chatContainer.scrollHeight;
+    if (liveMessages.length > 0 && chatContainer && isScrolledToBottom) {
+      tick().then(scrollToBottom);
+    }
+  });
+
+  // Keep scrolled to bottom if textarea grows
+  $effect(() => {
+    // depend on inputValue changes
+    inputValue;
+    if (isScrolledToBottom) {
+      tick().then(scrollToBottom);
     }
   });
 
@@ -85,7 +107,7 @@
 </script>
 
 <div class="flex flex-col flex-1 h-full overflow-hidden">
-  <div bind:this={chatContainer} class="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
+  <div bind:this={chatContainer} onscroll={checkScroll} class="flex-1 overflow-y-auto p-4 space-y-6">
     {#if liveMessages.length === 0}
       <div class="h-full flex items-center justify-center text-muted-foreground text-sm">
         No messages yet. Send a message to start the conversation!
@@ -139,11 +161,17 @@
 
   <div class="p-4 bg-background/80 backdrop-blur-sm border-t shrink-0">
     <form onsubmit={sendMessage} class="flex items-center gap-2 max-w-4xl mx-auto">
-      <Input
+      <Textarea
         bind:value={inputValue}
         placeholder="Type your message..."
-        class="flex-1"
+        class="flex-1 min-h-[0px] resize-none overflow-hidden h-auto"
         disabled={isSending}
+        onkeydown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage(e);
+          }
+        }}
         data-testid="message-input"
       />
       <Button type="submit" disabled={isSending || !inputValue.trim()} size="icon" data-testid="send-button">
