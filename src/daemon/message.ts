@@ -1,7 +1,12 @@
 import { appendMessage, type UserMessage, type CommandLogMessage } from '../shared/chats.js';
 import { getQueue } from './queue.js';
 import { type Settings } from '../shared/config.js';
-import { readChatSettings, writeChatSettings, readAgentSessionSettings, writeAgentSessionSettings } from '../shared/workspace.js';
+import {
+  readChatSettings,
+  writeChatSettings,
+  readAgentSessionSettings,
+  writeAgentSessionSettings,
+} from '../shared/workspace.js';
 
 export type RunCommandResult = {
   stdout: string;
@@ -9,13 +14,109 @@ export type RunCommandResult = {
   exitCode: number;
 };
 
+type RunCommandFn = (args: {
+  command: string;
+  cwd: string;
+  env: Record<string, string>;
+  stdin?: string;
+}) => Promise<RunCommandResult>;
+
+async function resolveSessionState(chatId: string, cwd: string, sessionId?: string) {
+  let chatSettings = await readChatSettings(chatId, cwd);
+  const agentId =
+    typeof chatSettings?.defaultAgent === 'string' ? chatSettings.defaultAgent : 'default';
+
+  let targetSessionId = sessionId;
+  if (!targetSessionId) {
+    const sessions = (chatSettings?.sessions as Record<string, string>) || {};
+    targetSessionId = sessions[agentId] || 'default';
+  }
+
+  const agentSessionSettings = await readAgentSessionSettings(agentId, targetSessionId, cwd);
+  const isNewSession = !agentSessionSettings;
+
+  return { chatSettings, agentId, targetSessionId, agentSessionSettings, isNewSession };
+}
+
+function prepareCommandAndEnv(
+  settings: Settings,
+  message: string,
+  isNewSession: boolean,
+  agentSessionSettings: any
+): { command: string; env: Record<string, string> } {
+  let command = settings.defaultAgent!.commands!.new!;
+  let env = {
+    ...process.env,
+    ...(settings.defaultAgent!.env || {}),
+    CLAW_CLI_MESSAGE: message,
+  } as Record<string, string>;
+
+  if (!isNewSession && settings.defaultAgent!.commands?.append) {
+    command = settings.defaultAgent!.commands.append;
+    const sessionEnv = (agentSessionSettings?.env as Record<string, string>) || {};
+    env = { ...env, ...sessionEnv };
+  }
+
+  return { command, env };
+}
+
+async function extractSessionId(
+  settings: Settings,
+  runCommand: RunCommandFn,
+  cwd: string,
+  env: Record<string, string>,
+  mainResult: RunCommandResult
+): Promise<{ sessionId?: string; error?: string }> {
+  try {
+    const getSessionResult = await runCommand({
+      command: settings.defaultAgent!.commands!.getSessionId!,
+      cwd,
+      env,
+      stdin: mainResult.stdout,
+    });
+
+    if (getSessionResult.exitCode === 0) {
+      const extractedSessionId = getSessionResult.stdout.trim();
+      return { sessionId: extractedSessionId };
+    } else {
+      return { error: `getSessionId failed: ${getSessionResult.stderr}` };
+    }
+  } catch (e) {
+    return { error: `getSessionId error: ${(e as Error).message}` };
+  }
+}
+
+async function extractMessageContent(
+  settings: Settings,
+  runCommand: RunCommandFn,
+  cwd: string,
+  env: Record<string, string>,
+  mainResult: RunCommandResult
+): Promise<{ message?: string; error?: string }> {
+  try {
+    const getContentResult = await runCommand({
+      command: settings.defaultAgent!.commands!.getMessageContent!,
+      cwd,
+      env,
+      stdin: mainResult.stdout,
+    });
+    if (getContentResult.exitCode === 0) {
+      return { message: getContentResult.stdout.trim() };
+    } else {
+      return { error: `getMessageContent failed: ${getContentResult.stderr}` };
+    }
+  } catch (e) {
+    return { error: `getMessageContent error: ${(e as Error).message}` };
+  }
+}
+
 export async function handleUserMessage(
   chatId: string,
   message: string,
   settings: Settings | undefined,
   cwd: string = process.cwd(),
   noWait: boolean = false,
-  runCommand: (args: { command: string; cwd: string; env: Record<string, string>; stdin?: string }) => Promise<RunCommandResult>,
+  runCommand: RunCommandFn,
   sessionId?: string
 ): Promise<void> {
   // TODO: Immediately persist the user message somewhere (e.g., a crash-recovery log)
@@ -28,31 +129,17 @@ export async function handleUserMessage(
   const queue = getQueue(cwd);
 
   const taskPromise = queue.enqueue(async () => {
-    let chatSettings = await readChatSettings(chatId, cwd);
-    const agentId = typeof chatSettings?.defaultAgent === 'string' ? chatSettings.defaultAgent : 'default';
-
-    let targetSessionId = sessionId;
-    if (!targetSessionId) {
-      const sessions = (chatSettings?.sessions as Record<string, string>) || {};
-      targetSessionId = sessions[agentId] || 'default';
-    }
-
-    const agentSessionSettings = await readAgentSessionSettings(agentId, targetSessionId, cwd);
-
-    const isNewSession = !agentSessionSettings;
-
-    let command = settings.defaultAgent!.commands!.new!;
-    let env = {
-      ...process.env,
-      ...(settings.defaultAgent!.env || {}),
-      CLAW_CLI_MESSAGE: message,
-    } as Record<string, string>;
-
-    if (!isNewSession && settings.defaultAgent!.commands?.append) {
-      command = settings.defaultAgent!.commands.append;
-      const sessionEnv = (agentSessionSettings.env as Record<string, string>) || {};
-      env = { ...env, ...sessionEnv };
-    }
+    const { chatSettings, agentId, agentSessionSettings, isNewSession } = await resolveSessionState(
+      chatId,
+      cwd,
+      sessionId
+    );
+    const { command, env } = prepareCommandAndEnv(
+      settings,
+      message,
+      isNewSession,
+      agentSessionSettings
+    );
 
     const userMsg: UserMessage = {
       role: 'user',
@@ -61,76 +148,62 @@ export async function handleUserMessage(
     };
     await appendMessage(chatId, userMsg);
 
-    const mainResult = await runCommand({
-      command,
-      cwd,
-      env,
-    });
-
-    let extractedMessage: string | undefined;
-    let extractionError: string | undefined;
-
-    if (mainResult.exitCode === 0) {
-      let extractedSessionId: string | undefined;
-
-      if (isNewSession && settings.defaultAgent!.commands?.getSessionId) {
-        try {
-          const getSessionResult = await runCommand({
-            command: settings.defaultAgent!.commands.getSessionId,
-            cwd,
-            env,
-            stdin: mainResult.stdout,
-          });
-
-          if (getSessionResult.exitCode === 0) {
-            extractedSessionId = getSessionResult.stdout.trim();
-            if (extractedSessionId) {
-              chatSettings = chatSettings || {};
-              chatSettings.defaultAgent = agentId;
-              chatSettings.sessions = chatSettings.sessions || {};
-              (chatSettings.sessions as Record<string, string>)[agentId] = extractedSessionId;
-              await writeChatSettings(chatId, chatSettings, cwd);
-
-              // Create initial agent session settings
-              await writeAgentSessionSettings(agentId, extractedSessionId, { env: { SESSION_ID: extractedSessionId } }, cwd);
-            }
-          } else {
-             extractionError = `getSessionId failed: ${getSessionResult.stderr}`;
-          }
-        } catch (e) {
-           extractionError = `getSessionId error: ${(e as Error).message}`;
-        }
-      }
-
-      if (settings.defaultAgent!.commands?.getMessageContent) {
-        try {
-          const getContentResult = await runCommand({
-            command: settings.defaultAgent!.commands.getMessageContent,
-            cwd,
-            env,
-            stdin: mainResult.stdout,
-          });
-          if (getContentResult.exitCode === 0) {
-            extractedMessage = getContentResult.stdout.trim();
-          } else {
-            extractionError = (extractionError ? extractionError + '\n' : '') + `getMessageContent failed: ${getContentResult.stderr}`;
-          }
-        } catch (e) {
-          extractionError = (extractionError ? extractionError + '\n' : '') + `getMessageContent error: ${(e as Error).message}`;
-        }
-      }
-    }
+    const mainResult = await runCommand({ command, cwd, env });
 
     const logMsg: CommandLogMessage = {
       role: 'log',
-      content: extractedMessage !== undefined ? extractedMessage : mainResult.stdout,
-      stderr: extractionError ? (mainResult.stderr ? mainResult.stderr + '\n' + extractionError : extractionError) : mainResult.stderr,
+      content: mainResult.stdout,
+      stderr: '',
       timestamp: new Date().toISOString(),
       command,
       cwd,
       exitCode: mainResult.exitCode,
-      ...(extractedMessage !== undefined && { stdout: mainResult.stdout }),
     };
+
+    const errors: string[] = [];
+    if (mainResult.stderr) {
+      errors.push(mainResult.stderr);
+    }
+
+    if (mainResult.exitCode === 0) {
+      // Save the session id if it's a new session
+      if (isNewSession && settings.defaultAgent!.commands?.getSessionId) {
+        const result = await extractSessionId(settings, runCommand, cwd, env, mainResult);
+        if (result.sessionId) {
+          const newChatSettings = chatSettings ?? {};
+          newChatSettings.defaultAgent = agentId;
+          newChatSettings.sessions = newChatSettings.sessions || {};
+          const internalSessionId = sessionId ?? crypto.randomUUID();
+          (newChatSettings.sessions as Record<string, string>)[agentId] = internalSessionId;
+          await writeChatSettings(chatId, newChatSettings, cwd);
+
+          // Create initial agent session settings
+          await writeAgentSessionSettings(
+            agentId,
+            internalSessionId,
+            { env: { SESSION_ID: result.sessionId } },
+            cwd
+          );
+        }
+        if (result.error) {
+          errors.push(result.error);
+        }
+      }
+
+      // Try extracting the message content
+      if (settings.defaultAgent!.commands?.getMessageContent) {
+        const result = await extractMessageContent(settings, runCommand, cwd, env, mainResult);
+        if (result.message !== undefined) {
+          logMsg.content = result.message;
+          logMsg.stdout = mainResult.stdout;
+        }
+        if (result.error) {
+          errors.push(result.error);
+        }
+      }
+    }
+
+    logMsg.stderr = errors.join('\n\n');
     await appendMessage(chatId, logMsg);
   });
 
