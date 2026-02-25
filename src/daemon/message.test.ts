@@ -374,7 +374,7 @@ describe('Daemon Execution Queue', () => {
       expect(workspace.writeAgentSessionSettings).toHaveBeenCalledWith(
         'my-agent',
         'new-session-id-123',
-        { env: {} },
+        { env: { SESSION_ID: 'new-session-id-123' } },
         '/dir-extract-1'
       );
     });

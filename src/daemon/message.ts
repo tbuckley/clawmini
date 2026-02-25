@@ -92,7 +92,7 @@ export async function handleUserMessage(
               await writeChatSettings(chatId, chatSettings, cwd);
 
               // Create initial agent session settings
-              await writeAgentSessionSettings(agentId, extractedSessionId, { env: {} }, cwd);
+              await writeAgentSessionSettings(agentId, extractedSessionId, { env: { SESSION_ID: extractedSessionId } }, cwd);
             }
           } else {
              extractionError = `getSessionId failed: ${getSessionResult.stderr}`;
