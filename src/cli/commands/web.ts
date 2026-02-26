@@ -103,11 +103,12 @@ export const webCmd = new Command('web')
               await writeAgentSettings(body.id, newAgent);
 
               const workspaceRoot = getWorkspaceRoot();
+              const rootWithSep = workspaceRoot.endsWith(path.sep) ? workspaceRoot : workspaceRoot + path.sep;
               const dirPath = newAgent.directory
                 ? path.resolve(workspaceRoot, newAgent.directory)
                 : path.resolve(workspaceRoot, body.id);
 
-              if (!dirPath.startsWith(workspaceRoot)) {
+              if (!dirPath.startsWith(rootWithSep) && dirPath !== workspaceRoot) {
                 res.writeHead(400);
                 res.end(JSON.stringify({ error: `Invalid agent directory: resolves outside the workspace.` }));
                 return;
@@ -339,7 +340,8 @@ export const webCmd = new Command('web')
         let filePath = path.join(webDir, urlPath);
 
         // Prevent directory traversal
-        if (!filePath.startsWith(webDir)) {
+        const webDirWithSep = webDir.endsWith(path.sep) ? webDir : webDir + path.sep;
+        if (!filePath.startsWith(webDirWithSep) && filePath !== webDir) {
           res.writeHead(403);
           res.end('Forbidden');
           return;

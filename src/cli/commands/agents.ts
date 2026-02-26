@@ -21,7 +21,8 @@ async function createAgentDirectory(agentId: string, directory?: string) {
     : path.resolve(workspaceRoot, agentId);
 
   // Security check: Ensure the resolved path is within the workspace root
-  if (!dirPath.startsWith(workspaceRoot)) {
+  const rootWithSep = workspaceRoot.endsWith(path.sep) ? workspaceRoot : workspaceRoot + path.sep;
+  if (!dirPath.startsWith(rootWithSep) && dirPath !== workspaceRoot) {
     throw new Error(`Invalid agent directory: ${directory} resolves outside the workspace.`);
   }
 

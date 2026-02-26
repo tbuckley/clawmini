@@ -170,6 +170,14 @@ export async function listAgents(startDir = process.cwd()): Promise<string[]> {
 
 export async function deleteAgent(agentId: string, startDir = process.cwd()): Promise<void> {
   const dir = getAgentDir(agentId, startDir);
+  const agentsDir = path.join(getClawminiDir(startDir), 'agents');
+  const agentsDirWithSep = agentsDir.endsWith(path.sep) ? agentsDir : agentsDir + path.sep;
+
+  // Security check: Ensure we only delete inside the agents directory
+  if (!dir.startsWith(agentsDirWithSep)) {
+    throw new Error(`Security Error: Cannot delete agent directory outside of ${agentsDir}`);
+  }
+
   try {
     await fsPromises.rm(dir, { recursive: true, force: true });
   } catch {
