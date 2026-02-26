@@ -5,6 +5,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listChats, getMessages, getChatsDir, createChat } from '../../shared/chats.js';
 import { getDaemonClient } from '../client.js';
+import {
+  listAgents,
+  getAgent,
+  writeAgentSettings,
+  deleteAgent,
+  isValidAgentId,
+} from '../../shared/workspace.js';
 
 const mimeTypes: Record<string, string> = {
   '.html': 'text/html',
@@ -52,6 +59,105 @@ export const webCmd = new Command('web')
             res.writeHead(204);
             res.end();
             return;
+          }
+
+          if (req.method === 'GET' && urlPath === '/api/agents') {
+            const agentIds = await listAgents();
+            const agents = [];
+            for (const id of agentIds) {
+              const agent = await getAgent(id);
+              if (agent) {
+                agents.push({ id, ...agent });
+              }
+            }
+            res.writeHead(200);
+            res.end(JSON.stringify(agents));
+            return;
+          }
+
+          if (req.method === 'POST' && urlPath === '/api/agents') {
+            let bodyStr = '';
+            for await (const chunk of req) {
+              bodyStr += chunk;
+            }
+            try {
+              const body = JSON.parse(bodyStr);
+              if (!body.id || !isValidAgentId(body.id)) {
+                res.writeHead(400);
+                res.end(JSON.stringify({ error: 'Invalid or missing agent ID' }));
+                return;
+              }
+              const existing = await getAgent(body.id);
+              if (existing) {
+                res.writeHead(409);
+                res.end(JSON.stringify({ error: 'Agent already exists' }));
+                return;
+              }
+              const newAgent = {
+                directory: body.directory,
+                env: body.env || {},
+                commands: body.commands || {},
+              };
+              await writeAgentSettings(body.id, newAgent);
+              res.writeHead(201);
+              res.end(JSON.stringify({ id: body.id, ...newAgent }));
+            } catch {
+              res.writeHead(500);
+              res.end(JSON.stringify({ error: 'Failed to create agent' }));
+            }
+            return;
+          }
+
+          const agentMatch = urlPath.match(/^\/api\/agents\/([^/]+)$/);
+          if (agentMatch && agentMatch[1]) {
+            const agentId = agentMatch[1];
+
+            if (!isValidAgentId(agentId)) {
+              res.writeHead(400);
+              res.end(JSON.stringify({ error: 'Invalid agent ID' }));
+              return;
+            }
+
+            if (req.method === 'GET') {
+              const agent = await getAgent(agentId);
+              if (!agent) {
+                res.writeHead(404);
+                res.end(JSON.stringify({ error: 'Agent not found' }));
+                return;
+              }
+              res.writeHead(200);
+              res.end(JSON.stringify({ id: agentId, ...agent }));
+              return;
+            }
+
+            if (req.method === 'PUT' || req.method === 'POST') {
+              let bodyStr = '';
+              for await (const chunk of req) {
+                bodyStr += chunk;
+              }
+              try {
+                const body = JSON.parse(bodyStr);
+                const agent = (await getAgent(agentId)) || { env: {}, commands: {} };
+                if (body.directory !== undefined) agent.directory = body.directory;
+                if (body.env !== undefined) agent.env = body.env;
+                if (body.commands !== undefined) agent.commands = body.commands;
+
+                await writeAgentSettings(agentId, agent);
+                res.writeHead(200);
+                res.end(JSON.stringify({ id: agentId, ...agent }));
+              } catch {
+                res.writeHead(500);
+                res.end(JSON.stringify({ error: 'Failed to update agent' }));
+              }
+              return;
+            }
+
+            if (req.method === 'DELETE') {
+              await deleteAgent(agentId);
+              res.writeHead(200);
+              res.end(JSON.stringify({ success: true }));
+              return;
+            }
           }
 
           if (req.method === 'GET' && urlPath === '/api/chats') {

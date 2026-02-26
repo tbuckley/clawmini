@@ -31,3 +31,12 @@
   - Added new E2E tests in `src/cli/e2e.test.ts` to ensure setting the agent works, persists, and using an invalid agent fails appropriately. Also increased the vitest `beforeAll` and `afterAll` hook timeouts for e2e tests from default to 30000ms.
 - **Verification**: Ran `npm run format && npm run lint && npm run check && npm run test`, all checks passed.
 
+
+## Ticket 5: Web UI API Endpoints for Agents
+
+- **Implementation**:
+  - Updated the internal HTTP server in `src/cli/commands/web.ts` to include REST endpoints for agent management under `/api/agents` and `/api/agents/:id`.
+  - Added support for `GET`, `POST` (create), `PUT`/`POST` (update), and `DELETE` on these endpoints.
+  - Used shared utilities `listAgents`, `getAgent`, `writeAgentSettings`, `deleteAgent`, and `isValidAgentId` from `src/shared/workspace.ts` to ensure interactions are secure.
+  - Added API testing to the `should run web command and serve static files` test block in `src/cli/e2e.test.ts` to ensure proper routing, data returning, and persistence.
+- **Verification**: Ran `npm run format && npm run lint && npm run check && npm run test`, fixed ESLint warnings for explicit `any` usage. All checks passed.

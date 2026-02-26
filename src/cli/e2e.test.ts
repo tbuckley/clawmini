@@ -541,6 +541,60 @@ describe('E2E CLI Tests', () => {
     // Close the connection
     await reader.cancel();
 
+    // Test Agent API endpoints
+    // 1. POST /api/agents - Create an agent
+    const resPostAgent = await fetch(`http://127.0.0.1:${webPort}/api/agents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: 'api-agent-1',
+        directory: './api-agent-dir',
+        env: { API_KEY: 'test-key' },
+      }),
+    });
+    expect(resPostAgent.status).toBe(201);
+    const postAgentData = (await resPostAgent.json()) as Record<string, unknown>;
+    expect(postAgentData.id).toBe('api-agent-1');
+    expect(postAgentData.directory).toBe('./api-agent-dir');
+    expect((postAgentData.env as Record<string, string>).API_KEY).toBe('test-key');
+
+    // 2. GET /api/agents - List agents
+    const resGetAgents = await fetch(`http://127.0.0.1:${webPort}/api/agents`);
+    expect(resGetAgents.status).toBe(200);
+    const agentsList = (await resGetAgents.json()) as Record<string, unknown>[];
+    expect(agentsList.some((a) => a.id === 'api-agent-1')).toBe(true);
+
+    // 3. GET /api/agents/:id - Get specific agent
+    const resGetAgent = await fetch(`http://127.0.0.1:${webPort}/api/agents/api-agent-1`);
+    expect(resGetAgent.status).toBe(200);
+    const getAgentData = (await resGetAgent.json()) as Record<string, unknown>;
+    expect(getAgentData.id).toBe('api-agent-1');
+    expect(getAgentData.directory).toBe('./api-agent-dir');
+
+    // 4. PUT /api/agents/:id - Update agent
+    const resPutAgent = await fetch(`http://127.0.0.1:${webPort}/api/agents/api-agent-1`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ directory: './updated-dir' }),
+    });
+    expect(resPutAgent.status).toBe(200);
+    const putAgentData = (await resPutAgent.json()) as Record<string, unknown>;
+    expect(putAgentData.directory).toBe('./updated-dir');
+    expect((putAgentData.env as Record<string, string>).API_KEY).toBe('test-key'); // should be preserved
+
+    // 5. DELETE /api/agents/:id - Delete agent
+    const resDeleteAgent = await fetch(`http://127.0.0.1:${webPort}/api/agents/api-agent-1`, {
+      method: 'DELETE',
+    });
+    expect(resDeleteAgent.status).toBe(200);
+
+    const resGetAgentsAfterDelete = await fetch(`http://127.0.0.1:${webPort}/api/agents`);
+    const agentsListAfterDelete = (await resGetAgentsAfterDelete.json()) as Record<
+      string,
+      unknown
+    >[];
+    expect(agentsListAfterDelete.some((a) => a.id === 'api-agent-1')).toBe(false);
+
     child.kill();
     await new Promise((resolve) => child.on('close', resolve));
   });
