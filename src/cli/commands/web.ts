@@ -12,6 +12,7 @@ import {
   writeChatSettings,
   deleteAgent,
   isValidAgentId,
+  getWorkspaceRoot,
 } from '../../shared/workspace.js';
 
 const mimeTypes: Record<string, string> = {
@@ -100,6 +101,15 @@ export const webCmd = new Command('web')
                 commands: body.commands || {},
               };
               await writeAgentSettings(body.id, newAgent);
+
+              const workspaceRoot = getWorkspaceRoot();
+              const dirPath = newAgent.directory
+                ? path.resolve(workspaceRoot, newAgent.directory)
+                : path.resolve(workspaceRoot, body.id);
+              if (!fs.existsSync(dirPath)) {
+                await fs.promises.mkdir(dirPath, { recursive: true });
+              }
+
               res.writeHead(201);
               res.end(JSON.stringify({ id: body.id, ...newAgent }));
             } catch {

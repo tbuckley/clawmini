@@ -1,14 +1,29 @@
 import { Command } from 'commander';
+import fsPromises from 'node:fs/promises';
+import path from 'node:path';
+import fs from 'node:fs';
 import {
   listAgents,
   getAgent,
   writeAgentSettings,
   deleteAgent,
   isValidAgentId,
+  getWorkspaceRoot,
 } from '../../shared/workspace.js';
 import type { Agent } from '../../shared/config.js';
 
 export const agentsCmd = new Command('agents').description('Manage agents');
+
+async function createAgentDirectory(agentId: string, directory?: string) {
+  const workspaceRoot = getWorkspaceRoot();
+  const dirPath = directory
+    ? path.resolve(workspaceRoot, directory)
+    : path.resolve(workspaceRoot, agentId);
+  if (!fs.existsSync(dirPath)) {
+    await fsPromises.mkdir(dirPath, { recursive: true });
+    console.log(`Created agent directory at ${dirPath}`);
+  }
+}
 
 function parseEnv(envArray: string[] | undefined): Record<string, string> | undefined {
   if (!envArray || envArray.length === 0) return undefined;
@@ -69,6 +84,7 @@ agentsCmd
       }
 
       await writeAgentSettings(id, agentData);
+      await createAgentDirectory(id, agentData.directory);
       console.log(`Agent ${id} created successfully.`);
     } catch (err) {
       console.error('Failed to create agent:', err instanceof Error ? err.message : String(err));
