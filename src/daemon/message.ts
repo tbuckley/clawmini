@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { appendMessage, type UserMessage, type CommandLogMessage } from '../shared/chats.js';
 import { getQueue } from './queue.js';
-import { type Settings, type Agent } from '../shared/config.js';
+import { type Settings, type Agent, type AgentSessionSettings } from '../shared/config.js';
 import {
   readChatSettings,
   writeChatSettings,
@@ -31,7 +31,7 @@ async function resolveSessionState(chatId: string, cwd: string, sessionId?: stri
 
   let targetSessionId = sessionId;
   if (!targetSessionId) {
-    const sessions = (chatSettings?.sessions as Record<string, string>) || {};
+    const sessions = chatSettings?.sessions || {};
     targetSessionId = sessions[agentId] || 'default';
   }
 
@@ -45,7 +45,7 @@ function prepareCommandAndEnv(
   agent: Agent,
   message: string,
   isNewSession: boolean,
-  agentSessionSettings: Record<string, unknown> | null
+  agentSessionSettings: AgentSessionSettings | null
 ): { command: string; env: Record<string, string> } {
   let command = agent.commands!.new!;
   let env = {
@@ -56,7 +56,7 @@ function prepareCommandAndEnv(
 
   if (!isNewSession && agent.commands?.append) {
     command = agent.commands.append;
-    const sessionEnv = (agentSessionSettings?.env as Record<string, string>) || {};
+    const sessionEnv = agentSessionSettings?.env || {};
     env = { ...env, ...sessionEnv };
   }
 
@@ -185,7 +185,7 @@ export async function handleUserMessage(
           newChatSettings.defaultAgent = agentId;
           newChatSettings.sessions = newChatSettings.sessions || {};
           const internalSessionId = sessionId ?? result;
-          (newChatSettings.sessions as Record<string, string>)[agentId] = internalSessionId;
+          newChatSettings.sessions[agentId] = internalSessionId;
           await writeChatSettings(chatId, newChatSettings, cwd);
 
           // Create initial agent session settings

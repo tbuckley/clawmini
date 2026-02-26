@@ -1,7 +1,14 @@
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
-import type { Agent } from './config.js';
+import {
+  type Agent,
+  AgentSchema,
+  type ChatSettings,
+  ChatSettingsSchema,
+  type AgentSessionSettings,
+  AgentSessionSettingsSchema,
+} from './config.js';
 
 export function getWorkspaceRoot(startDir = process.cwd()): string {
   let curr = startDir;
@@ -86,39 +93,49 @@ async function writeJsonFile(filePath: string, data: Record<string, unknown>): P
 export async function readChatSettings(
   chatId: string,
   startDir = process.cwd()
-): Promise<Record<string, unknown> | null> {
-  return readJsonFile(getChatSettingsPath(chatId, startDir));
+): Promise<ChatSettings | null> {
+  const data = await readJsonFile(getChatSettingsPath(chatId, startDir));
+  if (!data) return null;
+  const parsed = ChatSettingsSchema.safeParse(data);
+  return parsed.success ? parsed.data : null;
 }
 
 export async function writeChatSettings(
   chatId: string,
-  data: Record<string, unknown>,
+  data: ChatSettings,
   startDir = process.cwd()
 ): Promise<void> {
-  await writeJsonFile(getChatSettingsPath(chatId, startDir), data);
+  await writeJsonFile(getChatSettingsPath(chatId, startDir), data as Record<string, unknown>);
 }
 
 export async function readAgentSessionSettings(
   agentId: string,
   sessionId: string,
   startDir = process.cwd()
-): Promise<Record<string, unknown> | null> {
-  return readJsonFile(getAgentSessionSettingsPath(agentId, sessionId, startDir));
+): Promise<AgentSessionSettings | null> {
+  const data = await readJsonFile(getAgentSessionSettingsPath(agentId, sessionId, startDir));
+  if (!data) return null;
+  const parsed = AgentSessionSettingsSchema.safeParse(data);
+  return parsed.success ? parsed.data : null;
 }
 
 export async function writeAgentSessionSettings(
   agentId: string,
   sessionId: string,
-  data: Record<string, unknown>,
+  data: AgentSessionSettings,
   startDir = process.cwd()
 ): Promise<void> {
-  await writeJsonFile(getAgentSessionSettingsPath(agentId, sessionId, startDir), data);
+  await writeJsonFile(
+    getAgentSessionSettingsPath(agentId, sessionId, startDir),
+    data as Record<string, unknown>
+  );
 }
 
 export async function getAgent(agentId: string, startDir = process.cwd()): Promise<Agent | null> {
   const data = await readJsonFile(getAgentSettingsPath(agentId, startDir));
   if (!data) return null;
-  return data as Agent;
+  const parsed = AgentSchema.safeParse(data);
+  return parsed.success ? parsed.data : null;
 }
 
 export async function writeAgentSettings(

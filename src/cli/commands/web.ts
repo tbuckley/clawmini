@@ -182,7 +182,7 @@ export const webCmd = new Command('web')
               }
               await createChat(body.id);
               if (body.agent && typeof body.agent === 'string') {
-                await writeChatSettings(body.id, { agent: body.agent });
+                await writeChatSettings(body.id, { defaultAgent: body.agent });
               }
               res.writeHead(201);
               res.end(JSON.stringify({ id: body.id, agent: body.agent }));
