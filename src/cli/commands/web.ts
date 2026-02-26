@@ -12,7 +12,7 @@ import {
   writeChatSettings,
   deleteAgent,
   isValidAgentId,
-  getWorkspaceRoot,
+  resolveAgentDirectory,
 } from '../../shared/workspace.js';
 
 const mimeTypes: Record<string, string> = {
@@ -95,28 +95,30 @@ export const webCmd = new Command('web')
                 res.end(JSON.stringify({ error: 'Agent already exists' }));
                 return;
               }
-              const newAgent = {
-                directory: body.directory,
-                env: body.env || {},
-                commands: body.commands || {},
-              };
-              await writeAgentSettings(body.id, newAgent);
 
-              const workspaceRoot = getWorkspaceRoot();
-              const rootWithSep = workspaceRoot.endsWith(path.sep) ? workspaceRoot : workspaceRoot + path.sep;
-              const dirPath = newAgent.directory
-                ? path.resolve(workspaceRoot, newAgent.directory)
-                : path.resolve(workspaceRoot, body.id);
-
-              if (!dirPath.startsWith(rootWithSep) && dirPath !== workspaceRoot) {
+              let dirPath: string;
+              try {
+                dirPath = resolveAgentDirectory(body.id, body.directory);
+              } catch (err) {
                 res.writeHead(400);
-                res.end(JSON.stringify({ error: `Invalid agent directory: resolves outside the workspace.` }));
+                res.end(
+                  JSON.stringify({
+                    error: err instanceof Error ? err.message : 'Invalid agent directory',
+                  })
+                );
                 return;
               }
 
               if (!fs.existsSync(dirPath)) {
                 await fs.promises.mkdir(dirPath, { recursive: true });
               }
+
+              const newAgent = {
+                directory: body.directory,
+                env: body.env || {},
+                commands: body.commands || {},
+              };
+              await writeAgentSettings(body.id, newAgent);
 
               res.writeHead(201);
               res.end(JSON.stringify({ id: body.id, ...newAgent }));
@@ -160,6 +162,23 @@ export const webCmd = new Command('web')
                 if (body.directory !== undefined) agent.directory = body.directory;
                 if (body.env !== undefined) agent.env = body.env;
                 if (body.commands !== undefined) agent.commands = body.commands;
+
+                let dirPath: string;
+                try {
+                  dirPath = resolveAgentDirectory(agentId, agent.directory);
+                } catch (err) {
+                  res.writeHead(400);
+                  res.end(
+                    JSON.stringify({
+                      error: err instanceof Error ? err.message : 'Invalid agent directory',
+                    })
+                  );
+                  return;
+                }
+
+                if (!fs.existsSync(dirPath)) {
+                  await fs.promises.mkdir(dirPath, { recursive: true });
+                }
 
                 await writeAgentSettings(agentId, agent);
                 res.writeHead(200);

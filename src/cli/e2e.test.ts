@@ -329,77 +329,81 @@ describe('E2E CLI Tests', () => {
     expect(lines[3].content.trim()).toBe('second');
   });
 
-  it('should handle full multi-message session workflow (extraction & append)', async () => {
-    const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
-    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-    const oldCmds = settings.defaultAgent?.commands || {};
+  it(
+    'should handle full multi-message session workflow (extraction & append)',
+    async () => {
+      const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      const oldCmds = settings.defaultAgent?.commands || {};
 
-    settings.defaultAgent = settings.defaultAgent || {};
-    settings.defaultAgent.commands = {
-      new: 'echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2',
-      append: 'echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2',
-      getSessionId: 'echo "session-123"',
-      getMessageContent: 'sed "s/^/EXTRACTED-/"',
-    };
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+      settings.defaultAgent = settings.defaultAgent || {};
+      settings.defaultAgent.commands = {
+        new: 'echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2',
+        append: 'echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2',
+        getSessionId: 'echo "session-123"',
+        getMessageContent: 'sed "s/^/EXTRACTED-/"',
+      };
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 
-    await runCli(['chats', 'add', 'workflow-chat']);
+      await runCli(['chats', 'add', 'workflow-chat']);
 
-    await runCli(['messages', 'send', 'msg-1', '--chat', 'workflow-chat']);
-    await new Promise((resolve) => setTimeout(resolve, 800));
+      await runCli(['messages', 'send', 'msg-1', '--chat', 'workflow-chat']);
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
-    const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/workflow-chat/chat.jsonl');
-    let chatLog = fs.readFileSync(chatLogPath, 'utf8');
-    let lines = chatLog
-      .trim()
-      .split('\n')
-      .map((l) => JSON.parse(l));
+      const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/workflow-chat/chat.jsonl');
+      let chatLog = fs.readFileSync(chatLogPath, 'utf8');
+      let lines = chatLog
+        .trim()
+        .split('\n')
+        .map((l) => JSON.parse(l));
 
-    expect(lines).toHaveLength(2);
-    expect(lines[1].command).toBe('echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2');
-    expect(lines[1].content).toContain('EXTRACTED-NEW msg-1');
-    expect(lines[1].stderr).toContain('ERR NEW');
-    expect(lines[1].stdout).toContain('NEW msg-1');
+      expect(lines).toHaveLength(2);
+      expect(lines[1].command).toBe('echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2');
+      expect(lines[1].content).toContain('EXTRACTED-NEW msg-1');
+      expect(lines[1].stderr).toContain('ERR NEW');
+      expect(lines[1].stdout).toContain('NEW msg-1');
 
-    const chatSettingsPath = path.resolve(e2eDir, '.clawmini/chats/workflow-chat/settings.json');
-    const chatSettings = JSON.parse(fs.readFileSync(chatSettingsPath, 'utf8'));
-    expect(chatSettings.sessions?.default).toBe('session-123');
+      const chatSettingsPath = path.resolve(e2eDir, '.clawmini/chats/workflow-chat/settings.json');
+      const chatSettings = JSON.parse(fs.readFileSync(chatSettingsPath, 'utf8'));
+      expect(chatSettings.sessions?.default).toBe('session-123');
 
-    await runCli(['messages', 'send', 'msg-2', '--chat', 'workflow-chat']);
-    await new Promise((resolve) => setTimeout(resolve, 800));
+      await runCli(['messages', 'send', 'msg-2', '--chat', 'workflow-chat']);
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
-    chatLog = fs.readFileSync(chatLogPath, 'utf8');
-    lines = chatLog
-      .trim()
-      .split('\n')
-      .map((l) => JSON.parse(l));
+      chatLog = fs.readFileSync(chatLogPath, 'utf8');
+      lines = chatLog
+        .trim()
+        .split('\n')
+        .map((l) => JSON.parse(l));
 
-    expect(lines).toHaveLength(4);
-    expect(lines[3].command).toBe('echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2');
-    expect(lines[3].content).toContain('EXTRACTED-APPEND msg-2');
-    expect(lines[3].stderr).toContain('ERR APPEND');
-    expect(lines[3].stdout).toContain('APPEND msg-2');
+      expect(lines).toHaveLength(4);
+      expect(lines[3].command).toBe('echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2');
+      expect(lines[3].content).toContain('EXTRACTED-APPEND msg-2');
+      expect(lines[3].stderr).toContain('ERR APPEND');
+      expect(lines[3].stdout).toContain('APPEND msg-2');
 
-    settings.defaultAgent.commands.getMessageContent = 'echo "EXTRACTION_FAIL" >&2 && exit 1';
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+      settings.defaultAgent.commands.getMessageContent = 'echo "EXTRACTION_FAIL" >&2 && exit 1';
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 
-    await runCli(['messages', 'send', 'msg-3', '--chat', 'workflow-chat']);
-    await new Promise((resolve) => setTimeout(resolve, 800));
+      await runCli(['messages', 'send', 'msg-3', '--chat', 'workflow-chat']);
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
-    chatLog = fs.readFileSync(chatLogPath, 'utf8');
-    lines = chatLog
-      .trim()
-      .split('\n')
-      .map((l) => JSON.parse(l));
+      chatLog = fs.readFileSync(chatLogPath, 'utf8');
+      lines = chatLog
+        .trim()
+        .split('\n')
+        .map((l) => JSON.parse(l));
 
-    expect(lines).toHaveLength(6);
-    expect(lines[5].stdout).toBeUndefined();
-    expect(lines[5].stderr).toContain('ERR APPEND');
-    expect(lines[5].stderr).toContain('getMessageContent failed: EXTRACTION_FAIL');
+      expect(lines).toHaveLength(6);
+      expect(lines[5].stdout).toBeUndefined();
+      expect(lines[5].stderr).toContain('ERR APPEND');
+      expect(lines[5].stderr).toContain('getMessageContent failed: EXTRACTION_FAIL');
 
-    settings.defaultAgent.commands = oldCmds;
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-  });
+      settings.defaultAgent.commands = oldCmds;
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    },
+    15000
+  );
 
   it('should explicitly start the daemon via up command', async () => {
     const { stdout, code } = await runCli(['up']);

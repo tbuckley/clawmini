@@ -24,6 +24,24 @@ export function getWorkspaceRoot(startDir = process.cwd()): string {
   return startDir;
 }
 
+export function resolveAgentDirectory(
+  agentId: string,
+  customDir?: string,
+  startDir = process.cwd()
+): string {
+  const workspaceRoot = getWorkspaceRoot(startDir);
+  const dirPath = customDir
+    ? path.resolve(workspaceRoot, customDir)
+    : path.resolve(workspaceRoot, agentId);
+
+  const rootWithSep = workspaceRoot.endsWith(path.sep) ? workspaceRoot : workspaceRoot + path.sep;
+  if (!dirPath.startsWith(rootWithSep) && dirPath !== workspaceRoot) {
+    throw new Error('Invalid agent directory: resolves outside the workspace.');
+  }
+
+  return dirPath;
+}
+
 export function getClawminiDir(startDir = process.cwd()): string {
   return path.join(getWorkspaceRoot(startDir), '.clawmini');
 }
@@ -42,8 +60,7 @@ export function getChatSettingsPath(chatId: string, startDir = process.cwd()): s
 
 export function isValidAgentId(agentId: string): boolean {
   if (!agentId || agentId.length === 0) return false;
-  if (agentId.includes('/') || agentId.includes('\\') || agentId.includes('..')) return false;
-  return true;
+  return /^[a-zA-Z0-9_]+(?:-[a-zA-Z0-9_]+)*$/.test(agentId);
 }
 
 export function getAgentDir(agentId: string, startDir = process.cwd()): string {
@@ -170,6 +187,7 @@ export async function listAgents(startDir = process.cwd()): Promise<string[]> {
 
 export async function deleteAgent(agentId: string, startDir = process.cwd()): Promise<void> {
   const dir = getAgentDir(agentId, startDir);
+  const settingsPath = path.join(dir, 'settings.json');
   const agentsDir = path.join(getClawminiDir(startDir), 'agents');
   const agentsDirWithSep = agentsDir.endsWith(path.sep) ? agentsDir : agentsDir + path.sep;
 
@@ -179,7 +197,7 @@ export async function deleteAgent(agentId: string, startDir = process.cwd()): Pr
   }
 
   try {
-    await fsPromises.rm(dir, { recursive: true, force: true });
+    await fsPromises.rm(settingsPath, { force: true });
   } catch {
     // Ignore if not found
   }

@@ -95,8 +95,15 @@ export async function handleUserMessage(
   cwd: string = process.cwd(),
   noWait: boolean = false,
   runCommand: RunCommandFn,
-  sessionId?: string
+  sessionId?: string,
+  agentId?: string
 ): Promise<void> {
+  if (agentId) {
+    const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
+    chatSettings.defaultAgent = agentId;
+    await writeChatSettings(chatId, chatSettings, cwd);
+  }
+
   if (!settings?.defaultAgent?.commands?.new) {
     throw new Error('No defaultAgent.commands.new defined in settings.json');
   }

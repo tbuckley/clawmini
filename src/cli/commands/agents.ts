@@ -1,6 +1,5 @@
 import { Command } from 'commander';
 import fsPromises from 'node:fs/promises';
-import path from 'node:path';
 import fs from 'node:fs';
 import {
   listAgents,
@@ -8,23 +7,14 @@ import {
   writeAgentSettings,
   deleteAgent,
   isValidAgentId,
-  getWorkspaceRoot,
+  resolveAgentDirectory,
 } from '../../shared/workspace.js';
 import type { Agent } from '../../shared/config.js';
 
 export const agentsCmd = new Command('agents').description('Manage agents');
 
 async function createAgentDirectory(agentId: string, directory?: string) {
-  const workspaceRoot = getWorkspaceRoot();
-  const dirPath = directory
-    ? path.resolve(workspaceRoot, directory)
-    : path.resolve(workspaceRoot, agentId);
-
-  // Security check: Ensure the resolved path is within the workspace root
-  const rootWithSep = workspaceRoot.endsWith(path.sep) ? workspaceRoot : workspaceRoot + path.sep;
-  if (!dirPath.startsWith(rootWithSep) && dirPath !== workspaceRoot) {
-    throw new Error(`Invalid agent directory: ${directory} resolves outside the workspace.`);
-  }
+  const dirPath = resolveAgentDirectory(agentId, directory);
 
   if (!fs.existsSync(dirPath)) {
     await fsPromises.mkdir(dirPath, { recursive: true });

@@ -11,22 +11,23 @@ export const load: LayoutLoad = async ({ fetch, depends }) => {
   let chats: string[] = [];
   let agents: { id: string; directory?: string; env?: Record<string, string> }[] = [];
 
-  try {
-    const resChats = await fetch('/api/chats');
-    if (resChats.ok) {
-      chats = await resChats.json();
-    }
-  } catch (e) {
-    console.error('Failed to load chats:', e);
+  const [resChats, resAgents] = await Promise.all([
+    fetch('/api/chats').catch((e) => {
+      console.error('Failed to load chats:', e);
+      return null;
+    }),
+    fetch('/api/agents').catch((e) => {
+      console.error('Failed to load agents:', e);
+      return null;
+    }),
+  ]);
+
+  if (resChats?.ok) {
+    chats = await resChats.json();
   }
 
-  try {
-    const resAgents = await fetch('/api/agents');
-    if (resAgents.ok) {
-      agents = await resAgents.json();
-    }
-  } catch (e) {
-    console.error('Failed to load agents:', e);
+  if (resAgents?.ok) {
+    agents = await resAgents.json();
   }
 
   return { chats, agents };

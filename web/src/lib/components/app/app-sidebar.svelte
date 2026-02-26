@@ -130,7 +130,7 @@
                       class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <option value="">Default</option>
-                      {#each agents as agent}
+                      {#each agents as agent (agent.id)}
                         <option value={agent.id}>{agent.id}</option>
                       {/each}
                     </select>
@@ -144,7 +144,7 @@
               </Dialog.Content>
             </Dialog.Root>
           </Sidebar.MenuItem>
-          {#each chats as chat}
+          {#each chats as chat (chat)}
             <Sidebar.MenuItem>
               <Sidebar.MenuButton isActive={currentPath === `/chats/${chat}`}>
                 {#snippet child({ props })}

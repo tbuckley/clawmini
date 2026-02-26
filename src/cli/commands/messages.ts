@@ -4,8 +4,6 @@ import { getMessages, getDefaultChatId } from '../../shared/chats.js';
 import {
   getAgent,
   isValidAgentId,
-  readChatSettings,
-  writeChatSettings,
 } from '../../shared/workspace.js';
 
 export const messagesCmd = new Command('messages').description('Manage messages');
@@ -32,11 +30,6 @@ messagesCmd
             process.exit(1);
           }
         }
-
-        const chatId = options.chat ?? (await getDefaultChatId());
-        const existingSettings = (await readChatSettings(chatId)) ?? {};
-        existingSettings.defaultAgent = options.agent;
-        await writeChatSettings(chatId, existingSettings);
       }
 
       const trpc = await getDaemonClient();
@@ -47,6 +40,7 @@ messagesCmd
           message,
           chatId: options.chat,
           sessionId: options.session,
+          agentId: options.agent,
           noWait: !options.wait,
         },
       });

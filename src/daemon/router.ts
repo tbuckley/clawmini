@@ -20,6 +20,7 @@ const AppRouter = router({
           message: z.string(),
           chatId: z.string().optional(),
           sessionId: z.string().optional(),
+          agentId: z.string().optional(),
           noWait: z.boolean().optional(),
         }),
       })
@@ -29,6 +30,7 @@ const AppRouter = router({
       const chatId = input.data.chatId ?? (await getDefaultChatId());
       const noWait = input.data.noWait ?? false;
       const sessionId = input.data.sessionId;
+      const agentId = input.data.agentId;
       const settingsPath = getSettingsPath();
 
       let settings;
@@ -90,7 +92,8 @@ const AppRouter = router({
             });
           });
         },
-        sessionId
+        sessionId,
+        agentId
       );
 
       return { success: true };
