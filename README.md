@@ -6,7 +6,7 @@ Clawmini is an orchestration layer for command-line AI agents, providing a unifi
 
 - **Persistent, Multi-Agent Chat Sessions:** Maintain separate chats for different tasks, allowing you to converse with multiple agents across multiple conversations.
 - **Safe Concurrency:** Automatically manages state and handles race conditions, queuing background commands safely to prevent file lock issues.
-- **Built-in & Bring-Your-Own UI:** Includes a fast, beautifully designed SvelteKit Web UI to visually manage chats and monitor real-time agent execution. Alternatively, easily build and connect your own interfaces to its local API.
+- **Built-in & Bring-Your-Own UI:** Includes a fast, beautifully designed SvelteKit Web UI to visually manage agents, chats, and monitor real-time execution. Alternatively, easily build and connect your own interfaces to its local API.
 - **Local File System Storage:** Everything is stored completely locally in `.clawmini/` within your workspace as transparent JSON/JSONL files. No cloud syncing required.
 
 ## Coming Soon
@@ -22,14 +22,14 @@ Assuming you have built and linked the package globally:
 # Initialize a new .clawmini settings folder in your project
 clawmini init
 
-# Edit your default agent settings
-vim .clawmini/settings.json
+# Create a new agent with a specific working directory
+clawmini agents add coder --directory ./src
 
 # Start the background daemon server
 clawmini up
 
-# Send a message to the daemon (default chat)
-clawmini messages send "Hello world!"
+# Send a message to the daemon, handled by the new agent
+clawmini messages send "Hello world!" --agent coder
 
 # View the chat history in the terminal
 clawmini messages tail
@@ -55,8 +55,15 @@ clawmini web
 
 ### Messaging
 
-- `clawmini messages send <message> [--chat <id>]`: Send a message to a specific chat (defaults to the workspace default chat).
+- `clawmini messages send <message> [--chat <id>] [--agent <name>]`: Send a message to a specific chat (defaults to the workspace default chat). Use `--agent` to assign a specific agent to handle the message.
 - `clawmini messages tail [-n NUM] [--json] [--chat <id>]`: Display the most recent messages and command logs in a chat.
+
+### Agents
+
+- `clawmini agents list`: Display all existing agents.
+- `clawmini agents add <id> [-d, --directory <dir>] [-e, --env <KEY=VALUE>...]`: Create a new agent, optionally setting its working directory and environment variables.
+- `clawmini agents update <id> [-d, --directory <dir>] [-e, --env <KEY=VALUE>...]`: Update an existing agent's configuration.
+- `clawmini agents delete <id>`: Remove an agent.
 
 ### Web Interface
 
