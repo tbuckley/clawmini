@@ -52,7 +52,7 @@ Run automated checks:
 ```bash
 npm run format:check && npm run lint && npm run check && npm run test
 ```
-**Status**: Not started
+**Status**: Complete
 
 ## Ticket 5: Web UI API Endpoints for Agents
 **Description**: Build REST API endpoints in the web project to manage agents.

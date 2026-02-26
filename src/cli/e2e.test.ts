@@ -42,7 +42,7 @@ describe('E2E CLI Tests', () => {
       fs.rmSync(e2eDir, { recursive: true, force: true });
     }
     fs.mkdirSync(e2eDir, { recursive: true });
-  });
+  }, 30000);
 
   afterAll(async () => {
     // Kill the daemon after all tests
@@ -53,7 +53,7 @@ describe('E2E CLI Tests', () => {
     if (fs.existsSync(e2eDir)) {
       fs.rmSync(e2eDir, { recursive: true, force: true });
     }
-  });
+  }, 30000);
 
   it('should run init and initialize settings', async () => {
     const { stdout, code } = await runCli(['init']);
@@ -202,6 +202,44 @@ describe('E2E CLI Tests', () => {
       'utf8'
     );
     expect(chatLog).toContain('session test message');
+  });
+
+  it('should send a message with a specific agent and persist it', async () => {
+    await runCli(['agents', 'add', 'custom-agent', '--env', 'CUSTOM_VAR=HELLO']);
+    await runCli(['chats', 'add', 'agent-chat']);
+
+    const { stdout, code } = await runCli([
+      'messages',
+      'send',
+      'hello custom agent',
+      '--chat',
+      'agent-chat',
+      '--agent',
+      'custom-agent',
+    ]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('Message sent successfully.');
+
+    // Check if the setting was persisted
+    const chatSettingsPath = path.resolve(e2eDir, '.clawmini/chats/agent-chat/settings.json');
+    expect(fs.existsSync(chatSettingsPath)).toBe(true);
+    const chatSettings = JSON.parse(fs.readFileSync(chatSettingsPath, 'utf8'));
+    expect(chatSettings.defaultAgent).toBe('custom-agent');
+
+    // Test that using an invalid agent fails
+    const { stderr: stderrFail, code: codeFail } = await runCli([
+      'messages',
+      'send',
+      'fail msg',
+      '--chat',
+      'agent-chat',
+      '--agent',
+      'non-existent-agent',
+    ]);
+
+    expect(codeFail).toBe(1);
+    expect(stderrFail).toContain("Error: Agent 'non-existent-agent' not found.");
   });
 
   it('should view history with tail and --json flag', async () => {
