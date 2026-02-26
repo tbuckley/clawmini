@@ -40,3 +40,15 @@
   - Used shared utilities `listAgents`, `getAgent`, `writeAgentSettings`, `deleteAgent`, and `isValidAgentId` from `src/shared/workspace.ts` to ensure interactions are secure.
   - Added API testing to the `should run web command and serve static files` test block in `src/cli/e2e.test.ts` to ensure proper routing, data returning, and persistence.
 - **Verification**: Ran `npm run format && npm run lint && npm run check && npm run test`, fixed ESLint warnings for explicit `any` usage. All checks passed.
+
+## Ticket 6: Web UI Integration for Agent Management & Chat Creation
+
+- **Implementation**:
+  - Updated src/cli/commands/web.ts POST /api/chats endpoint to accept an optional agent parameter and save it into the chat settings via writeChatSettings.
+  - Updated the SvelteKit loader in web/src/routes/+layout.ts to fetch and expose the list of agents so it is globally accessible across the UI.
+  - Modified the New Chat dialog within web/src/lib/components/app/app-sidebar.svelte to include an optional dropdown for choosing an initial agent from the fetched agents list.
+  - Created a dedicated Agent Management page at web/src/routes/agents/+page.svelte featuring a clean grid layout of existing agents.
+  - Provided functionality within the Agents page to view, create, edit, and delete agents. Environment variables are managed efficiently through parsed multiline inputs.
+  - Added types and ensured strict TS compatibility across app-sidebar.svelte and the data properties in layout and test mock files.
+- **Fixes**: Reconciled a bug in Svelte tests where agents array was missing in mockData, and updated Svelte page properties type bindings.
+- **Verification**: Ran npm run format:check && npm run lint && npm run check && npm run test, all checks passed. UI changes are fully tested natively.

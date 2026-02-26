@@ -10,7 +10,7 @@
 </script>
 
 <Sidebar.Provider class="h-svh overflow-hidden">
-  <AppSidebar chats={data.chats} currentPath={page.url.pathname} />
+  <AppSidebar chats={data.chats} agents={data.agents} currentPath={page.url.pathname} />
 
   <Sidebar.Inset>
     <header class="flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">

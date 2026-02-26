@@ -3,13 +3,14 @@
   import * as Dialog from '$lib/components/ui/dialog/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
-  import { MessageSquare, Plus } from 'lucide-svelte';
+  import { MessageSquare, Plus, Bot } from 'lucide-svelte';
   import { goto, invalidate } from '$app/navigation';
 
-  let { chats, currentPath = '/', collapsible = 'offcanvas' } = $props<{ chats: string[], currentPath?: string, collapsible?: 'none' | 'icon' | 'offcanvas' }>();
+  let { chats, agents = [], currentPath = '/', collapsible = 'offcanvas' } = $props<{ chats: string[], agents?: any[], currentPath?: string, collapsible?: 'none' | 'icon' | 'offcanvas' }>();
 
   let newChatOpen = $state(false);
   let newChatName = $state('');
+  let selectedAgent = $state('');
   let isCreating = $state(false);
 
   let showValidationError = $derived(newChatName.length > 0 && /\s/.test(newChatName));
@@ -22,15 +23,20 @@
     isCreating = true;
 
     try {
+      const payload: any = { id: validName };
+      if (selectedAgent) {
+        payload.agent = selectedAgent;
+      }
       const res = await fetch('/api/chats', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: validName })
+        body: JSON.stringify(payload)
       });
       
       if (res.ok) {
         newChatOpen = false;
         newChatName = '';
+        selectedAgent = '';
         await invalidate('app:chats');
         await goto(`/chats/${validName}`);
       } else {
@@ -55,6 +61,24 @@
   </Sidebar.Header>
   <Sidebar.Content>
     <Sidebar.Group>
+      <Sidebar.GroupLabel>General</Sidebar.GroupLabel>
+      <Sidebar.GroupContent>
+        <Sidebar.Menu>
+          <Sidebar.MenuItem>
+            <Sidebar.MenuButton isActive={currentPath === '/agents'}>
+              {#snippet child({ props })}
+                <a href="/agents" {...props}>
+                  <Bot />
+                  <span>Agents</span>
+                </a>
+              {/snippet}
+            </Sidebar.MenuButton>
+          </Sidebar.MenuItem>
+        </Sidebar.Menu>
+      </Sidebar.GroupContent>
+    </Sidebar.Group>
+
+    <Sidebar.Group>
       <Sidebar.GroupLabel>Chats</Sidebar.GroupLabel>
       <Sidebar.GroupContent>
         <Sidebar.Menu>
@@ -72,11 +96,12 @@
                 <Dialog.Header>
                   <Dialog.Title>Create New Chat</Dialog.Title>
                   <Dialog.Description>
-                    Enter a name for the new chat. It must be a valid folder name without spaces.
+                    Enter a name for the new chat and optionally select an agent.
                   </Dialog.Description>
                 </Dialog.Header>
                 <div class="grid gap-4 py-4">
                   <div class="flex flex-col gap-2">
+                    <label class="text-sm font-medium leading-none" for="name">Name</label>
                     <Input
                       id="name"
                       bind:value={newChatName}
@@ -96,6 +121,19 @@
                     {#if showValidationError}
                       <p class="text-sm text-destructive">Name cannot contain spaces.</p>
                     {/if}
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <label class="text-sm font-medium leading-none" for="agent">Initial Agent (optional)</label>
+                    <select
+                      id="agent"
+                      bind:value={selectedAgent}
+                      class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="">Default</option>
+                      {#each agents as agent}
+                        <option value={agent.id}>{agent.id}</option>
+                      {/each}
+                    </select>
                   </div>
                 </div>
                 <Dialog.Footer>

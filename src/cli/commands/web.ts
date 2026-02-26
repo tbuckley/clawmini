@@ -9,6 +9,7 @@ import {
   listAgents,
   getAgent,
   writeAgentSettings,
+  writeChatSettings,
   deleteAgent,
   isValidAgentId,
 } from '../../shared/workspace.js';
@@ -180,8 +181,11 @@ export const webCmd = new Command('web')
                 return;
               }
               await createChat(body.id);
+              if (body.agent && typeof body.agent === 'string') {
+                await writeChatSettings(body.id, { agent: body.agent });
+              }
               res.writeHead(201);
-              res.end(JSON.stringify({ id: body.id }));
+              res.end(JSON.stringify({ id: body.id, agent: body.agent }));
             } catch {
               res.writeHead(500);
               res.end(JSON.stringify({ error: 'Failed to create chat' }));

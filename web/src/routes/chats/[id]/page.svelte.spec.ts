@@ -8,6 +8,7 @@ import { appState } from '$lib/app-state.svelte.js';
 const mockData = {
   id: 'test-chat',
   chats: [],
+  agents: [],
   messages: [
     {
       id: 'msg-1',
