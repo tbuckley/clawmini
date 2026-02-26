@@ -9,3 +9,14 @@
   - Re-wrote `src/shared/workspace.test.ts` to include tests for all the new functionality and path resolution methods.
 - **Fixes**: Fixed a pre-existing lint issue in `src/cli/commands/web.ts` where a caught error `err` was unused.
 - **Verification**: Ran `npm run format && npm run lint && npm run check && npm run test`, all checks passed. Tests run smoothly, including E2E.
+
+
+## Ticket 2: Daemon Support for Agent Execution
+
+- **Implementation**: 
+  - Updated `src/daemon/message.ts` to fetch the chat`'s active agent and override the `defaultAgent` configurations dynamically.
+  - Resolved `directory` relative to the workspace root using `getWorkspaceRoot(cwd)` to securely scope execution paths.
+  - Allowed merging of custom agent `env` and `commands` correctly.
+  - Added test cases in `src/daemon/message.test.ts` to explicitly test configuration merging and working directory assignments.
+- **Fixes**: Fixed `message.test.ts` failing mock bindings after `getAgent` and `getWorkspaceRoot` were added to the `../shared/workspace.js` mock.
+- **Verification**: Ran `npm run format && npm run lint && npm run check && npm run test`, all checks passed. Tests run smoothly, including the e2e tests.

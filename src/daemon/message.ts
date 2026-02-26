@@ -1,11 +1,14 @@
+import path from 'node:path';
 import { appendMessage, type UserMessage, type CommandLogMessage } from '../shared/chats.js';
 import { getQueue } from './queue.js';
-import { type Settings } from '../shared/config.js';
+import { type Settings, type Agent } from '../shared/config.js';
 import {
   readChatSettings,
   writeChatSettings,
   readAgentSessionSettings,
   writeAgentSessionSettings,
+  getAgent,
+  getWorkspaceRoot,
 } from '../shared/workspace.js';
 
 export type RunCommandResult = {
@@ -39,20 +42,20 @@ async function resolveSessionState(chatId: string, cwd: string, sessionId?: stri
 }
 
 function prepareCommandAndEnv(
-  settings: Settings,
+  agent: Agent,
   message: string,
   isNewSession: boolean,
   agentSessionSettings: Record<string, unknown> | null
 ): { command: string; env: Record<string, string> } {
-  let command = settings.defaultAgent!.commands!.new!;
+  let command = agent.commands!.new!;
   let env = {
     ...process.env,
-    ...(settings.defaultAgent!.env || {}),
+    ...(agent.env || {}),
     CLAW_CLI_MESSAGE: message,
   } as Record<string, string>;
 
-  if (!isNewSession && settings.defaultAgent!.commands?.append) {
-    command = settings.defaultAgent!.commands.append;
+  if (!isNewSession && agent.commands?.append) {
+    command = agent.commands.append;
     const sessionEnv = (agentSessionSettings?.env as Record<string, string>) || {};
     env = { ...env, ...sessionEnv };
   }
@@ -114,14 +117,40 @@ export async function handleUserMessage(
       cwd,
       sessionId
     );
+
+    let mergedAgent: Agent = settings.defaultAgent || {};
+    if (agentId !== 'default') {
+      try {
+        const customAgent = await getAgent(agentId, cwd);
+        if (customAgent) {
+          mergedAgent = {
+            ...mergedAgent,
+            ...customAgent,
+            commands: { ...mergedAgent.commands, ...customAgent.commands },
+            env: { ...mergedAgent.env, ...customAgent.env },
+          };
+        }
+      } catch {
+        // Fall back to default if agent not found
+      }
+    }
+
+    const workspaceRoot = getWorkspaceRoot(cwd);
+    let executionCwd = cwd;
+    if (mergedAgent.directory) {
+      executionCwd = path.resolve(workspaceRoot, mergedAgent.directory);
+    } else if (agentId !== 'default') {
+      executionCwd = path.resolve(workspaceRoot, agentId);
+    }
+
     const { command, env } = prepareCommandAndEnv(
-      settings,
+      mergedAgent,
       message,
       isNewSession,
       agentSessionSettings
     );
 
-    const mainResult = await runCommand({ command, cwd, env });
+    const mainResult = await runCommand({ command, cwd: executionCwd, env });
 
     const logMsg: CommandLogMessage = {
       id: crypto.randomUUID(),
@@ -131,7 +160,7 @@ export async function handleUserMessage(
       stderr: '',
       timestamp: new Date().toISOString(),
       command,
-      cwd,
+      cwd: executionCwd,
       exitCode: mainResult.exitCode,
     };
 
@@ -142,12 +171,12 @@ export async function handleUserMessage(
 
     if (mainResult.exitCode === 0) {
       // Save the session id if it's a new session
-      if (isNewSession && settings.defaultAgent!.commands?.getSessionId) {
+      if (isNewSession && mergedAgent.commands?.getSessionId) {
         const { result, error } = await runExtractionCommand(
           'getSessionId',
-          settings.defaultAgent!.commands.getSessionId,
+          mergedAgent.commands.getSessionId,
           runCommand,
-          cwd,
+          executionCwd,
           env,
           mainResult
         );
@@ -173,12 +202,12 @@ export async function handleUserMessage(
       }
 
       // Try extracting the message content
-      if (settings.defaultAgent!.commands?.getMessageContent) {
+      if (mergedAgent.commands?.getMessageContent) {
         const { result, error } = await runExtractionCommand(
           'getMessageContent',
-          settings.defaultAgent!.commands.getMessageContent,
+          mergedAgent.commands.getMessageContent,
           runCommand,
-          cwd,
+          executionCwd,
           env,
           mainResult
         );
