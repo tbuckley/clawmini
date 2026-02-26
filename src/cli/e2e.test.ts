@@ -87,6 +87,64 @@ describe('E2E CLI Tests', () => {
     expect(fs.existsSync(path.join(chatsDir, 'test-chat'))).toBe(false);
   });
 
+  it('should create, list, update and delete agents', async () => {
+    // Add an agent
+    const { stdout: stdoutAdd, code: codeAdd } = await runCli([
+      'agents',
+      'add',
+      'test-agent',
+      '--directory',
+      './test-agent-dir',
+      '--env',
+      'FOO=BAR',
+      '--env',
+      'BAZ=QUX',
+    ]);
+    expect(codeAdd).toBe(0);
+    expect(stdoutAdd).toContain('Agent test-agent created successfully.');
+
+    // Verify settings were created correctly
+    const agentSettingsPath = path.resolve(e2eDir, '.clawmini/agents/test-agent/settings.json');
+    expect(fs.existsSync(agentSettingsPath)).toBe(true);
+    const agentData = JSON.parse(fs.readFileSync(agentSettingsPath, 'utf8'));
+    expect(agentData.directory).toBe('./test-agent-dir');
+    expect(agentData.env?.FOO).toBe('BAR');
+    expect(agentData.env?.BAZ).toBe('QUX');
+
+    // List agents
+    const { stdout: stdoutList1 } = await runCli(['agents', 'list']);
+    expect(stdoutList1).toContain('- test-agent');
+
+    // Update agent
+    const { stdout: stdoutUpdate, code: codeUpdate } = await runCli([
+      'agents',
+      'update',
+      'test-agent',
+      '--directory',
+      './new-dir',
+      '--env',
+      'FOO=NEW_BAR',
+    ]);
+    expect(codeUpdate).toBe(0);
+    expect(stdoutUpdate).toContain('Agent test-agent updated successfully.');
+
+    // Verify update
+    const updatedAgentData = JSON.parse(fs.readFileSync(agentSettingsPath, 'utf8'));
+    expect(updatedAgentData.directory).toBe('./new-dir');
+    expect(updatedAgentData.env?.FOO).toBe('NEW_BAR');
+    expect(updatedAgentData.env?.BAZ).toBe('QUX'); // Should merge, keeping old env keys not overwritten
+
+    // Delete agent
+    const { stdout: stdoutDelete, code: codeDelete } = await runCli([
+      'agents',
+      'delete',
+      'test-agent',
+    ]);
+    expect(codeDelete).toBe(0);
+    expect(stdoutDelete).toContain('Agent test-agent deleted successfully.');
+    expect(fs.existsSync(agentSettingsPath)).toBe(false);
+  });
+
   it('should send a message via the daemon', async () => {
     const { stdout, code } = await runCli(['messages', 'send', 'e2e test message']);
 

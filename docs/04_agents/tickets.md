@@ -39,7 +39,7 @@ Run automated checks:
 ```bash
 npm run format:check && npm run lint && npm run check && npm run test
 ```
-**Status**: Not started
+**Status**: Complete
 
 ## Ticket 4: CLI Support for Selecting an Agent per Chat
 **Description**: Update the CLI to allow switching the active agent for a specific chat.
