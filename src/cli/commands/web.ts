@@ -76,7 +76,7 @@ export const webCmd = new Command('web')
               await createChat(body.id);
               res.writeHead(201);
               res.end(JSON.stringify({ id: body.id }));
-            } catch (err) {
+            } catch {
               res.writeHead(500);
               res.end(JSON.stringify({ error: 'Failed to create chat' }));
             }
