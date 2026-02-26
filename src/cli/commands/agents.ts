@@ -19,6 +19,12 @@ async function createAgentDirectory(agentId: string, directory?: string) {
   const dirPath = directory
     ? path.resolve(workspaceRoot, directory)
     : path.resolve(workspaceRoot, agentId);
+
+  // Security check: Ensure the resolved path is within the workspace root
+  if (!dirPath.startsWith(workspaceRoot)) {
+    throw new Error(`Invalid agent directory: ${directory} resolves outside the workspace.`);
+  }
+
   if (!fs.existsSync(dirPath)) {
     await fsPromises.mkdir(dirPath, { recursive: true });
     console.log(`Created agent directory at ${dirPath}`);

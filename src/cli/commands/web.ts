@@ -106,6 +106,13 @@ export const webCmd = new Command('web')
               const dirPath = newAgent.directory
                 ? path.resolve(workspaceRoot, newAgent.directory)
                 : path.resolve(workspaceRoot, body.id);
+
+              if (!dirPath.startsWith(workspaceRoot)) {
+                res.writeHead(400);
+                res.end(JSON.stringify({ error: `Invalid agent directory: resolves outside the workspace.` }));
+                return;
+              }
+
               if (!fs.existsSync(dirPath)) {
                 await fs.promises.mkdir(dirPath, { recursive: true });
               }
