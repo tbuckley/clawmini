@@ -69,4 +69,4 @@ Integrate the router pipeline into `handleUserMessage` in `src/daemon/message.ts
 - Update `src/daemon/message.test.ts` to verify that routing modifications apply correctly (e.g., sessions are changed, text is replaced) and replies are properly injected into the timeline.
 - Run the full suite of automated checks: `npm run format:check && npm run lint && npm run check && npm run test`
 
-**Status:** Not started
+**Status:** Complete

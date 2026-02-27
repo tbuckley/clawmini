@@ -1,6 +1,8 @@
 import path from 'node:path';
 import { appendMessage, type UserMessage, type CommandLogMessage } from '../shared/chats.js';
 import { getQueue } from './queue.js';
+import { executeRouterPipeline } from './routers.js';
+import type { RouterState } from './routers/types.js';
 import { type Settings, type Agent, type AgentSessionSettings } from '../shared/config.js';
 import {
   readChatSettings,
@@ -24,10 +26,16 @@ type RunCommandFn = (args: {
   stdin?: string;
 }) => Promise<RunCommandResult>;
 
-async function resolveSessionState(chatId: string, cwd: string, sessionId?: string) {
+async function resolveSessionState(
+  chatId: string,
+  cwd: string,
+  sessionId?: string,
+  overrideAgentId?: string
+) {
   const chatSettings = await readChatSettings(chatId, cwd);
   const agentId =
-    typeof chatSettings?.defaultAgent === 'string' ? chatSettings.defaultAgent : 'default';
+    overrideAgentId ??
+    (typeof chatSettings?.defaultAgent === 'string' ? chatSettings.defaultAgent : 'default');
 
   let targetSessionId = sessionId;
   if (!targetSessionId) {
@@ -98,28 +106,65 @@ export async function handleUserMessage(
   sessionId?: string,
   overrideAgentId?: string
 ): Promise<void> {
+  const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
+
   if (overrideAgentId) {
-    const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
     chatSettings.defaultAgent = overrideAgentId;
     await writeChatSettings(chatId, chatSettings, cwd);
   }
 
+  const routers = chatSettings.routers ?? settings?.routers ?? [];
+
+  const initialState: RouterState = {
+    message,
+    chatId,
+    agentId: chatSettings.defaultAgent ?? 'default',
+    env: {},
+  };
+  if (sessionId !== undefined) {
+    initialState.sessionId = sessionId;
+  }
+
+  const finalState = await executeRouterPipeline(initialState, routers);
+
+  const finalMessage = finalState.message;
+  const finalAgentId = finalState.agentId;
+  const finalSessionId = finalState.sessionId;
+  const routerEnv = finalState.env ?? {};
+
   const userMsg: UserMessage = {
     id: crypto.randomUUID(),
     role: 'user',
-    content: message,
+    content: finalMessage,
     timestamp: new Date().toISOString(),
   };
   await appendMessage(chatId, userMsg);
 
+  if (finalState.reply) {
+    const routerLogMsg: CommandLogMessage = {
+      id: crypto.randomUUID(),
+      messageId: userMsg.id,
+      role: 'log',
+      source: 'router',
+      content: finalState.reply,
+      stderr: '',
+      timestamp: new Date().toISOString(),
+      command: 'router',
+      cwd,
+      exitCode: 0,
+    };
+    await appendMessage(chatId, routerLogMsg);
+  }
+
   const queue = getQueue(cwd);
 
   const taskPromise = queue.enqueue(async () => {
-    const { chatSettings, agentId, agentSessionSettings, isNewSession } = await resolveSessionState(
-      chatId,
-      cwd,
-      sessionId
-    );
+    const {
+      chatSettings: queueChatSettings,
+      agentId,
+      agentSessionSettings,
+      isNewSession,
+    } = await resolveSessionState(chatId, cwd, finalSessionId, finalAgentId);
 
     let mergedAgent: Agent = settings?.defaultAgent || {};
     if (agentId !== 'default') {
@@ -152,10 +197,12 @@ export async function handleUserMessage(
 
     const { command, env } = prepareCommandAndEnv(
       mergedAgent,
-      message,
+      finalMessage,
       isNewSession,
       agentSessionSettings
     );
+
+    Object.assign(env, routerEnv);
 
     const mainResult = await runCommand({ command, cwd: executionCwd, env });
 
@@ -188,10 +235,10 @@ export async function handleUserMessage(
           mainResult
         );
         if (result) {
-          const newChatSettings = chatSettings ?? {};
+          const newChatSettings = queueChatSettings ?? {};
           newChatSettings.defaultAgent = agentId;
           newChatSettings.sessions = newChatSettings.sessions || {};
-          const internalSessionId = sessionId ?? result;
+          const internalSessionId = finalSessionId ?? result;
           newChatSettings.sessions[agentId] = internalSessionId;
           await writeChatSettings(chatId, newChatSettings, cwd);
 

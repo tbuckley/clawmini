@@ -3,11 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleUserMessage } from './message.js';
 import * as chats from '../shared/chats.js';
 import * as workspace from '../shared/workspace.js';
+import { executeRouterPipeline } from './routers.js';
 import { EventEmitter } from 'node:events';
 import { spawn } from 'node:child_process';
 
 vi.mock('../shared/chats.js', () => ({
   appendMessage: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('./routers.js', () => ({
+  executeRouterPipeline: vi.fn().mockImplementation((state) => Promise.resolve(state)),
 }));
 
 vi.mock('../shared/workspace.js', () => ({
@@ -582,6 +587,89 @@ describe('Daemon Execution Queue', () => {
         'echo my-dir',
         expect.objectContaining({
           cwd: '/base/workspace/src/custom-path',
+        })
+      );
+    });
+  });
+
+  describe('Router Pipeline Execution', () => {
+    it('applies updated state properties to the queue', async () => {
+      const mockSpawn = vi.fn().mockImplementation(() => {
+        const emitter = new EventEmitter() as any;
+        emitter.stdout = new EventEmitter();
+        emitter.stderr = new EventEmitter();
+        emitter.stdin = { write: vi.fn(), end: vi.fn() };
+        emitter.finish = (code: number) => emitter.emit('close', code);
+        setTimeout(() => emitter.finish(0), 0);
+        return emitter;
+      });
+      (spawn as any).mockImplementation(mockSpawn);
+
+      vi.mocked(workspace.readChatSettings).mockResolvedValue({
+        defaultAgent: 'old-agent',
+        routers: ['@clawmini/slash-new'],
+      });
+      vi.mocked(workspace.readAgentSessionSettings).mockResolvedValue(null);
+      vi.mocked(workspace.getAgent).mockResolvedValue(null);
+
+      vi.mocked(executeRouterPipeline).mockResolvedValueOnce({
+        message: 'hello new message',
+        chatId: 'chat-router',
+        agentId: 'new-agent',
+        sessionId: 'new-session',
+        env: { ROUTER_VAR: 'router-val' },
+        reply: 'I routed this for you.',
+      });
+
+      const settings = {
+        defaultAgent: {
+          commands: { new: 'echo main' },
+        },
+      };
+
+      await handleUserMessage(
+        'chat-router',
+        'hello world',
+        settings as any,
+        '/dir-router',
+        false,
+        runCommandCallback
+      );
+
+      // Verify userMsg is saved with updated message
+      expect(chats.appendMessage).toHaveBeenCalledWith(
+        'chat-router',
+        expect.objectContaining({
+          role: 'user',
+          content: 'hello new message',
+        })
+      );
+
+      // Verify router reply is saved before agent runs
+      expect(chats.appendMessage).toHaveBeenCalledWith(
+        'chat-router',
+        expect.objectContaining({
+          role: 'log',
+          source: 'router',
+          content: 'I routed this for you.',
+        })
+      );
+
+      // Verify resolveSessionState is called with finalAgentId and finalSessionId
+      expect(workspace.readAgentSessionSettings).toHaveBeenCalledWith(
+        'new-agent',
+        'new-session',
+        '/dir-router'
+      );
+
+      // Verify execution used updated env
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'echo main',
+        expect.objectContaining({
+          env: expect.objectContaining({
+            ROUTER_VAR: 'router-val',
+            CLAW_CLI_MESSAGE: 'hello new message',
+          }),
         })
       );
     });
