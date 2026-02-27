@@ -1,10 +1,7 @@
 import { Command } from 'commander';
 import { getDaemonClient } from '../client.js';
 import { getMessages, getDefaultChatId } from '../../shared/chats.js';
-import {
-  getAgent,
-  isValidAgentId,
-} from '../../shared/workspace.js';
+import { getAgent, isValidAgentId } from '../../shared/workspace.js';
 
 export const messagesCmd = new Command('messages').description('Manage messages');
 
