@@ -35,7 +35,7 @@ Implement the internal logic for the built-in routers `@clawmini/slash-new` and 
 - Create dedicated unit tests for these built-in router functions.
 - Run the full suite of automated checks: `npm run format:check && npm run lint && npm run check && npm run test`
 
-**Status:** Not started
+**Status:** Complete
 
 ---
 
