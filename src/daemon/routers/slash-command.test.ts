@@ -66,16 +66,17 @@ describe('slashCommand router', () => {
   it('should prevent path traversal attacks', async () => {
     vi.mocked(fsUtils.pathIsInsideDir).mockReturnValue(false); // Simulate resolving outside
 
-        const initialState = {
-          message: 'Run /.. please',
-          chatId: 'test-chat',
-        };
-    
-        const newState = await slashCommand(initialState);
-        
-        expect(fsUtils.pathIsInsideDir).toHaveBeenCalled();
-        expect(fs.readFile).not.toHaveBeenCalled();
-        expect(newState.message).toBe('Run /.. please');  });
+    const initialState = {
+      message: 'Run /.. please',
+      chatId: 'test-chat',
+    };
+
+    const newState = await slashCommand(initialState);
+
+    expect(fsUtils.pathIsInsideDir).toHaveBeenCalled();
+    expect(fs.readFile).not.toHaveBeenCalled();
+    expect(newState.message).toBe('Run /.. please');
+  });
 
   it('should support colons in command names', async () => {
     vi.mocked(fsUtils.pathIsInsideDir).mockReturnValue(true);
