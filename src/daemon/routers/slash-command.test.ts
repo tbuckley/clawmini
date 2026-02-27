@@ -14,7 +14,7 @@ describe('slashCommand router', () => {
     vi.mocked(workspace.getClawminiDir).mockReturnValue('/mock/workspace/.clawmini');
   });
 
-  it('should replace a matching slash command with file contents', async () => {
+  it('should replace a matching slash command with .md file contents', async () => {
     vi.mocked(fsUtils.pathIsInsideDir).mockReturnValue(true);
     vi.mocked(fs.readFile).mockResolvedValue('Hello from command!\n');
 
@@ -29,15 +29,34 @@ describe('slashCommand router', () => {
       '/mock/workspace/.clawmini/commands/test',
       '/mock/workspace/.clawmini/commands'
     );
-    expect(fs.readFile).toHaveBeenCalledWith('/mock/workspace/.clawmini/commands/test', 'utf8');
+    expect(fs.readFile).toHaveBeenCalledWith('/mock/workspace/.clawmini/commands/test.md', 'utf8');
     expect(newState.message).toBe('Please run Hello from command! for me');
+  });
+
+  it('should fallback to .txt file contents if .md is not found', async () => {
+    vi.mocked(fsUtils.pathIsInsideDir).mockReturnValue(true);
+    vi.mocked(fs.readFile).mockImplementation(async (path) => {
+      if (path === '/mock/workspace/.clawmini/commands/test.txt') return 'Hello from txt command!\n';
+      throw new Error('Not found');
+    });
+
+    const initialState = {
+      message: 'Please run /test for me',
+      chatId: 'test-chat',
+    };
+
+    const newState = await slashCommand(initialState);
+
+    expect(fs.readFile).toHaveBeenCalledWith('/mock/workspace/.clawmini/commands/test.md', 'utf8');
+    expect(fs.readFile).toHaveBeenCalledWith('/mock/workspace/.clawmini/commands/test.txt', 'utf8');
+    expect(newState.message).toBe('Please run Hello from txt command! for me');
   });
 
   it('should handle multiple slash commands', async () => {
     vi.mocked(fsUtils.pathIsInsideDir).mockReturnValue(true);
     vi.mocked(fs.readFile).mockImplementation(async (path) => {
-      if (path === '/mock/workspace/.clawmini/commands/cmd1') return 'first';
-      if (path === '/mock/workspace/.clawmini/commands/cmd2') return 'second';
+      if (path === '/mock/workspace/.clawmini/commands/cmd1.md') return 'first';
+      if (path === '/mock/workspace/.clawmini/commands/cmd2.txt') return 'second';
       throw new Error('Not found');
     });
 
@@ -80,7 +99,10 @@ describe('slashCommand router', () => {
 
   it('should support colons in command names', async () => {
     vi.mocked(fsUtils.pathIsInsideDir).mockReturnValue(true);
-    vi.mocked(fs.readFile).mockResolvedValue('colon command result');
+    vi.mocked(fs.readFile).mockImplementation(async (path) => {
+      if (path === '/mock/workspace/.clawmini/commands/foo:bar.md') return 'colon command result';
+      throw new Error('Not found');
+    });
 
     const initialState = {
       message: '/foo:bar is cool',
@@ -89,7 +111,7 @@ describe('slashCommand router', () => {
 
     const newState = await slashCommand(initialState);
 
-    expect(fs.readFile).toHaveBeenCalledWith('/mock/workspace/.clawmini/commands/foo:bar', 'utf8');
+    expect(fs.readFile).toHaveBeenCalledWith('/mock/workspace/.clawmini/commands/foo:bar.md', 'utf8');
     expect(newState.message).toBe('colon command result is cool');
   });
 
@@ -100,11 +122,13 @@ describe('slashCommand router', () => {
     };
 
     vi.mocked(fsUtils.pathIsInsideDir).mockReturnValue(true);
-    vi.mocked(fs.readFile).mockResolvedValue('bar result');
+    vi.mocked(fs.readFile).mockImplementation(async (path) => {
+      if (path === '/mock/workspace/.clawmini/commands/bar.md') return 'bar result';
+      throw new Error('Not found');
+    });
 
     const newState = await slashCommand(initialState);
-    expect(fs.readFile).toHaveBeenCalledTimes(1);
-    expect(fs.readFile).toHaveBeenCalledWith('/mock/workspace/.clawmini/commands/bar', 'utf8');
+    expect(fs.readFile).toHaveBeenCalledWith('/mock/workspace/.clawmini/commands/bar.md', 'utf8');
     expect(newState.message).toBe('https://example.com/foo bar result');
   });
 });

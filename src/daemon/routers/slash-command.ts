@@ -22,24 +22,33 @@ export async function slashCommand(state: RouterState): Promise<RouterState> {
     const commandName = match[1];
     if (!commandName) continue;
 
-    const targetPath = path.resolve(commandsDir, commandName);
+    const targetPathMd = path.resolve(commandsDir, `${commandName}.md`);
+    const targetPathTxt = path.resolve(commandsDir, `${commandName}.txt`);
 
     // Strict path traversal protection
-    if (!pathIsInsideDir(targetPath, commandsDir)) {
+    const baseTargetPath = path.resolve(commandsDir, commandName);
+    if (!pathIsInsideDir(baseTargetPath, commandsDir)) {
       continue;
     }
 
+    let content: string;
+
     try {
-      const content = await fs.readFile(targetPath, 'utf8');
-      // Replace the command with the content. We only replace the exact occurrence.
-      // Since replace replaces the first occurrence, and we are iterating over all matches,
-      // it should replace them sequentially. If there are multiple identical commands,
-      // it's fine, each will be replaced in turn.
-      currentMessage = currentMessage.replace(fullMatch, content.trim());
+      content = await fs.readFile(targetPathMd, 'utf8');
     } catch {
-      // If file doesn't exist or can't be read, leave it as is.
-      continue;
+      try {
+        content = await fs.readFile(targetPathTxt, 'utf8');
+      } catch {
+        // If file doesn't exist or can't be read, leave it as is.
+        continue;
+      }
     }
+
+    // Replace the command with the content. We only replace the exact occurrence.
+    // Since replace replaces the first occurrence, and we are iterating over all matches,
+    // it should replace them sequentially. If there are multiple identical commands,
+    // it's fine, each will be replaced in turn.
+    currentMessage = currentMessage.replace(fullMatch, content.trim());
   }
 
   return {
