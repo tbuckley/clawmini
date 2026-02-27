@@ -12,7 +12,6 @@ import {
   writeChatSettings,
   deleteAgent,
   isValidAgentId,
-  resolveAgentDirectory,
 } from '../../shared/workspace.js';
 
 const mimeTypes: Record<string, string> = {
@@ -104,26 +103,20 @@ export const webCmd = new Command('web')
                 return;
               }
 
-              let dirPath: string;
+              const newAgent = {
+                directory: body.directory,
+                env: body.env || {},
+                commands: body.commands || {},
+              };
+
               try {
-                dirPath = resolveAgentDirectory(body.id, body.directory);
+                await writeAgentSettings(body.id, newAgent);
               } catch (err) {
                 sendJsonResponse(res, 400, {
                   error: err instanceof Error ? err.message : 'Invalid agent directory',
                 });
                 return;
               }
-
-              if (!fs.existsSync(dirPath)) {
-                await fs.promises.mkdir(dirPath, { recursive: true });
-              }
-
-              const newAgent = {
-                directory: body.directory,
-                env: body.env || {},
-                commands: body.commands || {},
-              };
-              await writeAgentSettings(body.id, newAgent);
 
               sendJsonResponse(res, 201, { id: body.id, ...newAgent });
             } catch {
@@ -159,9 +152,8 @@ export const webCmd = new Command('web')
                 if (body.env !== undefined) agent.env = body.env;
                 if (body.commands !== undefined) agent.commands = body.commands;
 
-                let dirPath: string;
                 try {
-                  dirPath = resolveAgentDirectory(agentId, agent.directory);
+                  await writeAgentSettings(agentId, agent);
                 } catch (err) {
                   sendJsonResponse(res, 400, {
                     error: err instanceof Error ? err.message : 'Invalid agent directory',
@@ -169,11 +161,6 @@ export const webCmd = new Command('web')
                   return;
                 }
 
-                if (!fs.existsSync(dirPath)) {
-                  await fs.promises.mkdir(dirPath, { recursive: true });
-                }
-
-                await writeAgentSettings(agentId, agent);
                 sendJsonResponse(res, 200, { id: agentId, ...agent });
               } catch {
                 sendJsonResponse(res, 500, { error: 'Failed to update agent' });

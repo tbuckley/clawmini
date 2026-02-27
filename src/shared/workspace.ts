@@ -24,7 +24,7 @@ export function getWorkspaceRoot(startDir = process.cwd()): string {
   return startDir;
 }
 
-export function resolveAgentDirectory(
+export function resolveAgentWorkDir(
   agentId: string,
   customDir?: string,
   startDir = process.cwd()
@@ -39,6 +39,20 @@ export function resolveAgentDirectory(
     throw new Error('Invalid agent directory: resolves outside the workspace.');
   }
 
+  return dirPath;
+}
+
+export async function ensureAgentWorkDir(
+  agentId: string,
+  customDir?: string,
+  startDir = process.cwd()
+): Promise<string> {
+  const dirPath = resolveAgentWorkDir(agentId, customDir, startDir);
+
+  if (!fs.existsSync(dirPath)) {
+    await fsPromises.mkdir(dirPath, { recursive: true });
+    console.log(`Created agent working directory at ${dirPath}`);
+  }
   return dirPath;
 }
 
@@ -160,6 +174,7 @@ export async function writeAgentSettings(
   data: Agent,
   startDir = process.cwd()
 ): Promise<void> {
+  await ensureAgentWorkDir(agentId, data.directory, startDir);
   await writeJsonFile(getAgentSettingsPath(agentId, startDir), data as Record<string, unknown>);
 }
 
@@ -187,7 +202,6 @@ export async function listAgents(startDir = process.cwd()): Promise<string[]> {
 
 export async function deleteAgent(agentId: string, startDir = process.cwd()): Promise<void> {
   const dir = getAgentDir(agentId, startDir);
-  const settingsPath = path.join(dir, 'settings.json');
   const agentsDir = path.join(getClawminiDir(startDir), 'agents');
   const agentsDirWithSep = agentsDir.endsWith(path.sep) ? agentsDir : agentsDir + path.sep;
 
@@ -197,7 +211,7 @@ export async function deleteAgent(agentId: string, startDir = process.cwd()): Pr
   }
 
   try {
-    await fsPromises.rm(settingsPath, { force: true });
+    await fsPromises.rm(dir, { recursive: true, force: true });
   } catch {
     // Ignore if not found
   }
