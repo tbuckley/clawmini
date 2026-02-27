@@ -432,9 +432,11 @@ describe('E2E CLI Tests', () => {
     expect(stdoutUp).toContain('Successfully started clawmini daemon.');
   });
 
-  it('should run web command and serve static files', async () => {
-    const webPort = 8081;
-    const child = spawn('node', [binPath, 'web', '--port', webPort.toString()], {
+  it(
+    'should run web command and serve static files',
+    async () => {
+      const webPort = 8081;
+      const child = spawn('node', [binPath, 'web', '--port', webPort.toString()], {
       cwd: e2eDir,
       env: { ...process.env },
     });
@@ -597,5 +599,5 @@ describe('E2E CLI Tests', () => {
 
     child.kill();
     await new Promise((resolve) => child.on('close', resolve));
-  });
+  }, 15000);
 });

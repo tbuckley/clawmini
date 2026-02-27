@@ -3,7 +3,15 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { listChats, getMessages, getChatsDir, createChat } from '../../shared/chats.js';
+import { z } from 'zod';
+import type { ZodType } from 'zod';
+import {
+  listChats,
+  getMessages,
+  getChatsDir,
+  createChat,
+  isValidChatId,
+} from '../../shared/chats.js';
 import { getDaemonClient } from '../client.js';
 import {
   listAgents,
@@ -47,12 +55,22 @@ export const webCmd = new Command('web')
     const webDir = path.resolve(__dirname, '../web');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async function parseJsonBody(req: http.IncomingMessage): Promise<any> {
+    async function parseJsonBody<T = any>(
+      req: http.IncomingMessage,
+      schema?: ZodType<T>
+    ): Promise<T> {
+      if (req.headers['content-type'] !== 'application/json') {
+        throw new Error('Invalid Content-Type');
+      }
       let bodyStr = '';
       for await (const chunk of req) {
         bodyStr += chunk;
       }
-      return JSON.parse(bodyStr);
+      const rawBody = JSON.parse(bodyStr);
+      if (schema) {
+        return schema.parse(rawBody);
+      }
+      return rawBody as T;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -93,11 +111,15 @@ export const webCmd = new Command('web')
 
           if (req.method === 'POST' && urlPath === '/api/agents') {
             try {
-              const body = await parseJsonBody(req);
-              if (!body.id || !isValidAgentId(body.id)) {
-                sendJsonResponse(res, 400, { error: 'Invalid or missing agent ID' });
-                return;
-              }
+              const schema = z.object({
+                id: z.string().refine(isValidAgentId, { message: 'Invalid agent ID' }),
+                directory: z.string().optional(),
+                env: z.record(z.string(), z.string()).optional(),
+                commands: z.record(z.string(), z.string()).optional(),
+              });
+
+              const body = await parseJsonBody(req, schema);
+
               const existing = await getAgent(body.id);
               if (existing) {
                 sendJsonResponse(res, 409, { error: 'Agent already exists' });
@@ -147,8 +169,15 @@ export const webCmd = new Command('web')
 
             if (req.method === 'PUT' || req.method === 'POST') {
               try {
-                const body = await parseJsonBody(req);
-                const agent = (await getAgent(agentId)) || { env: {}, commands: {} };
+                const schema = z.object({
+                  directory: z.string().optional(),
+                  env: z.record(z.string(), z.string()).optional(),
+                  commands: z.record(z.string(), z.string()).optional(),
+                });
+
+                const body = await parseJsonBody(req, schema);
+
+                const agent = (await getAgent(agentId)) || {};
                 if (body.directory !== undefined) agent.directory = body.directory;
                 if (body.env !== undefined) agent.env = body.env;
                 if (body.commands !== undefined) agent.commands = body.commands;
@@ -184,15 +213,17 @@ export const webCmd = new Command('web')
 
           if (req.method === 'POST' && urlPath === '/api/chats') {
             try {
-              const body = await parseJsonBody(req);
-              if (!body.id || typeof body.id !== 'string' || /\s/.test(body.id)) {
-                sendJsonResponse(res, 400, {
-                  error: 'Invalid chat ID. Must not contain whitespace.',
-                });
-                return;
-              }
+              const schema = z.object({
+                id: z.string().refine(isValidChatId, {
+                  message: 'Invalid chat ID. Must be alphanumeric with dashes or underscores.',
+                }),
+                agent: z.string().optional(),
+              });
+
+              const body = await parseJsonBody(req, schema);
+
               await createChat(body.id);
-              if (body.agent && typeof body.agent === 'string') {
+              if (body.agent) {
                 await writeChatSettings(body.id, { defaultAgent: body.agent });
               }
               sendJsonResponse(res, 201, { id: body.id, agent: body.agent });
@@ -280,16 +311,17 @@ export const webCmd = new Command('web')
           if (req.method === 'POST' && messageMatch && messageMatch[1]) {
             const chatId = messageMatch[1];
 
+            const schema = z.object({
+              message: z.string().min(1, 'Missing or invalid "message" field'),
+            });
+
             let body;
             try {
-              body = await parseJsonBody(req);
-            } catch {
-              sendJsonResponse(res, 400, { error: 'Invalid JSON body' });
-              return;
-            }
-
-            if (!body.message || typeof body.message !== 'string') {
-              sendJsonResponse(res, 400, { error: 'Missing or invalid "message" field' });
+              body = await parseJsonBody(req, schema);
+            } catch (err) {
+              sendJsonResponse(res, 400, {
+                error: err instanceof Error ? err.message : 'Invalid request',
+              });
               return;
             }
 

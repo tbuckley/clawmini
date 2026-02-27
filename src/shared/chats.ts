@@ -36,7 +36,19 @@ export async function getChatsDir(startDir = process.cwd()): Promise<string> {
   return dir;
 }
 
+export function isValidChatId(chatId: string): boolean {
+  if (!chatId || chatId.length === 0) return false;
+  return /^[a-zA-Z0-9_-]+$/.test(chatId);
+}
+
+function assertValidChatId(id: string): void {
+  if (!isValidChatId(id)) {
+    throw new Error(`Invalid chat ID: ${id}`);
+  }
+}
+
 export async function createChat(id: string, startDir = process.cwd()): Promise<void> {
+  assertValidChatId(id);
   const chatsDir = await getChatsDir(startDir);
   const chatDir = path.join(chatsDir, id);
   if (!existsSync(chatDir)) {
@@ -59,6 +71,7 @@ export async function listChats(startDir = process.cwd()): Promise<string[]> {
 }
 
 export async function deleteChat(id: string, startDir = process.cwd()): Promise<void> {
+  assertValidChatId(id);
   const chatsDir = await getChatsDir(startDir);
   const chatDir = path.join(chatsDir, id);
 
@@ -76,6 +89,7 @@ export async function appendMessage(
   message: ChatMessage,
   startDir = process.cwd()
 ): Promise<void> {
+  assertValidChatId(id);
   const chatsDir = await getChatsDir(startDir);
   const chatDir = path.join(chatsDir, id);
   if (!existsSync(chatDir)) {
@@ -90,6 +104,7 @@ export async function getMessages(
   limit?: number,
   startDir = process.cwd()
 ): Promise<ChatMessage[]> {
+  assertValidChatId(id);
   const chatsDir = await getChatsDir(startDir);
   const chatFile = path.join(chatsDir, id, 'chat.jsonl');
   if (!existsSync(chatFile)) {
@@ -119,6 +134,7 @@ export async function getDefaultChatId(startDir = process.cwd()): Promise<string
 }
 
 export async function setDefaultChatId(id: string, startDir = process.cwd()): Promise<void> {
+  assertValidChatId(id);
   const settingsPath = getSettingsPath(startDir);
   let settings: { chats?: { defaultId?: string; [key: string]: unknown }; [key: string]: unknown } =
     {};
