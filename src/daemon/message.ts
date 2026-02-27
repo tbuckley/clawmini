@@ -132,6 +132,24 @@ export async function handleUserMessage(
   const finalSessionId = finalState.sessionId;
   const routerEnv = finalState.env ?? {};
 
+  const currentAgentId = finalAgentId ?? chatSettings.defaultAgent ?? 'default';
+
+  let settingsChanged = false;
+  if (finalAgentId && finalAgentId !== chatSettings.defaultAgent) {
+    chatSettings.defaultAgent = finalAgentId;
+    settingsChanged = true;
+  }
+
+  if (finalSessionId && chatSettings.sessions?.[currentAgentId] !== finalSessionId) {
+    chatSettings.sessions = chatSettings.sessions || {};
+    chatSettings.sessions[currentAgentId] = finalSessionId;
+    settingsChanged = true;
+  }
+
+  if (settingsChanged) {
+    await writeChatSettings(chatId, chatSettings, cwd);
+  }
+
   const userMsg: UserMessage = {
     id: crypto.randomUUID(),
     role: 'user',
@@ -154,6 +172,10 @@ export async function handleUserMessage(
       exitCode: 0,
     };
     await appendMessage(chatId, routerLogMsg);
+  }
+
+  if (!finalMessage.trim()) {
+    return;
   }
 
   const queue = getQueue(cwd);

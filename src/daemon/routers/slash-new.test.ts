@@ -1,9 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { slashNew } from './slash-new.js';
 
-vi.mock('node:crypto', () => ({
-  randomUUID: () => 'mock-uuid-1234',
-}));
+vi.stubGlobal('crypto', { randomUUID: () => 'mock-uuid-1234' });
 
 describe('slashNew router', () => {
   it('should remove /new from the beginning and set a new sessionId', () => {

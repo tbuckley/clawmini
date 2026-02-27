@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type { RouterState } from './types.js';
 
 export function slashNew(state: RouterState): RouterState {
@@ -7,7 +6,8 @@ export function slashNew(state: RouterState): RouterState {
     return {
       ...state,
       message: newMessage,
-      sessionId: randomUUID(),
+      sessionId: crypto.randomUUID(),
+      reply: '[@clawmini/slash-new] Starting a new session...',
     };
   }
   return state;
