@@ -18,6 +18,7 @@ export type Agent = z.infer<typeof AgentSchema>;
 export const ChatSettingsSchema = z.looseObject({
   defaultAgent: z.string().optional(),
   sessions: z.record(z.string(), z.string()).optional(),
+  routers: z.array(z.string()).optional(),
 });
 
 export type ChatSettings = z.infer<typeof ChatSettingsSchema>;
@@ -35,6 +36,7 @@ export const SettingsSchema = z.looseObject({
     })
     .optional(),
   defaultAgent: AgentSchema.optional(),
+  routers: z.array(z.string()).optional(),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
