@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { getClawminiDir, getSettingsPath } from './workspace.js';
+import { pathIsInsideDir } from './utils/fs.js';
 
 export const DEFAULT_CHAT_ID = 'default';
 
@@ -59,11 +60,9 @@ export async function listChats(startDir = process.cwd()): Promise<string[]> {
 
 export async function deleteChat(id: string, startDir = process.cwd()): Promise<void> {
   const chatsDir = await getChatsDir(startDir);
-  const chatsDirWithSep = chatsDir.endsWith(path.sep) ? chatsDir : chatsDir + path.sep;
   const chatDir = path.join(chatsDir, id);
 
-  // Security check: Ensure we only delete inside the chats directory
-  if (!chatDir.startsWith(chatsDirWithSep)) {
+  if (!pathIsInsideDir(chatDir, chatsDir)) {
     throw new Error(`Security Error: Cannot delete chat directory outside of ${chatsDir}`);
   }
 

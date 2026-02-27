@@ -9,6 +9,7 @@ import {
   type AgentSessionSettings,
   AgentSessionSettingsSchema,
 } from './config.js';
+import { pathIsInsideDir } from './utils/fs.js';
 
 export function getWorkspaceRoot(startDir = process.cwd()): string {
   let curr = startDir;
@@ -34,8 +35,7 @@ export function resolveAgentWorkDir(
     ? path.resolve(workspaceRoot, customDir)
     : path.resolve(workspaceRoot, agentId);
 
-  const rootWithSep = workspaceRoot.endsWith(path.sep) ? workspaceRoot : workspaceRoot + path.sep;
-  if (!dirPath.startsWith(rootWithSep) && dirPath !== workspaceRoot) {
+  if (!pathIsInsideDir(dirPath, workspaceRoot, { allowSameDir: true })) {
     throw new Error('Invalid agent directory: resolves outside the workspace.');
   }
 
@@ -203,10 +203,8 @@ export async function listAgents(startDir = process.cwd()): Promise<string[]> {
 export async function deleteAgent(agentId: string, startDir = process.cwd()): Promise<void> {
   const dir = getAgentDir(agentId, startDir);
   const agentsDir = path.join(getClawminiDir(startDir), 'agents');
-  const agentsDirWithSep = agentsDir.endsWith(path.sep) ? agentsDir : agentsDir + path.sep;
 
-  // Security check: Ensure we only delete inside the agents directory
-  if (!dir.startsWith(agentsDirWithSep)) {
+  if (!pathIsInsideDir(dir, agentsDir)) {
     throw new Error(`Security Error: Cannot delete agent directory outside of ${agentsDir}`);
   }
 

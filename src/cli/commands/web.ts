@@ -13,6 +13,7 @@ import {
   deleteAgent,
   isValidAgentId,
 } from '../../shared/workspace.js';
+import { pathIsInsideDir } from '../../shared/utils/fs.js';
 
 const mimeTypes: Record<string, string> = {
   '.html': 'text/html',
@@ -319,8 +320,7 @@ export const webCmd = new Command('web')
         let filePath = path.join(webDir, urlPath);
 
         // Prevent directory traversal
-        const webDirWithSep = webDir.endsWith(path.sep) ? webDir : webDir + path.sep;
-        if (!filePath.startsWith(webDirWithSep) && filePath !== webDir) {
+        if (!pathIsInsideDir(filePath, webDir)) {
           res.writeHead(403);
           res.end('Forbidden');
           return;
