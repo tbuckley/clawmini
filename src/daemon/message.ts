@@ -153,7 +153,7 @@ export async function handleUserMessage(
   const userMsg: UserMessage = {
     id: crypto.randomUUID(),
     role: 'user',
-    content: finalMessage,
+    content: message,
     timestamp: new Date().toISOString(),
   };
   await appendMessage(chatId, userMsg);

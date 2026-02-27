@@ -10,3 +10,4 @@
   - Fixed an issue where the `/new` command wasn't actually saving the updated session ID to the chat's `settings.json`. The settings are now persisted immediately after the router pipeline executes.
   - Implemented logic to skip sending the message to the model (queueing) if the processed message ends up being empty (e.g., when the user only types `/new`).
   - Updated tests to handle `crypto.randomUUID()` mocking accurately.
+  - Ensured the original message content is appended to the chat timeline, even if the router pipeline modifies the message content sent to the agent.

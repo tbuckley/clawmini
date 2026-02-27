@@ -636,12 +636,12 @@ describe('Daemon Execution Queue', () => {
         runCommandCallback
       );
 
-      // Verify userMsg is saved with updated message
+      // Verify userMsg is saved with original message
       expect(chats.appendMessage).toHaveBeenCalledWith(
         'chat-router',
         expect.objectContaining({
           role: 'user',
-          content: 'hello new message',
+          content: 'hello world',
         })
       );
 
