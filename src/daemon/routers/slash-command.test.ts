@@ -36,7 +36,8 @@ describe('slashCommand router', () => {
   it('should fallback to .txt file contents if .md is not found', async () => {
     vi.mocked(fsUtils.pathIsInsideDir).mockReturnValue(true);
     vi.mocked(fs.readFile).mockImplementation(async (path) => {
-      if (path === '/mock/workspace/.clawmini/commands/test.txt') return 'Hello from txt command!\n';
+      if (path === '/mock/workspace/.clawmini/commands/test.txt')
+        return 'Hello from txt command!\n';
       throw new Error('Not found');
     });
 
@@ -111,7 +112,10 @@ describe('slashCommand router', () => {
 
     const newState = await slashCommand(initialState);
 
-    expect(fs.readFile).toHaveBeenCalledWith('/mock/workspace/.clawmini/commands/foo:bar.md', 'utf8');
+    expect(fs.readFile).toHaveBeenCalledWith(
+      '/mock/workspace/.clawmini/commands/foo:bar.md',
+      'utf8'
+    );
     expect(newState.message).toBe('colon command result is cool');
   });
 

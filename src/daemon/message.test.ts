@@ -387,14 +387,14 @@ describe('Daemon Execution Queue', () => {
         'chat1',
         expect.objectContaining({
           defaultAgent: 'my-agent',
-          sessions: { 'my-agent': 'new-session-id-123' },
+          sessions: { 'my-agent': 'default' },
         }),
         '/dir-extract-1'
       );
 
       expect(workspace.writeAgentSessionSettings).toHaveBeenCalledWith(
         'my-agent',
-        'new-session-id-123',
+        'default',
         { env: { SESSION_ID: 'new-session-id-123' } },
         '/dir-extract-1'
       );

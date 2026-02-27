@@ -115,27 +115,28 @@ export async function handleUserMessage(
 
   const routers = chatSettings.routers ?? settings?.routers ?? [];
 
+  const initialAgent = chatSettings.defaultAgent ?? 'default';
+  const initialSessionId = sessionId ?? chatSettings.sessions?.[initialAgent] ?? 'default';
+
   const initialState: RouterState = {
     message,
     chatId,
-    agentId: chatSettings.defaultAgent ?? 'default',
+    agentId: initialAgent,
+    sessionId: initialSessionId,
     env: {},
   };
-  if (sessionId !== undefined) {
-    initialState.sessionId = sessionId;
-  }
 
   const finalState = await executeRouterPipeline(initialState, routers);
 
   const finalMessage = finalState.message;
   const finalAgentId = finalState.agentId;
-  const finalSessionId = finalState.sessionId;
+  const finalSessionId = finalState.sessionId ?? crypto.randomUUID();
   const routerEnv = finalState.env ?? {};
 
   const currentAgentId = finalAgentId ?? chatSettings.defaultAgent ?? 'default';
 
   let settingsChanged = false;
-  if (finalAgentId && finalAgentId !== chatSettings.defaultAgent) {
+  if (finalAgentId && finalAgentId !== initialAgent) {
     chatSettings.defaultAgent = finalAgentId;
     settingsChanged = true;
   }
@@ -181,12 +182,12 @@ export async function handleUserMessage(
   const queue = getQueue(cwd);
 
   const taskPromise = queue.enqueue(async () => {
-    const {
-      chatSettings: queueChatSettings,
-      agentId,
-      agentSessionSettings,
-      isNewSession,
-    } = await resolveSessionState(chatId, cwd, finalSessionId, finalAgentId);
+    const { agentId, agentSessionSettings, isNewSession } = await resolveSessionState(
+      chatId,
+      cwd,
+      finalSessionId,
+      finalAgentId
+    );
 
     let mergedAgent: Agent = settings?.defaultAgent || {};
     if (agentId !== 'default') {
@@ -257,17 +258,10 @@ export async function handleUserMessage(
           mainResult
         );
         if (result) {
-          const newChatSettings = queueChatSettings ?? {};
-          newChatSettings.defaultAgent = agentId;
-          newChatSettings.sessions = newChatSettings.sessions || {};
-          const internalSessionId = finalSessionId ?? result;
-          newChatSettings.sessions[agentId] = internalSessionId;
-          await writeChatSettings(chatId, newChatSettings, cwd);
-
           // Create initial agent session settings
           await writeAgentSessionSettings(
             agentId,
-            internalSessionId,
+            finalSessionId,
             { env: { SESSION_ID: result } },
             cwd
           );
