@@ -34,6 +34,17 @@ function parseEnv(envArray: string[] | undefined): Record<string, string> | unde
   return env;
 }
 
+function handleError(action: string, err: unknown): never {
+  console.error(`Failed to ${action}:`, err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
+
+function assertValidAgentId(id: string): void {
+  if (!isValidAgentId(id)) {
+    throw new Error(`Invalid agent ID: ${id}`);
+  }
+}
+
 agentsCmd
   .command('list')
   .description('Display existing agents')
@@ -48,8 +59,7 @@ agentsCmd
         console.log(`- ${id}`);
       }
     } catch (err) {
-      console.error('Failed to list agents:', err instanceof Error ? err.message : String(err));
-      process.exit(1);
+      handleError('list agents', err);
     }
   });
 
@@ -63,9 +73,7 @@ agentsCmd
   )
   .action(async (id: string, options: { directory?: string; env?: string[] }) => {
     try {
-      if (!isValidAgentId(id)) {
-        throw new Error(`Invalid agent ID: ${id}`);
-      }
+      assertValidAgentId(id);
       const existing = await getAgent(id);
       if (existing) {
         throw new Error(`Agent ${id} already exists.`);
@@ -84,8 +92,7 @@ agentsCmd
       await createAgentDirectory(id, agentData.directory);
       console.log(`Agent ${id} created successfully.`);
     } catch (err) {
-      console.error('Failed to create agent:', err instanceof Error ? err.message : String(err));
-      process.exit(1);
+      handleError('create agent', err);
     }
   });
 
@@ -99,9 +106,7 @@ agentsCmd
   )
   .action(async (id: string, options: { directory?: string; env?: string[] }) => {
     try {
-      if (!isValidAgentId(id)) {
-        throw new Error(`Invalid agent ID: ${id}`);
-      }
+      assertValidAgentId(id);
       const existing = await getAgent(id);
       if (!existing) {
         throw new Error(`Agent ${id} does not exist.`);
@@ -121,8 +126,7 @@ agentsCmd
       await writeAgentSettings(id, agentData);
       console.log(`Agent ${id} updated successfully.`);
     } catch (err) {
-      console.error('Failed to update agent:', err instanceof Error ? err.message : String(err));
-      process.exit(1);
+      handleError('update agent', err);
     }
   });
 
@@ -131,9 +135,7 @@ agentsCmd
   .description('Remove an agent')
   .action(async (id: string) => {
     try {
-      if (!isValidAgentId(id)) {
-        throw new Error(`Invalid agent ID: ${id}`);
-      }
+      assertValidAgentId(id);
       const existing = await getAgent(id);
       if (!existing) {
         throw new Error(`Agent ${id} does not exist.`);
@@ -142,7 +144,6 @@ agentsCmd
       await deleteAgent(id);
       console.log(`Agent ${id} deleted successfully.`);
     } catch (err) {
-      console.error('Failed to delete agent:', err instanceof Error ? err.message : String(err));
-      process.exit(1);
+      handleError('delete agent', err);
     }
   });

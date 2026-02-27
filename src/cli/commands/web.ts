@@ -46,6 +46,21 @@ export const webCmd = new Command('web')
     const __dirname = path.dirname(__filename);
     const webDir = path.resolve(__dirname, '../web');
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async function parseJsonBody(req: http.IncomingMessage): Promise<any> {
+      let bodyStr = '';
+      for await (const chunk of req) {
+        bodyStr += chunk;
+      }
+      return JSON.parse(bodyStr);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function sendJsonResponse(res: http.ServerResponse, statusCode: number, data: any) {
+      res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(data));
+    }
+
     const server = http.createServer(async (req, res) => {
       try {
         const urlPath = req.url === '/' ? '/index.html' : req.url?.split('?')[0] || '/';
@@ -72,27 +87,20 @@ export const webCmd = new Command('web')
                 agents.push({ id, ...agent });
               }
             }
-            res.writeHead(200);
-            res.end(JSON.stringify(agents));
+            sendJsonResponse(res, 200, agents);
             return;
           }
 
           if (req.method === 'POST' && urlPath === '/api/agents') {
-            let bodyStr = '';
-            for await (const chunk of req) {
-              bodyStr += chunk;
-            }
             try {
-              const body = JSON.parse(bodyStr);
+              const body = await parseJsonBody(req);
               if (!body.id || !isValidAgentId(body.id)) {
-                res.writeHead(400);
-                res.end(JSON.stringify({ error: 'Invalid or missing agent ID' }));
+                sendJsonResponse(res, 400, { error: 'Invalid or missing agent ID' });
                 return;
               }
               const existing = await getAgent(body.id);
               if (existing) {
-                res.writeHead(409);
-                res.end(JSON.stringify({ error: 'Agent already exists' }));
+                sendJsonResponse(res, 409, { error: 'Agent already exists' });
                 return;
               }
 
@@ -100,12 +108,9 @@ export const webCmd = new Command('web')
               try {
                 dirPath = resolveAgentDirectory(body.id, body.directory);
               } catch (err) {
-                res.writeHead(400);
-                res.end(
-                  JSON.stringify({
-                    error: err instanceof Error ? err.message : 'Invalid agent directory',
-                  })
-                );
+                sendJsonResponse(res, 400, {
+                  error: err instanceof Error ? err.message : 'Invalid agent directory',
+                });
                 return;
               }
 
@@ -120,11 +125,9 @@ export const webCmd = new Command('web')
               };
               await writeAgentSettings(body.id, newAgent);
 
-              res.writeHead(201);
-              res.end(JSON.stringify({ id: body.id, ...newAgent }));
+              sendJsonResponse(res, 201, { id: body.id, ...newAgent });
             } catch {
-              res.writeHead(500);
-              res.end(JSON.stringify({ error: 'Failed to create agent' }));
+              sendJsonResponse(res, 500, { error: 'Failed to create agent' });
             }
             return;
           }
@@ -134,30 +137,23 @@ export const webCmd = new Command('web')
             const agentId = agentMatch[1];
 
             if (!isValidAgentId(agentId)) {
-              res.writeHead(400);
-              res.end(JSON.stringify({ error: 'Invalid agent ID' }));
+              sendJsonResponse(res, 400, { error: 'Invalid agent ID' });
               return;
             }
 
             if (req.method === 'GET') {
               const agent = await getAgent(agentId);
               if (!agent) {
-                res.writeHead(404);
-                res.end(JSON.stringify({ error: 'Agent not found' }));
+                sendJsonResponse(res, 404, { error: 'Agent not found' });
                 return;
               }
-              res.writeHead(200);
-              res.end(JSON.stringify({ id: agentId, ...agent }));
+              sendJsonResponse(res, 200, { id: agentId, ...agent });
               return;
             }
 
             if (req.method === 'PUT' || req.method === 'POST') {
-              let bodyStr = '';
-              for await (const chunk of req) {
-                bodyStr += chunk;
-              }
               try {
-                const body = JSON.parse(bodyStr);
+                const body = await parseJsonBody(req);
                 const agent = (await getAgent(agentId)) || { env: {}, commands: {} };
                 if (body.directory !== undefined) agent.directory = body.directory;
                 if (body.env !== undefined) agent.env = body.env;
@@ -167,12 +163,9 @@ export const webCmd = new Command('web')
                 try {
                   dirPath = resolveAgentDirectory(agentId, agent.directory);
                 } catch (err) {
-                  res.writeHead(400);
-                  res.end(
-                    JSON.stringify({
-                      error: err instanceof Error ? err.message : 'Invalid agent directory',
-                    })
-                  );
+                  sendJsonResponse(res, 400, {
+                    error: err instanceof Error ? err.message : 'Invalid agent directory',
+                  });
                   return;
                 }
 
@@ -181,51 +174,42 @@ export const webCmd = new Command('web')
                 }
 
                 await writeAgentSettings(agentId, agent);
-                res.writeHead(200);
-                res.end(JSON.stringify({ id: agentId, ...agent }));
+                sendJsonResponse(res, 200, { id: agentId, ...agent });
               } catch {
-                res.writeHead(500);
-                res.end(JSON.stringify({ error: 'Failed to update agent' }));
+                sendJsonResponse(res, 500, { error: 'Failed to update agent' });
               }
               return;
             }
 
             if (req.method === 'DELETE') {
               await deleteAgent(agentId);
-              res.writeHead(200);
-              res.end(JSON.stringify({ success: true }));
+              sendJsonResponse(res, 200, { success: true });
               return;
             }
           }
 
           if (req.method === 'GET' && urlPath === '/api/chats') {
             const chats = await listChats();
-            res.writeHead(200);
-            res.end(JSON.stringify(chats));
+            sendJsonResponse(res, 200, chats);
             return;
           }
 
           if (req.method === 'POST' && urlPath === '/api/chats') {
-            let bodyStr = '';
-            for await (const chunk of req) {
-              bodyStr += chunk;
-            }
             try {
-              const body = JSON.parse(bodyStr);
+              const body = await parseJsonBody(req);
               if (!body.id || typeof body.id !== 'string' || /\s/.test(body.id)) {
-                res.writeHead(400);
-                res.end(JSON.stringify({ error: 'Invalid chat ID. Must not contain whitespace.' }));
+                sendJsonResponse(res, 400, {
+                  error: 'Invalid chat ID. Must not contain whitespace.',
+                });
                 return;
               }
               await createChat(body.id);
               if (body.agent && typeof body.agent === 'string') {
                 await writeChatSettings(body.id, { defaultAgent: body.agent });
               }
-              res.writeHead(201);
-              res.end(JSON.stringify({ id: body.id, agent: body.agent }));
+              sendJsonResponse(res, 201, { id: body.id, agent: body.agent });
             } catch {
-              res.writeHead(500);
-              res.end(JSON.stringify({ error: 'Failed to create chat' }));
+              sendJsonResponse(res, 500, { error: 'Failed to create chat' });
             }
             return;
           }
@@ -235,11 +219,9 @@ export const webCmd = new Command('web')
             const chatId = chatMatch[1];
             try {
               const messages = await getMessages(chatId);
-              res.writeHead(200);
-              res.end(JSON.stringify(messages));
+              sendJsonResponse(res, 200, messages);
             } catch {
-              res.writeHead(404);
-              res.end(JSON.stringify({ error: 'Chat not found' }));
+              sendJsonResponse(res, 404, { error: 'Chat not found' });
             }
             return;
           }
@@ -309,23 +291,17 @@ export const webCmd = new Command('web')
           const messageMatch = urlPath.match(/^\/api\/chats\/([^/]+)\/messages$/);
           if (req.method === 'POST' && messageMatch && messageMatch[1]) {
             const chatId = messageMatch[1];
-            let bodyStr = '';
-            for await (const chunk of req) {
-              bodyStr += chunk;
-            }
 
             let body;
             try {
-              body = JSON.parse(bodyStr);
+              body = await parseJsonBody(req);
             } catch {
-              res.writeHead(400);
-              res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+              sendJsonResponse(res, 400, { error: 'Invalid JSON body' });
               return;
             }
 
             if (!body.message || typeof body.message !== 'string') {
-              res.writeHead(400);
-              res.end(JSON.stringify({ error: 'Missing or invalid "message" field' }));
+              sendJsonResponse(res, 400, { error: 'Missing or invalid "message" field' });
               return;
             }
 
@@ -340,18 +316,15 @@ export const webCmd = new Command('web')
                   noWait: true,
                 },
               });
-              res.writeHead(200);
-              res.end(JSON.stringify({ success: true }));
+              sendJsonResponse(res, 200, { success: true });
             } catch (err) {
               const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-              res.writeHead(500);
-              res.end(JSON.stringify({ error: errorMessage || 'Internal Server Error' }));
+              sendJsonResponse(res, 500, { error: errorMessage || 'Internal Server Error' });
             }
             return;
           }
 
-          res.writeHead(404);
-          res.end(JSON.stringify({ error: 'Not Found' }));
+          sendJsonResponse(res, 404, { error: 'Not Found' });
           return;
         }
 

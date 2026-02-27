@@ -96,16 +96,12 @@ export async function handleUserMessage(
   noWait: boolean = false,
   runCommand: RunCommandFn,
   sessionId?: string,
-  agentId?: string
+  overrideAgentId?: string
 ): Promise<void> {
-  if (agentId) {
+  if (overrideAgentId) {
     const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
-    chatSettings.defaultAgent = agentId;
+    chatSettings.defaultAgent = overrideAgentId;
     await writeChatSettings(chatId, chatSettings, cwd);
-  }
-
-  if (!settings?.defaultAgent?.commands?.new) {
-    throw new Error('No defaultAgent.commands.new defined in settings.json');
   }
 
   const userMsg: UserMessage = {
@@ -125,7 +121,7 @@ export async function handleUserMessage(
       sessionId
     );
 
-    let mergedAgent: Agent = settings.defaultAgent || {};
+    let mergedAgent: Agent = settings?.defaultAgent || {};
     if (agentId !== 'default') {
       try {
         const customAgent = await getAgent(agentId, cwd);
@@ -140,6 +136,10 @@ export async function handleUserMessage(
       } catch {
         // Fall back to default if agent not found
       }
+    }
+
+    if (!mergedAgent.commands?.new) {
+      throw new Error(`No commands.new defined for agent: ${agentId}`);
     }
 
     const workspaceRoot = getWorkspaceRoot(cwd);

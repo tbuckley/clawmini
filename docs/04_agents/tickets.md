@@ -78,3 +78,30 @@ Run automated checks:
 npm run format:check && npm run lint && npm run check && npm run test
 ```
 **Status**: Complete
+
+## Ticket 7: Fix handleUserMessage Dependency on Global Default Agent
+**Description**: `handleUserMessage` incorrectly asserts that the global `defaultAgent.commands.new` must be defined, failing if a custom agent has its own `commands.new` but the global default agent doesn't.
+**Tasks**:
+- Modify `src/daemon/message.ts` to merge the active agent configuration before asserting that `commands.new` is defined.
+**Verification**:
+Run automated checks.
+**Status**: Complete
+
+## Ticket 8: DRY Violations in agents.ts Command Error Handling
+**Description**: The error handling (`catch` block with `console.error` and `process.exit`) and `isValidAgentId` checks are repeated across multiple subcommands in `src/cli/commands/agents.ts`.
+**Tasks**:
+- Extract a helper function for error handling in `agents.ts`.
+- Extract a helper function for asserting valid agent IDs that throws the appropriate error.
+**Verification**:
+Run automated checks.
+**Status**: Complete
+
+## Ticket 9: DRY Violations in web.ts API Endpoints
+**Description**: Reading/parsing JSON bodies and sending JSON error responses are repeated multiple times in `src/cli/commands/web.ts`.
+**Tasks**:
+- Create a `parseJsonBody(req)` helper function.
+- Create a `sendJsonResponse(res, statusCode, data)` or similar helper.
+- Update the API routes to use these helpers.
+**Verification**:
+Run automated checks.
+**Status**: Complete
