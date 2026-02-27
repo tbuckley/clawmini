@@ -12,6 +12,7 @@
   let newChatName = $state('');
   let selectedAgent = $state('');
   let isCreating = $state(false);
+  let errorMessage = $state('');
 
   let showValidationError = $derived(newChatName.length > 0 && /\s/.test(newChatName));
   let isValidName = $derived(newChatName.trim().length > 0 && !/\s/.test(newChatName));
@@ -21,6 +22,7 @@
     
     const validName = newChatName.trim();
     isCreating = true;
+    errorMessage = '';
 
     try {
       const payload: any = { id: validName };
@@ -37,15 +39,16 @@
         newChatOpen = false;
         newChatName = '';
         selectedAgent = '';
+        errorMessage = '';
         await invalidate('app:chats');
         await goto(`/chats/${validName}`);
       } else {
         const data = await res.json();
-        window.alert(data.error || 'Failed to create chat.');
+        errorMessage = data.error || 'Failed to create chat.';
       }
     } catch (err) {
       console.error(err);
-      window.alert('An error occurred while creating the chat.');
+      errorMessage = 'An error occurred while creating the chat.';
     } finally {
       isCreating = false;
     }
@@ -100,6 +103,11 @@
                   </Dialog.Description>
                 </Dialog.Header>
                 <div class="grid gap-4 py-4">
+                  {#if errorMessage}
+                    <div class="bg-destructive/15 text-destructive text-sm p-3 rounded-md flex items-center">
+                      {errorMessage}
+                    </div>
+                  {/if}
                   <div class="flex flex-col gap-2">
                     <label class="text-sm font-medium leading-none" for="name">Name</label>
                     <Input

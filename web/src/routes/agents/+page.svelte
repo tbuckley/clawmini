@@ -17,6 +17,8 @@
   let agentEnv = $state(''); // will parse as JSON or multiline KEY=VALUE
   
   let isSaving = $state(false);
+  let errorMessage = $state('');
+  let globalError = $state('');
   
   // parse/unparse env for editing
   function unparseEnv(envObj: any) {
@@ -41,6 +43,8 @@
     agentId = '';
     agentDirectory = '';
     agentEnv = '';
+    errorMessage = '';
+    globalError = '';
     editAgentOpen = true;
   }
 
@@ -49,11 +53,14 @@
     agentId = agent.id;
     agentDirectory = agent.directory || '';
     agentEnv = unparseEnv(agent.env);
+    errorMessage = '';
+    globalError = '';
     editAgentOpen = true;
   }
 
   async function saveAgent() {
     isSaving = true;
+    errorMessage = '';
     try {
       const payload: any = {
         directory: agentDirectory.trim(),
@@ -75,10 +82,10 @@
         await invalidate('app:agents');
       } else {
         const d = await res.json();
-        alert(d.error || 'Failed to save agent');
+        errorMessage = d.error || 'Failed to save agent';
       }
     } catch (e) {
-      alert('Error saving agent');
+      errorMessage = 'Error saving agent';
     } finally {
       isSaving = false;
     }
@@ -86,15 +93,16 @@
 
   async function deleteAgent(id: string) {
     if (!confirm(`Are you sure you want to delete agent "${id}"?`)) return;
+    globalError = '';
     try {
       const res = await fetch(`/api/agents/${id}`, { method: 'DELETE' });
       if (res.ok) {
         await invalidate('app:agents');
       } else {
-        alert('Failed to delete agent');
+        globalError = 'Failed to delete agent';
       }
     } catch (e) {
-      alert('Error deleting agent');
+      globalError = 'Error deleting agent';
     }
   }
 </script>
@@ -107,6 +115,12 @@
       Create Agent
     </Button>
   </div>
+
+  {#if globalError}
+    <div class="bg-destructive/15 text-destructive text-sm p-3 rounded-md flex items-center">
+      {globalError}
+    </div>
+  {/if}
 
   {#if agents.length === 0}
     <div class="flex flex-col items-center justify-center p-12 text-center text-muted-foreground border rounded-lg bg-background">
@@ -159,6 +173,11 @@
         </Dialog.Description>
       </Dialog.Header>
       <div class="grid gap-4 py-4">
+        {#if errorMessage}
+          <div class="bg-destructive/15 text-destructive text-sm p-3 rounded-md flex items-center">
+            {errorMessage}
+          </div>
+        {/if}
         <div class="flex flex-col gap-2">
           <label class="text-sm font-medium leading-none" for="agent-id">ID</label>
           <Input id="agent-id" bind:value={agentId} disabled={isEditing} placeholder="e.g. backend-agent" />

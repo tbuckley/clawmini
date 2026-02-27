@@ -43,7 +43,14 @@ async function executeCustomRouter(command: string, state: RouterState): Promise
       stderr += chunk.toString();
     });
 
+    // timeout fallback to avoid hanging indefinitely
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error('Router execution timed out'));
+    }, 10000);
+
     child.on('close', (code) => {
+      clearTimeout(timer);
       if (code !== 0) {
         return reject(new Error(`Process exited with code ${code}. Stderr: ${stderr}`));
       }
@@ -67,6 +74,7 @@ async function executeCustomRouter(command: string, state: RouterState): Promise
     });
 
     child.on('error', (err) => {
+      clearTimeout(timer);
       reject(err);
     });
 
@@ -81,11 +89,5 @@ async function executeCustomRouter(command: string, state: RouterState): Promise
 
     child.stdin.write(JSON.stringify(inputState));
     child.stdin.end();
-
-    // timeout fallback to avoid hanging indefinitely
-    setTimeout(() => {
-      child.kill();
-      reject(new Error('Router execution timed out'));
-    }, 10000);
   });
 }

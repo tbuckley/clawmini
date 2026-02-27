@@ -70,3 +70,40 @@ Integrate the router pipeline into `handleUserMessage` in `src/daemon/message.ts
 - Run the full suite of automated checks: `npm run format:check && npm run lint && npm run check && npm run test`
 
 **Status:** Complete
+
+---
+
+## Ticket 6: Fix Custom Router Timeout Handle (High Priority)
+**Description:** 
+The custom router shell execution in `src/daemon/routers.ts` sets a 10-second timeout, but it doesn't clear this timeout (`clearTimeout`) if the execution finishes (either successfully or with an error) before the timeout expires. This causes the Node.js event loop to stay active longer than necessary, acting as a potential memory leak and blocking process exit.
+
+**Verification:**
+- Ensure `clearTimeout` is called on both successful exit and error paths.
+- Run the full suite of automated checks: `npm run format:check && npm run lint && npm run check && npm run test`
+
+**Status:** Complete
+
+---
+
+## Ticket 7: Refactor Web API Monolithic Handler (Medium Priority)
+**Description:** 
+The HTTP server implementation in `src/cli/commands/web.ts` handles all `/api/agents` and `/api/chats` routes within a single, monolithic 300+ line `if/else` block inside the `request` event callback. This violates clear organization and SRP. Also, utility functions like `parseJsonBody` and `sendJsonResponse` are instantiated inside the action scope instead of at the module level.
+Extract the route handling into discrete functions (e.g., `handleApiAgents`, `handleApiChats`) and move the utilities outside the `webCmd.action` closure.
+
+**Verification:**
+- Verify all web API routes still work via `npm run test` or similar.
+- Run the full suite of automated checks: `npm run format:check && npm run lint && npm run check && npm run test`
+
+**Status:** Complete
+
+---
+
+## Ticket 8: Improve Error UX in Agents Web UI (Low Priority)
+**Description:** 
+In `web/src/routes/agents/+page.svelte`, errors from the API are currently surfaced to the user using the browser's native `alert()` function. This is a poor user experience. Replace `alert()` with a modern approach, such as displaying an inline error message within the modal or form.
+
+**Verification:**
+- Simulate an error (e.g., trying to create a duplicate agent) and ensure the error message is displayed within the UI instead of an alert dialog.
+- Run the full suite of automated checks: `npm run format:check && npm run lint && npm run check && npm run test`
+
+**Status:** Complete
