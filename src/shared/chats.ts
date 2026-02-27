@@ -17,6 +17,7 @@ export interface CommandLogMessage {
   id: string;
   messageId: string;
   role: 'log';
+  source?: 'router';
   content: string;
   stderr: string;
   timestamp: string;

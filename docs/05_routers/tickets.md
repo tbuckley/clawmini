@@ -21,7 +21,7 @@ Update the `ChatMessage` schema in `src/shared/chats.ts` to support an optional 
 - Update `src/shared/chats.test.ts` to test the new schema properties.
 - Run the full suite of automated checks: `npm run format:check && npm run lint && npm run check && npm run test`
 
-**Status:** Not started
+**Status:** Complete
 
 ---
 

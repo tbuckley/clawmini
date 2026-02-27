@@ -72,18 +72,33 @@ describe('chats utilities', () => {
       exitCode: 0,
     };
 
+    const msg3: CommandLogMessage = {
+      id: 'log-2',
+      messageId: 'msg-1',
+      role: 'log',
+      source: 'router',
+      content: 'router modified message',
+      stderr: '',
+      timestamp: new Date().toISOString(),
+      command: 'router',
+      cwd: '/tmp',
+      exitCode: 0,
+    };
+
     await appendMessage('chat1', msg1, TEST_DIR);
     await appendMessage('chat1', msg2, TEST_DIR);
+    await appendMessage('chat1', msg3, TEST_DIR);
 
     const messages = await getMessages('chat1', undefined, TEST_DIR);
-    expect(messages.length).toBe(2);
+    expect(messages.length).toBe(3);
     expect(messages[0]).toEqual(msg1);
     expect(messages[1]).toEqual(msg2);
+    expect(messages[2]).toEqual(msg3);
 
     // Test limit
     const limited = await getMessages('chat1', 1, TEST_DIR);
     expect(limited.length).toBe(1);
-    expect(limited[0]).toEqual(msg2);
+    expect(limited[0]).toEqual(msg3);
   });
 
   it('should manage default chat id in settings.json', async () => {
