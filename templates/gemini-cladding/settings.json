@@ -1,0 +1,11 @@
+{
+    "commands": {
+        "new": "cladding run --env GEMINI_API_KEY gemini --output-format json --model $MODEL -p \"$CLAW_CLI_MESSAGE\"",
+        "append": "cladding run --env GEMINI_API_KEY gemini --output-format json --model $MODEL --resume $SESSION_ID -p \"$CLAW_CLI_MESSAGE\"",
+        "getSessionId": "jq -r '.session_id'",
+        "getMessageContent": "jq -r '.response'"
+    },
+    "env": {
+        "MODEL": "gemini-3.1-pro-preview-customtools"
+    }
+}
