@@ -7,6 +7,7 @@ Clawmini is an orchestration layer for command-line AI agents, providing a unifi
 - **Persistent, Multi-Agent Chat Sessions:** Maintain separate chats for different tasks, allowing you to converse with multiple agents across multiple conversations.
 - **Safe Concurrency:** Automatically manages state and handles race conditions, queuing background commands safely to prevent file lock issues.
 - **Built-in & Bring-Your-Own UI:** Includes a fast, beautifully designed SvelteKit Web UI to visually manage agents, chats, and monitor real-time execution. Alternatively, easily build and connect your own interfaces to its local API.
+- **Agent Templates:** Quickly scaffold new agents using built-in or custom templates (e.g. `gemini-cladding`), automatically merging configuration settings.
 - **Routers & Middleware Pipeline:** Process user messages through an extensible pipeline to dynamically alter content, target specific agents or sessions, and expand slash commands before they reach an agent.
 - **Local File System Storage:** Everything is stored completely locally in `.clawmini/` within your workspace as transparent JSON/JSONL files. No cloud syncing required.
 
@@ -23,8 +24,8 @@ Assuming you have built and linked the package globally:
 # Initialize a new .clawmini settings folder in your project
 clawmini init
 
-# Create a new agent with a specific working directory
-clawmini agents add coder --directory ./src
+# Create a new agent with a specific working directory and template
+clawmini agents add coder --template gemini-cladding --directory ./src
 
 # Start the background daemon server
 clawmini up
@@ -62,7 +63,7 @@ clawmini web
 ### Agents
 
 - `clawmini agents list`: Display all existing agents.
-- `clawmini agents add <id> [-d, --directory <dir>] [-e, --env <KEY=VALUE>...]`: Create a new agent, optionally setting its working directory and environment variables.
+- `clawmini agents add <id> [-d, --directory <dir>] [-t, --template <name>] [-e, --env <KEY=VALUE>...]`: Create a new agent, optionally setting its working directory, applying a template, and environment variables.
 - `clawmini agents update <id> [-d, --directory <dir>] [-e, --env <KEY=VALUE>...]`: Update an existing agent's configuration.
 - `clawmini agents delete <id>`: Remove an agent.
 
