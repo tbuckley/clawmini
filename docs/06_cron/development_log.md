@@ -5,3 +5,9 @@
 - Created `CronJobSchema` and `CronJob` type in `src/shared/config.ts`.
 - Added `cronJobs: z.array(CronJobSchema).optional()` to `ChatSettingsSchema`.
 - Ran automated checks `npm run format:check && npm run lint && npm run check && npm run test`. All passed.
+
+## Ticket 2: Daemon TRPC Endpoints
+- Verified implementation of new TRPC endpoints in `src/daemon/router.ts`: `listCronJobs`, `addCronJob`, `deleteCronJob`.
+- Endpoints successfully integrate with `readChatSettings` and `writeChatSettings`.
+- Verified unit tests for endpoints in `src/daemon/router.test.ts`.
+- Ran standard automated checks (`npm run format:check && npm run lint && npm run check && npm run test`). All passed.

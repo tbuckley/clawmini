@@ -13,7 +13,7 @@
 - Run the standard automated checks: `npm run format:check && npm run lint && npm run check && npm run test`
 
 ## Ticket 2: Daemon TRPC Endpoints
-**Status:** Not Started
+**Status:** Completed
 
 **Tasks:**
 - Implement new TRPC endpoints in the daemon (`src/daemon/router.ts` or relevant router file): `listCronJobs`, `addCronJob`, `deleteCronJob`.
