@@ -361,9 +361,13 @@ describe('E2E CLI Tests', () => {
     expect(lines[1].stderr).toContain('ERR NEW');
     expect(lines[1].stdout).toContain('NEW msg-1');
 
-    const chatSettingsPath = path.resolve(e2eDir, '.clawmini/chats/workflow-chat/settings.json');
-    const chatSettings = JSON.parse(fs.readFileSync(chatSettingsPath, 'utf8'));
-    expect(chatSettings.sessions?.default).toBe('session-123');
+    const sessionSettings = JSON.parse(
+      fs.readFileSync(
+        path.resolve(e2eDir, '.clawmini/agents/default/sessions/default/settings.json'),
+        'utf8'
+      )
+    );
+    expect(sessionSettings.env.SESSION_ID).toBe('session-123');
 
     await runCli(['messages', 'send', 'msg-2', '--chat', 'workflow-chat']);
     await new Promise((resolve) => setTimeout(resolve, 800));
@@ -432,11 +436,9 @@ describe('E2E CLI Tests', () => {
     expect(stdoutUp).toContain('Successfully started clawmini daemon.');
   });
 
-  it(
-    'should run web command and serve static files',
-    async () => {
-      const webPort = 8081;
-      const child = spawn('node', [binPath, 'web', '--port', webPort.toString()], {
+  it('should run web command and serve static files', async () => {
+    const webPort = 8081;
+    const child = spawn('node', [binPath, 'web', '--port', webPort.toString()], {
       cwd: e2eDir,
       env: { ...process.env },
     });

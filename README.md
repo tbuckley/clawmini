@@ -7,9 +7,10 @@ Clawmini is an orchestration layer for command-line AI agents, providing a unifi
 - **Persistent, Multi-Agent Chat Sessions:** Maintain separate chats for different tasks, allowing you to converse with multiple agents across multiple conversations.
 - **Safe Concurrency:** Automatically manages state and handles race conditions, queuing background commands safely to prevent file lock issues.
 - **Built-in & Bring-Your-Own UI:** Includes a fast, beautifully designed SvelteKit Web UI to visually manage agents, chats, and monitor real-time execution. Alternatively, easily build and connect your own interfaces to its local API.
+- **Routers & Middleware Pipeline:** Process user messages through an extensible pipeline to dynamically alter content, target specific agents or sessions, and expand slash commands before they reach an agent.
 - **Local File System Storage:** Everything is stored completely locally in `.clawmini/` within your workspace as transparent JSON/JSONL files. No cloud syncing required.
 
-## Coming Soon
+### Coming Soon
 
 - **Proactivity:** Incoming messages or events from various external sources can be proactively routed back to the user or directly to the agent for autonomous handling.
 - **Human Approval Requests:** When an agent needs permission to execute a sensitive action or requires input, it will pause and ask the user for approval via a dedicated UI or dashboard.
@@ -68,6 +69,23 @@ clawmini web
 ### Web Interface
 
 - `clawmini web [-p, --port <number>]`: Start the local web interface (default port: 8080).
+
+## Configuration
+
+## Global settings
+
+**TODO**
+
+## Routers
+
+Clawmini provides an extensible pipeline for processing user messages before they reach an agent using **Routers**. By defining a sequence of routers in your `.clawmini/settings.json` (global) or per-chat settings, you can dynamically alter message content, target specific agents or sessions, inject environment variables, and add automated replies.
+
+Built-in routers include:
+
+- `@clawmini/slash-new`: Creates a new session ID when a message starts with `/new`, effectively clearing the context window for the agent.
+- `@clawmini/slash-command`: Expands slash commands (e.g., `/foo`) with the contents of matching files in your `.clawmini/commands/` directory.
+
+You can also write custom shell script routers that accept the current state via `stdin` and output JSON to dynamically control the routing logic. See the [`RouterState` interface](src/daemon/routers/types.ts) for the exact input and output schema.
 
 ## Development Setup
 
