@@ -19,7 +19,7 @@
       <div class="w-full flex items-center justify-between">
         <div class="font-semibold text-sm">
           {#if page.url.pathname.startsWith('/chats/')}
-            {page.url.pathname.replace('/chats/', '')}
+            {page.url.pathname.replace('/chats/', '').replace('/settings', '')}
           {:else}
             Home
           {/if}

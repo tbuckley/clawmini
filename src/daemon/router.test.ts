@@ -45,7 +45,7 @@ describe('Daemon TRPC Router', () => {
 
     it('listCronJobs should return existing jobs', async () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
-      vi.mocked(workspace.readChatSettings).mockResolvedValue({ cronJobs: [mockJob] });
+      vi.mocked(workspace.readChatSettings).mockResolvedValue({ jobs: [mockJob] });
 
       const caller = appRouter.createCaller({});
       const jobs = await caller.listCronJobs({ chatId: 'custom-chat' });
@@ -62,13 +62,13 @@ describe('Daemon TRPC Router', () => {
 
       expect(result.success).toBe(true);
       expect(workspace.writeChatSettings).toHaveBeenCalledWith('default-chat', {
-        cronJobs: [mockJob],
+        jobs: [mockJob],
       });
     });
 
     it('addCronJob should update an existing job', async () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
-      vi.mocked(workspace.readChatSettings).mockResolvedValue({ cronJobs: [mockJob] });
+      vi.mocked(workspace.readChatSettings).mockResolvedValue({ jobs: [mockJob] });
 
       const caller = appRouter.createCaller({});
       const updatedJob = { ...mockJob, message: 'updated' };
@@ -76,25 +76,25 @@ describe('Daemon TRPC Router', () => {
 
       expect(result.success).toBe(true);
       expect(workspace.writeChatSettings).toHaveBeenCalledWith('default-chat', {
-        cronJobs: [updatedJob],
+        jobs: [updatedJob],
       });
     });
 
     it('deleteCronJob should delete an existing job', async () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
-      vi.mocked(workspace.readChatSettings).mockResolvedValue({ cronJobs: [mockJob] });
+      vi.mocked(workspace.readChatSettings).mockResolvedValue({ jobs: [mockJob] });
 
       const caller = appRouter.createCaller({});
       const result = await caller.deleteCronJob({ id: 'job-1' });
 
       expect(result.success).toBe(true);
       expect(result.deleted).toBe(true);
-      expect(workspace.writeChatSettings).toHaveBeenCalledWith('default-chat', { cronJobs: [] });
+      expect(workspace.writeChatSettings).toHaveBeenCalledWith('default-chat', { jobs: [] });
     });
 
     it('deleteCronJob should return deleted: false if job not found', async () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
-      vi.mocked(workspace.readChatSettings).mockResolvedValue({ cronJobs: [mockJob] });
+      vi.mocked(workspace.readChatSettings).mockResolvedValue({ jobs: [mockJob] });
 
       const caller = appRouter.createCaller({});
       const result = await caller.deleteCronJob({ id: 'non-existent' });

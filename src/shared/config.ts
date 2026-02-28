@@ -17,6 +17,7 @@ export type Agent = z.infer<typeof AgentSchema>;
 
 export const CronJobSchema = z.looseObject({
   id: z.string().min(1),
+  createdAt: z.string().optional(),
   message: z.string().default(''),
   reply: z.string().optional(),
   agentId: z.string().optional(),
@@ -35,7 +36,7 @@ export const ChatSettingsSchema = z.looseObject({
   defaultAgent: z.string().optional(),
   sessions: z.record(z.string(), z.string()).optional(),
   routers: z.array(z.string()).optional(),
-  cronJobs: z.array(CronJobSchema).optional(),
+  jobs: z.array(CronJobSchema).optional(),
 });
 
 export type ChatSettings = z.infer<typeof ChatSettingsSchema>;

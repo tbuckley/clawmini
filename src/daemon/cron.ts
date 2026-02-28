@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { getSettingsPath } from '../shared/workspace.js';
 import { spawn } from 'node:child_process';
 
-export const cronRunCommand: RunCommandFn = async ({ command, cwd, env, stdin }) => {
+const runCommand: RunCommandFn = async ({ command, cwd, env, stdin }) => {
   return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
     const p = spawn(command, { shell: true, cwd, env });
     if (stdin && p.stdin) {
@@ -40,8 +40,8 @@ export class CronManager {
     const chats = await listChats();
     for (const chatId of chats) {
       const settings = await readChatSettings(chatId);
-      if (settings?.cronJobs) {
-        for (const job of settings.cronJobs) {
+      if (settings?.jobs) {
+        for (const job of settings.jobs) {
           this.scheduleJob(chatId, job);
         }
       }
@@ -133,15 +133,15 @@ export class CronManager {
         routerState,
         globalSettings,
         process.cwd(),
-        cronRunCommand,
+        runCommand,
         false,
         job.message
       );
 
       if (isOneOff) {
         const chatSettings = await readChatSettings(chatId);
-        if (chatSettings && chatSettings.cronJobs) {
-          chatSettings.cronJobs = chatSettings.cronJobs.filter((j) => j.id !== job.id);
+        if (chatSettings && chatSettings.jobs) {
+          chatSettings.jobs = chatSettings.jobs.filter((j) => j.id !== job.id);
           await writeChatSettings(chatId, chatSettings);
         }
         this.unscheduleJob(chatId, job.id);

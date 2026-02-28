@@ -121,21 +121,21 @@ const AppRouter = router({
     .query(async ({ input }) => {
       const chatId = input.chatId ?? (await getDefaultChatId());
       const settings = await readChatSettings(chatId);
-      return settings?.cronJobs ?? [];
+      return settings?.jobs ?? [];
     }),
   addCronJob: publicProcedure
     .input(z.object({ chatId: z.string().optional(), job: CronJobSchema }))
     .mutation(async ({ input }) => {
       const chatId = input.chatId ?? (await getDefaultChatId());
       const settings = (await readChatSettings(chatId)) || {};
-      const cronJobs = settings.cronJobs ?? [];
+      const cronJobs = settings.jobs ?? [];
       const existingIndex = cronJobs.findIndex((j) => j.id === input.job.id);
       if (existingIndex >= 0) {
         cronJobs[existingIndex] = input.job;
       } else {
         cronJobs.push(input.job);
       }
-      settings.cronJobs = cronJobs;
+      settings.jobs = cronJobs;
       await writeChatSettings(chatId, settings);
       cronManager.scheduleJob(chatId, input.job);
       return { success: true };
@@ -145,12 +145,12 @@ const AppRouter = router({
     .mutation(async ({ input }) => {
       const chatId = input.chatId ?? (await getDefaultChatId());
       const settings = await readChatSettings(chatId);
-      if (!settings || !settings.cronJobs) {
+      if (!settings || !settings.jobs) {
         return { success: true, deleted: false };
       }
-      const initialLength = settings.cronJobs.length;
-      settings.cronJobs = settings.cronJobs.filter((j) => j.id !== input.id);
-      if (settings.cronJobs.length !== initialLength) {
+      const initialLength = settings.jobs.length;
+      settings.jobs = settings.jobs.filter((j) => j.id !== input.id);
+      if (settings.jobs.length !== initialLength) {
         await writeChatSettings(chatId, settings);
         cronManager.unscheduleJob(chatId, input.id);
         return { success: true, deleted: true };
