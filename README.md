@@ -7,7 +7,7 @@ Clawmini is an orchestration layer for command-line AI agents, providing a unifi
 - **Persistent, Multi-Agent Chat Sessions:** Maintain separate chats for different tasks, allowing you to converse with multiple agents across multiple conversations.
 - **Safe Concurrency:** Automatically manages state and handles race conditions, queuing background commands safely to prevent file lock issues.
 - **Built-in & Bring-Your-Own UI:** Includes a fast, beautifully designed SvelteKit Web UI to visually manage agents, chats, and monitor real-time execution. Alternatively, easily build and connect your own interfaces to its local API.
-- **Agent Templates:** Quickly scaffold new agents using built-in or custom templates (e.g. `gemini-cladding`), automatically merging configuration settings.
+- **Agent Templates:** Quickly scaffold new agents using built-in or custom templates (e.g. `gemini`), automatically merging configuration settings.
 - **Routers & Middleware Pipeline:** Process user messages through an extensible pipeline to dynamically alter content, target specific agents or sessions, and expand slash commands before they reach an agent.
 - **Local File System Storage:** Everything is stored completely locally in `.clawmini/` within your workspace as transparent JSON/JSONL files. No cloud syncing required.
 
@@ -93,6 +93,16 @@ Built-in routers include:
 - `@clawmini/slash-command`: Expands slash commands (e.g., `/foo`) with the contents of matching files in your `.clawmini/commands/` directory.
 
 You can also write custom shell script routers that accept the current state via `stdin` and output JSON to dynamically control the routing logic. See the [`RouterState` interface](src/daemon/routers/types.ts) for the exact input and output schema.
+
+## Agent Templates
+
+Clawmini provides built-in templates to help you quickly scaffold new agents with pre-configured settings and files. When you run `clawmini agents add <id> --template <name>`, it copies the template's files into the agent's working directory and merges any provided environment variables or directory options with the template's `settings.json`.
+
+The currently available built-in templates are:
+
+- `gemini`: A basic template configured to use the `gemini` CLI as the agent's backend.
+- `gemini-cladding`: A template configured to run the `gemini` CLI wrapped inside `cladding` for enhanced security.
+- `gemini-claw-cladding`: A comprehensive template that sets up an autonomous personal assistant workspace (OpenClaw). It includes the `gemini-cladding` setup plus a full suite of scaffolding files like `GEMINI.md`, `SOUL.md`, `MEMORY.md`, and `HEARTBEAT.md` to establish the agent's identity, memory, and proactive capabilities.
 
 ## Development Setup
 
