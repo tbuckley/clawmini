@@ -15,10 +15,27 @@ export const AgentSchema = z.looseObject({
 
 export type Agent = z.infer<typeof AgentSchema>;
 
+export const CronJobSchema = z.looseObject({
+  id: z.string(),
+  message: z.string().default(''),
+  reply: z.string().optional(),
+  agentId: z.string().optional(),
+  env: z.record(z.string(), z.string()).optional(),
+  session: z.looseObject({ type: z.string() }).optional(),
+  schedule: z.union([
+    z.looseObject({ cron: z.string() }),
+    z.looseObject({ every: z.string() }),
+    z.looseObject({ at: z.string() }),
+  ]),
+});
+
+export type CronJob = z.infer<typeof CronJobSchema>;
+
 export const ChatSettingsSchema = z.looseObject({
   defaultAgent: z.string().optional(),
   sessions: z.record(z.string(), z.string()).optional(),
   routers: z.array(z.string()).optional(),
+  cronJobs: z.array(CronJobSchema).optional(),
 });
 
 export type ChatSettings = z.infer<typeof ChatSettingsSchema>;
