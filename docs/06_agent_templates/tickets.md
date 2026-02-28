@@ -5,7 +5,7 @@
 - **Verification:** 
   - Update or add tests in `src/cli/e2e/agents.test.ts` to verify the `--template` flag is parsed and passed to the handler correctly.
   - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-- **Status:** Not started
+- **Status:** Completed
 
 ## Step 2: Implement template resolution and copy logic
 - **Description:** 

@@ -55,33 +55,36 @@ agentsCmd
   .command('add <id>')
   .description('Create a new agent')
   .option('-d, --directory <dir>', 'Working directory for the agent')
+  .option('-t, --template <name>', 'Template to use for the agent')
   .option(
     '-e, --env <env...>',
     'Environment variables in KEY=VALUE format (can be specified multiple times)'
   )
-  .action(async (id: string, options: { directory?: string; env?: string[] }) => {
-    try {
-      assertValidAgentId(id);
-      const existing = await getAgent(id);
-      if (existing) {
-        throw new Error(`Agent ${id} already exists.`);
-      }
+  .action(
+    async (id: string, options: { directory?: string; template?: string; env?: string[] }) => {
+      try {
+        assertValidAgentId(id);
+        const existing = await getAgent(id);
+        if (existing) {
+          throw new Error(`Agent ${id} already exists.`);
+        }
 
-      const agentData: Agent = {};
-      if (options.directory) {
-        agentData.directory = options.directory;
-      }
-      const env = parseEnv(options.env);
-      if (env) {
-        agentData.env = env;
-      }
+        const agentData: Agent = {};
+        if (options.directory) {
+          agentData.directory = options.directory;
+        }
+        const env = parseEnv(options.env);
+        if (env) {
+          agentData.env = env;
+        }
 
-      await writeAgentSettings(id, agentData);
-      console.log(`Agent ${id} created successfully.`);
-    } catch (err) {
-      handleError('create agent', err);
+        await writeAgentSettings(id, agentData);
+        console.log(`Agent ${id} created successfully.`);
+      } catch (err) {
+        handleError('create agent', err);
+      }
     }
-  });
+  );
 
 agentsCmd
   .command('update <id>')

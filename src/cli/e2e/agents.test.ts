@@ -20,6 +20,8 @@ describe('E2E Agents Tests', () => {
       'test-agent',
       '--directory',
       './test-agent-dir',
+      '--template',
+      'default',
       '--env',
       'FOO=BAR',
       '--env',
