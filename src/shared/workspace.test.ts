@@ -17,6 +17,8 @@ import {
   writeAgentSettings,
   listAgents,
   deleteAgent,
+  resolveTemplatePath,
+  copyTemplate,
 } from './workspace.js';
 import type { Agent } from './config.js';
 
@@ -182,6 +184,82 @@ describe('workspace utilities', () => {
 
       const settings = await readAgentSessionSettings('agent-invalid', 'session-invalid', testDir);
       expect(settings).toBeNull();
+    });
+  });
+
+  describe('Template resolution and copying', () => {
+    it('should resolve local template first', async () => {
+      const templateName = 'test-template';
+      const localTemplateDir = path.join(clawminiDir, 'templates', templateName);
+      await fsPromises.mkdir(localTemplateDir, { recursive: true });
+
+      const resolved = await resolveTemplatePath(templateName, testDir);
+      expect(resolved).toBe(localTemplateDir);
+    });
+
+    it('should fall back to built-in template', async () => {
+      const templateName = 'test-builtin';
+      // Create a dummy builtin template in the project root's templates dir
+      const workspaceRoot = getWorkspaceRoot(process.cwd());
+      const builtinTemplateDir = path.join(workspaceRoot, 'templates', templateName);
+      await fsPromises.mkdir(builtinTemplateDir, { recursive: true });
+
+      try {
+        const resolved = await resolveTemplatePath(templateName, testDir);
+        expect(resolved).toBe(builtinTemplateDir);
+      } finally {
+        await fsPromises.rm(builtinTemplateDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should throw if template not found', async () => {
+      await expect(resolveTemplatePath('non-existent-template', testDir)).rejects.toThrow(
+        'Template not found: non-existent-template'
+      );
+    });
+
+    it('should copy template to empty directory', async () => {
+      const templateName = 'copy-template';
+      const localTemplateDir = path.join(clawminiDir, 'templates', templateName);
+      await fsPromises.mkdir(localTemplateDir, { recursive: true });
+      await fsPromises.writeFile(path.join(localTemplateDir, 'file.txt'), 'hello', 'utf-8');
+
+      const targetDir = path.join(testDir, 'target-dir');
+      await fsPromises.mkdir(targetDir, { recursive: true });
+
+      await copyTemplate(templateName, targetDir, testDir);
+
+      const content = await fsPromises.readFile(path.join(targetDir, 'file.txt'), 'utf-8');
+      expect(content).toBe('hello');
+    });
+
+    it('should fail if target directory is not empty', async () => {
+      const templateName = 'copy-template-fail';
+      const localTemplateDir = path.join(clawminiDir, 'templates', templateName);
+      await fsPromises.mkdir(localTemplateDir, { recursive: true });
+
+      const targetDir = path.join(testDir, 'target-dir-fail');
+      await fsPromises.mkdir(targetDir, { recursive: true });
+      await fsPromises.writeFile(path.join(targetDir, 'existing.txt'), 'existing', 'utf-8');
+
+      await expect(copyTemplate(templateName, targetDir, testDir)).rejects.toThrow(
+        `Target directory is not empty: ${targetDir}`
+      );
+    });
+
+    it('should create target directory if it does not exist', async () => {
+      const templateName = 'copy-template-create';
+      const localTemplateDir = path.join(clawminiDir, 'templates', templateName);
+      await fsPromises.mkdir(localTemplateDir, { recursive: true });
+      await fsPromises.writeFile(path.join(localTemplateDir, 'file.txt'), 'hello', 'utf-8');
+
+      const targetDir = path.join(testDir, 'target-dir-create');
+      // Intentionally not creating the target directory
+
+      await copyTemplate(templateName, targetDir, testDir);
+
+      const content = await fsPromises.readFile(path.join(targetDir, 'file.txt'), 'utf-8');
+      expect(content).toBe('hello');
     });
   });
 });

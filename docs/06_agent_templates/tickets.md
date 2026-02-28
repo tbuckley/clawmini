@@ -16,7 +16,7 @@
   - Add unit tests verifying correct resolution order (local workspace vs. built-in), successful file copying to an empty directory, and failure when the target directory is not empty.
   - Verify that built-in templates are correctly resolved from the compiled `dist/` directory.
   - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-- **Status:** Not started
+- **Status:** Completed
 
 ## Step 3: Process template configuration (`settings.json`)
 - **Description:** 
