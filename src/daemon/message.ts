@@ -19,7 +19,7 @@ export type RunCommandResult = {
   exitCode: number;
 };
 
-type RunCommandFn = (args: {
+export type RunCommandFn = (args: {
   command: string;
   cwd: string;
   env: Record<string, string>;
@@ -96,6 +96,164 @@ async function runExtractionCommand(
   }
 }
 
+export async function executeDirectMessage(
+  chatId: string,
+  state: RouterState,
+  settings: Settings | undefined,
+  cwd: string,
+  runCommand: RunCommandFn,
+  noWait: boolean = true,
+  userMessageContent?: string
+): Promise<void> {
+  const userMsg: UserMessage = {
+    id: crypto.randomUUID(),
+    role: 'user',
+    content: userMessageContent ?? state.message,
+    timestamp: new Date().toISOString(),
+  };
+  await appendMessage(chatId, userMsg);
+
+  if (state.reply) {
+    const routerLogMsg: CommandLogMessage = {
+      id: crypto.randomUUID(),
+      messageId: userMsg.id,
+      role: 'log',
+      source: 'router',
+      content: state.reply,
+      stderr: '',
+      timestamp: new Date().toISOString(),
+      command: 'router',
+      cwd,
+      exitCode: 0,
+    };
+    await appendMessage(chatId, routerLogMsg);
+  }
+
+  if (!state.message.trim()) {
+    return;
+  }
+
+  const queue = getQueue(cwd);
+  const finalAgentId = state.agentId ?? 'default';
+  const finalSessionId = state.sessionId ?? crypto.randomUUID();
+  const routerEnv = state.env ?? {};
+
+  const taskPromise = queue.enqueue(async () => {
+    const { agentId, agentSessionSettings, isNewSession } = await resolveSessionState(
+      chatId,
+      cwd,
+      finalSessionId,
+      finalAgentId
+    );
+
+    let mergedAgent: Agent = settings?.defaultAgent || {};
+    if (agentId !== 'default') {
+      try {
+        const customAgent = await getAgent(agentId, cwd);
+        if (customAgent) {
+          mergedAgent = {
+            ...mergedAgent,
+            ...customAgent,
+            commands: { ...mergedAgent.commands, ...customAgent.commands },
+            env: { ...mergedAgent.env, ...customAgent.env },
+          };
+        }
+      } catch {
+        // Fall back to default if agent not found
+      }
+    }
+
+    if (!mergedAgent.commands?.new) {
+      throw new Error(`No commands.new defined for agent: ${agentId}`);
+    }
+
+    const workspaceRoot = getWorkspaceRoot(cwd);
+    let executionCwd = cwd;
+    if (mergedAgent.directory) {
+      executionCwd = path.resolve(workspaceRoot, mergedAgent.directory);
+    } else if (agentId !== 'default') {
+      executionCwd = path.resolve(workspaceRoot, agentId);
+    }
+
+    const { command, env } = prepareCommandAndEnv(
+      mergedAgent,
+      state.message,
+      isNewSession,
+      agentSessionSettings
+    );
+
+    Object.assign(env, routerEnv);
+
+    const mainResult = await runCommand({ command, cwd: executionCwd, env });
+
+    const logMsg: CommandLogMessage = {
+      id: crypto.randomUUID(),
+      messageId: userMsg.id,
+      role: 'log',
+      content: mainResult.stdout,
+      stderr: '',
+      timestamp: new Date().toISOString(),
+      command,
+      cwd: executionCwd,
+      exitCode: mainResult.exitCode,
+    };
+
+    const errors: string[] = [];
+    if (mainResult.stderr) {
+      errors.push(mainResult.stderr);
+    }
+
+    if (mainResult.exitCode === 0) {
+      if (isNewSession && mergedAgent.commands?.getSessionId) {
+        const { result, error } = await runExtractionCommand(
+          'getSessionId',
+          mergedAgent.commands.getSessionId,
+          runCommand,
+          executionCwd,
+          env,
+          mainResult
+        );
+        if (result) {
+          await writeAgentSessionSettings(
+            agentId,
+            finalSessionId,
+            { env: { SESSION_ID: result } },
+            cwd
+          );
+        }
+        if (error) {
+          errors.push(error);
+        }
+      }
+
+      if (mergedAgent.commands?.getMessageContent) {
+        const { result, error } = await runExtractionCommand(
+          'getMessageContent',
+          mergedAgent.commands.getMessageContent,
+          runCommand,
+          executionCwd,
+          env,
+          mainResult
+        );
+        if (result !== undefined) {
+          logMsg.content = result;
+          logMsg.stdout = mainResult.stdout;
+        }
+        if (error) {
+          errors.push(error);
+        }
+      }
+    }
+
+    logMsg.stderr = errors.join('\n\n');
+    await appendMessage(chatId, logMsg);
+  });
+
+  if (!noWait) {
+    await taskPromise;
+  }
+}
+
 export async function handleUserMessage(
   chatId: string,
   message: string,
@@ -151,151 +309,14 @@ export async function handleUserMessage(
     await writeChatSettings(chatId, chatSettings, cwd);
   }
 
-  const userMsg: UserMessage = {
-    id: crypto.randomUUID(),
-    role: 'user',
-    content: message,
-    timestamp: new Date().toISOString(),
+  const directState: RouterState = {
+    message: finalMessage,
+    chatId,
+    env: routerEnv,
   };
-  await appendMessage(chatId, userMsg);
+  if (finalAgentId !== undefined) directState.agentId = finalAgentId;
+  if (finalSessionId !== undefined) directState.sessionId = finalSessionId;
+  if (finalState.reply !== undefined) directState.reply = finalState.reply;
 
-  if (finalState.reply) {
-    const routerLogMsg: CommandLogMessage = {
-      id: crypto.randomUUID(),
-      messageId: userMsg.id,
-      role: 'log',
-      source: 'router',
-      content: finalState.reply,
-      stderr: '',
-      timestamp: new Date().toISOString(),
-      command: 'router',
-      cwd,
-      exitCode: 0,
-    };
-    await appendMessage(chatId, routerLogMsg);
-  }
-
-  if (!finalMessage.trim()) {
-    return;
-  }
-
-  const queue = getQueue(cwd);
-
-  const taskPromise = queue.enqueue(async () => {
-    const { agentId, agentSessionSettings, isNewSession } = await resolveSessionState(
-      chatId,
-      cwd,
-      finalSessionId,
-      finalAgentId
-    );
-
-    let mergedAgent: Agent = settings?.defaultAgent || {};
-    if (agentId !== 'default') {
-      try {
-        const customAgent = await getAgent(agentId, cwd);
-        if (customAgent) {
-          mergedAgent = {
-            ...mergedAgent,
-            ...customAgent,
-            commands: { ...mergedAgent.commands, ...customAgent.commands },
-            env: { ...mergedAgent.env, ...customAgent.env },
-          };
-        }
-      } catch {
-        // Fall back to default if agent not found
-      }
-    }
-
-    if (!mergedAgent.commands?.new) {
-      throw new Error(`No commands.new defined for agent: ${agentId}`);
-    }
-
-    const workspaceRoot = getWorkspaceRoot(cwd);
-    let executionCwd = cwd;
-    if (mergedAgent.directory) {
-      executionCwd = path.resolve(workspaceRoot, mergedAgent.directory);
-    } else if (agentId !== 'default') {
-      executionCwd = path.resolve(workspaceRoot, agentId);
-    }
-
-    const { command, env } = prepareCommandAndEnv(
-      mergedAgent,
-      finalMessage,
-      isNewSession,
-      agentSessionSettings
-    );
-
-    Object.assign(env, routerEnv);
-
-    const mainResult = await runCommand({ command, cwd: executionCwd, env });
-
-    const logMsg: CommandLogMessage = {
-      id: crypto.randomUUID(),
-      messageId: userMsg.id,
-      role: 'log',
-      content: mainResult.stdout,
-      stderr: '',
-      timestamp: new Date().toISOString(),
-      command,
-      cwd: executionCwd,
-      exitCode: mainResult.exitCode,
-    };
-
-    const errors: string[] = [];
-    if (mainResult.stderr) {
-      errors.push(mainResult.stderr);
-    }
-
-    if (mainResult.exitCode === 0) {
-      // Save the session id if it's a new session
-      if (isNewSession && mergedAgent.commands?.getSessionId) {
-        const { result, error } = await runExtractionCommand(
-          'getSessionId',
-          mergedAgent.commands.getSessionId,
-          runCommand,
-          executionCwd,
-          env,
-          mainResult
-        );
-        if (result) {
-          // Create initial agent session settings
-          await writeAgentSessionSettings(
-            agentId,
-            finalSessionId,
-            { env: { SESSION_ID: result } },
-            cwd
-          );
-        }
-        if (error) {
-          errors.push(error);
-        }
-      }
-
-      // Try extracting the message content
-      if (mergedAgent.commands?.getMessageContent) {
-        const { result, error } = await runExtractionCommand(
-          'getMessageContent',
-          mergedAgent.commands.getMessageContent,
-          runCommand,
-          executionCwd,
-          env,
-          mainResult
-        );
-        if (result !== undefined) {
-          logMsg.content = result;
-          logMsg.stdout = mainResult.stdout;
-        }
-        if (error) {
-          errors.push(error);
-        }
-      }
-    }
-
-    logMsg.stderr = errors.join('\n\n');
-    await appendMessage(chatId, logMsg);
-  });
-
-  if (!noWait) {
-    await taskPromise;
-  }
+  await executeDirectMessage(chatId, directState, settings, cwd, runCommand, noWait, message);
 }

@@ -6,6 +6,7 @@ import { CronJobSchema } from '../shared/config.js';
 import { handleUserMessage } from './message.js';
 import { getDefaultChatId } from '../shared/chats.js';
 import { spawn } from 'node:child_process';
+import { cronManager } from './cron.js';
 
 const t = initTRPC.create();
 export const router = t.router;
@@ -136,6 +137,7 @@ const AppRouter = router({
       }
       settings.cronJobs = cronJobs;
       await writeChatSettings(chatId, settings);
+      cronManager.scheduleJob(chatId, input.job);
       return { success: true };
     }),
   deleteCronJob: publicProcedure
@@ -150,6 +152,7 @@ const AppRouter = router({
       settings.cronJobs = settings.cronJobs.filter((j) => j.id !== input.id);
       if (settings.cronJobs.length !== initialLength) {
         await writeChatSettings(chatId, settings);
+        cronManager.unscheduleJob(chatId, input.id);
         return { success: true, deleted: true };
       }
       return { success: true, deleted: false };

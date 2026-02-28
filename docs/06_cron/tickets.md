@@ -24,7 +24,7 @@
 - Run the standard automated checks: `npm run format:check && npm run lint && npm run check && npm run test`
 
 ## Ticket 3: Daemon Scheduler & Execution Logic
-**Status:** Not Started
+**Status:** Completed
 
 **Tasks:**
 - Create a `CronManager` (or similar module) in the daemon (`src/daemon/`).
