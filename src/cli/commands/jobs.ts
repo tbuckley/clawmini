@@ -105,6 +105,9 @@ jobsCmd
       if (env) job.env = env;
 
       if (options.session) {
+        if (options.session !== 'new') {
+          throw new Error('Only the "new" session type is supported.');
+        }
         job.session = { type: options.session };
       }
 
