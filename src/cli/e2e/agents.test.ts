@@ -20,8 +20,6 @@ describe('E2E Agents Tests', () => {
       'test-agent',
       '--directory',
       './test-agent-dir',
-      '--template',
-      'default',
       '--env',
       'FOO=BAR',
       '--env',
@@ -65,5 +63,61 @@ describe('E2E Agents Tests', () => {
     expect(codeDelete).toBe(0);
     expect(stdoutDelete).toContain('Agent test-agent deleted successfully.');
     expect(fs.existsSync(agentSettingsPath)).toBe(false);
+  });
+
+  it('should create an agent using a template and merge settings correctly', async () => {
+    // Create a local template
+    const templateDir = path.resolve(e2eDir, '.clawmini/templates/test-template');
+    fs.mkdirSync(templateDir, { recursive: true });
+
+    // Create some template files
+    fs.writeFileSync(path.join(templateDir, 'hello.txt'), 'Hello Template!');
+
+    // Create a settings.json that should be merged/overridden
+    const templateSettings = {
+      directory: './should-be-ignored',
+      env: {
+        TEMPLATE_VAR: 'template_value',
+        FOO: 'WILL_BE_OVERRIDDEN',
+      },
+    };
+    fs.writeFileSync(path.join(templateDir, 'settings.json'), JSON.stringify(templateSettings));
+
+    const { stdout, stderr, code } = await runCli([
+      'agents',
+      'add',
+      'test-template-agent',
+      '--template',
+      'test-template',
+      '--directory',
+      './custom-agent-dir',
+      '--env',
+      'FOO=BAR',
+    ]);
+
+    expect(code).toBe(0);
+    expect(stderr).toContain("Warning: Ignoring 'directory' field from template settings.json");
+    expect(stdout).toContain('Agent test-template-agent created successfully.');
+    const agentSettingsPath = path.resolve(
+      e2eDir,
+      '.clawmini/agents/test-template-agent/settings.json'
+    );
+    expect(fs.existsSync(agentSettingsPath)).toBe(true);
+
+    const agentData = JSON.parse(fs.readFileSync(agentSettingsPath, 'utf8'));
+
+    // Verify directory override
+    expect(agentData.directory).toBe('./custom-agent-dir');
+
+    // Verify env merge
+    expect(agentData.env?.TEMPLATE_VAR).toBe('template_value');
+    expect(agentData.env?.FOO).toBe('BAR');
+
+    // Verify template files were copied
+    const customDir = path.resolve(e2eDir, 'custom-agent-dir');
+    expect(fs.existsSync(path.join(customDir, 'hello.txt'))).toBe(true);
+
+    // Verify settings.json was deleted from the agent working dir
+    expect(fs.existsSync(path.join(customDir, 'settings.json'))).toBe(false);
   });
 });

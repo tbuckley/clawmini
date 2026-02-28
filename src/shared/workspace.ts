@@ -264,11 +264,7 @@ export async function copyTemplate(
       throw new Error(`Target directory is not empty: ${targetDir}`);
     }
   } catch (err: unknown) {
-    if (
-      err instanceof Error &&
-      'code' in err &&
-      (err as { code?: string }).code !== 'ENOENT'
-    ) {
+    if (err instanceof Error && 'code' in err && (err as { code?: string }).code !== 'ENOENT') {
       throw err;
     } else if (!(err instanceof Error) || !('code' in err)) {
       throw err;

@@ -31,4 +31,4 @@
   - Verify `settings.json` is deleted from the working directory after creation.
   - Add/update an end-to-end test in `src/cli/e2e/agents.test.ts` for `clawmini agent add <id> --template <name>` simulating the entire flow.
   - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-- **Status:** Not started
+- **Status:** Completed

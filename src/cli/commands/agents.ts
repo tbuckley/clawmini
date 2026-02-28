@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import fsPromises from 'node:fs/promises';
+import path from 'node:path';
 import { Command } from 'commander';
 import {
   listAgents,
@@ -5,8 +8,10 @@ import {
   writeAgentSettings,
   deleteAgent,
   isValidAgentId,
+  resolveAgentWorkDir,
+  copyTemplate,
 } from '../../shared/workspace.js';
-import type { Agent } from '../../shared/config.js';
+import { AgentSchema, type Agent } from '../../shared/config.js';
 
 export const agentsCmd = new Command('agents').description('Manage agents');
 
@@ -69,13 +74,54 @@ agentsCmd
           throw new Error(`Agent ${id} already exists.`);
         }
 
-        const agentData: Agent = {};
+        let agentData: Agent = {};
+
+        if (options.template) {
+          const agentWorkDir = resolveAgentWorkDir(id, options.directory);
+          await copyTemplate(options.template, agentWorkDir);
+
+          const settingsPath = path.join(agentWorkDir, 'settings.json');
+          if (fs.existsSync(settingsPath)) {
+            const rawSettings = await fsPromises.readFile(settingsPath, 'utf-8');
+            let parsedSettings;
+            try {
+              parsedSettings = JSON.parse(rawSettings);
+            } catch (err) {
+              throw new Error(
+                `Failed to parse template settings.json: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+                { cause: err }
+              );
+            }
+
+            const validation = AgentSchema.safeParse(parsedSettings);
+            if (!validation.success) {
+              throw new Error(
+                `Invalid template settings.json: ${validation.error.issues
+                  .map((i) => i.message)
+                  .join(', ')}`
+              );
+            }
+
+            agentData = validation.data;
+            if (agentData.directory) {
+              console.warn(
+                `Warning: Ignoring 'directory' field from template settings.json. Using default or provided directory.`
+              );
+              delete agentData.directory;
+            }
+
+            await fsPromises.rm(settingsPath);
+          }
+        }
+
         if (options.directory) {
           agentData.directory = options.directory;
         }
         const env = parseEnv(options.env);
         if (env) {
-          agentData.env = env;
+          agentData.env = { ...(agentData.env || {}), ...env };
         }
 
         await writeAgentSettings(id, agentData);
