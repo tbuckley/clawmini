@@ -27,6 +27,7 @@ const mimeTypes: Record<string, string> = {
 export const webCmd = new Command('web')
   .description('Start the local clawmini web interface')
   .option('-p, --port <number>', 'Port to bind the server to', '8080')
+  .option('-H, --host <string>', 'Host to bind the server to', '127.0.0.1')
   .action((options) => {
     const port = parseInt(options.port, 10);
     if (isNaN(port)) {
@@ -98,7 +99,7 @@ export const webCmd = new Command('web')
       }
     });
 
-    server.listen(port, '127.0.0.1', () => {
-      console.log(`Clawmini web interface running at http://127.0.0.1:${port}/`);
+    server.listen(port, options.host, () => {
+      console.log(`Clawmini web interface running at http://${options.host}:${port}/`);
     });
   });
