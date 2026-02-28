@@ -20,3 +20,19 @@
 - [x] Delete `settings.json` from the agent's working directory after processing.
 - [x] Create a dedicated E2E test in `src/cli/e2e/agents.test.ts` to verify the complete `--template` flow.
 - [x] Ensure all code quality checks, including Prettier, ESLint, and TypeScript, are passing successfully.
+
+## Bug Fix: Template not found
+### Hypotheses
+1. `__dirname` resolution is incorrect when running via CLI, pointing to the wrong path.
+2. The folder `templates/default` exists but `fsPromises.stat` fails.
+
+### Exploration
+By adding debug output to the `Template not found` error, it was clear that `../../templates` was resolving to the project root directory from a depth that was flatter than `src/shared`. Since the bundler output `dist/cli/index.mjs` was flattening the chunk structure, the `__dirname` relative to the bundle entrypoint was pointing directly to `dist/cli` rather than `dist/shared`.
+
+### Resolution
+The bug was resolved by updating `resolveTemplatePath` to iterate over several common potential depth paths:
+- `__dirname/templates`
+- `__dirname/../templates`
+- `__dirname/../../templates`
+
+This successfully fixes the bug in the CLI.

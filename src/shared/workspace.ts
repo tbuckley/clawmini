@@ -233,21 +233,28 @@ export async function resolveTemplatePath(
   }
 
   // Fallback to built-in templates
-  // __dirname is dist/shared or src/shared
-  // so `../..` points to `dist` or root of workspace, then `/templates`
+  // Depending on whether we run from src, dist/cli, or a root dist chunk, the depth varies
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const builtInTemplatePath = path.join(__dirname, '..', '..', 'templates', templateName);
+  const searchPaths = [
+    path.join(__dirname, 'templates', templateName),
+    path.join(__dirname, '..', 'templates', templateName),
+    path.join(__dirname, '..', '..', 'templates', templateName),
+  ];
 
-  try {
-    const stat = await fsPromises.stat(builtInTemplatePath);
-    if (stat.isDirectory()) {
-      return builtInTemplatePath;
+  for (const searchPath of searchPaths) {
+    try {
+      const stat = await fsPromises.stat(searchPath);
+      if (stat.isDirectory()) {
+        return searchPath;
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
   }
 
-  throw new Error(`Template not found: ${templateName}`);
+  throw new Error(
+    `Template not found: ${templateName} (searched local: ${localTemplatePath}, built-in: ${searchPaths.join(', ')})`
+  );
 }
 
 export async function copyTemplate(
