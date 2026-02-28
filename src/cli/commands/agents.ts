@@ -76,46 +76,6 @@ agentsCmd
 
         let agentData: Agent = {};
 
-        if (options.template) {
-          const agentWorkDir = resolveAgentWorkDir(id, options.directory);
-          await copyTemplate(options.template, agentWorkDir);
-
-          const settingsPath = path.join(agentWorkDir, 'settings.json');
-          if (fs.existsSync(settingsPath)) {
-            const rawSettings = await fsPromises.readFile(settingsPath, 'utf-8');
-            let parsedSettings;
-            try {
-              parsedSettings = JSON.parse(rawSettings);
-            } catch (err) {
-              throw new Error(
-                `Failed to parse template settings.json: ${
-                  err instanceof Error ? err.message : String(err)
-                }`,
-                { cause: err }
-              );
-            }
-
-            const validation = AgentSchema.safeParse(parsedSettings);
-            if (!validation.success) {
-              throw new Error(
-                `Invalid template settings.json: ${validation.error.issues
-                  .map((i) => i.message)
-                  .join(', ')}`
-              );
-            }
-
-            agentData = validation.data;
-            if (agentData.directory) {
-              console.warn(
-                `Warning: Ignoring 'directory' field from template settings.json. Using default or provided directory.`
-              );
-              delete agentData.directory;
-            }
-
-            await fsPromises.rm(settingsPath);
-          }
-        }
-
         if (options.directory) {
           agentData.directory = options.directory;
         }
@@ -125,6 +85,45 @@ agentsCmd
         }
 
         await writeAgentSettings(id, agentData);
+
+        if (options.template) {
+          const agentWorkDir = resolveAgentWorkDir(id, agentData.directory);
+          await copyTemplate(options.template, agentWorkDir);
+
+          const settingsPath = path.join(agentWorkDir, 'settings.json');
+          if (fs.existsSync(settingsPath)) {
+            let isValid = false;
+            try {
+              const rawSettings = await fsPromises.readFile(settingsPath, 'utf-8');
+              const parsedSettings = JSON.parse(rawSettings);
+              const validation = AgentSchema.safeParse(parsedSettings);
+
+              if (validation.success) {
+                const templateData = validation.data;
+                if (templateData.directory) {
+                  console.warn(
+                    `Warning: Ignoring 'directory' field from template settings.json. Using default or provided directory.`
+                  );
+                  delete templateData.directory;
+                }
+
+                agentData = { ...templateData, ...agentData };
+                if (templateData.env || env) {
+                  agentData.env = { ...(templateData.env || {}), ...(env || {}) };
+                }
+                isValid = true;
+              }
+            } catch {
+              // Ignore parsing errors, just leave the file and use the default settings
+            }
+
+            if (isValid) {
+              await fsPromises.rm(settingsPath);
+              await writeAgentSettings(id, agentData);
+            }
+          }
+        }
+
         console.log(`Agent ${id} created successfully.`);
       } catch (err) {
         handleError('create agent', err);

@@ -247,7 +247,7 @@ describe('workspace utilities', () => {
       );
     });
 
-    it('should create target directory if it does not exist', async () => {
+    it('should fail if target directory does not exist', async () => {
       const templateName = 'copy-template-create';
       const localTemplateDir = path.join(clawminiDir, 'templates', templateName);
       await fsPromises.mkdir(localTemplateDir, { recursive: true });
@@ -256,10 +256,9 @@ describe('workspace utilities', () => {
       const targetDir = path.join(testDir, 'target-dir-create');
       // Intentionally not creating the target directory
 
-      await copyTemplate(templateName, targetDir, testDir);
-
-      const content = await fsPromises.readFile(path.join(targetDir, 'file.txt'), 'utf-8');
-      expect(content).toBe('hello');
+      await expect(copyTemplate(templateName, targetDir, testDir)).rejects.toThrow(
+        `Target directory does not exist: ${targetDir}`
+      );
     });
   });
 });

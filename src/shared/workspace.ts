@@ -233,27 +233,28 @@ export async function resolveTemplatePath(
   }
 
   // Fallback to built-in templates
-  // Depending on whether we run from src, dist/cli, or a root dist chunk, the depth varies
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const searchPaths = [
-    path.join(__dirname, 'templates', templateName),
-    path.join(__dirname, '..', 'templates', templateName),
-    path.join(__dirname, '..', '..', 'templates', templateName),
-  ];
+  // Find the clawmini package root by looking for package.json
+  let currentDir = path.dirname(fileURLToPath(import.meta.url));
+  while (
+    currentDir !== path.parse(currentDir).root &&
+    !fs.existsSync(path.join(currentDir, 'package.json'))
+  ) {
+    currentDir = path.dirname(currentDir);
+  }
 
-  for (const searchPath of searchPaths) {
-    try {
-      const stat = await fsPromises.stat(searchPath);
-      if (stat.isDirectory()) {
-        return searchPath;
-      }
-    } catch {
-      // ignore
+  const searchPath = path.join(currentDir, 'templates', templateName);
+
+  try {
+    const stat = await fsPromises.stat(searchPath);
+    if (stat.isDirectory()) {
+      return searchPath;
     }
+  } catch {
+    // ignore
   }
 
   throw new Error(
-    `Template not found: ${templateName} (searched local: ${localTemplatePath}, built-in: ${searchPaths.join(', ')})`
+    `Template not found: ${templateName} (searched local: ${localTemplatePath}, built-in: ${searchPath})`
   );
 }
 
@@ -271,15 +272,11 @@ export async function copyTemplate(
       throw new Error(`Target directory is not empty: ${targetDir}`);
     }
   } catch (err: unknown) {
-    if (err instanceof Error && 'code' in err && (err as { code?: string }).code !== 'ENOENT') {
-      throw err;
-    } else if (!(err instanceof Error) || !('code' in err)) {
-      throw err;
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
+      throw new Error(`Target directory does not exist: ${targetDir}`, { cause: err });
     }
+    throw err;
   }
-
-  // Create target directory if it doesn't exist
-  await fsPromises.mkdir(targetDir, { recursive: true });
 
   // Recursively copy
   await fsPromises.cp(templatePath, targetDir, { recursive: true });
