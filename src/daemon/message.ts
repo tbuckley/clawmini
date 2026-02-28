@@ -19,7 +19,7 @@ export type RunCommandResult = {
   exitCode: number;
 };
 
-type RunCommandFn = (args: {
+export type RunCommandFn = (args: {
   command: string;
   cwd: string;
   env: Record<string, string>;
@@ -96,76 +96,30 @@ async function runExtractionCommand(
   }
 }
 
-export async function handleUserMessage(
+export async function executeDirectMessage(
   chatId: string,
-  message: string,
+  state: RouterState,
   settings: Settings | undefined,
-  cwd: string = process.cwd(),
-  noWait: boolean = false,
+  cwd: string,
   runCommand: RunCommandFn,
-  sessionId?: string,
-  overrideAgentId?: string
+  noWait: boolean = true,
+  userMessageContent?: string
 ): Promise<void> {
-  const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
-
-  if (overrideAgentId) {
-    chatSettings.defaultAgent = overrideAgentId;
-    await writeChatSettings(chatId, chatSettings, cwd);
-  }
-
-  const routers = chatSettings.routers ?? settings?.routers ?? [];
-
-  const initialAgent = chatSettings.defaultAgent ?? 'default';
-  const initialSessionId = sessionId ?? chatSettings.sessions?.[initialAgent] ?? 'default';
-
-  const initialState: RouterState = {
-    message,
-    chatId,
-    agentId: initialAgent,
-    sessionId: initialSessionId,
-    env: {},
-  };
-
-  const finalState = await executeRouterPipeline(initialState, routers);
-
-  const finalMessage = finalState.message;
-  const finalAgentId = finalState.agentId;
-  const finalSessionId = finalState.sessionId ?? crypto.randomUUID();
-  const routerEnv = finalState.env ?? {};
-
-  const currentAgentId = finalAgentId ?? chatSettings.defaultAgent ?? 'default';
-
-  let settingsChanged = false;
-  if (finalAgentId && finalAgentId !== initialAgent) {
-    chatSettings.defaultAgent = finalAgentId;
-    settingsChanged = true;
-  }
-
-  if (finalSessionId && chatSettings.sessions?.[currentAgentId] !== finalSessionId) {
-    chatSettings.sessions = chatSettings.sessions || {};
-    chatSettings.sessions[currentAgentId] = finalSessionId;
-    settingsChanged = true;
-  }
-
-  if (settingsChanged) {
-    await writeChatSettings(chatId, chatSettings, cwd);
-  }
-
   const userMsg: UserMessage = {
     id: crypto.randomUUID(),
     role: 'user',
-    content: message,
+    content: userMessageContent ?? state.message,
     timestamp: new Date().toISOString(),
   };
   await appendMessage(chatId, userMsg);
 
-  if (finalState.reply) {
+  if (state.reply) {
     const routerLogMsg: CommandLogMessage = {
       id: crypto.randomUUID(),
       messageId: userMsg.id,
       role: 'log',
       source: 'router',
-      content: finalState.reply,
+      content: state.reply,
       stderr: '',
       timestamp: new Date().toISOString(),
       command: 'router',
@@ -175,11 +129,14 @@ export async function handleUserMessage(
     await appendMessage(chatId, routerLogMsg);
   }
 
-  if (!finalMessage.trim()) {
+  if (!state.message.trim()) {
     return;
   }
 
   const queue = getQueue(cwd);
+  const finalAgentId = state.agentId ?? 'default';
+  const finalSessionId = state.sessionId ?? crypto.randomUUID();
+  const routerEnv = state.env ?? {};
 
   const taskPromise = queue.enqueue(async () => {
     const { agentId, agentSessionSettings, isNewSession } = await resolveSessionState(
@@ -220,7 +177,7 @@ export async function handleUserMessage(
 
     const { command, env } = prepareCommandAndEnv(
       mergedAgent,
-      finalMessage,
+      state.message,
       isNewSession,
       agentSessionSettings
     );
@@ -247,7 +204,6 @@ export async function handleUserMessage(
     }
 
     if (mainResult.exitCode === 0) {
-      // Save the session id if it's a new session
       if (isNewSession && mergedAgent.commands?.getSessionId) {
         const { result, error } = await runExtractionCommand(
           'getSessionId',
@@ -258,7 +214,6 @@ export async function handleUserMessage(
           mainResult
         );
         if (result) {
-          // Create initial agent session settings
           await writeAgentSessionSettings(
             agentId,
             finalSessionId,
@@ -271,7 +226,6 @@ export async function handleUserMessage(
         }
       }
 
-      // Try extracting the message content
       if (mergedAgent.commands?.getMessageContent) {
         const { result, error } = await runExtractionCommand(
           'getMessageContent',
@@ -298,4 +252,89 @@ export async function handleUserMessage(
   if (!noWait) {
     await taskPromise;
   }
+}
+
+export async function getInitialRouterState(
+  chatId: string,
+  message: string,
+  cwd: string = process.cwd(),
+  overrideAgentId?: string,
+  overrideSessionId?: string
+): Promise<RouterState> {
+  const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
+  const agentId = overrideAgentId ?? chatSettings.defaultAgent ?? 'default';
+  const sessionId = overrideSessionId ?? chatSettings.sessions?.[agentId] ?? 'default';
+
+  return {
+    message,
+    chatId,
+    agentId,
+    sessionId,
+    env: {},
+  };
+}
+
+export async function handleUserMessage(
+  chatId: string,
+  message: string,
+  settings: Settings | undefined,
+  cwd: string = process.cwd(),
+  noWait: boolean = false,
+  runCommand: RunCommandFn,
+  sessionId?: string,
+  overrideAgentId?: string
+): Promise<void> {
+  const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
+
+  if (overrideAgentId && chatSettings.defaultAgent !== overrideAgentId) {
+    chatSettings.defaultAgent = overrideAgentId;
+    await writeChatSettings(chatId, chatSettings, cwd);
+  }
+
+  const initialState = await getInitialRouterState(
+    chatId,
+    message,
+    cwd,
+    overrideAgentId,
+    sessionId
+  );
+  const initialAgent = initialState.agentId;
+
+  const routers = chatSettings.routers ?? settings?.routers ?? [];
+
+  const finalState = await executeRouterPipeline(initialState, routers);
+
+  const finalMessage = finalState.message;
+  const finalAgentId = finalState.agentId;
+  const finalSessionId = finalState.sessionId ?? crypto.randomUUID();
+  const routerEnv = finalState.env ?? {};
+
+  const currentAgentId = finalAgentId ?? chatSettings.defaultAgent ?? 'default';
+
+  let settingsChanged = false;
+  if (finalAgentId && finalAgentId !== initialAgent) {
+    chatSettings.defaultAgent = finalAgentId;
+    settingsChanged = true;
+  }
+
+  if (finalSessionId && chatSettings.sessions?.[currentAgentId] !== finalSessionId) {
+    chatSettings.sessions = chatSettings.sessions || {};
+    chatSettings.sessions[currentAgentId] = finalSessionId;
+    settingsChanged = true;
+  }
+
+  if (settingsChanged) {
+    await writeChatSettings(chatId, chatSettings, cwd);
+  }
+
+  const directState: RouterState = {
+    message: finalMessage,
+    chatId,
+    env: routerEnv,
+  };
+  if (finalAgentId !== undefined) directState.agentId = finalAgentId;
+  if (finalSessionId !== undefined) directState.sessionId = finalSessionId;
+  if (finalState.reply !== undefined) directState.reply = finalState.reply;
+
+  await executeDirectMessage(chatId, directState, settings, cwd, runCommand, noWait, message);
 }

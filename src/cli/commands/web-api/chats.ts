@@ -2,165 +2,16 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import type { ZodType } from 'zod';
 import {
   listChats,
   getMessages,
   getChatsDir,
   createChat,
   isValidChatId,
-} from '../../shared/chats.js';
-import { getDaemonClient } from '../client.js';
-import {
-  listAgents,
-  getAgent,
-  writeAgentSettings,
-  writeChatSettings,
-  deleteAgent,
-  isValidAgentId,
-} from '../../shared/workspace.js';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function parseJsonBody<T = any>(
-  req: http.IncomingMessage,
-  schema?: ZodType<T>
-): Promise<T> {
-  if (req.headers['content-type'] !== 'application/json') {
-    throw new Error('Invalid Content-Type');
-  }
-  let bodyStr = '';
-  for await (const chunk of req) {
-    bodyStr += chunk;
-  }
-  const rawBody = JSON.parse(bodyStr);
-  if (schema) {
-    return schema.parse(rawBody);
-  }
-  return rawBody as T;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function sendJsonResponse(res: http.ServerResponse, statusCode: number, data: any) {
-  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(data));
-}
-
-export async function handleApiAgents(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  urlPath: string
-) {
-  if (req.method === 'GET' && urlPath === '/api/agents') {
-    const agentIds = await listAgents();
-    const agents = [];
-    for (const id of agentIds) {
-      const agent = await getAgent(id);
-      if (agent) {
-        agents.push({ id, ...agent });
-      }
-    }
-    sendJsonResponse(res, 200, agents);
-    return true;
-  }
-
-  if (req.method === 'POST' && urlPath === '/api/agents') {
-    try {
-      const schema = z.object({
-        id: z.string().refine(isValidAgentId, { message: 'Invalid agent ID' }),
-        directory: z.string().optional(),
-        env: z.record(z.string(), z.string()).optional(),
-        commands: z.record(z.string(), z.string()).optional(),
-      });
-
-      const body = await parseJsonBody(req, schema);
-
-      const existing = await getAgent(body.id);
-      if (existing) {
-        sendJsonResponse(res, 409, { error: 'Agent already exists' });
-        return true;
-      }
-
-      const newAgent = {
-        directory: body.directory,
-        env: body.env || {},
-        commands: body.commands || {},
-      };
-
-      try {
-        await writeAgentSettings(body.id, newAgent);
-      } catch (err) {
-        sendJsonResponse(res, 400, {
-          error: err instanceof Error ? err.message : 'Invalid agent directory',
-        });
-        return true;
-      }
-
-      sendJsonResponse(res, 201, { id: body.id, ...newAgent });
-    } catch {
-      sendJsonResponse(res, 500, { error: 'Failed to create agent' });
-    }
-    return true;
-  }
-
-  const agentMatch = urlPath.match(/^\/api\/agents\/([^/]+)$/);
-  if (agentMatch && agentMatch[1]) {
-    const agentId = agentMatch[1];
-
-    if (!isValidAgentId(agentId)) {
-      sendJsonResponse(res, 400, { error: 'Invalid agent ID' });
-      return true;
-    }
-
-    if (req.method === 'GET') {
-      const agent = await getAgent(agentId);
-      if (!agent) {
-        sendJsonResponse(res, 404, { error: 'Agent not found' });
-        return true;
-      }
-      sendJsonResponse(res, 200, { id: agentId, ...agent });
-      return true;
-    }
-
-    if (req.method === 'PUT' || req.method === 'POST') {
-      try {
-        const schema = z.object({
-          directory: z.string().optional(),
-          env: z.record(z.string(), z.string()).optional(),
-          commands: z.record(z.string(), z.string()).optional(),
-        });
-
-        const body = await parseJsonBody(req, schema);
-
-        const agent = (await getAgent(agentId)) || {};
-        if (body.directory !== undefined) agent.directory = body.directory;
-        if (body.env !== undefined) agent.env = body.env;
-        if (body.commands !== undefined) agent.commands = body.commands;
-
-        try {
-          await writeAgentSettings(agentId, agent);
-        } catch (err) {
-          sendJsonResponse(res, 400, {
-            error: err instanceof Error ? err.message : 'Invalid agent directory',
-          });
-          return true;
-        }
-
-        sendJsonResponse(res, 200, { id: agentId, ...agent });
-      } catch {
-        sendJsonResponse(res, 500, { error: 'Failed to update agent' });
-      }
-      return true;
-    }
-
-    if (req.method === 'DELETE') {
-      await deleteAgent(agentId);
-      sendJsonResponse(res, 200, { success: true });
-      return true;
-    }
-  }
-
-  return false;
-}
+} from '../../../shared/chats.js';
+import { writeChatSettings } from '../../../shared/workspace.js';
+import { getDaemonClient } from '../../client.js';
+import { parseJsonBody, sendJsonResponse } from './utils.js';
 
 export async function handleApiChats(
   req: http.IncomingMessage,
@@ -304,6 +155,47 @@ export async function handleApiChats(
       sendJsonResponse(res, 500, { error: errorMessage || 'Internal Server Error' });
     }
     return true;
+  }
+
+  const cronMatch = urlPath.match(/^\/api\/chats\/([^/]+)\/cron(?:\/([^/]+))?$/);
+  if (cronMatch && cronMatch[1]) {
+    const chatId = cronMatch[1];
+    const jobId = cronMatch[2]; // undefined if not present
+
+    if (req.method === 'GET') {
+      try {
+        const client = await getDaemonClient();
+        const jobs = await client.listCronJobs.query({ chatId });
+        sendJsonResponse(res, 200, jobs);
+      } catch {
+        sendJsonResponse(res, 500, { error: 'Failed to list cron jobs' });
+      }
+      return true;
+    }
+
+    if (req.method === 'POST') {
+      try {
+        const client = await getDaemonClient();
+        const body = await parseJsonBody(req);
+        await client.addCronJob.mutate({ chatId, job: body });
+        sendJsonResponse(res, 201, { success: true });
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        sendJsonResponse(res, 500, { error: errorMessage || 'Failed to add cron job' });
+      }
+      return true;
+    }
+
+    if (req.method === 'DELETE' && jobId) {
+      try {
+        const client = await getDaemonClient();
+        await client.deleteCronJob.mutate({ chatId, id: jobId });
+        sendJsonResponse(res, 200, { success: true });
+      } catch {
+        sendJsonResponse(res, 500, { error: 'Failed to delete cron job' });
+      }
+      return true;
+    }
   }
 
   return false;

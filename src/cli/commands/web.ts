@@ -5,7 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { pathIsInsideDir } from '../../shared/utils/fs.js';
-import { handleApiAgents, handleApiChats, sendJsonResponse } from './web-api.js';
+import { sendJsonResponse } from './web-api/utils.js';
+import { handleApiAgents } from './web-api/agents.js';
+import { handleApiChats } from './web-api/chats.js';
 
 const mimeTypes: Record<string, string> = {
   '.html': 'text/html',

@@ -7,6 +7,7 @@ import { agentsCmd } from './commands/agents.js';
 import { downCmd } from './commands/down.js';
 import { upCmd } from './commands/up.js';
 import { webCmd } from './commands/web.js';
+import { jobsCmd } from './commands/jobs.js';
 
 const program = new Command();
 
@@ -19,5 +20,6 @@ program.addCommand(agentsCmd);
 program.addCommand(downCmd);
 program.addCommand(upCmd);
 program.addCommand(webCmd);
+program.addCommand(jobsCmd);
 
 program.parse();

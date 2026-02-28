@@ -66,6 +66,12 @@ clawmini web
 - `clawmini agents update <id> [-d, --directory <dir>] [-e, --env <KEY=VALUE>...]`: Update an existing agent's configuration.
 - `clawmini agents delete <id>`: Remove an agent.
 
+### Cron Jobs
+
+- `clawmini cron list [--chat <id>]`: Display all cron jobs configured for a chat.
+- `clawmini cron add <name> [--cron <expr> | --every <duration> | --at <iso-time>] [-m, --message <text>]`: Create a new scheduled job. Supports standard cron expressions, recurring intervals (e.g., `10m`), or one-off executions at a specific time.
+- `clawmini cron delete <name> [--chat <id>]`: Remove an existing scheduled job.
+
 ### Web Interface
 
 - `clawmini web [-p, --port <number>]`: Start the local web interface (default port: 8080).
