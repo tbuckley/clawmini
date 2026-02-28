@@ -31,7 +31,7 @@ describe('Extraction Logic', () => {
       const emitter = new EventEmitter() as any;
       emitter.stdout = new EventEmitter();
       emitter.stderr = new EventEmitter();
-      emitter.stdin = { write: vi.fn(), end: vi.fn() };
+      emitter.stdin = { write: vi.fn(), end: vi.fn(), on: vi.fn() };
       emitter.finish = (code: number) => {
         emitter.emit('close', code);
       };
@@ -102,7 +102,7 @@ describe('Extraction Logic', () => {
       const emitter = new EventEmitter() as any;
       emitter.stdout = new EventEmitter();
       emitter.stderr = new EventEmitter();
-      emitter.stdin = { write: vi.fn(), end: vi.fn() };
+      emitter.stdin = { write: vi.fn(), end: vi.fn(), on: vi.fn() };
       emitter.finish = (code: number) => {
         emitter.emit('close', code);
       };

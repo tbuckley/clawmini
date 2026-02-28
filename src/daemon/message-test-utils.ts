@@ -6,11 +6,12 @@ import { EventEmitter } from 'node:events';
 export const runCommandCallback = async ({ command, cwd, env, stdin }: any) => {
   return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
     const p = spawn(command, { shell: true, cwd, env });
-    if (stdin) {
-      if (p.stdin) {
-        p.stdin.write(stdin);
-        p.stdin.end();
-      }
+    if (stdin && p.stdin) {
+      p.stdin.on('error', (err: any) => {
+        if (err.code !== 'EPIPE') console.error('stdin error:', err);
+      });
+      p.stdin.write(stdin);
+      p.stdin.end();
     }
     let stdout = '';
     let stderr = '';
@@ -26,7 +27,7 @@ export function createMockSpawn() {
     const emitter = new EventEmitter() as any;
     emitter.stdout = new EventEmitter();
     emitter.stderr = new EventEmitter();
-    emitter.stdin = { write: vi.fn(), end: vi.fn() };
+    emitter.stdin = { write: vi.fn(), end: vi.fn(), on: vi.fn() };
 
     emitter.finish = (code: number) => {
       emitter.emit('close', code);
@@ -49,7 +50,7 @@ export function createAutoFinishMockSpawn() {
     const emitter = new EventEmitter() as any;
     emitter.stdout = new EventEmitter();
     emitter.stderr = new EventEmitter();
-    emitter.stdin = { write: vi.fn(), end: vi.fn() };
+    emitter.stdin = { write: vi.fn(), end: vi.fn(), on: vi.fn() };
     emitter.finish = (code: number) => emitter.emit('close', code);
     setTimeout(() => emitter.finish(0), 0);
     return emitter;
