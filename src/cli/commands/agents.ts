@@ -1,6 +1,3 @@
-import fs from 'node:fs';
-import fsPromises from 'node:fs/promises';
-import path from 'node:path';
 import { Command } from 'commander';
 import {
   listAgents,
@@ -8,10 +5,9 @@ import {
   writeAgentSettings,
   deleteAgent,
   isValidAgentId,
-  resolveAgentWorkDir,
-  copyTemplate,
+  applyTemplateToAgent,
 } from '../../shared/workspace.js';
-import { AgentSchema, type Agent } from '../../shared/config.js';
+import { type Agent } from '../../shared/config.js';
 
 export const agentsCmd = new Command('agents').description('Manage agents');
 
@@ -74,7 +70,7 @@ agentsCmd
           throw new Error(`Agent ${id} already exists.`);
         }
 
-        let agentData: Agent = {};
+        const agentData: Agent = {};
 
         if (options.directory) {
           agentData.directory = options.directory;
@@ -87,41 +83,7 @@ agentsCmd
         await writeAgentSettings(id, agentData);
 
         if (options.template) {
-          const agentWorkDir = resolveAgentWorkDir(id, agentData.directory);
-          await copyTemplate(options.template, agentWorkDir);
-
-          const settingsPath = path.join(agentWorkDir, 'settings.json');
-          if (fs.existsSync(settingsPath)) {
-            let isValid = false;
-            try {
-              const rawSettings = await fsPromises.readFile(settingsPath, 'utf-8');
-              const parsedSettings = JSON.parse(rawSettings);
-              const validation = AgentSchema.safeParse(parsedSettings);
-
-              if (validation.success) {
-                const templateData = validation.data;
-                if (templateData.directory) {
-                  console.warn(
-                    `Warning: Ignoring 'directory' field from template settings.json. Using default or provided directory.`
-                  );
-                  delete templateData.directory;
-                }
-
-                agentData = { ...templateData, ...agentData };
-                if (templateData.env || env) {
-                  agentData.env = { ...(templateData.env || {}), ...(env || {}) };
-                }
-                isValid = true;
-              }
-            } catch {
-              // Ignore parsing errors, just leave the file and use the default settings
-            }
-
-            if (isValid) {
-              await fsPromises.rm(settingsPath);
-              await writeAgentSettings(id, agentData);
-            }
-          }
+          await applyTemplateToAgent(id, options.template, agentData);
         }
 
         console.log(`Agent ${id} created successfully.`);

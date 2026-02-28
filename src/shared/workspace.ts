@@ -216,6 +216,15 @@ export async function deleteAgent(agentId: string, startDir = process.cwd()): Pr
   }
 }
 
+async function isDirectory(dirPath: string): Promise<boolean> {
+  try {
+    const stat = await fsPromises.stat(dirPath);
+    return stat.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveTemplatePath(
   templateName: string,
   startDir = process.cwd()
@@ -223,13 +232,8 @@ export async function resolveTemplatePath(
   const workspaceRoot = getWorkspaceRoot(startDir);
   const localTemplatePath = path.join(workspaceRoot, '.clawmini', 'templates', templateName);
 
-  try {
-    const stat = await fsPromises.stat(localTemplatePath);
-    if (stat.isDirectory()) {
-      return localTemplatePath;
-    }
-  } catch {
-    // ignore
+  if (await isDirectory(localTemplatePath)) {
+    return localTemplatePath;
   }
 
   // Fallback to built-in templates
@@ -244,13 +248,8 @@ export async function resolveTemplatePath(
 
   const searchPath = path.join(currentDir, 'templates', templateName);
 
-  try {
-    const stat = await fsPromises.stat(searchPath);
-    if (stat.isDirectory()) {
-      return searchPath;
-    }
-  } catch {
-    // ignore
+  if (await isDirectory(searchPath)) {
+    return searchPath;
   }
 
   throw new Error(
@@ -280,4 +279,48 @@ export async function copyTemplate(
 
   // Recursively copy
   await fsPromises.cp(templatePath, targetDir, { recursive: true });
+}
+
+export async function applyTemplateToAgent(
+  agentId: string,
+  templateName: string,
+  overrides: Agent,
+  startDir = process.cwd()
+): Promise<void> {
+  const agentWorkDir = resolveAgentWorkDir(agentId, overrides.directory, startDir);
+  await copyTemplate(templateName, agentWorkDir, startDir);
+
+  const settingsPath = path.join(agentWorkDir, 'settings.json');
+  try {
+    const rawSettings = await fsPromises.readFile(settingsPath, 'utf-8');
+    const parsedSettings = JSON.parse(rawSettings);
+    const validation = AgentSchema.safeParse(parsedSettings);
+
+    if (validation.success) {
+      const templateData = validation.data;
+      if (templateData.directory) {
+        console.warn(
+          `Warning: Ignoring 'directory' field from template settings.json. Using default or provided directory.`
+        );
+        delete templateData.directory;
+      }
+
+      // Merge: overrides take precedence over templateData
+      const mergedEnv = { ...(templateData.env || {}), ...(overrides.env || {}) };
+      const mergedData: Agent = { ...templateData, ...overrides };
+      if (Object.keys(mergedEnv).length > 0) {
+        mergedData.env = mergedEnv;
+      }
+
+      await writeAgentSettings(agentId, mergedData, startDir);
+    }
+  } catch {
+    // Ignore parsing or file not found errors
+  } finally {
+    try {
+      await fsPromises.rm(settingsPath);
+    } catch {
+      // Ignore if it doesn't exist
+    }
+  }
 }

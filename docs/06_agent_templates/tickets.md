@@ -32,3 +32,18 @@
   - Add/update an end-to-end test in `src/cli/e2e/agents.test.ts` for `clawmini agent add <id> --template <name>` simulating the entire flow.
   - Run `npm run format:check && npm run lint && npm run check && npm run test`.
 - **Status:** Completed
+
+## Issue 1 (High): Extract template settings logic
+- **Description:** Move the complex template settings merging and validation logic out of the CLI command handler (`src/cli/commands/agents.ts`) and into a dedicated function in `src/shared/workspace.ts` (e.g., `applyTemplateSettings`). This improves separation of concerns.
+- **Verification:** Ensure tests pass. Run `npm run format:check && npm run lint && npm run check && npm run test`.
+- **Status:** Completed
+
+## Issue 2 (Medium): DRY up directory checking in `resolveTemplatePath`
+- **Description:** In `src/shared/workspace.ts`, the `try/catch` block for checking if a directory exists using `fsPromises.stat(dir).isDirectory()` is duplicated. Extract this into a helper function `async function isDirectory(path: string): Promise<boolean>`.
+- **Verification:** Ensure tests pass. Run `npm run format:check && npm run lint && npm run check && npm run test`.
+- **Status:** Completed
+
+## Issue 3 (Low): Use asynchronous `fs` methods consistently
+- **Description:** Replace synchronous `fs.existsSync` calls with asynchronous alternatives or `try/catch` blocks using `fsPromises` in `src/cli/commands/agents.ts` and `src/shared/workspace.ts` for consistency.
+- **Verification:** Ensure tests pass. Run `npm run format:check && npm run lint && npm run check && npm run test`.
+- **Status:** Completed
