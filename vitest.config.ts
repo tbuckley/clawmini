@@ -4,6 +4,6 @@ export default defineConfig({
   test: {
     include: ['src/**/*.{test,spec}.{js,ts}'],
     exclude: ['web/**', 'node_modules/**', 'dist/**'],
-    fileParallelism: false,
+    globalSetup: ['src/cli/e2e/global-setup.ts'],
   },
 });

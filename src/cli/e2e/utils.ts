@@ -2,8 +2,6 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 
-let buildPromise: Promise<void> | null = null;
-
 export function createE2EContext(dirName: string) {
   const binPath = path.resolve(__dirname, '../../../dist/cli/index.mjs');
   const e2eDir = path.resolve(__dirname, `../../../${dirName}`);
@@ -35,14 +33,6 @@ export function createE2EContext(dirName: string) {
   }
 
   async function setupE2E() {
-    if (!buildPromise) {
-      buildPromise = new Promise((resolve) => {
-        const build = spawn('npm', ['run', 'build']);
-        build.on('close', resolve);
-      });
-    }
-    await buildPromise;
-
     if (fs.existsSync(e2eDir)) {
       fs.rmSync(e2eDir, { recursive: true, force: true });
     }
