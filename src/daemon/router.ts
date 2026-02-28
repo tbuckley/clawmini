@@ -1,10 +1,12 @@
 import { initTRPC } from '@trpc/server';
 import { z } from 'zod';
 import fs from 'node:fs/promises';
-import { getSettingsPath } from '../shared/workspace.js';
+import { getSettingsPath, readChatSettings, writeChatSettings } from '../shared/workspace.js';
+import { CronJobSchema } from '../shared/config.js';
 import { handleUserMessage } from './message.js';
 import { getDefaultChatId } from '../shared/chats.js';
 import { spawn } from 'node:child_process';
+import { cronManager } from './cron.js';
 
 const t = initTRPC.create();
 export const router = t.router;
@@ -114,6 +116,47 @@ const AppRouter = router({
     }, 100);
     return { success: true };
   }),
+  listCronJobs: publicProcedure
+    .input(z.object({ chatId: z.string().optional() }))
+    .query(async ({ input }) => {
+      const chatId = input.chatId ?? (await getDefaultChatId());
+      const settings = await readChatSettings(chatId);
+      return settings?.jobs ?? [];
+    }),
+  addCronJob: publicProcedure
+    .input(z.object({ chatId: z.string().optional(), job: CronJobSchema }))
+    .mutation(async ({ input }) => {
+      const chatId = input.chatId ?? (await getDefaultChatId());
+      const settings = (await readChatSettings(chatId)) || {};
+      const cronJobs = settings.jobs ?? [];
+      const existingIndex = cronJobs.findIndex((j) => j.id === input.job.id);
+      if (existingIndex >= 0) {
+        cronJobs[existingIndex] = input.job;
+      } else {
+        cronJobs.push(input.job);
+      }
+      settings.jobs = cronJobs;
+      await writeChatSettings(chatId, settings);
+      cronManager.scheduleJob(chatId, input.job);
+      return { success: true };
+    }),
+  deleteCronJob: publicProcedure
+    .input(z.object({ chatId: z.string().optional(), id: z.string() }))
+    .mutation(async ({ input }) => {
+      const chatId = input.chatId ?? (await getDefaultChatId());
+      const settings = await readChatSettings(chatId);
+      if (!settings || !settings.jobs) {
+        return { success: true, deleted: false };
+      }
+      const initialLength = settings.jobs.length;
+      settings.jobs = settings.jobs.filter((j) => j.id !== input.id);
+      if (settings.jobs.length !== initialLength) {
+        await writeChatSettings(chatId, settings);
+        cronManager.unscheduleJob(chatId, input.id);
+        return { success: true, deleted: true };
+      }
+      return { success: true, deleted: false };
+    }),
 });
 
 export type AppRouter = typeof AppRouter;

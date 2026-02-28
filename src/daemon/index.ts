@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { createHTTPHandler } from '@trpc/server/adapters/standalone';
 import { appRouter } from './router.js';
 import { getSocketPath, getClawminiDir } from '../shared/workspace.js';
+import { cronManager } from './cron.js';
 
 export function initDaemon() {
   const socketPath = getSocketPath();
@@ -12,6 +13,11 @@ export function initDaemon() {
   if (!fs.existsSync(clawminiDir)) {
     throw new Error(`${clawminiDir} does not exist`);
   }
+
+  // Initialize cron jobs
+  cronManager.init().catch((err) => {
+    console.error('Failed to initialize cron manager:', err);
+  });
 
   // Ensure the old socket file is removed
   if (fs.existsSync(socketPath)) {
