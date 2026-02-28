@@ -2,7 +2,7 @@
 import schedule from 'node-schedule';
 import { listChats } from '../shared/chats.js';
 import { readChatSettings, writeChatSettings } from '../shared/workspace.js';
-import { executeDirectMessage, type RunCommandFn } from './message.js';
+import { executeDirectMessage, getInitialRouterState, type RunCommandFn } from './message.js';
 import type { CronJob, Settings } from '../shared/config.js';
 import fs from 'node:fs/promises';
 import { getSettingsPath } from '../shared/workspace.js';
@@ -114,17 +114,15 @@ export class CronManager {
         globalSettings = undefined;
       }
 
-      let sessionId = undefined;
-      if (job.session?.type === 'new') {
-        sessionId = crypto.randomUUID();
-      }
+      const overrideSessionId = job.session?.type === 'new' ? crypto.randomUUID() : undefined;
+      const routerState = await getInitialRouterState(
+        chatId,
+        job.message,
+        process.cwd(),
+        job.agentId,
+        overrideSessionId
+      );
 
-      const routerState: import('./routers/types.js').RouterState = {
-        message: job.message,
-        chatId: chatId,
-      };
-      if (job.agentId !== undefined) routerState.agentId = job.agentId;
-      if (sessionId !== undefined) routerState.sessionId = sessionId;
       if (job.env !== undefined) routerState.env = job.env;
       if (job.reply !== undefined) routerState.reply = job.reply;
 

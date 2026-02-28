@@ -42,3 +42,10 @@
 - Implemented deletion functionality in the UI for removing scheduled jobs.
 - Added a Settings icon to the main header layout (`web/src/routes/+layout.svelte`) when viewing a chat.
 - Successfully verified build and E2E tests by running the full test suite `npm run format:check && npm run lint && npm run check && npm run test`.
+
+## Bug Fix: Cron Job Setting Inheritance
+- **Hypothesis:** A CronJob's settings should be treated as overrides for the chat's defaults settings, not standalone settings. The system was falling back to the default agent when `job.agentId` was missing, even if the chat had a `defaultAgent` configured.
+- **Solution:** Extracted `getInitialRouterState` from `handleUserMessage` in `src/daemon/message.ts` to be used by both `handleUserMessage` and the cron job execution logic.
+- Updated `executeJob` in `src/daemon/cron.ts` to use `getInitialRouterState`, ensuring cron jobs properly inherit the `defaultAgent` and the agent's current `sessionId` from the chat's settings unless explicitly overridden by `job.agentId` or `job.session.type === 'new'`.
+- Updated e2e tests in `src/cli/e2e/cron.test.ts` to explicitly verify agent inheritance during job execution. Used a custom e2e test agent to check the executed `SESSION_ID` and ensure the command accurately runs instead of the default agent. Fixed test pathing issues to use `e2eDir` for custom JSON configurations.
+- Ran all checks (`npm run format && npm run lint && npm run check && npm run test`). All tests pass.

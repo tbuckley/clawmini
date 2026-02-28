@@ -254,6 +254,26 @@ export async function executeDirectMessage(
   }
 }
 
+export async function getInitialRouterState(
+  chatId: string,
+  message: string,
+  cwd: string = process.cwd(),
+  overrideAgentId?: string,
+  overrideSessionId?: string
+): Promise<RouterState> {
+  const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
+  const agentId = overrideAgentId ?? chatSettings.defaultAgent ?? 'default';
+  const sessionId = overrideSessionId ?? chatSettings.sessions?.[agentId] ?? 'default';
+
+  return {
+    message,
+    chatId,
+    agentId,
+    sessionId,
+    env: {},
+  };
+}
+
 export async function handleUserMessage(
   chatId: string,
   message: string,
@@ -266,23 +286,21 @@ export async function handleUserMessage(
 ): Promise<void> {
   const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
 
-  if (overrideAgentId) {
+  if (overrideAgentId && chatSettings.defaultAgent !== overrideAgentId) {
     chatSettings.defaultAgent = overrideAgentId;
     await writeChatSettings(chatId, chatSettings, cwd);
   }
 
-  const routers = chatSettings.routers ?? settings?.routers ?? [];
-
-  const initialAgent = chatSettings.defaultAgent ?? 'default';
-  const initialSessionId = sessionId ?? chatSettings.sessions?.[initialAgent] ?? 'default';
-
-  const initialState: RouterState = {
-    message,
+  const initialState = await getInitialRouterState(
     chatId,
-    agentId: initialAgent,
-    sessionId: initialSessionId,
-    env: {},
-  };
+    message,
+    cwd,
+    overrideAgentId,
+    sessionId
+  );
+  const initialAgent = initialState.agentId;
+
+  const routers = chatSettings.routers ?? settings?.routers ?? [];
 
   const finalState = await executeRouterPipeline(initialState, routers);
 

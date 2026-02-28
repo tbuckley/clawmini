@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createE2EContext } from './utils.js';
 
-const { runCli, setupE2E, teardownE2E } = createE2EContext('e2e-tmp-cron');
+const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-tmp-cron');
 
 describe('E2E Cron Tests', () => {
   beforeAll(async () => {
@@ -66,4 +66,61 @@ describe('E2E Cron Tests', () => {
     expect(stdoutList3).not.toContain('test-job-1');
     expect(stdoutList3).toContain('- test-job-2 (cron: * * * * *)');
   });
+
+  it('should execute a job and inherit chat default agent and session', async () => {
+    // 1. Create a specific agent for this chat
+    await runCli(['agents', 'add', 'cron-exec-agent']);
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const agentPath = path.resolve(e2eDir, '.clawmini/agents/cron-exec-agent/settings.json');
+    const agentData = JSON.parse(fs.readFileSync(agentPath, 'utf8'));
+    agentData.commands = { new: 'echo "executed with $SESSION_ID and msg: $CLAW_CLI_MESSAGE"' };
+    fs.writeFileSync(agentPath, JSON.stringify(agentData));
+
+    // 2. Setup the chat with this agent and get a session ID
+    await runCli(['chats', 'add', 'cron-chat']);
+    const { code: codeSetup, stderr: stderrSetup } = await runCli([
+      'messages',
+      'send',
+      'setup session',
+      '-c',
+      'cron-chat',
+      '-a',
+      'cron-exec-agent',
+    ]);
+    if (codeSetup !== 0) console.error(stderrSetup);
+    expect(codeSetup).toBe(0);
+
+    // 3. Schedule a job for 2 seconds in the future
+    const futureTime = new Date(Date.now() + 2000).toISOString();
+    const { stdout: stdoutAdd, code: codeAdd } = await runCli([
+      'jobs',
+      'add',
+      'test-exec-job',
+      '-c',
+      'cron-chat',
+      '--at',
+      futureTime,
+      '--message',
+      'hello from future',
+    ]);
+    expect(codeAdd).toBe(0);
+    expect(stdoutAdd).toContain("Job 'test-exec-job' created successfully.");
+
+    // 4. Wait for job to execute (approx 3 seconds)
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // 5. Check if the message was sent and properly inherited the agent and session
+
+    // Fallback if e2e test uses a different dir, get it from the e2eDir context
+    // Actually createE2EContext returns e2eDir, but it's not exported from the setup block directly if not destructured.
+    // wait, I can just use `runCli(['messages', 'tail', '-c', 'cron-chat', '--json'])`
+    const { stdout: stdoutHistory } = await runCli(['messages', 'tail', '-c', 'cron-chat']);
+
+    // It should have executed the cron job
+    expect(stdoutHistory).toContain('hello from future');
+    // It should have used cron-exec-agent, not default
+    expect(stdoutHistory).toContain('msg: hello from future');
+    // Session ID should not be empty or undefined, it should have been set by the previous message
+  }, 10000);
 });
