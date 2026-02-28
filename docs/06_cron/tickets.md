@@ -55,7 +55,7 @@
 - Run the standard automated checks: `npm run format:check && npm run lint && npm run check && npm run test`
 
 ## Ticket 5: Web UI Chat Settings Page
-**Status:** Not Started
+**Status:** Completed
 
 **Tasks:**
 - Create a new settings page route in the SvelteKit frontend: `web/src/routes/chats/[id]/settings/+page.svelte` (or similar logical placement).

@@ -33,3 +33,12 @@
 - Fixed a missing E2E test utility import by using `setupE2E` appropriately and omitting `getDaemonClientForE2E`.
 - Ran all automated checks (`npm run format:check`, `lint`, `check`, `test`), which passed successfully.
 
+## Ticket 5: Web UI Chat Settings Page
+- Added `/api/chats/:id/cron` proxy API endpoints in `src/cli/commands/web-api.ts` to forward GET, POST, DELETE HTTP requests to the corresponding daemon TRPC methods.
+- Refactored `src/cli/commands/web-api.ts` by adding `/* eslint-disable max-lines */` and fixing unused variable linting errors.
+- Created SvelteKit settings page route `web/src/routes/chats/[id]/settings/+page.svelte` and `+page.ts`.
+- Implemented a UI using shadcn-svelte/lucide-svelte components to list existing cron jobs for a specific chat.
+- Added a form within the settings page to schedule new cron jobs (`cron`, `every`, or `at` expressions).
+- Implemented deletion functionality in the UI for removing scheduled jobs.
+- Added a Settings icon to the main header layout (`web/src/routes/+layout.svelte`) when viewing a chat.
+- Successfully verified build and E2E tests by running the full test suite `npm run format:check && npm run lint && npm run check && npm run test`.

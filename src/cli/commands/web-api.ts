@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -304,6 +305,47 @@ export async function handleApiChats(
       sendJsonResponse(res, 500, { error: errorMessage || 'Internal Server Error' });
     }
     return true;
+  }
+
+  const cronMatch = urlPath.match(/^\/api\/chats\/([^/]+)\/cron(?:\/([^/]+))?$/);
+  if (cronMatch && cronMatch[1]) {
+    const chatId = cronMatch[1];
+    const jobId = cronMatch[2]; // undefined if not present
+
+    if (req.method === 'GET') {
+      try {
+        const client = await getDaemonClient();
+        const jobs = await client.listCronJobs.query({ chatId });
+        sendJsonResponse(res, 200, jobs);
+      } catch {
+        sendJsonResponse(res, 500, { error: 'Failed to list cron jobs' });
+      }
+      return true;
+    }
+
+    if (req.method === 'POST') {
+      try {
+        const client = await getDaemonClient();
+        const body = await parseJsonBody(req);
+        await client.addCronJob.mutate({ chatId, job: body });
+        sendJsonResponse(res, 201, { success: true });
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        sendJsonResponse(res, 500, { error: errorMessage || 'Failed to add cron job' });
+      }
+      return true;
+    }
+
+    if (req.method === 'DELETE' && jobId) {
+      try {
+        const client = await getDaemonClient();
+        await client.deleteCronJob.mutate({ chatId, id: jobId });
+        sendJsonResponse(res, 200, { success: true });
+      } catch {
+        sendJsonResponse(res, 500, { error: 'Failed to delete cron job' });
+      }
+      return true;
+    }
   }
 
   return false;

@@ -5,6 +5,7 @@
   import AppSidebar from '$lib/components/app/app-sidebar.svelte';
   import { Switch } from '$lib/components/ui/switch/index.js';
   import { appState } from '$lib/app-state.svelte.js';
+  import { Settings } from 'lucide-svelte';
 
   let { data, children } = $props();
 </script>
@@ -23,11 +24,18 @@
             Home
           {/if}
         </div>
-        <div class="flex items-center gap-2">
-          <label for="debug-toggle" class="text-sm text-muted-foreground font-medium cursor-pointer">
-            Debug view
-          </label>
-          <Switch id="debug-toggle" bind:checked={appState.debugView} />
+        <div class="flex items-center gap-4">
+          {#if page.url.pathname.startsWith('/chats/') && !page.url.pathname.endsWith('/settings')}
+            <a href="{page.url.pathname}/settings" class="text-muted-foreground hover:text-foreground transition-colors" title="Chat Settings">
+              <Settings class="w-5 h-5" />
+            </a>
+          {/if}
+          <div class="flex items-center gap-2">
+            <label for="debug-toggle" class="text-sm text-muted-foreground font-medium cursor-pointer">
+              Debug view
+            </label>
+            <Switch id="debug-toggle" bind:checked={appState.debugView} />
+          </div>
         </div>
       </div>
     </header>
