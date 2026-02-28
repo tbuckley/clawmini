@@ -25,8 +25,8 @@
       });
       if (!res.ok) throw new Error('Failed to delete job');
       await invalidate(`app:chat:${data.id}:cron`);
-    } catch (e: any) {
-      alert(e.message);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -64,8 +64,8 @@
       newJobType = 'cron';
       
       await invalidate(`app:chat:${data.id}:cron`);
-    } catch (e: any) {
-      errorMsg = e.message;
+    } catch (e: unknown) {
+      errorMsg = e instanceof Error ? e.message : String(e);
     } finally {
       isSubmitting = false;
     }

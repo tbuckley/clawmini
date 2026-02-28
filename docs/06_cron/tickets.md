@@ -65,3 +65,11 @@
 **Verification:**
 - Add component or E2E tests for the new UI features.
 - Run the standard automated checks: `npm run format:check && npm run lint && npm run check && npm run test`
+
+## Ticket 6: Code Review Fixes
+**Status:** Completed
+
+**Tasks:**
+- **Medium/High (DRY):** Refactor `parseEnv` and `parseSession` in `src/cli/commands/cron.ts` into a single reusable `parseKeyValueMap` function.
+- **Medium (Typing):** Fix `e: any` in catch blocks in `web/src/routes/chats/[id]/settings/+page.svelte` to use proper `unknown` type checking.
+- **Medium (Validation):** Update `CronJobSchema` in `src/shared/config.ts` to ensure `id` is a non-empty string using `.min(1)`.

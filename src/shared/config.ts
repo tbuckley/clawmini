@@ -16,7 +16,7 @@ export const AgentSchema = z.looseObject({
 export type Agent = z.infer<typeof AgentSchema>;
 
 export const CronJobSchema = z.looseObject({
-  id: z.string(),
+  id: z.string().min(1),
   message: z.string().default(''),
   reply: z.string().optional(),
   agentId: z.string().optional(),

@@ -4,28 +4,16 @@ import type { CronJob } from '../../shared/config.js';
 
 export const cronCmd = new Command('cron').description('Manage cron jobs');
 
-function parseEnv(envArray: string[] | undefined): Record<string, string> | undefined {
-  if (!envArray || envArray.length === 0) return undefined;
-  const env: Record<string, string> = {};
-  for (const e of envArray) {
-    const [key, ...rest] = e.split('=');
+function parseKeyValueArray(arr: string[] | undefined): Record<string, string> | undefined {
+  if (!arr || arr.length === 0) return undefined;
+  const result: Record<string, string> = {};
+  for (const item of arr) {
+    const [key, ...rest] = item.split('=');
     if (key && rest.length >= 0) {
-      env[key] = rest.join('=');
+      result[key] = rest.join('=');
     }
   }
-  return env;
-}
-
-function parseSession(sessionArray: string[] | undefined): Record<string, string> | undefined {
-  if (!sessionArray || sessionArray.length === 0) return undefined;
-  const session: Record<string, string> = {};
-  for (const s of sessionArray) {
-    const [key, ...rest] = s.split('=');
-    if (key && rest.length >= 0) {
-      session[key] = rest.join('=');
-    }
-  }
-  return session;
+  return result;
 }
 
 function handleError(action: string, err: unknown): never {
@@ -94,10 +82,10 @@ cronCmd
       if (options.reply) job.reply = options.reply;
       if (options.agent) job.agentId = options.agent;
 
-      const env = parseEnv(options.env);
+      const env = parseKeyValueArray(options.env);
       if (env) job.env = env;
 
-      const session = parseSession(options.session);
+      const session = parseKeyValueArray(options.session);
       if (session && session.type) {
         job.session = { type: session.type };
       }
