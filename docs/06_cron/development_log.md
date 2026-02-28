@@ -21,3 +21,15 @@
 - Handled `session.type === 'new'` by generating a temporary session ID.
 - Automatically unscheduled and removed one-off jobs (scheduled with `at`) from the chat's `settings.json` after execution.
 - Fixed exact optional property TypeScript errors and ran tests to verify core message routing behavior remains intact. All core tests passed.
+
+## Ticket 4: CLI Commands
+- Created `src/cli/commands/cron.ts` using Commander.
+- Implemented `list`, `add`, and `delete` commands communicating via TRPC.
+- Re-used `getDaemonClient()` to connect to the daemon.
+- Supported CLI options for `--at`, `--every`, `--cron`, `--message`, `--reply`, `--agent`, `--env`, and `--session`.
+- Registered the `cron` command group in `src/cli/index.ts`.
+- Added E2E tests in `src/cli/e2e/cron.test.ts`.
+- Fixed a linting issue in `src/daemon/cron.ts` by adding a description to `@ts-expect-error`.
+- Fixed a missing E2E test utility import by using `setupE2E` appropriately and omitting `getDaemonClientForE2E`.
+- Ran all automated checks (`npm run format:check`, `lint`, `check`, `test`), which passed successfully.
+

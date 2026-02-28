@@ -42,7 +42,7 @@
 - Run the standard automated checks: `npm run format:check && npm run lint && npm run check && npm run test`
 
 ## Ticket 4: CLI Commands
-**Status:** Not Started
+**Status:** Completed
 
 **Tasks:**
 - Create `src/cli/commands/cron.ts`.

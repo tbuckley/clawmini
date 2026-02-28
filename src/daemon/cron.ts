@@ -1,4 +1,4 @@
-// @ts-ignore
+// @ts-expect-error - node-schedule types are missing
 import schedule from 'node-schedule';
 import { listChats } from '../shared/chats.js';
 import { readChatSettings, writeChatSettings } from '../shared/workspace.js';
