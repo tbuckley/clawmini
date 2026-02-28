@@ -55,9 +55,14 @@ const AppRouter = router({
               env,
             });
 
-            if (stdin) {
-              p.stdin?.write(stdin);
-              p.stdin?.end();
+            if (stdin && p.stdin) {
+              p.stdin.on('error', (err) => {
+                if ((err as NodeJS.ErrnoException).code !== 'EPIPE') {
+                  console.error('stdin error:', err);
+                }
+              });
+              p.stdin.write(stdin);
+              p.stdin.end();
             }
 
             let stdout = '';

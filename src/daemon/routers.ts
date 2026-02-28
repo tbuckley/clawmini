@@ -87,7 +87,14 @@ async function executeCustomRouter(command: string, state: RouterState): Promise
       env: state.env,
     };
 
-    child.stdin.write(JSON.stringify(inputState));
-    child.stdin.end();
+    if (child.stdin) {
+      child.stdin.on('error', (err) => {
+        if ((err as NodeJS.ErrnoException).code !== 'EPIPE') {
+          console.error('stdin error:', err);
+        }
+      });
+      child.stdin.write(JSON.stringify(inputState));
+      child.stdin.end();
+    }
   });
 }
