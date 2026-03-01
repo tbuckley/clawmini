@@ -2,8 +2,9 @@ import http from 'node:http';
 import fs from 'node:fs';
 import { createHTTPHandler } from '@trpc/server/adapters/standalone';
 import { appRouter } from './router.js';
-import { getSocketPath, getClawminiDir } from '../shared/workspace.js';
+import { getSocketPath, getClawminiDir, getSettingsPath } from '../shared/workspace.js';
 import { cronManager } from './cron.js';
+import { SettingsSchema } from '../shared/config.js';
 
 export function initDaemon() {
   const socketPath = getSocketPath();
@@ -12,6 +13,31 @@ export function initDaemon() {
   // Ensure the .clawmini directory exists
   if (!fs.existsSync(clawminiDir)) {
     throw new Error(`${clawminiDir} does not exist`);
+  }
+
+  // Read settings to check if API is enabled
+  const settingsPath = getSettingsPath();
+  let apiConfig = false;
+  let apiHost = '127.0.0.1';
+  let apiPort = 3000;
+
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const settingsStr = fs.readFileSync(settingsPath, 'utf8');
+      const settings = JSON.parse(settingsStr);
+      const parsed = SettingsSchema.safeParse(settings);
+      if (parsed.success && parsed.data.api !== undefined) {
+        if (typeof parsed.data.api === 'boolean') {
+          apiConfig = parsed.data.api;
+        } else if (typeof parsed.data.api === 'object') {
+          apiConfig = true;
+          apiHost = parsed.data.api.host;
+          apiPort = parsed.data.api.port;
+        }
+      }
+    } catch (err) {
+      console.warn(`Failed to read or parse settings from ${settingsPath}:`, err);
+    }
   }
 
   // Initialize cron jobs
@@ -38,13 +64,26 @@ export function initDaemon() {
     console.log(`Daemon initialized and listening on ${socketPath}`);
   });
 
+  let apiServer: http.Server | undefined;
+  if (apiConfig) {
+    apiServer = http.createServer((req, res) => {
+      handler(req, res);
+    });
+
+    apiServer.listen(apiPort, apiHost, () => {
+      console.log(`Daemon HTTP API initialized and listening on http://${apiHost}:${apiPort}`);
+    });
+  }
+
   process.on('SIGINT', () => {
     server.close();
+    if (apiServer) apiServer.close();
     process.exit(0);
   });
 
   process.on('SIGTERM', () => {
     server.close();
+    if (apiServer) apiServer.close();
     process.exit(0);
   });
 

@@ -192,4 +192,37 @@ describe('E2E Daemon and Web Tests', () => {
     child.kill();
     await new Promise((resolve) => child.on('close', resolve));
   }, 15000);
+
+  it('should optionally start an HTTP API server for the daemon when configured', async () => {
+    await runCli(['down']);
+
+    const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
+    let originalSettings = '{}';
+    if (fs.existsSync(settingsPath)) {
+      originalSettings = fs.readFileSync(settingsPath, 'utf8');
+    }
+
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        ...JSON.parse(originalSettings),
+        api: { host: '127.0.0.1', port: 3005 },
+      })
+    );
+
+    const { stdout, code } = await runCli(['up']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('Successfully started clawmini daemon.');
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const res = await fetch('http://127.0.0.1:3005/ping');
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { result: { data: { status: string } } };
+    expect(data.result.data.status).toBe('ok');
+
+    await runCli(['down']);
+    fs.writeFileSync(settingsPath, originalSettings);
+    await runCli(['up']);
+  });
 });
