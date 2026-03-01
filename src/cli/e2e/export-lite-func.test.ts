@@ -39,12 +39,10 @@ describe('E2E Export Lite Functionality Tests', () => {
     fs.mkdirSync(envDumperAgentDir, { recursive: true });
     await runCli(['agents', 'add', 'lite-env-dumper', '--dir', 'lite-env-dumper']);
 
-        const dumperSettings = path.resolve(e2eDir, '.clawmini/agents/lite-env-dumper/settings.json');
-        fs.mkdirSync(path.dirname(dumperSettings), { recursive: true });
-        
-        const dumperScript = process.platform === 'win32' 
-          ? 'set > env.txt' 
-          : 'env > env.txt';
+    const dumperSettings = path.resolve(e2eDir, '.clawmini/agents/lite-env-dumper/settings.json');
+    fs.mkdirSync(path.dirname(dumperSettings), { recursive: true });
+
+    const dumperScript = process.platform === 'win32' ? 'set > env.txt' : 'env > env.txt';
     fs.writeFileSync(dumperSettings, JSON.stringify({ commands: { new: dumperScript } }));
 
     await runCli(['chats', 'add', 'lite-chat']);
