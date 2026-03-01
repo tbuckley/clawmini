@@ -14,3 +14,9 @@
 - Added a `visibilitychange` listener to auto-fetch deltas and reconnect the stream when the tab becomes active again.
 - Added a subtle floating indicator `Reconnecting...` when `isReconnecting` is true.
 - Ran formatting, linting, and all checks from the root directory; everything passed successfully.
+
+## Ticket 3: Offline Message Queue - Persistence & UI
+- Modified message sending logic in `web/src/routes/chats/[id]/+page.svelte` to use `localStorage` for pending messages.
+- Added UI states (`sending`, `pending`, `failed`) with `lucide-svelte` icons.
+- Handled network checks to set correct status before fetching.
+- Ran all checks and tests successfully.

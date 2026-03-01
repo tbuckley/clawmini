@@ -32,7 +32,7 @@
 **Verification:**
 - Run `npm run format:check && npm run lint && npm run check && npm run test` from the `web/` directory.
 - Send a message while offline (using browser dev tools) and verify it appears in the chat with the "Offline / Pending" state and is persisted across page reloads.
-**Status:** not started
+**Status:** complete
 
 ## Ticket 4: Offline Message Queue - Actions & Auto-Retry
 **Description:** Implement automatic and manual recovery mechanisms for offline messages.

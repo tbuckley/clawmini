@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import type { ChatMessage } from '$lib/types';
   import { invalidate } from '$app/navigation';
-  import { Send } from 'lucide-svelte';
+  import { Send, Clock, AlertCircle } from 'lucide-svelte';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Textarea } from '$lib/components/ui/textarea/index.js';
   import { tick, onMount, onDestroy } from 'svelte';
@@ -10,9 +10,17 @@
 
   let { data } = $props<{ data: PageData }>();
 
+  type PendingStatus = 'sending' | 'pending' | 'failed';
+  interface PendingMessage {
+    id: string;
+    content: string;
+    timestamp: string;
+    status: PendingStatus;
+  }
+
   let inputValue = $state('');
   let liveMessages = $state<ChatMessage[]>([]);
-  let pendingMessages = $state<{ id: string; content: string; timestamp: string }[]>([]);
+  let pendingMessages = $state<PendingMessage[]>([]);
   let chatContainer: HTMLElement | undefined = $state();
   let eventSource: EventSource | null = null;
   let isScrolledToBottom = $state(true);
@@ -34,10 +42,26 @@
   // We sync live messages with initial loaded data whenever the ID changes
   $effect(() => {
     liveMessages = data.messages as ChatMessage[];
-    pendingMessages = []; // Clear pending on chat switch
+    
+    // Load pending from local storage
+    try {
+      const stored = localStorage.getItem(`pending_messages_${data.id}`);
+      if (stored) {
+        pendingMessages = JSON.parse(stored);
+      } else {
+        pendingMessages = [];
+      }
+    } catch {
+      pendingMessages = [];
+    }
+    
     isScrolledToBottom = true;
     setupSSE(data.id);
   });
+
+  function savePendingMessages(chatId: string, messages: PendingMessage[]) {
+    localStorage.setItem(`pending_messages_${chatId}`, JSON.stringify(messages));
+  }
 
   // Auto-scroll on new messages
   $effect(() => {
@@ -145,6 +169,7 @@
             const idx = pendingMessages.findIndex(m => m.content === newMessage.content);
             if (idx !== -1) {
                pendingMessages = pendingMessages.filter((_, i) => i !== idx);
+               savePendingMessages(chatId, pendingMessages);
             }
           }
         }
@@ -168,28 +193,35 @@
     const currentInput = inputValue;
     inputValue = '';
     
-    const pendingMsg = {
+    const pendingMsg: PendingMessage = {
       id: `pending-${Date.now()}-${Math.random()}`,
       content: currentInput,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      status: navigator.onLine ? 'sending' : 'pending'
     };
     pendingMessages = [...pendingMessages, pendingMsg];
+    savePendingMessages(data.id, pendingMessages);
+
+    if (!navigator.onLine) {
+      return; // Offline, stays pending
+    }
 
     try {
-      await fetch(`/api/chats/${data.id}/messages`, {
+      const res = await fetch(`/api/chats/${data.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: currentInput })
       });
+      if (!res.ok) throw new Error('Failed to send');
+      
       // SSE should handle the incoming log and user messages now.
       // But we can still invalidate to be safe.
       await invalidate(`app:chat:${data.id}`);
     } catch (err) {
       console.error('Failed to send message:', err);
-      // Remove the specific pending message on failure
-      pendingMessages = pendingMessages.filter((m) => m.id !== pendingMsg.id);
-      // Restore input on failure
-      inputValue = currentInput;
+      // Mark as failed instead of removing
+      pendingMessages = pendingMessages.map((m) => m.id === pendingMsg.id ? { ...m, status: 'failed' } : m);
+      savePendingMessages(data.id, pendingMessages);
     }
   }
 
@@ -259,15 +291,23 @@
     {/each}
 
     {#each pendingMessages as msg (msg.id)}
-      <div class="flex flex-col gap-1 items-end opacity-50 transition-opacity">
+      <div class="flex flex-col gap-1 items-end {msg.status === 'failed' ? '' : 'opacity-50'} transition-opacity">
         <div class="flex items-baseline gap-2 max-w-[80%] flex-row-reverse">
-          <div class="px-4 py-2 rounded-2xl bg-primary text-primary-foreground text-sm" data-testid="pending-message">
+          <div class="px-4 py-2 rounded-2xl {msg.status === 'failed' ? 'bg-destructive/90 text-destructive-foreground' : 'bg-primary text-primary-foreground'} text-sm" data-testid="pending-message">
             {msg.content}
           </div>
         </div>
-        <div class="text-[10px] text-muted-foreground px-2 flex items-center gap-1">
-          <span class="inline-block w-2 h-2 rounded-full border border-current border-t-transparent animate-spin"></span>
-          Sending...
+        <div class="text-[10px] px-2 flex items-center gap-1 {msg.status === 'failed' ? 'text-destructive font-medium' : 'text-muted-foreground'}">
+          {#if msg.status === 'sending'}
+            <span class="inline-block w-2 h-2 rounded-full border border-current border-t-transparent animate-spin"></span>
+            Sending...
+          {:else if msg.status === 'pending'}
+            <Clock class="w-3 h-3" />
+            Offline / Pending
+          {:else if msg.status === 'failed'}
+            <AlertCircle class="w-3 h-3" />
+            Failed
+          {/if}
         </div>
       </div>
     {/each}
