@@ -36,7 +36,7 @@
 - Add unit tests for token generation and validation.
 - Add integration tests verifying that spawned agents receive the correct environment variables.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`
-**Status:** Not started
+**Status:** Completed
 
 ## Step 4: `clawmini export-lite` Command
 **Description:** Add a new CLI command to export the standalone `clawmini-lite` client script.

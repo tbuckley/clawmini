@@ -5,6 +5,7 @@ import { appRouter } from './router.js';
 import { getSocketPath, getClawminiDir, getSettingsPath } from '../shared/workspace.js';
 import { cronManager } from './cron.js';
 import { SettingsSchema } from '../shared/config.js';
+import { validateToken } from './auth.js';
 
 export function initDaemon() {
   const socketPath = getSocketPath();
@@ -52,7 +53,7 @@ export function initDaemon() {
 
   const handler = createHTTPHandler({
     router: appRouter,
-    createContext: () => ({}),
+    createContext: ({ req, res }) => ({ req, res, isApiServer: false }),
   });
 
   const server = http.createServer((req, res) => {
@@ -66,8 +67,21 @@ export function initDaemon() {
 
   let apiServer: http.Server | undefined;
   if (apiConfig) {
+    const apiHandler = createHTTPHandler({
+      router: appRouter,
+      createContext: ({ req, res }) => {
+        let tokenPayload = null;
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.substring(7);
+          tokenPayload = validateToken(token);
+        }
+        return { req, res, isApiServer: true, tokenPayload };
+      },
+    });
+
     apiServer = http.createServer((req, res) => {
-      handler(req, res);
+      apiHandler(req, res);
     });
 
     apiServer.listen(apiPort, apiHost, () => {

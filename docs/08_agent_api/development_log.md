@@ -16,3 +16,15 @@
 - Added a new e2e test in `src/cli/e2e/daemon.test.ts` that configures `api` in `settings.json`, restarts the daemon, and checks the HTTP endpoint via a simple `/ping` request.
 - Ran formatting, linting, and all tests via `npm run format:check && npm run lint && npm run check && npm run test`, ensuring all verification checks pass.
 - Step 2 complete.
+
+## Step 3: Agent Execution Context & Token Security
+- Started work on Step 3.
+- Implemented `src/daemon/auth.ts` to generate and validate `CLAW_API_TOKEN` using `crypto.createHmac`. 
+- Updated `src/daemon/router.ts` with `Context` resolving `isApiServer` and `tokenPayload`.
+- Implemented `apiAuthMiddleware` in `src/daemon/router.ts` to require and validate auth tokens for HTTP API requests.
+- Updated endpoints in `src/daemon/router.ts` to use `apiProcedure` and explicitly check if the agent context matches the requested `chatId` using `checkScope()`.
+- Added logic in `src/daemon/message.ts` to inject `CLAW_API_URL` and `CLAW_API_TOKEN` into the environment of the executed agent process when the API is enabled in settings.
+- Added unit tests in `src/daemon/auth.test.ts`.
+- Added integration tests in `src/cli/e2e/daemon.test.ts` to verify the environment injection for spawned agents.
+- All code checks pass successfully.
+- Step 3 complete.

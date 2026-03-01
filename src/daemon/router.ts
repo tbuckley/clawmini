@@ -1,4 +1,4 @@
-import { initTRPC } from '@trpc/server';
+import { initTRPC, TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import fs from 'node:fs/promises';
 import { getSettingsPath, readChatSettings, writeChatSettings } from '../shared/workspace.js';
@@ -7,13 +7,46 @@ import { handleUserMessage } from './message.js';
 import { getDefaultChatId } from '../shared/chats.js';
 import { spawn } from 'node:child_process';
 import { cronManager } from './cron.js';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { TokenPayload } from './auth.js';
 
-const t = initTRPC.create();
+export interface Context {
+  req?: IncomingMessage | undefined;
+  res?: ServerResponse | undefined;
+  isApiServer?: boolean | undefined;
+  tokenPayload?: TokenPayload | null | undefined;
+}
+
+const t = initTRPC.context<Context>().create();
 export const router = t.router;
 export const publicProcedure = t.procedure;
 
+const apiAuthMiddleware = t.middleware(({ ctx, next }) => {
+  if (ctx.isApiServer) {
+    if (!ctx.tokenPayload) {
+      throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing or invalid token' });
+    }
+  }
+  return next({
+    ctx: {
+      ...ctx,
+      tokenPayload: ctx.tokenPayload,
+    },
+  });
+});
+
+export const apiProcedure = t.procedure.use(apiAuthMiddleware);
+
+function checkScope(ctx: Context, chatId: string) {
+  if (ctx.isApiServer && ctx.tokenPayload) {
+    if (ctx.tokenPayload.chatId !== chatId) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'Token not authorized for this chat' });
+    }
+  }
+}
+
 const AppRouter = router({
-  sendMessage: publicProcedure
+  sendMessage: apiProcedure
     .input(
       z.object({
         type: z.literal('send-message'),
@@ -27,9 +60,10 @@ const AppRouter = router({
         }),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const message = input.data.message;
       const chatId = input.data.chatId ?? (await getDefaultChatId());
+      checkScope(ctx, chatId);
       const noWait = input.data.noWait ?? false;
       const sessionId = input.data.sessionId;
       const agentId = input.data.agentId;
@@ -116,17 +150,19 @@ const AppRouter = router({
     }, 100);
     return { success: true };
   }),
-  listCronJobs: publicProcedure
+  listCronJobs: apiProcedure
     .input(z.object({ chatId: z.string().optional() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const chatId = input.chatId ?? (await getDefaultChatId());
+      checkScope(ctx, chatId);
       const settings = await readChatSettings(chatId);
       return settings?.jobs ?? [];
     }),
-  addCronJob: publicProcedure
+  addCronJob: apiProcedure
     .input(z.object({ chatId: z.string().optional(), job: CronJobSchema }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const chatId = input.chatId ?? (await getDefaultChatId());
+      checkScope(ctx, chatId);
       const settings = (await readChatSettings(chatId)) || {};
       const cronJobs = settings.jobs ?? [];
       const existingIndex = cronJobs.findIndex((j) => j.id === input.job.id);
@@ -140,10 +176,11 @@ const AppRouter = router({
       cronManager.scheduleJob(chatId, input.job);
       return { success: true };
     }),
-  deleteCronJob: publicProcedure
+  deleteCronJob: apiProcedure
     .input(z.object({ chatId: z.string().optional(), id: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const chatId = input.chatId ?? (await getDefaultChatId());
+      checkScope(ctx, chatId);
       const settings = await readChatSettings(chatId);
       if (!settings || !settings.jobs) {
         return { success: true, deleted: false };

@@ -225,4 +225,61 @@ describe('E2E Daemon and Web Tests', () => {
     fs.writeFileSync(settingsPath, originalSettings);
     await runCli(['up']);
   });
+
+  it('should inject CLAW_API_URL and CLAW_API_TOKEN into spawned agents when API is enabled', async () => {
+    await runCli(['down']);
+    const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
+    let originalSettings = '{}';
+    if (fs.existsSync(settingsPath)) {
+      originalSettings = fs.readFileSync(settingsPath, 'utf8');
+    }
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        ...JSON.parse(originalSettings),
+        api: { host: '127.0.0.1', port: 3006 },
+      })
+    );
+    await runCli(['up']);
+
+    await runCli(['agents', 'add', 'env-dumper', '--dir', 'env-dumper']);
+    const envDumperSettingsPath = path.resolve(e2eDir, '.clawmini/agents/env-dumper/settings.json');
+    fs.mkdirSync(path.dirname(envDumperSettingsPath), { recursive: true });
+    
+    // Create the actual agent working directory so spawn doesn't fail with ENOENT
+    const agentWorkingDir = path.resolve(e2eDir, 'env-dumper');
+    fs.mkdirSync(agentWorkingDir, { recursive: true });
+
+    fs.writeFileSync(
+      envDumperSettingsPath,
+      JSON.stringify({
+        commands: {
+          new: process.platform === 'win32' ? 'set' : 'env',
+        },
+      })
+    );
+
+    await runCli(['chats', 'add', 'env-chat']);
+    const { stdout, stderr, code } = await runCli(['messages', 'send', 'dump it', '--chat', 'env-chat', '--agent', 'env-dumper']);
+    if (code !== 0) {
+      console.error('send failed:', stdout, stderr);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/env-chat/chat.jsonl');
+    expect(fs.existsSync(chatLogPath)).toBe(true);
+    const chatLogContent = fs.readFileSync(chatLogPath, 'utf8');
+
+    if (!chatLogContent.includes('CLAW_API_URL')) {
+      console.error('CHAT LOG:', chatLogContent);
+    }
+
+    expect(chatLogContent).toContain('CLAW_API_URL=http://127.0.0.1:3006');
+    expect(chatLogContent).toContain('CLAW_API_TOKEN=');
+
+    await runCli(['down']);
+    fs.writeFileSync(settingsPath, originalSettings);
+    await runCli(['up']);
+  });
 });
