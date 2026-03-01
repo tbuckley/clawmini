@@ -11,7 +11,7 @@
 - Add/update tests for config parsing to ensure the new `api` property is handled correctly.
 **Verification:**
 - Run `npm run format:check && npm run lint && npm run check && npm run test`
-**Status:** Not started
+**Status:** Completed
 
 ## Step 2: Daemon HTTP Server
 **Description:** Optionally start an HTTP server in the daemon to expose the tRPC router based on configuration.
