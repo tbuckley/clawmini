@@ -26,6 +26,53 @@
   let isScrolledToBottom = $state(true);
   let isReconnecting = $state(false);
   let reconnectTimeout: ReturnType<typeof setTimeout>;
+  let activeActionId = $state<string | null>(null);
+
+  async function retryMessage(msgId: string) {
+    const msgIndex = pendingMessages.findIndex(m => m.id === msgId);
+    if (msgIndex === -1) return;
+    
+    pendingMessages[msgIndex].status = 'sending';
+    savePendingMessages(data.id, pendingMessages);
+
+    try {
+      const res = await fetch(`/api/chats/${data.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: pendingMessages[msgIndex].content })
+      });
+      if (!res.ok) throw new Error('Failed to send');
+      
+      await invalidate(`app:chat:${data.id}`);
+    } catch (err) {
+      console.error('Failed to retry message:', err);
+      const idx = pendingMessages.findIndex(m => m.id === msgId);
+      if (idx !== -1) {
+        pendingMessages[idx].status = 'failed';
+        savePendingMessages(data.id, pendingMessages);
+      }
+    }
+  }
+
+  function deleteMessage(msgId: string) {
+    pendingMessages = pendingMessages.filter(m => m.id !== msgId);
+    savePendingMessages(data.id, pendingMessages);
+  }
+
+  $effect(() => {
+    const handleOnline = () => {
+      pendingMessages.forEach((msg) => {
+        if (msg.status === 'pending' || msg.status === 'failed') {
+          retryMessage(msg.id);
+        }
+      });
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  });
 
   function checkScroll(e: Event) {
     const target = e.target as HTMLElement;
@@ -291,12 +338,19 @@
     {/each}
 
     {#each pendingMessages as msg (msg.id)}
-      <div class="flex flex-col gap-1 items-end {msg.status === 'failed' ? '' : 'opacity-50'} transition-opacity">
-        <div class="flex items-baseline gap-2 max-w-[80%] flex-row-reverse">
+      <div class="flex flex-col gap-1 items-end {msg.status === 'sending' ? 'opacity-50' : ''} transition-opacity">
+        <button
+          class="flex items-baseline gap-2 max-w-[80%] flex-row-reverse text-left focus:outline-none"
+          onclick={() => {
+            if (msg.status !== 'sending') {
+              activeActionId = activeActionId === msg.id ? null : msg.id;
+            }
+          }}
+        >
           <div class="px-4 py-2 rounded-2xl {msg.status === 'failed' ? 'bg-destructive/90 text-destructive-foreground' : 'bg-primary text-primary-foreground'} text-sm" data-testid="pending-message">
             {msg.content}
           </div>
-        </div>
+        </button>
         <div class="text-[10px] px-2 flex items-center gap-1 {msg.status === 'failed' ? 'text-destructive font-medium' : 'text-muted-foreground'}">
           {#if msg.status === 'sending'}
             <span class="inline-block w-2 h-2 rounded-full border border-current border-t-transparent animate-spin"></span>
@@ -309,6 +363,13 @@
             Failed
           {/if}
         </div>
+        {#if activeActionId === msg.id && msg.status !== 'sending'}
+          <div class="flex items-center gap-2 mt-1 mr-2 bg-card border rounded-md p-1 shadow-sm text-xs">
+            <button class="px-2 py-1 hover:bg-muted rounded text-primary transition-colors focus:outline-none" onclick={(e) => { e.stopPropagation(); activeActionId = null; retryMessage(msg.id); }}>Retry manual send</button>
+            <div class="w-px h-3 bg-border"></div>
+            <button class="px-2 py-1 hover:bg-muted rounded text-destructive transition-colors focus:outline-none" onclick={(e) => { e.stopPropagation(); activeActionId = null; deleteMessage(msg.id); }}>Delete message</button>
+          </div>
+        {/if}
       </div>
     {/each}
     </div>

@@ -45,4 +45,4 @@
 - Run `npm run format:check && npm run lint && npm run check && npm run test` from the `web/` directory.
 - Test sending offline, then coming online to verify automatic retry.
 - Test manual retry and deletion of a pending message.
-**Status:** not started
+**Status:** complete

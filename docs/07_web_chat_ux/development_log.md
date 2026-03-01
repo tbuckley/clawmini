@@ -20,3 +20,11 @@
 - Added UI states (`sending`, `pending`, `failed`) with `lucide-svelte` icons.
 - Handled network checks to set correct status before fetching.
 - Ran all checks and tests successfully.
+
+## Ticket 4: Offline Message Queue - Actions & Auto-Retry
+- Added `retryMessage` and `deleteMessage` helper functions to manage offline pending messages.
+- Used an `$effect` block listening to the `window` `online` event to automatically trigger retries for messages in `pending` or `failed` state.
+- Updated pending message UI to be interactive (`<button>` wrapper).
+- Added a state tracker `activeActionId` to show an inline sub-menu when clicking a pending or failed message.
+- The sub-menu allows manual "Retry manual send" and "Delete message" actions.
+- Ran formatting, linting, type checks, and tests from the root workspace; everything passed successfully.
