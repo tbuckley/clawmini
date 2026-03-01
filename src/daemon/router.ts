@@ -40,6 +40,7 @@ export const apiProcedure = t.procedure.use(apiAuthMiddleware);
 function checkScope(ctx: Context, chatId: string) {
   if (ctx.isApiServer && ctx.tokenPayload) {
     if (ctx.tokenPayload.chatId !== chatId) {
+      console.error(`checkScope failed! token.chatId=${ctx.tokenPayload.chatId}, requested chatId=${chatId}`);
       throw new TRPCError({ code: 'FORBIDDEN', message: 'Token not authorized for this chat' });
     }
   }
@@ -150,10 +151,40 @@ const AppRouter = router({
     }, 100);
     return { success: true };
   }),
+  logMessage: apiProcedure
+    .input(
+      z.object({
+        chatId: z.string().optional(),
+        message: z.string(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const chatId = input.chatId ?? (ctx.isApiServer && ctx.tokenPayload ? ctx.tokenPayload.chatId : await getDefaultChatId());
+      checkScope(ctx, chatId);
+      const timestamp = new Date().toISOString();
+      const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
+
+      const logMsg: import('../shared/chats.js').CommandLogMessage = {
+        id,
+        messageId: id,
+        role: 'log',
+        source: 'router',
+        content: input.message,
+        stderr: '',
+        timestamp,
+        command: 'clawmini-lite log',
+        cwd: process.cwd(),
+        exitCode: 0,
+        stdout: input.message,
+      };
+
+      await import('../shared/chats.js').then((m) => m.appendMessage(chatId, logMsg));
+      return { success: true };
+    }),
   listCronJobs: apiProcedure
     .input(z.object({ chatId: z.string().optional() }))
     .query(async ({ input, ctx }) => {
-      const chatId = input.chatId ?? (await getDefaultChatId());
+      const chatId = input.chatId ?? (ctx.isApiServer && ctx.tokenPayload ? ctx.tokenPayload.chatId : await getDefaultChatId());
       checkScope(ctx, chatId);
       const settings = await readChatSettings(chatId);
       return settings?.jobs ?? [];
@@ -161,7 +192,7 @@ const AppRouter = router({
   addCronJob: apiProcedure
     .input(z.object({ chatId: z.string().optional(), job: CronJobSchema }))
     .mutation(async ({ input, ctx }) => {
-      const chatId = input.chatId ?? (await getDefaultChatId());
+      const chatId = input.chatId ?? (ctx.isApiServer && ctx.tokenPayload ? ctx.tokenPayload.chatId : await getDefaultChatId());
       checkScope(ctx, chatId);
       const settings = (await readChatSettings(chatId)) || {};
       const cronJobs = settings.jobs ?? [];
@@ -179,7 +210,7 @@ const AppRouter = router({
   deleteCronJob: apiProcedure
     .input(z.object({ chatId: z.string().optional(), id: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      const chatId = input.chatId ?? (await getDefaultChatId());
+      const chatId = input.chatId ?? (ctx.isApiServer && ctx.tokenPayload ? ctx.tokenPayload.chatId : await getDefaultChatId());
       checkScope(ctx, chatId);
       const settings = await readChatSettings(chatId);
       if (!settings || !settings.jobs) {

@@ -38,3 +38,15 @@
 - Created e2e CLI tests in `src/cli/e2e/export-lite.test.ts` to verify output correctly saves to file paths or stdout.
 - Ran all verification steps successfully with `npm run format:check && npm run lint && npm run check && npm run test`.
 - Step 4 complete.
+
+## Step 5: `clawmini-lite` Client Functionality
+- Started work on Step 5.
+- Added a new `logMessage` endpoint to `src/daemon/router.ts` to allow agents to append a log message to the chat.
+- Updated `logMessage`, `listCronJobs`, `addCronJob`, and `deleteCronJob` in `src/daemon/router.ts` to automatically infer the `chatId` from the agent's authentication token (`ctx.tokenPayload.chatId`) if not explicitly provided over HTTP API requests.
+- Updated `liteScriptContent` in `src/cli/commands/export-lite.ts` to implement full `clawmini-lite` functionality.
+- Created a robust zero-dependency script parser inside `clawmini-lite` that handles `--flags` properly.
+- Implemented batched syntax for GET requests and proper body parsing for POST requests within `trpcCall`.
+- Supported subcommands: `log <message>`, `jobs list`, `jobs add`, `jobs delete`.
+- Created an end-to-end functionality test `src/cli/e2e/export-lite-func.test.ts` to verify `clawmini-lite` interacts seamlessly with the daemon HTTP API.
+- Verified everything with formatting, linting, type checks, and tests: `npm run format:check && npm run lint && npm run check && npm run test`. All 95 tests pass.
+- Step 5 complete.

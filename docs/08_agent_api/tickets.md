@@ -62,4 +62,4 @@
 **Verification:**
 - Add e2e tests that execute the exported `clawmini-lite` script as a subprocess against a running daemon HTTP server to verify all subcommands work correctly.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`
-**Status:** Not started
+**Status:** Completed
