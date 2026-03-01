@@ -21,7 +21,7 @@
 **Verification:**
 - Run `npm run format:check && npm run lint && npm run check && npm run test` from the `web/` directory.
 - Simulate network disconnects and backgrounding the tab to verify SSE reconnection and delta message fetching.
-**Status:** not started
+**Status:** complete
 
 ## Ticket 3: Offline Message Queue - Persistence & UI
 **Description:** Implement the foundational logic for sending messages while offline and displaying their status.

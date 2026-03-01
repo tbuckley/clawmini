@@ -16,6 +16,8 @@
   let chatContainer: HTMLElement | undefined = $state();
   let eventSource: EventSource | null = null;
   let isScrolledToBottom = $state(true);
+  let isReconnecting = $state(false);
+  let reconnectTimeout: ReturnType<typeof setTimeout>;
 
   function checkScroll(e: Event) {
     const target = e.target as HTMLElement;
@@ -70,11 +72,67 @@
     };
   });
 
+  async function fetchDeltaMessages() {
+    const lastMsgId = liveMessages.length > 0 ? liveMessages[liveMessages.length - 1].id : null;
+    if (lastMsgId) {
+      try {
+        const res = await fetch(`/api/chats/${data.id}?since=${lastMsgId}`);
+        if (res.ok) {
+          const newMessages: ChatMessage[] = await res.json();
+          for (const msg of newMessages) {
+            if (!liveMessages.find((m) => m.id === msg.id)) {
+              liveMessages = [...liveMessages, msg];
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch delta messages:', e);
+      }
+    } else {
+      await invalidate(`app:chat:${data.id}`);
+    }
+  }
+
+  $effect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchDeltaMessages();
+        if (!eventSource || eventSource.readyState === EventSource.CLOSED) {
+          setupSSE(data.id);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  });
+
   function setupSSE(chatId: string) {
     if (eventSource) {
       eventSource.close();
+      clearTimeout(reconnectTimeout);
     }
+    
     eventSource = new EventSource(`/api/chats/${chatId}/stream`);
+    
+    eventSource.onopen = () => {
+      isReconnecting = false;
+    };
+
+    eventSource.onerror = () => {
+      if (eventSource?.readyState === EventSource.CLOSED || eventSource?.readyState === EventSource.CONNECTING) {
+        isReconnecting = true;
+        eventSource.close();
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = setTimeout(async () => {
+          await fetchDeltaMessages();
+          setupSSE(chatId);
+        }, 3000);
+      }
+    };
+
     eventSource.onmessage = (event) => {
       try {
         const newMessage = JSON.parse(event.data);
@@ -100,6 +158,7 @@
     if (eventSource) {
       eventSource.close();
     }
+    clearTimeout(reconnectTimeout);
   });
 
   async function sendMessage(e: Event) {
@@ -139,7 +198,14 @@
   }
 </script>
 
-<div class="flex flex-col flex-1 h-full overflow-hidden">
+<div class="flex flex-col flex-1 h-full overflow-hidden relative">
+  {#if isReconnecting}
+    <div class="absolute top-4 left-1/2 -translate-x-1/2 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 text-xs px-3 py-1 rounded-full border border-yellow-500/20 backdrop-blur-sm shadow-sm z-10 flex items-center gap-2">
+      <span class="inline-block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin"></span>
+      Reconnecting...
+    </div>
+  {/if}
+
   <div bind:this={chatContainer} onscroll={checkScroll} class="flex-1 overflow-y-auto p-4">
     <div class="w-full max-w-4xl mx-auto space-y-6 flex flex-col min-h-full">
       {#if liveMessages.length === 0}

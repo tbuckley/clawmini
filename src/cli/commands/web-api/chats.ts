@@ -50,7 +50,18 @@ export async function handleApiChats(
   if (req.method === 'GET' && chatMatch && chatMatch[1]) {
     const chatId = chatMatch[1];
     try {
-      const messages = await getMessages(chatId);
+      const url = new URL(req.url || '', `http://${req.headers.host}`);
+      const since = url.searchParams.get('since');
+
+      let messages = await getMessages(chatId);
+
+      if (since) {
+        const sinceIndex = messages.findIndex((m) => m.id === since);
+        if (sinceIndex !== -1) {
+          messages = messages.slice(sinceIndex + 1);
+        }
+      }
+
       sendJsonResponse(res, 200, messages);
     } catch {
       sendJsonResponse(res, 404, { error: 'Chat not found' });
