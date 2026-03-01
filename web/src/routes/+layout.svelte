@@ -10,7 +10,7 @@
   let { data, children } = $props();
 </script>
 
-<Sidebar.Provider class="h-svh overflow-hidden">
+<Sidebar.Provider class="h-[100dvh] overflow-hidden">
   <AppSidebar chats={data.chats} agents={data.agents} currentPath={page.url.pathname} />
 
   <Sidebar.Inset>
