@@ -28,3 +28,13 @@
 - Added integration tests in `src/cli/e2e/daemon.test.ts` to verify the environment injection for spawned agents.
 - All code checks pass successfully.
 - Step 3 complete.
+
+## Step 4: `clawmini export-lite` Command
+- Started work on Step 4.
+- Implemented a new command `export-lite` in `src/cli/commands/export-lite.ts`.
+- Added the basic script content for `clawmini-lite.js` checking for `CLAW_API_URL` and `CLAW_API_TOKEN`.
+- Bound the command in `src/cli/index.ts`.
+- Supported saving to the current directory, a specific path via `--out`, and outputting to stdout via `--stdout`.
+- Created e2e CLI tests in `src/cli/e2e/export-lite.test.ts` to verify output correctly saves to file paths or stdout.
+- Ran all verification steps successfully with `npm run format:check && npm run lint && npm run check && npm run test`.
+- Step 4 complete.

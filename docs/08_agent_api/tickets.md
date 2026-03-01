@@ -47,7 +47,7 @@
 **Verification:**
 - Add CLI tests to verify `clawmini export-lite` correctly writes the script file or outputs to stdout.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`
-**Status:** Not started
+**Status:** Completed
 
 ## Step 5: `clawmini-lite` Client Functionality
 **Description:** Implement the functionality within the exported `clawmini-lite` script.

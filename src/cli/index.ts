@@ -8,6 +8,7 @@ import { downCmd } from './commands/down.js';
 import { upCmd } from './commands/up.js';
 import { webCmd } from './commands/web.js';
 import { jobsCmd } from './commands/jobs.js';
+import { exportLiteCmd } from './commands/export-lite.js';
 
 const program = new Command();
 
@@ -21,5 +22,6 @@ program.addCommand(downCmd);
 program.addCommand(upCmd);
 program.addCommand(webCmd);
 program.addCommand(jobsCmd);
+program.addCommand(exportLiteCmd);
 
 program.parse();

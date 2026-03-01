@@ -245,7 +245,7 @@ describe('E2E Daemon and Web Tests', () => {
     await runCli(['agents', 'add', 'env-dumper', '--dir', 'env-dumper']);
     const envDumperSettingsPath = path.resolve(e2eDir, '.clawmini/agents/env-dumper/settings.json');
     fs.mkdirSync(path.dirname(envDumperSettingsPath), { recursive: true });
-    
+
     // Create the actual agent working directory so spawn doesn't fail with ENOENT
     const agentWorkingDir = path.resolve(e2eDir, 'env-dumper');
     fs.mkdirSync(agentWorkingDir, { recursive: true });
@@ -260,7 +260,15 @@ describe('E2E Daemon and Web Tests', () => {
     );
 
     await runCli(['chats', 'add', 'env-chat']);
-    const { stdout, stderr, code } = await runCli(['messages', 'send', 'dump it', '--chat', 'env-chat', '--agent', 'env-dumper']);
+    const { stdout, stderr, code } = await runCli([
+      'messages',
+      'send',
+      'dump it',
+      '--chat',
+      'env-chat',
+      '--agent',
+      'env-dumper',
+    ]);
     if (code !== 0) {
       console.error('send failed:', stdout, stderr);
     }
