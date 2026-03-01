@@ -9,7 +9,7 @@
 **Verification:** 
 - Run `npm run format:check && npm run lint && npm run check && npm run test` from the `web/` directory.
 - Manually test input focus and keyboard appearance on a mobile device or simulator to ensure header and input remain fully visible.
-**Status:** not started
+**Status:** complete
 
 ## Ticket 2: State Sync and Background Recovery
 **Description:** Ensure chat data remains fresh when the user navigates away and returns, or when the connection drops.

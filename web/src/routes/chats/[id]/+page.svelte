@@ -53,6 +53,23 @@
     }
   });
 
+  // Keep scrolled to bottom on window or visualViewport resize (e.g., keyboard toggle)
+  $effect(() => {
+    const handleResize = () => {
+      if (isScrolledToBottom) {
+        scrollToBottom();
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    window.visualViewport?.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.visualViewport?.removeEventListener('resize', handleResize);
+    };
+  });
+
   function setupSSE(chatId: string) {
     if (eventSource) {
       eventSource.close();
