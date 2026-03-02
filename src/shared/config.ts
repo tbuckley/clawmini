@@ -55,6 +55,16 @@ export const SettingsSchema = z.looseObject({
     .optional(),
   defaultAgent: AgentSchema.optional(),
   routers: z.array(z.string()).optional(),
+  api: z
+    .union([
+      z.boolean(),
+      z.looseObject({
+        host: z.string().optional(),
+        port: z.number().optional(),
+        proxy_host: z.string().optional(),
+      }),
+    ])
+    .optional(),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;

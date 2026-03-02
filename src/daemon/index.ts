@@ -2,8 +2,10 @@ import http from 'node:http';
 import fs from 'node:fs';
 import { createHTTPHandler } from '@trpc/server/adapters/standalone';
 import { appRouter } from './router.js';
-import { getSocketPath, getClawminiDir } from '../shared/workspace.js';
+import { getSocketPath, getClawminiDir, getSettingsPath } from '../shared/workspace.js';
 import { cronManager } from './cron.js';
+import { SettingsSchema } from '../shared/config.js';
+import { validateToken, getApiContext } from './auth.js';
 
 export function initDaemon() {
   const socketPath = getSocketPath();
@@ -12,6 +14,23 @@ export function initDaemon() {
   // Ensure the .clawmini directory exists
   if (!fs.existsSync(clawminiDir)) {
     throw new Error(`${clawminiDir} does not exist`);
+  }
+
+  // Read settings to check if API is enabled
+  const settingsPath = getSettingsPath();
+  let apiCtx: ReturnType<typeof getApiContext> = null;
+
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const settingsStr = fs.readFileSync(settingsPath, 'utf8');
+      const settings = JSON.parse(settingsStr);
+      const parsed = SettingsSchema.safeParse(settings);
+      if (parsed.success) {
+        apiCtx = getApiContext(parsed.data);
+      }
+    } catch (err) {
+      console.warn(`Failed to read or parse settings from ${settingsPath}:`, err);
+    }
   }
 
   // Initialize cron jobs
@@ -26,7 +45,7 @@ export function initDaemon() {
 
   const handler = createHTTPHandler({
     router: appRouter,
-    createContext: () => ({}),
+    createContext: ({ req, res }) => ({ req, res, isApiServer: false }),
   });
 
   const server = http.createServer((req, res) => {
@@ -38,13 +57,41 @@ export function initDaemon() {
     console.log(`Daemon initialized and listening on ${socketPath}`);
   });
 
+  let apiServer: http.Server | undefined;
+  if (apiCtx) {
+    const apiHandler = createHTTPHandler({
+      router: appRouter,
+      createContext: ({ req, res }) => {
+        let tokenPayload = null;
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.substring(7);
+          tokenPayload = validateToken(token);
+        }
+        return { req, res, isApiServer: true, tokenPayload };
+      },
+    });
+
+    apiServer = http.createServer((req, res) => {
+      apiHandler(req, res);
+    });
+
+    const host = apiCtx.host;
+    const port = apiCtx.port;
+    apiServer.listen(port, host, () => {
+      console.log(`Daemon HTTP API initialized and listening on http://${host}:${port}`);
+    });
+  }
+
   process.on('SIGINT', () => {
     server.close();
+    if (apiServer) apiServer.close();
     process.exit(0);
   });
 
   process.on('SIGTERM', () => {
     server.close();
+    if (apiServer) apiServer.close();
     process.exit(0);
   });
 

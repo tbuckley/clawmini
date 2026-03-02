@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import path from 'node:path';
 import { appendMessage, type UserMessage, type CommandLogMessage } from '../shared/chats.js';
 import { getQueue } from './queue.js';
@@ -12,6 +13,7 @@ import {
   getAgent,
   getWorkspaceRoot,
 } from '../shared/workspace.js';
+import { getApiContext, generateToken } from './auth.js';
 
 export type RunCommandResult = {
   stdout: string;
@@ -183,6 +185,21 @@ export async function executeDirectMessage(
     );
 
     Object.assign(env, routerEnv);
+
+    const apiCtx = getApiContext(settings);
+    if (apiCtx) {
+      if (apiCtx.proxy_host) {
+        env['CLAW_API_URL'] = `${apiCtx.proxy_host}:${apiCtx.port}`;
+      } else {
+        env['CLAW_API_URL'] = `http://${apiCtx.host}:${apiCtx.port}`;
+      }
+      env['CLAW_API_TOKEN'] = generateToken({
+        chatId,
+        agentId,
+        sessionId: finalSessionId,
+        timestamp: Date.now(),
+      });
+    }
 
     const mainResult = await runCommand({ command, cwd: executionCwd, env });
 

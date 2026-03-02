@@ -1,0 +1,14 @@
+# Agent API Questions
+
+1. **Authentication/Security:** Since the TCP web server might be exposed on `0.0.0.0` (to allow VM/Docker access), should the daemon generate a secure, random token (e.g., `CLAW_API_TOKEN`) passed to the agent's environment? This would prevent unauthorized access to the daemon from other local processes or network devices.
+   - **Answer:** Yes. The daemon will inject a single `CLAW_API_TOKEN` which encodes the chat ID, agent ID, and creation time, serving both as authentication and context payload.
+2. **API Protocol:** `clawmini-lite` will be a minimal shell script using `curl`. Should the web server expose a simple REST API (e.g., `POST /api/v1/jobs`) instead of tRPC, to make it easier to construct payloads via bash?
+   - **Answer:** We should make `clawmini-lite` a Node.js script (with a shebang) instead of a bash script. This will allow the script to be more complex, use tRPC natively, and easily scale as the API surface grows over time.
+3. **Environment Variable Naming:** You suggested `$CHAT_ID` and `$AGENT_ID`. To avoid collision with existing variables and stay consistent with `$CLAW_CLI_MESSAGE`, should we prefix them as `$CLAW_CHAT_ID` and `$CLAW_AGENT_ID`?
+   - **Answer:** We will use a single token (e.g., `CLAW_API_TOKEN`) that encodes all relevant context (chat id, agent id, message id, timestamp, etc.). This token will be encrypted or signed to prevent spoofing, simplifying the environment setup to just this one variable. The web server's address will be passed as `CLAW_API_URL`.
+4. **Distribution of clawmini-lite:** How should sandboxed agents acquire the `clawmini-lite` node script? Should the CLI offer a command like `clawmini lite-script` that outputs the script content so users can easily pipe it into their Docker build/sandbox setup?
+   - **Answer:** Yes, a command like `clawmini export-lite` (or similar) will write `clawmini-lite` to the current directory by default, allow an optional output path, or allow printing to stdout.
+5. **Web API Port Configuration:** In `.clawmini/settings.json`, what should the configuration key look like for starting the HTTP server? Something like `"api": { "host": "127.0.0.1", "port": 3000 }`? Should the web server start by default, or only if this configuration exists?
+   - **Answer:** The `api` configuration in `settings.json` should be `false` by default. Setting it to `true` enables it on localhost on a default port. Users can also provide an object `{ host?: string, port?: string | number }` to override defaults.
+6. **Log Message Action:** You mentioned "adding a log message to the chat". Does this mean appending text to the chat's Markdown log file directly, or does it mean inserting a system message/event into the stream?
+   - **Answer:** It means adding a message of `{type: "log"}` directly to the chat's markdown log.

@@ -1,0 +1,104 @@
+# Agent API Tickets
+
+## Step 1: Configuration Updates
+**Description:** Update the global settings schema to support the new `api` configuration option.
+**Tasks:**
+- Modify `src/shared/config.ts` (or relevant config file) to add an `api` property to the `SettingsSchema`.
+- The `api` property should accept:
+  - `false` (default): Web server does not start.
+  - `true`: Web server starts on `127.0.0.1:3000` (or similar default).
+  - An object `{ host: string, port: number }`: Web server starts on the specified host and port.
+- Add/update tests for config parsing to ensure the new `api` property is handled correctly.
+**Verification:**
+- Run `npm run format:check && npm run lint && npm run check && npm run test`
+**Status:** Completed
+
+## Step 2: Daemon HTTP Server
+**Description:** Optionally start an HTTP server in the daemon to expose the tRPC router based on configuration.
+**Tasks:**
+- Modify `src/daemon/index.ts` to check the `api` configuration.
+- If enabled, start an HTTP server (e.g., using `@trpc/server/adapters/node-http` or similar depending on the existing setup).
+- Bind the tRPC router to this HTTP server.
+- Ensure the server gracefully shuts down when the daemon stops.
+**Verification:**
+- Add unit/e2e tests to verify the HTTP server starts with the correct config and responds to tRPC requests.
+- Run `npm run format:check && npm run lint && npm run check && npm run test`
+**Status:** Completed
+
+## Step 3: Agent Execution Context & Token Security
+**Description:** Inject context and secure tokens into agent processes and validate them on the HTTP server.
+**Tasks:**
+- Implement a secure token generation and validation mechanism (e.g., HMAC with a secret or a simple JWT). The token must encode `chatId`, `agentId`, `sessionId`, and a `timestamp`.
+- Update the daemon's tRPC context/middleware to validate `CLAW_API_TOKEN` (e.g., from the `Authorization` header) for HTTP requests, ensuring requests are scoped to the authorized chat/agent.
+- Modify the agent spawning logic (likely in `src/daemon/message.ts` or related) to generate this token.
+- Inject `CLAW_API_URL` and `CLAW_API_TOKEN` into the environment variables (`env`) of the spawned agent process.
+**Verification:**
+- Add unit tests for token generation and validation.
+- Add integration tests verifying that spawned agents receive the correct environment variables.
+- Run `npm run format:check && npm run lint && npm run check && npm run test`
+**Status:** Completed
+
+## Step 4: `clawmini export-lite` Command
+**Description:** Add a new CLI command to export the standalone `clawmini-lite` client script.
+**Tasks:**
+- Create the source for `clawmini-lite` as a standalone, zero-dependency Node.js script (using native `fetch`).
+- Add a new command `export-lite` to the CLI (`src/cli/commands/export-lite.ts` or similar).
+- The command should output the script to the current directory by default, or to a specified path, or to stdout if `--stdout` is passed.
+**Verification:**
+- Add CLI tests to verify `clawmini export-lite` correctly writes the script file or outputs to stdout.
+- Run `npm run format:check && npm run lint && npm run check && npm run test`
+**Status:** Completed
+
+## Step 5: `clawmini-lite` Client Functionality
+**Description:** Implement the functionality within the exported `clawmini-lite` script.
+**Tasks:**
+- Ensure the `clawmini-lite` script reads `CLAW_API_URL` and `CLAW_API_TOKEN` from `process.env`.
+- Implement a lightweight tRPC client (using `fetch`) inside the script.
+- Implement the supported subcommands:
+  - `log <message>`: Appends a `{type: "log"}` message to the chat.
+  - `jobs list`: Lists cron jobs for the chat.
+  - `jobs add <...>`: Adds a job for the chat.
+  - `jobs delete <id>`: Deletes a job from the chat.
+**Verification:**
+- Add e2e tests that execute the exported `clawmini-lite` script as a subprocess against a running daemon HTTP server to verify all subcommands work correctly.
+- Run `npm run format:check && npm run lint && npm run check && npm run test`
+**Status:** Completed
+
+## Issue 1: Refactor repeated `chatId` resolution in `router.ts`
+**Priority:** High
+**Description:** DRY violation in `src/daemon/router.ts`. The logic to resolve `chatId` (checking `input.chatId`, `ctx.tokenPayload.chatId`, or `getDefaultChatId()`) and calling `checkScope(ctx, chatId)` is duplicated 4 times across endpoints.
+**Tasks:**
+- Create an async helper `resolveAndCheckChatId(ctx: Context, inputChatId?: string): Promise<string>` that performs this logic.
+- Replace the repeated logic in `logMessage`, `listCronJobs`, `addCronJob`, and `deleteCronJob` with a single call to this helper.
+**Verification:**
+- Run checks from `docs/CHECKS.md` to ensure all tests pass.
+**Status:** Completed
+
+## Issue 2: Refactor API settings parsing in `index.ts`
+**Priority:** Medium
+**Description:** DRY violation in `src/daemon/index.ts`. The parsing of API settings duplicates logic present in `getApiContext` in `src/daemon/auth.ts`.
+**Tasks:**
+- Import and use `getApiContext` in `src/daemon/index.ts` instead of manually checking `typeof parsed.data.api`.
+**Verification:**
+- Run checks from `docs/CHECKS.md` to ensure all tests pass.
+**Status:** Completed
+
+## Issue 3: Remove unnecessary `console.error` in `checkScope`
+**Priority:** Low
+**Description:** `checkScope` in `src/daemon/router.ts` uses `console.error` before throwing a TRPCError. This is unnecessary since it's an API validation failure that should be handled gracefully.
+**Tasks:**
+- Remove the `console.error` call in `checkScope`.
+**Verification:**
+- Run checks from `docs/CHECKS.md` to ensure all tests pass.
+**Status:** Completed
+
+## Issue 4: Prevent Timing Attacks on Token Validation
+**Priority:** High
+**Description:** The token validation in `src/daemon/auth.ts` uses strict equality (`!==`) to compare the provided HMAC signature against the expected signature. This exposes the daemon to timing attacks, where an attacker could potentially guess the signature character by character based on comparison times.
+**Tasks:**
+- Replace the strict equality check (`signature !== expectedHmac`) with a constant-time comparison using `crypto.timingSafeEqual`.
+- Ensure the strings are converted to Buffers before comparison.
+- Add a length check to prevent `timingSafeEqual` from throwing if the lengths differ.
+**Verification:**
+- Run checks from `docs/CHECKS.md` to ensure all tests pass, including the `auth.test.ts` which should still succeed for valid tokens and fail for tampered ones.
+**Status:** Completed
