@@ -63,3 +63,31 @@
 - Add e2e tests that execute the exported `clawmini-lite` script as a subprocess against a running daemon HTTP server to verify all subcommands work correctly.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`
 **Status:** Completed
+
+## Issue 1: Refactor repeated `chatId` resolution in `router.ts`
+**Priority:** High
+**Description:** DRY violation in `src/daemon/router.ts`. The logic to resolve `chatId` (checking `input.chatId`, `ctx.tokenPayload.chatId`, or `getDefaultChatId()`) and calling `checkScope(ctx, chatId)` is duplicated 4 times across endpoints.
+**Tasks:**
+- Create an async helper `resolveAndCheckChatId(ctx: Context, inputChatId?: string): Promise<string>` that performs this logic.
+- Replace the repeated logic in `logMessage`, `listCronJobs`, `addCronJob`, and `deleteCronJob` with a single call to this helper.
+**Verification:**
+- Run checks from `docs/CHECKS.md` to ensure all tests pass.
+**Status:** Completed
+
+## Issue 2: Refactor API settings parsing in `index.ts`
+**Priority:** Medium
+**Description:** DRY violation in `src/daemon/index.ts`. The parsing of API settings duplicates logic present in `getApiContext` in `src/daemon/auth.ts`.
+**Tasks:**
+- Import and use `getApiContext` in `src/daemon/index.ts` instead of manually checking `typeof parsed.data.api`.
+**Verification:**
+- Run checks from `docs/CHECKS.md` to ensure all tests pass.
+**Status:** Completed
+
+## Issue 3: Remove unnecessary `console.error` in `checkScope`
+**Priority:** Low
+**Description:** `checkScope` in `src/daemon/router.ts` uses `console.error` before throwing a TRPCError. This is unnecessary since it's an API validation failure that should be handled gracefully.
+**Tasks:**
+- Remove the `console.error` call in `checkScope`.
+**Verification:**
+- Run checks from `docs/CHECKS.md` to ensure all tests pass.
+**Status:** Completed

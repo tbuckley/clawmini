@@ -5,7 +5,7 @@ import { appRouter } from './router.js';
 import { getSocketPath, getClawminiDir, getSettingsPath } from '../shared/workspace.js';
 import { cronManager } from './cron.js';
 import { SettingsSchema } from '../shared/config.js';
-import { validateToken } from './auth.js';
+import { validateToken, getApiContext } from './auth.js';
 
 export function initDaemon() {
   const socketPath = getSocketPath();
@@ -18,23 +18,15 @@ export function initDaemon() {
 
   // Read settings to check if API is enabled
   const settingsPath = getSettingsPath();
-  let apiConfig = false;
-  let apiHost = '127.0.0.1';
-  let apiPort = 3000;
+  let apiCtx: ReturnType<typeof getApiContext> = null;
 
   if (fs.existsSync(settingsPath)) {
     try {
       const settingsStr = fs.readFileSync(settingsPath, 'utf8');
       const settings = JSON.parse(settingsStr);
       const parsed = SettingsSchema.safeParse(settings);
-      if (parsed.success && parsed.data.api !== undefined) {
-        if (typeof parsed.data.api === 'boolean') {
-          apiConfig = parsed.data.api;
-        } else if (typeof parsed.data.api === 'object') {
-          apiConfig = true;
-          apiHost = parsed.data.api.host ?? '127.0.0.1';
-          apiPort = parsed.data.api.port ?? 3000;
-        }
+      if (parsed.success) {
+        apiCtx = getApiContext(parsed.data);
       }
     } catch (err) {
       console.warn(`Failed to read or parse settings from ${settingsPath}:`, err);
@@ -66,7 +58,7 @@ export function initDaemon() {
   });
 
   let apiServer: http.Server | undefined;
-  if (apiConfig) {
+  if (apiCtx) {
     const apiHandler = createHTTPHandler({
       router: appRouter,
       createContext: ({ req, res }) => {
@@ -84,8 +76,10 @@ export function initDaemon() {
       apiHandler(req, res);
     });
 
-    apiServer.listen(apiPort, apiHost, () => {
-      console.log(`Daemon HTTP API initialized and listening on http://${apiHost}:${apiPort}`);
+    const host = apiCtx.host;
+    const port = apiCtx.port;
+    apiServer.listen(port, host, () => {
+      console.log(`Daemon HTTP API initialized and listening on http://${host}:${port}`);
     });
   }
 
