@@ -10,6 +10,7 @@ Clawmini is an orchestration layer for command-line AI agents, providing a unifi
 - **Agent Templates:** Quickly scaffold new agents using built-in or custom templates (e.g. `gemini`), automatically merging configuration settings.
 - **Routers & Middleware Pipeline:** Process user messages through an extensible pipeline to dynamically alter content, target specific agents or sessions, and expand slash commands before they reach an agent.
 - **Local File System Storage:** Everything is stored completely locally in `.clawmini/` within your workspace as transparent JSON/JSONL files. No cloud syncing required.
+- **Sandboxed Agent API:** The daemon can optionally expose a secure HTTP server configured via the `api` setting in `.clawmini/settings.json`, allowing remote or containerized access. Give agents a minimal zero-dependency standalone client exported via `clawmini export-lite`. It securely authenticates with the Agent API using dynamically generated HMAC tokens (`CLAW_API_TOKEN`) to allow sandboxed agents to log messages and manage cron jobs without needing direct access to the host's Unix socket.
 
 ### Coming Soon
 
@@ -47,6 +48,7 @@ clawmini web
 - `clawmini init`: Initialize a new `.clawmini` configuration folder.
 - `clawmini up`: Start the local daemon server in the background.
 - `clawmini down`: Stop the local daemon server.
+- `clawmini export-lite [--out <path>] [--stdout]`: Export the standalone `clawmini-lite` client script for use in sandboxed environments.
 
 ### Chat Management
 
