@@ -31,7 +31,13 @@ export function validateToken(token: string): TokenPayload | null {
       .update(payloadStr)
       .digest('hex');
 
-    if (signature !== expectedHmac) {
+    const signatureBuffer = Buffer.from(signature, 'hex');
+    const expectedHmacBuffer = Buffer.from(expectedHmac, 'hex');
+
+    if (
+      signatureBuffer.length !== expectedHmacBuffer.length ||
+      !crypto.timingSafeEqual(signatureBuffer, expectedHmacBuffer)
+    ) {
       return null;
     }
 

@@ -91,3 +91,14 @@
 **Verification:**
 - Run checks from `docs/CHECKS.md` to ensure all tests pass.
 **Status:** Completed
+
+## Issue 4: Prevent Timing Attacks on Token Validation
+**Priority:** High
+**Description:** The token validation in `src/daemon/auth.ts` uses strict equality (`!==`) to compare the provided HMAC signature against the expected signature. This exposes the daemon to timing attacks, where an attacker could potentially guess the signature character by character based on comparison times.
+**Tasks:**
+- Replace the strict equality check (`signature !== expectedHmac`) with a constant-time comparison using `crypto.timingSafeEqual`.
+- Ensure the strings are converted to Buffers before comparison.
+- Add a length check to prevent `timingSafeEqual` from throwing if the lengths differ.
+**Verification:**
+- Run checks from `docs/CHECKS.md` to ensure all tests pass, including the `auth.test.ts` which should still succeed for valid tokens and fail for tampered ones.
+**Status:** Completed
