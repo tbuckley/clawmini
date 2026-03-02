@@ -59,8 +59,9 @@ export const SettingsSchema = z.looseObject({
     .union([
       z.boolean(),
       z.looseObject({
-        host: z.string(),
-        port: z.number(),
+        host: z.string().optional(),
+        port: z.number().optional(),
+        proxy_host: z.string().optional(),
       }),
     ])
     .optional(),

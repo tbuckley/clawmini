@@ -188,7 +188,11 @@ export async function executeDirectMessage(
 
     const apiCtx = getApiContext(settings);
     if (apiCtx) {
-      env['CLAW_API_URL'] = `http://${apiCtx.host}:${apiCtx.port}`;
+      if (apiCtx.proxy_host) {
+        env['CLAW_API_URL'] = `${apiCtx.proxy_host}:${apiCtx.port}`;
+      } else {
+        env['CLAW_API_URL'] = `http://${apiCtx.host}:${apiCtx.port}`;
+      }
       env['CLAW_API_TOKEN'] = generateToken({
         chatId,
         agentId,

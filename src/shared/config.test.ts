@@ -39,8 +39,18 @@ describe('SettingsSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('should fail if api object is missing port', () => {
+  it('should parse api object missing port', () => {
     const result = SettingsSchema.safeParse({ api: { host: '127.0.0.1' } });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+  });
+
+  it('should parse api object missing host', () => {
+    const result = SettingsSchema.safeParse({ api: { port: 3000 } });
+    expect(result.success).toBe(true);
+  });
+
+  it('should parse api object with proxy_host', () => {
+    const result = SettingsSchema.safeParse({ api: { proxy_host: 'http://my-proxy' } });
+    expect(result.success).toBe(true);
   });
 });

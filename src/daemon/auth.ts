@@ -47,15 +47,17 @@ export function getApiContext(settings?: Settings) {
   let isApiEnabled = false;
   let apiHost = '127.0.0.1';
   let apiPort = 3000;
+  let proxyHost: string | undefined = undefined;
 
   if (typeof settings.api === 'boolean') {
     isApiEnabled = settings.api;
   } else if (typeof settings.api === 'object') {
     isApiEnabled = true;
-    apiHost = settings.api.host;
-    apiPort = settings.api.port;
+    apiHost = settings.api.host ?? '127.0.0.1';
+    apiPort = settings.api.port ?? 3000;
+    proxyHost = settings.api.proxy_host;
   }
 
   if (!isApiEnabled) return null;
-  return { host: apiHost, port: apiPort };
+  return { host: apiHost, port: apiPort, proxy_host: proxyHost };
 }

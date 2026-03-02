@@ -32,8 +32,8 @@ export function initDaemon() {
           apiConfig = parsed.data.api;
         } else if (typeof parsed.data.api === 'object') {
           apiConfig = true;
-          apiHost = parsed.data.api.host;
-          apiPort = parsed.data.api.port;
+          apiHost = parsed.data.api.host ?? '127.0.0.1';
+          apiPort = parsed.data.api.port ?? 3000;
         }
       }
     } catch (err) {
