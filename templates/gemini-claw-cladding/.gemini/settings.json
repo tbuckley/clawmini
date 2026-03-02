@@ -1,0 +1,24 @@
+{
+    "$schema": "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/schemas/settings.schema.json",
+    "tools": {
+        "exclude": [
+            "ask_user",
+            "save_memory"
+        ]
+    },
+    "hooks": {
+        "AfterTool": [
+            {
+                "matcher": "*",
+                "hooks": [
+                    {
+                        "name": "clawmini-logging",
+                        "type": "command",
+                        "command": "$GEMINI_PROJECT_DIR/.gemini/hooks/clawmini-logging.sh",
+                        "timeout": 5000
+                    }
+                ]
+            }
+        ]
+    }
+}
