@@ -16,3 +16,11 @@
 - Added `src/daemon/message-fallbacks.test.ts` with unit tests covering base failures, empty extraction, and multiple retries.
 - Verified all checks and tests pass (including pre-existing flakiness in E2E tests which resolved themselves).
 - Ticket 2 complete.
+
+- Implemented exponential backoff logic in `src/daemon/message.ts`:
+  - Added `calculateDelay` helper with doubling logic and 15s cap.
+  - Added `sleep` helper.
+  - Integrated backoff into the retry loop in `executeDirectMessage`.
+- Added unit tests for `calculateDelay` in `src/daemon/message-fallbacks.test.ts`.
+- Verified all checks and tests pass.
+- Ticket 3 complete.

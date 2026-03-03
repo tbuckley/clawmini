@@ -43,7 +43,7 @@ Refactor `executeDirectMessage` in `src/daemon/message.ts` to support a retry lo
 ---
 
 ## Ticket 3: Exponential Backoff Logic
-**Status:** not started
+**Status:** completed
 
 ### Task
 Implement the exponential backoff timing logic within the retry loop.

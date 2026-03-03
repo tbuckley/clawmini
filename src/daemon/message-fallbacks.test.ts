@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleUserMessage } from './message.js';
+import { handleUserMessage, calculateDelay } from './message.js';
 import { spawn } from 'node:child_process';
 import { runCommandCallback } from './message-test-utils.js';
 import * as chats from '../shared/chats.js';
@@ -18,6 +18,42 @@ vi.mock('../shared/workspace.js', () => ({
   getAgent: vi.fn().mockResolvedValue(null),
   getWorkspaceRoot: vi.fn().mockImplementation((cwd) => cwd),
 }));
+
+describe('calculateDelay', () => {
+  const baseDelay = 1000;
+
+  it('returns 0 for attempt 0', () => {
+    expect(calculateDelay(0, baseDelay)).toBe(0);
+  });
+
+  it('returns baseDelay for attempt 1', () => {
+    expect(calculateDelay(1, baseDelay)).toBe(baseDelay);
+  });
+
+  it('doubles delay for attempt 2', () => {
+    expect(calculateDelay(2, baseDelay)).toBe(2000);
+  });
+
+  it('doubles delay for attempt 3', () => {
+    expect(calculateDelay(3, baseDelay)).toBe(4000);
+  });
+
+  it('doubles delay for attempt 4', () => {
+    expect(calculateDelay(4, baseDelay)).toBe(8000);
+  });
+
+  it('caps delay at 15000ms', () => {
+    expect(calculateDelay(5, baseDelay)).toBe(15000);
+    expect(calculateDelay(10, baseDelay)).toBe(15000);
+  });
+
+  it('respects a different baseDelay', () => {
+    const customBase = 500;
+    expect(calculateDelay(1, customBase)).toBe(500);
+    expect(calculateDelay(2, customBase)).toBe(1000);
+    expect(calculateDelay(6, customBase)).toBe(15000); // 500 * 2^5 = 16000, capped at 15000
+  });
+});
 
 describe('Message Fallbacks & Retries', () => {
   beforeEach(() => {

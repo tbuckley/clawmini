@@ -23,6 +23,14 @@ import { z } from 'zod';
 
 type Fallback = z.infer<typeof FallbackSchema>;
 
+export function calculateDelay(attempt: number, baseDelayMs: number): number {
+  if (attempt <= 0) return 0;
+  const delay = baseDelayMs * Math.pow(2, attempt - 1);
+  return Math.min(delay, 15000);
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export type RunCommandResult = {
   stdout: string;
   stderr: string;
@@ -185,9 +193,9 @@ export async function executeDirectMessage(
     }
 
     const fallbacks = mergedAgent.fallbacks || [];
-    const executionConfigs: { fallback?: Fallback; retries: number }[] = [
-      { retries: 0 },
-      ...fallbacks.map((f) => ({ fallback: f, retries: f.retries })),
+    const executionConfigs: { fallback?: Fallback; retries: number; delayMs: number }[] = [
+      { retries: 0, delayMs: 1000 },
+      ...fallbacks.map((f) => ({ fallback: f, retries: f.retries, delayMs: f.delayMs })),
     ];
 
     const workspaceRoot = getWorkspaceRoot(cwd);
@@ -203,6 +211,11 @@ export async function executeDirectMessage(
 
     for (const config of executionConfigs) {
       for (let attempt = 0; attempt <= config.retries; attempt++) {
+        const delay = calculateDelay(attempt, config.delayMs);
+        if (delay > 0) {
+          await sleep(delay);
+        }
+
         const { command, env, currentAgent } = prepareCommandAndEnv(
           mergedAgent,
           state.message,
