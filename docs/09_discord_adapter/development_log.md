@@ -52,3 +52,13 @@
   - Update existing daemon tests (`message-extraction.test.ts`, `message-queue.test.ts`, `message-router.test.ts`) to mock the new `./chats.js` module.
   - Create comprehensive unit tests in `src/daemon/observation.test.ts`.
 - **Status:** Completed. Verified with unit tests. All checks and tests passed.
+
+### Step 6: Daemon to Discord Forwarding
+- **Goal:** Forward messages from the Clawmini daemon back to the authorized Discord user.
+- **Tasks:**
+  - Create `src/adapter-discord/forwarder.ts` with the observation loop logic.
+  - Implement long-polling using `waitForMessages` TRPC endpoint.
+  - Implement message chunking for Discord's 2000 character limit.
+  - Update `src/adapter-discord/index.ts` to start the forwarder when the client is ready.
+  - Create comprehensive unit tests in `src/adapter-discord/forwarder.test.ts`.
+- **Status:** Completed. Verified with unit tests. All checks and tests passed.

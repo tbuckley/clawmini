@@ -1,6 +1,7 @@
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import { readDiscordConfig, isAuthorized } from './config.js';
 import { getTRPCClient } from './client.js';
+import { startDaemonToDiscordForwarder } from './forwarder.js';
 
 export async function main() {
   console.log('Discord Adapter starting...');
@@ -26,6 +27,11 @@ export async function main() {
 
   client.once(Events.ClientReady, (readyClient) => {
     console.log(`Ready! Logged in as ${readyClient.user.tag}`);
+
+    // Start forwarding from daemon to Discord
+    startDaemonToDiscordForwarder(readyClient, trpc, config.authorizedUserId).catch((error) => {
+      console.error('Error in daemon-to-discord forwarder:', error);
+    });
   });
 
   client.on(Events.MessageCreate, async (message) => {
