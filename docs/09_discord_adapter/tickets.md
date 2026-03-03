@@ -71,7 +71,7 @@
   - Unit tests for state persistence.
   - Integration test for the startup sync logic.
   - `npm run check && npm run test` passes.
-- **Status:** not started
+- **Status:** completed
 
 ## Step 8: Debouncing & Robustness
 - **Description:** 

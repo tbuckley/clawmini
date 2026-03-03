@@ -1,5 +1,6 @@
 import type { Client } from 'discord.js';
 import type { getTRPCClient } from './client.js';
+import { readDiscordState, writeDiscordState } from './state.js';
 
 export async function startDaemonToDiscordForwarder(
   client: Client,
@@ -8,20 +9,25 @@ export async function startDaemonToDiscordForwarder(
   chatId: string = 'default',
   signal?: AbortSignal
 ) {
-  let lastMessageId: string | undefined;
+  const state = await readDiscordState();
+  let lastMessageId = state.lastSyncedMessageId;
 
-  // 1. Get initial messages to find the last ID
-  try {
-    const messages = await trpc.getMessages.query({ chatId, limit: 1 });
-    if (Array.isArray(messages) && messages.length > 0) {
-      const lastMsg = messages[messages.length - 1];
-      if (lastMsg) {
-        lastMessageId = lastMsg.id;
+  // 1. If we don't have a lastMessageId, get the most recent one from the daemon
+  // to avoid sending the entire chat history on first run.
+  if (!lastMessageId) {
+    try {
+      const messages = await trpc.getMessages.query({ chatId, limit: 1 });
+      if (Array.isArray(messages) && messages.length > 0) {
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg) {
+          lastMessageId = lastMsg.id;
+          await writeDiscordState({ lastSyncedMessageId: lastMessageId });
+        }
       }
+    } catch (error) {
+      if (signal?.aborted) return;
+      console.error('Failed to fetch initial messages from daemon:', error);
     }
-  } catch (error) {
-    if (signal?.aborted) return;
-    console.error('Failed to fetch initial messages from daemon:', error);
   }
 
   console.log(
@@ -37,16 +43,19 @@ export async function startDaemonToDiscordForwarder(
         timeout: 30000,
       });
 
-      if (!Array.isArray(messages)) {
+      if (!Array.isArray(messages) || messages.length === 0) {
         continue;
       }
 
       for (const message of messages) {
-        lastMessageId = message.id;
+        if (signal?.aborted) break;
 
         // Only forward logs (agent responses, system messages)
         if (message.role === 'log') {
-          if (!message.content.trim()) continue;
+          if (!message.content.trim()) {
+            lastMessageId = message.id;
+            continue;
+          }
 
           try {
             const user = await client.users.fetch(discordUserId);
@@ -63,10 +72,15 @@ export async function startDaemonToDiscordForwarder(
               await dm.send(message.content);
             }
           } catch (error) {
-            if (signal?.aborted) break;
             console.error(`Failed to send message to Discord user ${discordUserId}:`, error);
+            // We don't advance lastMessageId if sending failed to ensure retry on next loop/restart
+            // unless it's a permanent error. For now, we'll just break and retry.
+            break;
           }
         }
+
+        lastMessageId = message.id;
+        await writeDiscordState({ lastSyncedMessageId: lastMessageId });
       }
     } catch (error) {
       if (signal?.aborted) break;

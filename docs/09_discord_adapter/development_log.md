@@ -62,3 +62,12 @@
   - Update `src/adapter-discord/index.ts` to start the forwarder when the client is ready.
   - Create comprehensive unit tests in `src/adapter-discord/forwarder.test.ts`.
 - **Status:** Completed. Verified with unit tests. All checks and tests passed.
+
+### Step 7: State Management & Startup Sync
+- **Goal:** Implement persistent state to track synced messages and ensure no messages are missed on startup.
+- **Tasks:**
+  - Create `src/adapter-discord/state.ts` for `.clawmini/adapters/discord/state.json` management.
+  - Implement `lastSyncedMessageId` tracking and persistence.
+  - Update `src/adapter-discord/forwarder.ts` to load initial state and update it during the forwarding loop.
+  - Create unit tests for state management.
+- **Status:** Completed. Verified with unit tests and full automated checks.
