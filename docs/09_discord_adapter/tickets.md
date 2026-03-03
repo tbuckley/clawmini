@@ -10,7 +10,7 @@
   - `npm run check` passes.
   - `npm run build` generates `dist/adapter-discord/index.mjs`.
   - Running `node dist/adapter-discord/index.mjs` prints the startup message.
-- **Status:** not started
+- **Status:** completed
 
 ## Step 2: Configuration & Security Implementation
 - **Description:** 
@@ -21,7 +21,7 @@
   - Unit tests in `src/adapter-discord/config.test.ts` for schema validation and file loading.
   - Unit tests for the authorization filter.
   - `npm run format:check && npm run lint && npm run check && npm run test` passes.
-- **Status:** not started
+- **Status:** completed
 
 ## Step 3: TRPC Client Connection
 - **Description:** 
