@@ -159,7 +159,7 @@ describe('Discord Adapter Entry Point', () => {
       type: 'send-message',
       client: 'cli',
       data: {
-        message: 'message 1\nmessage 2',
+        message: '<message>\nmessage 1\n</message>\n<message>\nmessage 2\n</message>',
         chatId: 'default',
       },
     });

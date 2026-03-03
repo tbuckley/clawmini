@@ -27,7 +27,10 @@ export async function main() {
   const trpc = getTRPCClient();
 
   const messageDebouncer = new Debouncer<string>(1000, async (messages) => {
-    const combinedMessage = messages.join('\n');
+    const combinedMessage =
+      messages.length > 1
+        ? messages.map((m) => `<message>\n${m}\n</message>`).join('\n')
+        : messages[0] || '';
     console.log(`Forwarding aggregated message to daemon: ${combinedMessage}`);
 
     try {

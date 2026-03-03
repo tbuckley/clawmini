@@ -1,6 +1,8 @@
 export class Debouncer<T> {
   private timeout: NodeJS.Timeout | null = null;
   private buffer: T[] = [];
+  private history: T[] = [];
+  private readonly historyLimit = 100;
 
   constructor(
     private delay: number,
@@ -8,6 +10,15 @@ export class Debouncer<T> {
   ) {}
 
   add(item: T) {
+    if (this.history.includes(item)) {
+      return;
+    }
+
+    this.history.push(item);
+    if (this.history.length > this.historyLimit) {
+      this.history.shift();
+    }
+
     this.buffer.push(item);
 
     if (this.timeout) {

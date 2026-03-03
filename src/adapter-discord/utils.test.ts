@@ -42,6 +42,22 @@ describe('Debouncer', () => {
     vi.useRealTimers();
   });
 
+  it('should discard duplicate items to handle duplicate deliveries', async () => {
+    vi.useFakeTimers();
+    const callback = vi.fn();
+    const debouncer = new Debouncer(1000, callback);
+
+    debouncer.add('a');
+    debouncer.add('b');
+    debouncer.add('a'); // This should be discarded
+
+    vi.advanceTimersByTime(1000);
+    expect(callback).toBeCalledTimes(1);
+    expect(callback).toBeCalledWith(['a', 'b']);
+
+    vi.useRealTimers();
+  });
+
   it('should flush items immediately', async () => {
     const callback = vi.fn();
     const debouncer = new Debouncer(1000, callback);
