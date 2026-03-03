@@ -126,7 +126,8 @@ describe('Message Fallbacks & Retries', () => {
         role: 'log',
         content: 'output 2',
         exitCode: 0,
-      })
+      }),
+      expect.any(String)
     );
   });
 
@@ -301,7 +302,8 @@ describe('Message Fallbacks & Retries', () => {
         role: 'log',
         content: 'Error running agent, retrying in 1 seconds...',
         command: 'retry-delay',
-      })
+      }),
+      expect.any(String)
     );
   });
 });

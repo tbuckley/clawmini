@@ -172,10 +172,17 @@ const AppRouter = router({
 
       // 2. Listen for new messages
       const { on } = await import('node:events');
-      for await (const [event] of on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, { signal })) {
-        if (event.chatId === chatId) {
-          yield [event.message];
+      try {
+        for await (const [event] of on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, { signal })) {
+          if (event.chatId === chatId) {
+            yield [event.message];
+          }
         }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          return;
+        }
+        throw err;
       }
     }),
   ping: publicProcedure.query(() => {

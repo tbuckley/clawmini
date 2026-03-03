@@ -2,6 +2,7 @@ import { createTRPCClient, httpLink, splitLink, httpSubscriptionLink } from '@tr
 import type { AppRouter } from '../daemon/router.js';
 import { getSocketPath } from '../shared/workspace.js';
 import { createUnixSocketFetch } from '../shared/fetch.js';
+import { createUnixSocketEventSource } from '../shared/event-source.js';
 import fs from 'node:fs';
 
 /**
@@ -18,6 +19,7 @@ export function getTRPCClient(options: { socketPath?: string } = {}) {
   }
 
   const customFetch = createUnixSocketFetch(socketPath);
+  const CustomEventSource = createUnixSocketEventSource(socketPath);
 
   return createTRPCClient<AppRouter>({
     links: [
@@ -27,9 +29,7 @@ export function getTRPCClient(options: { socketPath?: string } = {}) {
         },
         true: httpSubscriptionLink({
           url: 'http://localhost',
-          // @ts-expect-error fetch is not in the type definitions for httpSubscriptionLink but works in our custom fetch implementation
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          fetch: customFetch as any,
+          EventSource: CustomEventSource,
         }),
         false: httpLink({
           url: 'http://localhost',
