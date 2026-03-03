@@ -101,6 +101,7 @@ describe('Discord Adapter Entry Point', () => {
       author: { id: 'user-123', tag: 'user#1234' },
       content: 'Hello daemon!',
       guild: null,
+      attachments: new Map(),
     };
 
     const { isAuthorized } = await import('./config.js');
@@ -149,11 +150,13 @@ describe('Discord Adapter Entry Point', () => {
         author: { id: 'user-123', tag: 'user#1234' } as unknown as import('discord.js').User,
         content: 'message 1',
         guild: null,
+        attachments: new Map(),
       } as unknown as import('discord.js').Message);
       await messageHandler({
         author: { id: 'user-123', tag: 'user#1234' } as unknown as import('discord.js').User,
         content: 'message 2',
         guild: null,
+        attachments: new Map(),
       } as unknown as import('discord.js').Message);
     }
 
@@ -204,5 +207,127 @@ describe('Discord Adapter Entry Point', () => {
     }
 
     expect(mockTrpc.sendMessage.mutate).not.toHaveBeenCalled();
+  });
+
+  it('should download attachments and forward their paths', async () => {
+    vi.useFakeTimers();
+    let messageHandler: ((message: import('discord.js').Message) => Promise<void>) | undefined;
+    vi.mocked(mockClientInstance.on).mockImplementation(
+      (event: string, cb: (...args: unknown[]) => void) => {
+        if (event === 'messageCreate') {
+          messageHandler = cb as unknown as (
+            message: import('discord.js').Message
+          ) => Promise<void>;
+        }
+        return mockClientInstance as unknown as import('discord.js').Client;
+      }
+    );
+
+    const { main } = await import('./index.js');
+    await main();
+
+    const { isAuthorized } = await import('./config.js');
+    vi.mocked(isAuthorized).mockReturnValue(true);
+
+    const attachments = new Map();
+    attachments.set('1', { name: 'test.txt', url: 'http://example.com/test.txt', size: 100 });
+
+    const fsPromises = await import('node:fs/promises');
+    vi.spyOn(fsPromises.default, 'mkdir').mockResolvedValue(undefined);
+    vi.spyOn(fsPromises.default, 'writeFile').mockResolvedValue(undefined);
+
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    } as unknown as Response;
+    global.fetch = vi.fn().mockResolvedValue(mockResponse);
+
+    if (messageHandler) {
+      await messageHandler({
+        author: { id: 'user-123', tag: 'user#1234' } as unknown as import('discord.js').User,
+        content: 'Check out this file',
+        guild: null,
+        attachments,
+      } as unknown as import('discord.js').Message);
+    }
+
+    // Fast-forward time for debouncer
+    await vi.runAllTimersAsync();
+
+    expect(global.fetch).toHaveBeenCalledWith('http://example.com/test.txt');
+    expect(fsPromises.default.writeFile).toHaveBeenCalled();
+
+    expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith({
+      type: 'send-message',
+      client: 'cli',
+      data: expect.objectContaining({
+        message: 'Check out this file',
+        chatId: 'default',
+        files: expect.arrayContaining([expect.stringContaining('test.txt')]),
+      }),
+    });
+
+    vi.useRealTimers();
+  });
+
+  it('should ignore attachments that exceed the size limit', async () => {
+    vi.useFakeTimers();
+    let messageHandler: ((message: import('discord.js').Message) => Promise<void>) | undefined;
+    vi.mocked(mockClientInstance.on).mockImplementation(
+      (event: string, cb: (...args: unknown[]) => void) => {
+        if (event === 'messageCreate') {
+          messageHandler = cb as unknown as (
+            message: import('discord.js').Message
+          ) => Promise<void>;
+        }
+        return mockClientInstance as unknown as import('discord.js').Client;
+      }
+    );
+
+    const { main } = await import('./index.js');
+    await main();
+
+    const { isAuthorized } = await import('./config.js');
+    vi.mocked(isAuthorized).mockReturnValue(true);
+
+    const attachments = new Map();
+    // 26MB is over the 25MB default
+    attachments.set('1', {
+      name: 'huge.txt',
+      url: 'http://example.com/huge.txt',
+      size: 26 * 1024 * 1024 + 1,
+    });
+
+    global.fetch = vi.fn();
+
+    const replyMock = vi.fn();
+
+    if (messageHandler) {
+      await messageHandler({
+        author: { id: 'user-123', tag: 'user#1234' } as unknown as import('discord.js').User,
+        content: 'Check out this huge file',
+        guild: null,
+        attachments,
+        reply: replyMock,
+      } as unknown as import('discord.js').Message);
+    }
+
+    // Fast-forward time for debouncer
+    await vi.runAllTimersAsync();
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(replyMock).toHaveBeenCalledWith(expect.stringContaining('exceeds the size limit'));
+
+    expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith({
+      type: 'send-message',
+      client: 'cli',
+      data: {
+        message: 'Check out this huge file',
+        chatId: 'default',
+        files: undefined, // no files should be attached
+      },
+    });
+
+    vi.useRealTimers();
   });
 });

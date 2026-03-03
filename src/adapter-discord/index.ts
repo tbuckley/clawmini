@@ -5,6 +5,8 @@ import { readDiscordConfig, isAuthorized, initDiscordConfig } from './config.js'
 import { getTRPCClient } from './client.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
 import { Debouncer } from './utils.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 export async function main() {
   const args = process.argv.slice(2);
@@ -27,10 +29,13 @@ export async function main() {
   const trpc = getTRPCClient();
 
   const messageDebouncer = new Debouncer<string>(1000, async (messages) => {
+    const items = messages.map((m) => JSON.parse(m) as { content: string; files: string[] });
     const combinedMessage =
-      messages.length > 1
-        ? messages.map((m) => `<message>\n${m}\n</message>`).join('\n')
-        : messages[0] || '';
+      items.length > 1
+        ? items.map((m) => `<message>\n${m.content}\n</message>`).join('\n')
+        : items[0]?.content || '';
+    const allFiles = items.flatMap((item) => item.files);
+
     console.log(`Forwarding aggregated message to daemon: ${combinedMessage}`);
 
     try {
@@ -40,6 +45,7 @@ export async function main() {
         data: {
           message: combinedMessage,
           chatId: config.chatId,
+          files: allFiles.length > 0 ? allFiles : undefined,
         },
       });
       console.log('Message forwarded to daemon successfully.');
@@ -81,7 +87,39 @@ export async function main() {
 
     console.log(`Received message from ${message.author.tag}: ${message.content}`);
 
-    messageDebouncer.add(message.content);
+    const downloadedFiles: string[] = [];
+    if (message.attachments.size > 0) {
+      const tmpDir = path.join(process.cwd(), '.gemini', 'tmp', 'discord-files');
+      await fs.mkdir(tmpDir, { recursive: true });
+            const maxSizeMB = config.maxAttachmentSizeMB ?? 25;
+            const maxSizeBytes = maxSizeMB * 1024 * 1024;
+      
+            for (const attachment of message.attachments.values()) {
+              if (attachment.size > maxSizeBytes) {
+                console.warn(`Attachment ${attachment.name} exceeds size limit (${maxSizeMB}MB). Ignoring.`);
+                await message.reply(`Warning: Attachment ${attachment.name} exceeds the size limit of ${maxSizeMB}MB and was ignored.`);
+                continue;
+              }
+
+        try {
+          const res = await fetch(attachment.url);
+          if (!res.ok) {
+            console.error(`Failed to download attachment ${attachment.name}`);
+            continue;
+          }
+
+          const uniqueName = `${Date.now()}-${attachment.name}`;
+          const filePath = path.join(tmpDir, uniqueName);
+          const arrayBuffer = await res.arrayBuffer();
+          await fs.writeFile(filePath, Buffer.from(arrayBuffer));
+          downloadedFiles.push(filePath);
+        } catch (err) {
+          console.error(`Error downloading attachment ${attachment.name}:`, err);
+        }
+      }
+    }
+
+    messageDebouncer.add(JSON.stringify({ content: message.content, files: downloadedFiles }));
   });
 
   try {

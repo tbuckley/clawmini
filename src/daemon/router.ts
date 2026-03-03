@@ -64,6 +64,7 @@ const AppRouter = router({
           sessionId: z.string().optional(),
           agentId: z.string().optional(),
           noWait: z.boolean().optional(),
+          files: z.array(z.string()).optional(),
         }),
       })
     )

@@ -8,7 +8,7 @@
 **Verification:**
 - Add unit tests validating the new properties and defaults in both schemas.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status:** Not started
+**Status:** Complete
 
 ## Ticket 2: TRPC Schema and Discord Adapter Download
 **Description:** Update the message payload schema to accept file paths and implement downloading incoming attachments in the Discord adapter.
@@ -20,7 +20,7 @@
 **Verification:**
 - Write unit/integration tests for the Discord adapter verifying that attachments are correctly downloaded and size limits are respected.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status:** Not started
+**Status:** Complete
 
 ## Ticket 3: Daemon Processing of Incoming Files
 **Description:** Implement the daemon logic to intercept the incoming temporary files, move them to the agent's workspace, and format the user message.
