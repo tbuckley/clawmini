@@ -34,6 +34,9 @@ export async function startDaemonToDiscordForwarder(
     `Starting daemon-to-discord forwarder for chat ${chatId}, lastMessageId: ${lastMessageId}`
   );
 
+  let retryDelay = 1000;
+  const maxRetryDelay = 30000;
+
   // 2. Start the observation loop
   while (!signal?.aborted) {
     try {
@@ -42,6 +45,9 @@ export async function startDaemonToDiscordForwarder(
         lastMessageId,
         timeout: 30000,
       });
+
+      // Reset retry delay on successful call
+      retryDelay = 1000;
 
       if (!Array.isArray(messages) || messages.length === 0) {
         continue;
@@ -84,9 +90,13 @@ export async function startDaemonToDiscordForwarder(
       }
     } catch (error) {
       if (signal?.aborted) break;
-      // If the daemon is down, wait a bit before retrying
-      console.error('Error in daemon-to-discord forwarder loop:', error);
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      // If the daemon is down, wait with exponential backoff before retrying
+      console.error(
+        `Error in daemon-to-discord forwarder loop. Retrying in ${retryDelay}ms.`,
+        error
+      );
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      retryDelay = Math.min(retryDelay * 2, maxRetryDelay);
     }
   }
 }

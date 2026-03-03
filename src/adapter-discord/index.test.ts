@@ -65,6 +65,7 @@ describe('Discord Adapter Entry Point', () => {
   });
 
   it('should initialize Discord client and forward authorized DM messages', async () => {
+    vi.useFakeTimers();
     let messageHandler: ((message: any) => Promise<void>) | undefined;
     vi.mocked(mockClientInstance.on).mockImplementation((event: string, cb: any) => {
       if (event === 'messageCreate') {
@@ -92,6 +93,9 @@ describe('Discord Adapter Entry Point', () => {
       await messageHandler(mockMessage);
     }
 
+    // Fast-forward time for debouncer
+    await vi.runAllTimersAsync();
+
     expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith({
       type: 'send-message',
       client: 'cli',
@@ -99,6 +103,52 @@ describe('Discord Adapter Entry Point', () => {
         message: 'Hello daemon!',
       },
     });
+    vi.useRealTimers();
+  });
+
+  it('should debounce multiple rapid messages into one', async () => {
+    vi.useFakeTimers();
+    let messageHandler: ((message: any) => Promise<void>) | undefined;
+    vi.mocked(mockClientInstance.on).mockImplementation((event: string, cb: any) => {
+      if (event === 'messageCreate') {
+        messageHandler = cb;
+      }
+      return mockClientInstance as any;
+    });
+
+    const { main } = await import('./index.js');
+    await main();
+
+    const { isAuthorized } = await import('./config.js');
+    vi.mocked(isAuthorized).mockReturnValue(true);
+
+    if (messageHandler) {
+      await messageHandler({
+        author: { id: 'user-123', tag: 'user#1234' },
+        content: 'message 1',
+        guild: null,
+      });
+      await messageHandler({
+        author: { id: 'user-123', tag: 'user#1234' },
+        content: 'message 2',
+        guild: null,
+      });
+    }
+
+    // Should not have been called yet
+    expect(mockTrpc.sendMessage.mutate).not.toHaveBeenCalled();
+
+    // Fast-forward time for debouncer
+    await vi.runAllTimersAsync();
+
+    expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith({
+      type: 'send-message',
+      client: 'cli',
+      data: {
+        message: 'message 1\nmessage 2',
+      },
+    });
+    vi.useRealTimers();
   });
 
   it('should ignore unauthorized messages', async () => {

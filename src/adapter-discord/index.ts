@@ -2,6 +2,7 @@ import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import { readDiscordConfig, isAuthorized } from './config.js';
 import { getTRPCClient } from './client.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
+import { Debouncer } from './utils.js';
 
 export async function main() {
   console.log('Discord Adapter starting...');
@@ -15,6 +16,24 @@ export async function main() {
   }
 
   const trpc = getTRPCClient();
+
+  const messageDebouncer = new Debouncer<string>(1000, async (messages) => {
+    const combinedMessage = messages.join('\n');
+    console.log(`Forwarding aggregated message to daemon: ${combinedMessage}`);
+
+    try {
+      await trpc.sendMessage.mutate({
+        type: 'send-message',
+        client: 'cli',
+        data: {
+          message: combinedMessage,
+        },
+      });
+      console.log('Message forwarded to daemon successfully.');
+    } catch (error) {
+      console.error('Failed to forward message to daemon:', error);
+    }
+  });
 
   const client = new Client({
     intents: [
@@ -51,18 +70,7 @@ export async function main() {
 
     console.log(`Received message from ${message.author.tag}: ${message.content}`);
 
-    try {
-      await trpc.sendMessage.mutate({
-        type: 'send-message',
-        client: 'cli', // Using 'cli' as the client type for now as daemon supports it
-        data: {
-          message: message.content,
-        },
-      });
-      console.log('Message forwarded to daemon successfully.');
-    } catch (error) {
-      console.error('Failed to forward message to daemon:', error);
-    }
+    messageDebouncer.add(message.content);
   });
 
   try {

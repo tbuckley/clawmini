@@ -71,3 +71,12 @@
   - Update `src/adapter-discord/forwarder.ts` to load initial state and update it during the forwarding loop.
   - Create unit tests for state management.
 - **Status:** Completed. Verified with unit tests and full automated checks.
+
+### Step 8: Debouncing & Robustness
+- **Goal:** Improve adapter reliability with message aggregation and error handling.
+- **Tasks:**
+  - Create `Debouncer` utility in `src/adapter-discord/utils.ts`.
+  - Use `Debouncer` in `src/adapter-discord/index.ts` to aggregate messages sent within 1 second.
+  - Implement exponential backoff for daemon connection retries in `src/adapter-discord/forwarder.ts`.
+  - Add/Update unit tests for debouncing and backoff logic.
+- **Status:** Completed. Verified with unit tests and full automated checks.

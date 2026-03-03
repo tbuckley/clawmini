@@ -182,4 +182,54 @@ describe('Daemon to Discord Forwarder', () => {
     expect(mockDm.send).toHaveBeenNthCalledWith(2, 'a'.repeat(500));
     expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' });
   });
+
+  it('should retry with exponential backoff on daemon error', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+
+    // First call fails
+    mockTrpc.waitForMessages.query.mockRejectedValueOnce(new Error('Daemon down'));
+    // Second call fails
+    mockTrpc.waitForMessages.query.mockRejectedValueOnce(new Error('Still down'));
+    // Third call succeeds
+    mockTrpc.waitForMessages.query.mockResolvedValueOnce([
+      {
+        id: 'msg-1',
+        role: 'log',
+        content: 'Finally up',
+        timestamp: '',
+        messageId: 'msg-0',
+        command: 'test',
+        cwd: '',
+        exitCode: 0,
+        stderr: '',
+      },
+    ]);
+    mockTrpc.waitForMessages.query.mockImplementationOnce(async () => {
+      controller.abort();
+      return [];
+    });
+
+    const forwarderPromise = startDaemonToDiscordForwarder(
+      mockClient,
+      mockTrpc,
+      'user-123',
+      'default',
+      controller.signal
+    );
+
+    // Wait for first error to trigger timeout
+    await vi.runAllTimersAsync();
+    // Wait for second error to trigger timeout (2000ms)
+    await vi.runAllTimersAsync();
+    // Success call
+    await vi.runAllTimersAsync();
+
+    await forwarderPromise;
+
+    expect(mockTrpc.waitForMessages.query).toHaveBeenCalledTimes(4); // 2 failures + 1 success + 1 abort check
+    expect(mockDm.send).toHaveBeenCalledWith('Finally up');
+    vi.useRealTimers();
+  });
 });
