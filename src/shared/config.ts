@@ -1,5 +1,19 @@
 import { z } from 'zod';
 
+export const FallbackSchema = z.looseObject({
+  commands: z
+    .looseObject({
+      new: z.string().optional(),
+      append: z.string().optional(),
+      getSessionId: z.string().optional(),
+      getMessageContent: z.string().optional(),
+    })
+    .optional(),
+  env: z.record(z.string(), z.string()).optional(),
+  retries: z.number().int().min(0).default(1),
+  delayMs: z.number().int().min(0).default(1000),
+});
+
 export const AgentSchema = z.looseObject({
   commands: z
     .looseObject({
@@ -11,6 +25,7 @@ export const AgentSchema = z.looseObject({
     .optional(),
   env: z.record(z.string(), z.string()).optional(),
   directory: z.string().optional(),
+  fallbacks: z.array(FallbackSchema).optional(),
 });
 
 export type Agent = z.infer<typeof AgentSchema>;

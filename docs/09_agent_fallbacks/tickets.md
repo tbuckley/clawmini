@@ -1,7 +1,7 @@
 # Tickets for Agent Fallbacks
 
 ## Ticket 1: Configuration Schema and Type Updates
-**Status:** not started
+**Status:** completed
 
 ### Task
 Update `src/shared/config.ts` to include the `fallbacks` property in `AgentSchema`.
