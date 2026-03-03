@@ -4,7 +4,12 @@ import { appendMessage, type UserMessage, type CommandLogMessage } from '../shar
 import { getQueue } from './queue.js';
 import { executeRouterPipeline } from './routers.js';
 import type { RouterState } from './routers/types.js';
-import { type Settings, type Agent, type AgentSessionSettings } from '../shared/config.js';
+import {
+  type Settings,
+  type Agent,
+  type AgentSessionSettings,
+  type FallbackSchema,
+} from '../shared/config.js';
 import {
   readChatSettings,
   writeChatSettings,
@@ -14,6 +19,9 @@ import {
   getWorkspaceRoot,
 } from '../shared/workspace.js';
 import { getApiContext, generateToken } from './auth.js';
+import { z } from 'zod';
+
+type Fallback = z.infer<typeof FallbackSchema>;
 
 export type RunCommandResult = {
   stdout: string;
@@ -55,22 +63,35 @@ function prepareCommandAndEnv(
   agent: Agent,
   message: string,
   isNewSession: boolean,
-  agentSessionSettings: AgentSessionSettings | null
-): { command: string; env: Record<string, string> } {
-  let command = agent.commands!.new!;
+  agentSessionSettings: AgentSessionSettings | null,
+  fallback?: Fallback
+): { command: string; env: Record<string, string>; currentAgent: Agent } {
+  const currentAgent: Agent = {
+    ...agent,
+    commands: {
+      ...agent.commands,
+      ...(fallback?.commands || {}),
+    },
+    env: {
+      ...agent.env,
+      ...(fallback?.env || {}),
+    },
+  };
+
+  let command = currentAgent.commands?.new ?? '';
   let env = {
     ...process.env,
-    ...(agent.env || {}),
+    ...(currentAgent.env || {}),
     CLAW_CLI_MESSAGE: message,
   } as Record<string, string>;
 
-  if (!isNewSession && agent.commands?.append) {
-    command = agent.commands.append;
+  if (!isNewSession && currentAgent.commands?.append) {
+    command = currentAgent.commands.append;
     const sessionEnv = agentSessionSettings?.env || {};
     env = { ...env, ...sessionEnv };
   }
 
-  return { command, env };
+  return { command, env, currentAgent };
 }
 
 async function runExtractionCommand(
@@ -136,17 +157,15 @@ export async function executeDirectMessage(
   }
 
   const queue = getQueue(cwd);
-  const finalAgentId = state.agentId ?? 'default';
-  const finalSessionId = state.sessionId ?? crypto.randomUUID();
   const routerEnv = state.env ?? {};
 
   const taskPromise = queue.enqueue(async () => {
-    const { agentId, agentSessionSettings, isNewSession } = await resolveSessionState(
-      chatId,
-      cwd,
-      finalSessionId,
-      finalAgentId
-    );
+    const {
+      agentId,
+      agentSessionSettings,
+      isNewSession,
+      targetSessionId: finalSessionId,
+    } = await resolveSessionState(chatId, cwd, state.sessionId, state.agentId);
 
     let mergedAgent: Agent = settings?.defaultAgent || {};
     if (agentId !== 'default') {
@@ -165,9 +184,11 @@ export async function executeDirectMessage(
       }
     }
 
-    if (!mergedAgent.commands?.new) {
-      throw new Error(`No commands.new defined for agent: ${agentId}`);
-    }
+    const fallbacks = mergedAgent.fallbacks || [];
+    const executionConfigs: { fallback?: Fallback; retries: number }[] = [
+      { retries: 0 },
+      ...fallbacks.map((f) => ({ fallback: f, retries: f.retries })),
+    ];
 
     const workspaceRoot = getWorkspaceRoot(cwd);
     let executionCwd = cwd;
@@ -177,93 +198,120 @@ export async function executeDirectMessage(
       executionCwd = path.resolve(workspaceRoot, agentId);
     }
 
-    const { command, env } = prepareCommandAndEnv(
-      mergedAgent,
-      state.message,
-      isNewSession,
-      agentSessionSettings
-    );
+    let lastLogMsg: CommandLogMessage | undefined;
+    let success = false;
 
-    Object.assign(env, routerEnv);
-
-    const apiCtx = getApiContext(settings);
-    if (apiCtx) {
-      if (apiCtx.proxy_host) {
-        env['CLAW_API_URL'] = `${apiCtx.proxy_host}:${apiCtx.port}`;
-      } else {
-        env['CLAW_API_URL'] = `http://${apiCtx.host}:${apiCtx.port}`;
-      }
-      env['CLAW_API_TOKEN'] = generateToken({
-        chatId,
-        agentId,
-        sessionId: finalSessionId,
-        timestamp: Date.now(),
-      });
-    }
-
-    const mainResult = await runCommand({ command, cwd: executionCwd, env });
-
-    const logMsg: CommandLogMessage = {
-      id: crypto.randomUUID(),
-      messageId: userMsg.id,
-      role: 'log',
-      content: mainResult.stdout,
-      stderr: '',
-      timestamp: new Date().toISOString(),
-      command,
-      cwd: executionCwd,
-      exitCode: mainResult.exitCode,
-    };
-
-    const errors: string[] = [];
-    if (mainResult.stderr) {
-      errors.push(mainResult.stderr);
-    }
-
-    if (mainResult.exitCode === 0) {
-      if (isNewSession && mergedAgent.commands?.getSessionId) {
-        const { result, error } = await runExtractionCommand(
-          'getSessionId',
-          mergedAgent.commands.getSessionId,
-          runCommand,
-          executionCwd,
-          env,
-          mainResult
+    for (const config of executionConfigs) {
+      for (let attempt = 0; attempt <= config.retries; attempt++) {
+        const { command, env, currentAgent } = prepareCommandAndEnv(
+          mergedAgent,
+          state.message,
+          isNewSession,
+          agentSessionSettings,
+          config.fallback
         );
-        if (result) {
-          await writeAgentSessionSettings(
+
+        if (!command) {
+          continue;
+        }
+
+        Object.assign(env, routerEnv);
+
+        const apiCtx = getApiContext(settings);
+        if (apiCtx) {
+          if (apiCtx.proxy_host) {
+            env['CLAW_API_URL'] = `${apiCtx.proxy_host}:${apiCtx.port}`;
+          } else {
+            env['CLAW_API_URL'] = `http://${apiCtx.host}:${apiCtx.port}`;
+          }
+          env['CLAW_API_TOKEN'] = generateToken({
+            chatId,
             agentId,
-            finalSessionId,
-            { env: { SESSION_ID: result } },
-            cwd
-          );
+            sessionId: finalSessionId,
+            timestamp: Date.now(),
+          });
         }
-        if (error) {
-          errors.push(error);
-        }
-      }
 
-      if (mergedAgent.commands?.getMessageContent) {
-        const { result, error } = await runExtractionCommand(
-          'getMessageContent',
-          mergedAgent.commands.getMessageContent,
-          runCommand,
-          executionCwd,
-          env,
-          mainResult
-        );
-        if (result !== undefined) {
-          logMsg.content = result;
-          logMsg.stdout = mainResult.stdout;
+        const mainResult = await runCommand({ command, cwd: executionCwd, env });
+
+        const logMsg: CommandLogMessage = {
+          id: crypto.randomUUID(),
+          messageId: userMsg.id,
+          role: 'log',
+          content: mainResult.stdout,
+          stderr: '',
+          timestamp: new Date().toISOString(),
+          command,
+          cwd: executionCwd,
+          exitCode: mainResult.exitCode,
+        };
+
+        const errors: string[] = [];
+        if (mainResult.stderr) {
+          errors.push(mainResult.stderr);
         }
-        if (error) {
-          errors.push(error);
+
+        let currentSuccess = mainResult.exitCode === 0;
+
+        if (currentSuccess) {
+          if (currentAgent.commands?.getMessageContent) {
+            const { result, error } = await runExtractionCommand(
+              'getMessageContent',
+              currentAgent.commands.getMessageContent,
+              runCommand,
+              executionCwd,
+              env,
+              mainResult
+            );
+            if (result !== undefined) {
+              logMsg.content = result;
+              logMsg.stdout = mainResult.stdout;
+              if (result.trim() === '') {
+                currentSuccess = false;
+              }
+            }
+            if (error) {
+              errors.push(error);
+            }
+          }
+        }
+
+        logMsg.stderr = errors.join('\n\n');
+        lastLogMsg = logMsg;
+
+        if (currentSuccess) {
+          success = true;
+          if (isNewSession && currentAgent.commands?.getSessionId) {
+            const { result, error } = await runExtractionCommand(
+              'getSessionId',
+              currentAgent.commands.getSessionId,
+              runCommand,
+              executionCwd,
+              env,
+              mainResult
+            );
+            if (result) {
+              await writeAgentSessionSettings(
+                agentId,
+                finalSessionId,
+                { env: { SESSION_ID: result } },
+                cwd
+              );
+            }
+            if (error) {
+              // We don't fail the whole thing for getSessionId error, but we log it.
+              logMsg.stderr = [logMsg.stderr, error].filter(Boolean).join('\n\n');
+            }
+          }
+          break;
         }
       }
+      if (success) break;
     }
 
-    logMsg.stderr = errors.join('\n\n');
-    await appendMessage(chatId, logMsg);
+    if (lastLogMsg) {
+      await appendMessage(chatId, lastLogMsg);
+    }
   });
 
   if (!noWait) {

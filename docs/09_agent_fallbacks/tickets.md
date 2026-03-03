@@ -21,7 +21,7 @@ Update `src/shared/config.ts` to include the `fallbacks` property in `AgentSchem
 ---
 
 ## Ticket 2: Refactor Execution Loop and Error Detection
-**Status:** not started
+**Status:** completed
 
 ### Task
 Refactor `executeDirectMessage` in `src/daemon/message.ts` to support a retry loop and implement failure detection.
@@ -37,7 +37,7 @@ Refactor `executeDirectMessage` in `src/daemon/message.ts` to support a retry lo
 
 ### Verification
 - Run existing tests `npm run test` to ensure no regressions.
-- Add unit tests in `src/daemon/message.test.ts` mocking `runCommand` to fail once and then succeed, verifying the loop triggers.
+- Add unit tests in `src/daemon/message-fallbacks.test.ts` mocking `runCommand` to fail once and then succeed, verifying the loop triggers.
 - Follow `./docs/CHECKS.md`.
 
 ---
