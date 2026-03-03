@@ -14,3 +14,14 @@
 - Added comprehensive unit tests in `src/adapter-discord/index.test.ts` for downloading attachments, size limit enforcement, and updated mock dependencies appropriately.
 - Fixed a minor logging bug regarding the fallback default for `maxAttachmentSizeMB`.
 - Re-ran all tests and formatting checks successfully.
+
+- Implemented Ticket 3: Daemon Processing of Incoming Files.
+- Updated `sendMessage` schema in `src/daemon/router.ts` to include an optional `adapter` property.
+- Modified the Discord adapter in `src/adapter-discord/index.ts` to explicitly provide `adapter: 'discord'`.
+- Intercepted incoming file paths in `src/daemon/router.ts` immediately before `handleUserMessage`.
+- Moved temporary files into the configured agent's `files` directory (namespaced by the adapter name).
+- Implemented file name collision resolution using a timestamp suffix.
+- Appended the finalized relative file paths to the user's message context automatically.
+- Added comprehensive unit tests in `src/daemon/router.test.ts` to cover file moving logic, collision handling, and message text formatting.
+- Updated the existing mock configurations and fixed linting warnings (e.g. `import('node:fs').Stats`, unused errors).
+- All checks (`npm run format:check && npm run lint && npm run check && npm run test`) pass successfully.

@@ -46,6 +46,7 @@ export async function main() {
           message: combinedMessage,
           chatId: config.chatId,
           files: allFiles.length > 0 ? allFiles : undefined,
+          adapter: 'discord',
         },
       });
       console.log('Message forwarded to daemon successfully.');
@@ -91,15 +92,19 @@ export async function main() {
     if (message.attachments.size > 0) {
       const tmpDir = path.join(process.cwd(), '.gemini', 'tmp', 'discord-files');
       await fs.mkdir(tmpDir, { recursive: true });
-            const maxSizeMB = config.maxAttachmentSizeMB ?? 25;
-            const maxSizeBytes = maxSizeMB * 1024 * 1024;
-      
-            for (const attachment of message.attachments.values()) {
-              if (attachment.size > maxSizeBytes) {
-                console.warn(`Attachment ${attachment.name} exceeds size limit (${maxSizeMB}MB). Ignoring.`);
-                await message.reply(`Warning: Attachment ${attachment.name} exceeds the size limit of ${maxSizeMB}MB and was ignored.`);
-                continue;
-              }
+      const maxSizeMB = config.maxAttachmentSizeMB ?? 25;
+      const maxSizeBytes = maxSizeMB * 1024 * 1024;
+
+      for (const attachment of message.attachments.values()) {
+        if (attachment.size > maxSizeBytes) {
+          console.warn(
+            `Attachment ${attachment.name} exceeds size limit (${maxSizeMB}MB). Ignoring.`
+          );
+          await message.reply(
+            `Warning: Attachment ${attachment.name} exceeds the size limit of ${maxSizeMB}MB and was ignored.`
+          );
+          continue;
+        }
 
         try {
           const res = await fetch(attachment.url);

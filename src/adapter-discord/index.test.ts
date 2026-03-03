@@ -120,6 +120,8 @@ describe('Discord Adapter Entry Point', () => {
       data: {
         message: 'Hello daemon!',
         chatId: 'default',
+        files: undefined,
+        adapter: 'discord',
       },
     });
     vi.useRealTimers();
@@ -172,6 +174,8 @@ describe('Discord Adapter Entry Point', () => {
       data: {
         message: '<message>\nmessage 1\n</message>\n<message>\nmessage 2\n</message>',
         chatId: 'default',
+        files: undefined,
+        adapter: 'discord',
       },
     });
     vi.useRealTimers();
@@ -325,6 +329,7 @@ describe('Discord Adapter Entry Point', () => {
         message: 'Check out this huge file',
         chatId: 'default',
         files: undefined, // no files should be attached
+        adapter: 'discord',
       },
     });
 

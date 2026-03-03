@@ -1,8 +1,14 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from './events.js';
-import { getSettingsPath, readChatSettings, writeChatSettings } from '../shared/workspace.js';
+import {
+  getSettingsPath,
+  readChatSettings,
+  writeChatSettings,
+  getAgent,
+} from '../shared/workspace.js';
 import { CronJobSchema } from '../shared/config.js';
 import { handleUserMessage } from './message.js';
 import { getDefaultChatId, getMessages } from './chats.js';
@@ -65,11 +71,12 @@ const AppRouter = router({
           agentId: z.string().optional(),
           noWait: z.boolean().optional(),
           files: z.array(z.string()).optional(),
+          adapter: z.string().optional(),
         }),
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const message = input.data.message;
+      let message = input.data.message;
       const chatId = await resolveAndCheckChatId(ctx, input.data.chatId);
       const noWait = input.data.noWait ?? false;
       const sessionId = input.data.sessionId;
@@ -82,6 +89,58 @@ const AppRouter = router({
         settings = JSON.parse(settingsStr);
       } catch (err) {
         throw new Error(`Failed to read settings from ${settingsPath}: ${err}`, { cause: err });
+      }
+
+      const files = input.data.files;
+      if (files && files.length > 0) {
+        const chatSettings = (await readChatSettings(chatId)) ?? {};
+        const targetAgentId = agentId ?? chatSettings.defaultAgent ?? 'default';
+        let agentFilesDir = settings?.defaultAgent?.files || './attachments';
+        if (targetAgentId !== 'default') {
+          const customAgent = await getAgent(targetAgentId, process.cwd());
+          if (customAgent && customAgent.files) {
+            agentFilesDir = customAgent.files;
+          }
+        }
+
+        const absoluteFilesDir = path.resolve(
+          process.cwd(),
+          targetAgentId !== 'default' ? targetAgentId : '',
+          agentFilesDir
+        );
+        const adapterNamespace = input.data.adapter || 'cli';
+        const targetDir = path.join(absoluteFilesDir, adapterNamespace);
+        await fs.mkdir(targetDir, { recursive: true });
+
+        const finalPaths: string[] = [];
+        for (const file of files) {
+          const fileName = path.basename(file);
+          let targetPath = path.join(targetDir, fileName);
+
+          let fileExists = true;
+          try {
+            await fs.stat(targetPath);
+          } catch {
+            fileExists = false;
+          }
+
+          if (fileExists) {
+            const ext = path.extname(fileName);
+            const base = path.basename(fileName, ext);
+            targetPath = path.join(targetDir, `${base}-${Date.now()}${ext}`);
+          }
+
+          try {
+            await fs.rename(file, targetPath);
+          } catch {
+            await fs.copyFile(file, targetPath);
+            await fs.unlink(file);
+          }
+
+          finalPaths.push(path.relative(process.cwd(), targetPath));
+        }
+
+        message = `${message}\n\nAttached files:\n${finalPaths.map((p) => `- ${p}`).join('\n')}`;
       }
 
       await handleUserMessage(

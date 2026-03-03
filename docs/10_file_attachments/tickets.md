@@ -33,7 +33,7 @@
 **Verification:**
 - Add unit tests for the daemon's file moving logic, collision resolution, and message text formatting.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status:** Not started
+**Status:** Complete
 
 ## Ticket 4: Outgoing Files via CLI & Daemon (Agent to User)
 **Description:** Enable agents to send files back to the user explicitly via the CLI, and update the daemon to record these paths.
