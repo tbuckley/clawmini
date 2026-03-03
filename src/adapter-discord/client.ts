@@ -1,4 +1,4 @@
-import { createTRPCClient, httpLink } from '@trpc/client';
+import { createTRPCClient, httpLink, splitLink, httpSubscriptionLink } from '@trpc/client';
 import type { AppRouter } from '../daemon/router.js';
 import { getSocketPath } from '../shared/workspace.js';
 import { createUnixSocketFetch } from '../shared/fetch.js';
@@ -17,11 +17,24 @@ export function getTRPCClient(options: { socketPath?: string } = {}) {
     throw new Error(`Daemon not running. Socket not found at ${socketPath}`);
   }
 
+  const customFetch = createUnixSocketFetch(socketPath);
+
   return createTRPCClient<AppRouter>({
     links: [
-      httpLink({
-        url: 'http://localhost',
-        fetch: createUnixSocketFetch(socketPath),
+      splitLink({
+        condition(op) {
+          return op.type === 'subscription';
+        },
+        true: httpSubscriptionLink({
+          url: 'http://localhost',
+          // @ts-expect-error fetch is not in the type definitions for httpSubscriptionLink but works in our custom fetch implementation
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          fetch: customFetch as any,
+        }),
+        false: httpLink({
+          url: 'http://localhost',
+          fetch: customFetch,
+        }),
       }),
     ],
   });

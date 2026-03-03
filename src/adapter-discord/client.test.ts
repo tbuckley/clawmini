@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getTRPCClient } from './client.js';
 import fs from 'node:fs';
 import * as workspace from '../shared/workspace.js';
-import { createTRPCClient, httpLink } from '@trpc/client';
+import { createTRPCClient, httpLink, splitLink, httpSubscriptionLink } from '@trpc/client';
 import { createUnixSocketFetch } from '../shared/fetch.js';
 
 vi.mock('node:fs');
@@ -14,6 +14,8 @@ vi.mock('@trpc/client', () => ({
     },
   }),
   httpLink: vi.fn(),
+  splitLink: vi.fn(),
+  httpSubscriptionLink: vi.fn(),
 }));
 vi.mock('../shared/fetch.js', () => ({
   createUnixSocketFetch: vi.fn(),
@@ -38,7 +40,13 @@ describe('Discord Adapter TRPC Client', () => {
     const client = getTRPCClient();
     expect(client).toBeDefined();
     expect(createTRPCClient).toHaveBeenCalled();
+    expect(splitLink).toHaveBeenCalled();
     expect(httpLink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'http://localhost',
+      })
+    );
+    expect(httpSubscriptionLink).toHaveBeenCalledWith(
       expect.objectContaining({
         url: 'http://localhost',
       })

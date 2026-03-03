@@ -37,68 +37,107 @@ export async function startDaemonToDiscordForwarder(
   let retryDelay = 1000;
   const maxRetryDelay = 30000;
 
-  // 2. Start the observation loop
-  while (!signal?.aborted) {
-    try {
-      const messages = await trpc.waitForMessages.query({
-        chatId,
-        lastMessageId,
-        timeout: 30000,
-      });
+  // 2. Start the observation loop using tRPC subscription
+  return new Promise<void>((resolve) => {
+    let subscription: { unsubscribe: () => void } | null = null;
+    let messageQueue = Promise.resolve();
 
-      // Reset retry delay on successful call
-      retryDelay = 1000;
-
-      if (!Array.isArray(messages) || messages.length === 0) {
-        continue;
+    const connect = () => {
+      if (signal?.aborted) {
+        resolve();
+        return;
       }
 
-      for (const message of messages) {
-        if (signal?.aborted) break;
+      subscription = trpc.waitForMessages.subscribe(
+        { chatId, lastMessageId },
+        {
+          onData: (messages) => {
+            retryDelay = 1000; // Reset retry delay on successful data
 
-        // Only forward logs (agent responses, system messages)
-        if (message.role === 'log') {
-          if (!message.content.trim()) {
-            lastMessageId = message.id;
-            continue;
-          }
-
-          try {
-            const user = await client.users.fetch(discordUserId);
-            const dm = await user.createDM();
-
-            // Discord has a 2000 character limit for messages.
-            if (message.content.length > 2000) {
-              const chunks = chunkString(message.content, 2000);
-              for (const chunk of chunks) {
-                if (signal?.aborted) break;
-                await dm.send(chunk);
-              }
-            } else {
-              await dm.send(message.content);
+            if (!Array.isArray(messages) || messages.length === 0) {
+              return;
             }
-          } catch (error) {
-            console.error(`Failed to send message to Discord user ${discordUserId}:`, error);
-            // We don't advance lastMessageId if sending failed to ensure retry on next loop/restart
-            // unless it's a permanent error. For now, we'll just break and retry.
-            break;
-          }
-        }
 
-        lastMessageId = message.id;
-        await writeDiscordState({ lastSyncedMessageId: lastMessageId });
-      }
-    } catch (error) {
-      if (signal?.aborted) break;
-      // If the daemon is down, wait with exponential backoff before retrying
-      console.error(
-        `Error in daemon-to-discord forwarder loop. Retrying in ${retryDelay}ms.`,
-        error
+            // Queue processing to ensure sequential execution
+            messageQueue = messageQueue.then(async () => {
+              for (const message of messages) {
+                if (signal?.aborted) break;
+
+                // Only forward logs (agent responses, system messages)
+                if (message.role === 'log') {
+                  if (!message.content.trim()) {
+                    lastMessageId = message.id;
+                    continue;
+                  }
+
+                  try {
+                    const user = await client.users.fetch(discordUserId);
+                    const dm = await user.createDM();
+
+                    // Discord has a 2000 character limit for messages.
+                    if (message.content.length > 2000) {
+                      const chunks = chunkString(message.content, 2000);
+                      for (const chunk of chunks) {
+                        if (signal?.aborted) break;
+                        await dm.send(chunk);
+                      }
+                    } else {
+                      await dm.send(message.content);
+                    }
+                  } catch (error) {
+                    console.error(
+                      `Failed to send message to Discord user ${discordUserId}:`,
+                      error
+                    );
+                    // We don't advance lastMessageId if sending failed
+                    break;
+                  }
+                }
+
+                lastMessageId = message.id;
+                await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
+                  console.error
+                );
+              }
+            });
+          },
+          onError: (error) => {
+            console.error(
+              `Error in daemon-to-discord forwarder subscription. Retrying in ${retryDelay}ms.`,
+              error
+            );
+            subscription?.unsubscribe();
+            subscription = null;
+
+            if (signal?.aborted) {
+              resolve();
+              return;
+            }
+
+            setTimeout(() => {
+              retryDelay = Math.min(retryDelay * 2, maxRetryDelay);
+              connect();
+            }, retryDelay);
+          },
+          onComplete: () => {
+            subscription = null;
+            if (!signal?.aborted) {
+              setTimeout(() => connect(), retryDelay);
+            } else {
+              resolve();
+            }
+          },
+        }
       );
-      await new Promise((resolve) => setTimeout(resolve, retryDelay));
-      retryDelay = Math.min(retryDelay * 2, maxRetryDelay);
-    }
-  }
+    };
+
+    connect();
+
+    signal?.addEventListener('abort', () => {
+      subscription?.unsubscribe();
+      resolve();
+    });
+  });
 }
 
 function chunkString(str: string, size: number): string[] {

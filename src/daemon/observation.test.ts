@@ -20,7 +20,9 @@ describe('Daemon Message Observation', () => {
 
   it('getMessages should return messages from chats module', async () => {
     const mockMessages = [{ id: '1', role: 'user', content: 'hello', timestamp: '...' }];
-    vi.mocked(daemonChats.getMessages).mockResolvedValue(mockMessages as any);
+    vi.mocked(daemonChats.getMessages).mockResolvedValue(
+      mockMessages as unknown as import('./chats.js').ChatMessage[]
+    );
     vi.mocked(daemonChats.getDefaultChatId).mockResolvedValue('chat-1');
 
     const caller = appRouter.createCaller({});
@@ -36,11 +38,15 @@ describe('Daemon Message Observation', () => {
       { id: '2', role: 'log', content: 'hi', timestamp: '...' },
       { id: '3', role: 'user', content: 'how are you?', timestamp: '...' },
     ];
-    vi.mocked(daemonChats.getMessages).mockResolvedValue(mockMessages as any);
+    vi.mocked(daemonChats.getMessages).mockResolvedValue(
+      mockMessages as unknown as import('./chats.js').ChatMessage[]
+    );
     vi.mocked(daemonChats.getDefaultChatId).mockResolvedValue('chat-1');
 
     const caller = appRouter.createCaller({});
-    const result = await caller.waitForMessages({ chatId: 'chat-1', lastMessageId: '1' });
+    const iterable = await caller.waitForMessages({ chatId: 'chat-1', lastMessageId: '1' });
+    const iterator = iterable[Symbol.asyncIterator]();
+    const result = (await iterator.next()).value;
 
     expect(result).toHaveLength(2);
     expect(result![0]!.id).toBe('2');
@@ -49,12 +55,17 @@ describe('Daemon Message Observation', () => {
 
   it('waitForMessages should wait for a new message if none are available after lastMessageId', async () => {
     const mockMessages = [{ id: '1', role: 'user', content: 'hello', timestamp: '...' }];
-    vi.mocked(daemonChats.getMessages).mockResolvedValue(mockMessages as any);
+    vi.mocked(daemonChats.getMessages).mockResolvedValue(
+      mockMessages as unknown as import('./chats.js').ChatMessage[]
+    );
     vi.mocked(daemonChats.getDefaultChatId).mockResolvedValue('chat-1');
 
     const caller = appRouter.createCaller({});
 
-    const waitPromise = caller.waitForMessages({ chatId: 'chat-1', lastMessageId: '1' });
+    const iterable = await caller.waitForMessages({ chatId: 'chat-1', lastMessageId: '1' });
+    const iterator = iterable[Symbol.asyncIterator]();
+
+    const waitPromise = iterator.next();
 
     const newMessage = { id: '2', role: 'log', content: 'hi', timestamp: '...' };
 
@@ -64,18 +75,8 @@ describe('Daemon Message Observation', () => {
     }, 10);
 
     const result = await waitPromise;
-    expect(result).toHaveLength(1);
-    expect(result![0]!.id).toBe('2');
-  });
-
-  it('waitForMessages should timeout if no message arrives', async () => {
-    vi.mocked(daemonChats.getMessages).mockResolvedValue([]);
-    vi.mocked(daemonChats.getDefaultChatId).mockResolvedValue('chat-1');
-
-    const caller = appRouter.createCaller({});
-    const result = await caller.waitForMessages({ chatId: 'chat-1', timeout: 50 });
-
-    expect(result).toHaveLength(0);
+    expect(result.value).toHaveLength(1);
+    expect(result.value![0]!.id).toBe('2');
   });
 
   it('waitForMessages should ignore messages for other chats while waiting', async () => {
@@ -84,17 +85,34 @@ describe('Daemon Message Observation', () => {
 
     const caller = appRouter.createCaller({});
 
-    const waitPromise = caller.waitForMessages({ chatId: 'chat-1', timeout: 100 });
+    const iterable = await caller.waitForMessages({ chatId: 'chat-1' });
+    const iterator = iterable[Symbol.asyncIterator]();
+
+    // Try to get next value
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let yieldedValue: any = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    iterator.next().then((res: any) => (yieldedValue = res.value));
 
     // Simulate message for another chat
-    setTimeout(() => {
-      daemonEvents.emit(DAEMON_EVENT_MESSAGE_APPENDED, {
-        chatId: 'other-chat',
-        message: { id: 'x', role: 'user', content: 'wrong', timestamp: '...' },
-      });
-    }, 20);
+    daemonEvents.emit(DAEMON_EVENT_MESSAGE_APPENDED, {
+      chatId: 'other-chat',
+      message: { id: 'x', role: 'user', content: 'wrong', timestamp: '...' },
+    });
 
-    const result = await waitPromise;
-    expect(result).toHaveLength(0); // Should timeout because 'chat-1' never got a message
+    // Wait a tick
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(yieldedValue).toBeNull(); // Should still be waiting
+
+    // Now simulate the correct chat
+    daemonEvents.emit(DAEMON_EVENT_MESSAGE_APPENDED, {
+      chatId: 'chat-1',
+      message: { id: 'y', role: 'user', content: 'right', timestamp: '...' },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(yieldedValue).toHaveLength(1);
+    expect(yieldedValue![0]!.id).toBe('y');
   });
 });

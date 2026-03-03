@@ -156,10 +156,9 @@ const AppRouter = router({
       z.object({
         chatId: z.string().optional(),
         lastMessageId: z.string().optional(),
-        timeout: z.number().optional().default(30000),
       })
     )
-    .query(async ({ input, ctx }) => {
+    .subscription(async function* ({ input, ctx, signal }) {
       const chatId = await resolveAndCheckChatId(ctx, input.chatId);
 
       // 1. Check if there are already new messages
@@ -167,33 +166,17 @@ const AppRouter = router({
         const messages = await getMessages(chatId);
         const lastIndex = messages.findIndex((m) => m.id === input.lastMessageId);
         if (lastIndex !== -1 && lastIndex < messages.length - 1) {
-          return messages.slice(lastIndex + 1);
+          yield messages.slice(lastIndex + 1);
         }
       }
 
-      // 2. If no new messages, wait for one
-      return new Promise<import('./chats.js').ChatMessage[]>((resolve) => {
-        const onMessage = ({
-          chatId: eventChatId,
-          message,
-        }: {
-          chatId: string;
-          message: import('./chats.js').ChatMessage;
-        }) => {
-          if (eventChatId === chatId) {
-            clearTimeout(timer);
-            daemonEvents.off(DAEMON_EVENT_MESSAGE_APPENDED, onMessage);
-            resolve([message]);
-          }
-        };
-
-        const timer = setTimeout(() => {
-          daemonEvents.off(DAEMON_EVENT_MESSAGE_APPENDED, onMessage);
-          resolve([]);
-        }, input.timeout);
-
-        daemonEvents.on(DAEMON_EVENT_MESSAGE_APPENDED, onMessage);
-      });
+      // 2. Listen for new messages
+      const { on } = await import('node:events');
+      for await (const [event] of on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, { signal })) {
+        if (event.chatId === chatId) {
+          yield [event.message];
+        }
+      }
     }),
   ping: publicProcedure.query(() => {
     return { status: 'ok' };

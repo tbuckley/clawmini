@@ -60,6 +60,7 @@ describe('Discord Adapter Configuration', () => {
   });
 
   describe('initDiscordConfig', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let fsMock: any;
 
     beforeEach(async () => {

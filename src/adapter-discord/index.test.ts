@@ -45,7 +45,7 @@ vi.mock('./client.js', () => ({
 }));
 
 describe('Discord Adapter Entry Point', () => {
-  let mockTrpc: any;
+  let mockTrpc: ReturnType<typeof import('./client.js').getTRPCClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,7 +53,7 @@ describe('Discord Adapter Entry Point', () => {
       sendMessage: {
         mutate: vi.fn().mockResolvedValue({ success: true }),
       },
-    };
+    } as unknown as ReturnType<typeof import('./client.js').getTRPCClient>;
     vi.mocked(getTRPCClient).mockReturnValue(mockTrpc);
     vi.mocked(readDiscordConfig).mockResolvedValue({
       botToken: 'test-token',
@@ -79,13 +79,17 @@ describe('Discord Adapter Entry Point', () => {
 
   it('should initialize Discord client and forward authorized DM messages', async () => {
     vi.useFakeTimers();
-    let messageHandler: ((message: any) => Promise<void>) | undefined;
-    vi.mocked(mockClientInstance.on).mockImplementation((event: string, cb: any) => {
-      if (event === 'messageCreate') {
-        messageHandler = cb;
+    let messageHandler: ((message: import('discord.js').Message) => Promise<void>) | undefined;
+    vi.mocked(mockClientInstance.on).mockImplementation(
+      (event: string, cb: (...args: unknown[]) => void) => {
+        if (event === 'messageCreate') {
+          messageHandler = cb as unknown as (
+            message: import('discord.js').Message
+          ) => Promise<void>;
+        }
+        return mockClientInstance as unknown as import('discord.js').Client;
       }
-      return mockClientInstance as any;
-    });
+    );
 
     const { main } = await import('./index.js');
     await main();
@@ -103,7 +107,7 @@ describe('Discord Adapter Entry Point', () => {
     vi.mocked(isAuthorized).mockReturnValue(true);
 
     if (messageHandler) {
-      await messageHandler(mockMessage);
+      await messageHandler(mockMessage as unknown as import('discord.js').Message);
     }
 
     // Fast-forward time for debouncer
@@ -122,13 +126,17 @@ describe('Discord Adapter Entry Point', () => {
 
   it('should debounce multiple rapid messages into one', async () => {
     vi.useFakeTimers();
-    let messageHandler: ((message: any) => Promise<void>) | undefined;
-    vi.mocked(mockClientInstance.on).mockImplementation((event: string, cb: any) => {
-      if (event === 'messageCreate') {
-        messageHandler = cb;
+    let messageHandler: ((message: import('discord.js').Message) => Promise<void>) | undefined;
+    vi.mocked(mockClientInstance.on).mockImplementation(
+      (event: string, cb: (...args: unknown[]) => void) => {
+        if (event === 'messageCreate') {
+          messageHandler = cb as unknown as (
+            message: import('discord.js').Message
+          ) => Promise<void>;
+        }
+        return mockClientInstance as unknown as import('discord.js').Client;
       }
-      return mockClientInstance as any;
-    });
+    );
 
     const { main } = await import('./index.js');
     await main();
@@ -138,15 +146,15 @@ describe('Discord Adapter Entry Point', () => {
 
     if (messageHandler) {
       await messageHandler({
-        author: { id: 'user-123', tag: 'user#1234' },
+        author: { id: 'user-123', tag: 'user#1234' } as unknown as import('discord.js').User,
         content: 'message 1',
         guild: null,
-      });
+      } as unknown as import('discord.js').Message);
       await messageHandler({
-        author: { id: 'user-123', tag: 'user#1234' },
+        author: { id: 'user-123', tag: 'user#1234' } as unknown as import('discord.js').User,
         content: 'message 2',
         guild: null,
-      });
+      } as unknown as import('discord.js').Message);
     }
 
     // Should not have been called yet
@@ -167,13 +175,17 @@ describe('Discord Adapter Entry Point', () => {
   });
 
   it('should ignore unauthorized messages', async () => {
-    let messageHandler: ((message: any) => Promise<void>) | undefined;
-    vi.mocked(mockClientInstance.on).mockImplementation((event: string, cb: any) => {
-      if (event === 'messageCreate') {
-        messageHandler = cb;
+    let messageHandler: ((message: import('discord.js').Message) => Promise<void>) | undefined;
+    vi.mocked(mockClientInstance.on).mockImplementation(
+      (event: string, cb: (...args: unknown[]) => void) => {
+        if (event === 'messageCreate') {
+          messageHandler = cb as unknown as (
+            message: import('discord.js').Message
+          ) => Promise<void>;
+        }
+        return mockClientInstance as unknown as import('discord.js').Client;
       }
-      return mockClientInstance as any;
-    });
+    );
 
     const { main } = await import('./index.js');
     await main();
@@ -188,7 +200,7 @@ describe('Discord Adapter Entry Point', () => {
     vi.mocked(isAuthorized).mockReturnValue(false);
 
     if (messageHandler) {
-      await messageHandler(mockMessage);
+      await messageHandler(mockMessage as unknown as import('discord.js').Message);
     }
 
     expect(mockTrpc.sendMessage.mutate).not.toHaveBeenCalled();
