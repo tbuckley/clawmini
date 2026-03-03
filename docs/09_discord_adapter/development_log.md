@@ -31,3 +31,13 @@
   - Implement a TRPC client that connects to the daemon via the Unix socket. (Done)
   - Create unit tests in `src/adapter-discord/client.test.ts`. (Done)
 - **Status:** Completed. Verified with unit tests. All checks and tests passed.
+
+### Step 4: Discord to Daemon Forwarding
+- **Goal:** Forward authorized Discord DM messages to the Clawmini daemon.
+- **Tasks:**
+  - Initialize `discord.js` client in `src/adapter-discord/index.ts`. (Done)
+  - Implement `messageCreate` listener for DMs. (Done)
+  - Integrate with `readDiscordConfig` and `isAuthorized`. (Done)
+  - Implement TRPC `sendMessage` forwarding. (Done)
+  - Create comprehensive unit tests in `src/adapter-discord/index.test.ts`. (Done)
+- **Status:** Completed. Verified with mocked `discord.js` tests. All checks and tests passed.
