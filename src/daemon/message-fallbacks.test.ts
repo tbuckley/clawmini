@@ -26,6 +26,10 @@ describe('calculateDelay', () => {
     expect(calculateDelay(0, baseDelay)).toBe(0);
   });
 
+  it('returns baseDelay for attempt 0 on fallback', () => {
+    expect(calculateDelay(0, baseDelay, true)).toBe(baseDelay);
+  });
+
   it('returns baseDelay for attempt 1', () => {
     expect(calculateDelay(1, baseDelay)).toBe(baseDelay);
   });

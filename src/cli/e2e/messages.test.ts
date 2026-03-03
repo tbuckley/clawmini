@@ -255,7 +255,7 @@ describe('E2E Messages Tests', () => {
       .map((l) => JSON.parse(l));
 
     expect(lines).toHaveLength(6);
-    expect(lines[5].stdout).toBeUndefined();
+    expect(lines[5].stdout).toContain('APPEND msg-3');
     expect(lines[5].stderr).toContain('ERR APPEND');
     expect(lines[5].stderr).toContain('getMessageContent failed: EXTRACTION_FAIL');
 

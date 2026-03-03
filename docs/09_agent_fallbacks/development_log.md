@@ -33,3 +33,20 @@
 - Added unit test in `src/daemon/message-fallbacks.test.ts` to verify the log message is appended before the sleep delay.
 - Verified all checks and tests pass.
 - Ticket 4 complete.
+
+- Starting on Ticket 5: Comprehensive E2E Validation.
+- Planning E2E test cases for various fallback scenarios:
+  - Base fails (exit code), fallback succeeds via env override.
+  - Base fails (empty content), fallback succeeds via command override.
+  - Exponential backoff (checking log messages).
+  - Exhausted fallbacks (all fail).
+- Implemented Ticket 5:
+  - Discovered that "retrying" log messages were not appearing when moving between execution configurations (base -> fallback).
+  - Updated `calculateDelay` in `src/daemon/message.ts` to support an `isFallback` flag, ensuring a delay (and thus a log message) is triggered when starting a fallback if `delayMs` is present.
+  - Fixed `logMsg` construction to always include `stdout` property, as per `CommandLogMessage` definition and `napkin.md` notes.
+  - Created `src/cli/e2e/fallbacks.test.ts` to house all fallback-related E2E tests, keeping `src/cli/e2e/messages.test.ts` within the `max-lines` limit.
+  - Updated existing E2E test `should handle full multi-message session workflow` to expect `stdout` in log messages.
+  - Verified all checks (`npm run format:check && npm run lint && npm run check && npm run test`) pass.
+- Ticket 5 complete.
+
+ALL DONE

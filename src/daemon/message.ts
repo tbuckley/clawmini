@@ -23,9 +23,14 @@ import { z } from 'zod';
 
 type Fallback = z.infer<typeof FallbackSchema>;
 
-export function calculateDelay(attempt: number, baseDelayMs: number): number {
-  if (attempt <= 0) return 0;
-  const delay = baseDelayMs * Math.pow(2, attempt - 1);
+export function calculateDelay(
+  attempt: number,
+  baseDelayMs: number,
+  isFallback: boolean = false
+): number {
+  const effectiveAttempt = isFallback ? attempt + 1 : attempt;
+  if (effectiveAttempt <= 0) return 0;
+  const delay = baseDelayMs * Math.pow(2, effectiveAttempt - 1);
   return Math.min(delay, 15000);
 }
 
@@ -209,9 +214,11 @@ export async function executeDirectMessage(
     let lastLogMsg: CommandLogMessage | undefined;
     let success = false;
 
-    for (const config of executionConfigs) {
+    for (let configIdx = 0; configIdx < executionConfigs.length; configIdx++) {
+      const config = executionConfigs[configIdx]!;
+      const isFallbackConfig = configIdx > 0;
       for (let attempt = 0; attempt <= config.retries; attempt++) {
-        const delay = calculateDelay(attempt, config.delayMs);
+        const delay = calculateDelay(attempt, config.delayMs, isFallbackConfig);
         if (delay > 0) {
           const retryLogMsg: CommandLogMessage = {
             id: crypto.randomUUID(),
@@ -264,6 +271,7 @@ export async function executeDirectMessage(
           messageId: userMsg.id,
           role: 'log',
           content: mainResult.stdout,
+          stdout: mainResult.stdout,
           stderr: '',
           timestamp: new Date().toISOString(),
           command,
