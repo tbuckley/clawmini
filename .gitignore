@@ -2,7 +2,7 @@ node_modules/
 dist/
 .DS_Store
 .gemini/ralph
-
+.gemini/sandbox-*
 # Test workspaces
 test-workspace/
 e2e-tmp/

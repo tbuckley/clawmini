@@ -7,5 +7,16 @@
     },
     "env": {
         "MODEL": "gemini-3.1-pro-preview-customtools"
-    }
+    },
+    "fallbacks": [
+        {
+            "retries": 1
+        },
+        {
+            "env": {
+                "MODEL": "gemini-3-flash-preview"
+            },
+            "retries": 3
+        }
+    ]
 }
