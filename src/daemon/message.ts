@@ -1,6 +1,6 @@
 /* eslint-disable max-lines */
 import path from 'node:path';
-import { appendMessage, type UserMessage, type CommandLogMessage } from '../shared/chats.js';
+import { appendMessage, type UserMessage, type CommandLogMessage } from './chats.js';
 import { getQueue } from './queue.js';
 import { executeRouterPipeline } from './routers.js';
 import type { RouterState } from './routers/types.js';

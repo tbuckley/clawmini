@@ -51,7 +51,7 @@
   - Unit/Integration tests for the new observation endpoint.
   - Verify that sending a message via TRPC results in the observer being notified.
   - `npm run check && npm run test` passes.
-- **Status:** not started
+- **Status:** completed
 
 ## Step 6: Daemon to Discord Forwarding
 - **Description:** 

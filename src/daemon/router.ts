@@ -1,10 +1,11 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import fs from 'node:fs/promises';
+import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from './events.js';
 import { getSettingsPath, readChatSettings, writeChatSettings } from '../shared/workspace.js';
 import { CronJobSchema } from '../shared/config.js';
 import { handleUserMessage } from './message.js';
-import { getDefaultChatId } from '../shared/chats.js';
+import { getDefaultChatId, getMessages } from './chats.js';
 import { spawn } from 'node:child_process';
 import { cronManager } from './cron.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -144,6 +145,56 @@ const AppRouter = router({
 
       return { success: true };
     }),
+  getMessages: apiProcedure
+    .input(z.object({ chatId: z.string().optional(), limit: z.number().optional() }))
+    .query(async ({ input, ctx }) => {
+      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
+      return getMessages(chatId, input.limit);
+    }),
+  waitForMessages: apiProcedure
+    .input(
+      z.object({
+        chatId: z.string().optional(),
+        lastMessageId: z.string().optional(),
+        timeout: z.number().optional().default(30000),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
+
+      // 1. Check if there are already new messages
+      const messages = await getMessages(chatId);
+      if (input.lastMessageId) {
+        const lastIndex = messages.findIndex((m) => m.id === input.lastMessageId);
+        if (lastIndex !== -1 && lastIndex < messages.length - 1) {
+          return messages.slice(lastIndex + 1);
+        }
+      }
+
+      // 2. If no new messages, wait for one
+      return new Promise<import('./chats.js').ChatMessage[]>((resolve) => {
+        const onMessage = ({
+          chatId: eventChatId,
+          message,
+        }: {
+          chatId: string;
+          message: import('./chats.js').ChatMessage;
+        }) => {
+          if (eventChatId === chatId) {
+            clearTimeout(timer);
+            daemonEvents.off(DAEMON_EVENT_MESSAGE_APPENDED, onMessage);
+            resolve([message]);
+          }
+        };
+
+        const timer = setTimeout(() => {
+          daemonEvents.off(DAEMON_EVENT_MESSAGE_APPENDED, onMessage);
+          resolve([]);
+        }, input.timeout);
+
+        daemonEvents.on(DAEMON_EVENT_MESSAGE_APPENDED, onMessage);
+      });
+    }),
   ping: publicProcedure.query(() => {
     return { status: 'ok' };
   }),
@@ -167,7 +218,7 @@ const AppRouter = router({
       const timestamp = new Date().toISOString();
       const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
 
-      const logMsg: import('../shared/chats.js').CommandLogMessage = {
+      const logMsg: import('./chats.js').CommandLogMessage = {
         id,
         messageId: id,
         role: 'log',
@@ -181,7 +232,7 @@ const AppRouter = router({
         stdout: input.message,
       };
 
-      await import('../shared/chats.js').then((m) => m.appendMessage(chatId, logMsg));
+      await import('./chats.js').then((m) => m.appendMessage(chatId, logMsg));
       return { success: true };
     }),
   listCronJobs: apiProcedure

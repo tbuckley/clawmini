@@ -41,3 +41,14 @@
   - Implement TRPC `sendMessage` forwarding. (Done)
   - Create comprehensive unit tests in `src/adapter-discord/index.test.ts`. (Done)
 - **Status:** Completed. Verified with mocked `discord.js` tests. All checks and tests passed.
+
+### Step 5: Daemon Message Observation Enhancement
+- **Goal:** Update the daemon to support real-time message observation via TRPC.
+- **Tasks:**
+  - Create `src/daemon/events.ts` with a global `EventEmitter` for the daemon.
+  - Create `src/daemon/chats.ts` as a daemon-specific wrapper for `shared/chats.ts` that emits `message-appended` events.
+  - Update `src/daemon/message.ts` and `src/daemon/router.ts` to use the new `chats.ts` wrapper.
+  - Add `getMessages` and `waitForMessages` (long-polling) endpoints to the TRPC router in `src/daemon/router.ts`.
+  - Update existing daemon tests (`message-extraction.test.ts`, `message-queue.test.ts`, `message-router.test.ts`) to mock the new `./chats.js` module.
+  - Create comprehensive unit tests in `src/daemon/observation.test.ts`.
+- **Status:** Completed. Verified with unit tests. All checks and tests passed.
