@@ -29,7 +29,7 @@
 - **Verification:**
   - Integration test mocking the Unix socket and verifying TRPC calls from the adapter client.
   - `npm run check && npm run test` passes.
-- **Status:** not started
+- **Status:** completed
 
 ## Step 4: Discord to Daemon Forwarding
 - **Description:** 

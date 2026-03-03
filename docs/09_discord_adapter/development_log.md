@@ -26,7 +26,8 @@
 
 ### Step 3: TRPC Client Connection
 - **Goal:** Implement TRPC client to connect to the daemon.
-- **Plan:**
-  - Create `src/adapter-discord/client.ts`.
-  - Implement a TRPC client that connects to the daemon via the Unix socket.
-  - Reuse logic from `src/shared/fetch.ts`.
+- **Tasks:**
+  - Create `src/adapter-discord/client.ts`. (Done)
+  - Implement a TRPC client that connects to the daemon via the Unix socket. (Done)
+  - Create unit tests in `src/adapter-discord/client.test.ts`. (Done)
+- **Status:** Completed. Verified with unit tests. All checks and tests passed.
