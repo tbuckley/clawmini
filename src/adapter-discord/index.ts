@@ -46,11 +46,7 @@ export async function main() {
   });
 
   const client = new Client({
-    intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.DirectMessages,
-      GatewayIntentBits.MessageContent,
-    ],
+    intents: [GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent],
     partials: [Partials.Channel],
   });
 

@@ -80,8 +80,8 @@ describe('Discord Adapter Configuration', () => {
       });
       expect(fsPromises.writeFile).toHaveBeenCalled();
       const writeCall = vi.mocked(fsPromises.writeFile).mock.calls[0];
-      expect(writeCall[0]).toBe(getDiscordConfigPath());
-      expect(JSON.parse(writeCall[1] as string)).toEqual({
+      expect(writeCall![0]).toBe(getDiscordConfigPath());
+      expect(JSON.parse(writeCall![1] as string)).toEqual({
         botToken: 'YOUR_DISCORD_BOT_TOKEN',
         authorizedUserId: 'YOUR_DISCORD_USER_ID',
         chatId: 'default',

@@ -163,8 +163,8 @@ const AppRouter = router({
       const chatId = await resolveAndCheckChatId(ctx, input.chatId);
 
       // 1. Check if there are already new messages
-      const messages = await getMessages(chatId);
       if (input.lastMessageId) {
+        const messages = await getMessages(chatId);
         const lastIndex = messages.findIndex((m) => m.id === input.lastMessageId);
         if (lastIndex !== -1 && lastIndex < messages.length - 1) {
           return messages.slice(lastIndex + 1);

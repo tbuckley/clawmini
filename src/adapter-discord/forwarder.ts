@@ -103,8 +103,9 @@ export async function startDaemonToDiscordForwarder(
 
 function chunkString(str: string, size: number): string[] {
   const chunks: string[] = [];
-  for (let i = 0; i < str.length; i += size) {
-    chunks.push(str.slice(i, i + size));
+  const chars = Array.from(str);
+  for (let i = 0; i < chars.length; i += size) {
+    chunks.push(chars.slice(i, i + size).join(''));
   }
   return chunks;
 }

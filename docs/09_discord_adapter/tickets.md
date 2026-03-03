@@ -88,3 +88,29 @@
 - **Verification:**
   - File exists and contains clear steps for Bot creation, Token retrieval, and Configuration.
 - **Status:** completed
+
+## Issue 1: Performance bug in `waitForMessages`
+- **Priority:** High
+- **Description:** 
+  - In `src/daemon/router.ts`, `waitForMessages` reads the entire `chat.jsonl` file to check for new messages even when `input.lastMessageId` is undefined. This causes unnecessary and expensive file I/O operations every time the long-polling request fires.
+  - Fix by wrapping the initial `getMessages` call in an `if (input.lastMessageId)` block.
+- **Status:** completed
+
+## Issue 2: `chunkString` breaks multi-byte characters (emojis/unicode)
+- **Priority:** High
+- **Description:** 
+  - In `src/adapter-discord/forwarder.ts`, `chunkString` uses `String.prototype.slice()` directly. This splits strings by UTF-16 code units rather than code points, which will corrupt emojis and special characters if they land on a chunk boundary.
+  - Fix by using `Array.from(str)` to safely count and chunk by unicode characters.
+- **Status:** completed
+
+## Issue 3: Redundant existence check in `initDiscordConfig`
+- **Priority:** Medium
+- **Description:** 
+  - `fs.existsSync(configDir)` check is redundant in `initDiscordConfig` (`src/adapter-discord/config.ts`) because `fsPromises.mkdir(configDir, { recursive: true })` handles existing directories natively.
+- **Status:** completed
+
+## Issue 4: Unnecessary `GatewayIntentBits.Guilds` requested
+- **Priority:** Low
+- **Description:** 
+  - In `src/adapter-discord/index.ts`, `GatewayIntentBits.Guilds` is requested but the bot explicitly ignores all guild messages (`if (message.guild) return;`). It should be removed to follow the principle of least privilege.
+- **Status:** completed

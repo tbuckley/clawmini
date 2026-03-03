@@ -37,9 +37,7 @@ export async function initDiscordConfig(startDir = process.cwd()): Promise<void>
   const configPath = getDiscordConfigPath(startDir);
   const configDir = path.dirname(configPath);
 
-  if (!fs.existsSync(configDir)) {
-    await fsPromises.mkdir(configDir, { recursive: true });
-  }
+  await fsPromises.mkdir(configDir, { recursive: true });
 
   if (fs.existsSync(configPath)) {
     console.log(`Config file already exists at ${configPath}`);
