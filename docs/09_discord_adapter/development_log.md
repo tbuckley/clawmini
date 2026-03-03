@@ -80,3 +80,16 @@
   - Implement exponential backoff for daemon connection retries in `src/adapter-discord/forwarder.ts`.
   - Add/Update unit tests for debouncing and backoff logic.
 - **Status:** Completed. Verified with unit tests and full automated checks.
+
+### Step 9: Documentation
+- **Goal:** Create setup documentation for the Discord adapter.
+- **Tasks:**
+  - Create `./docs/guides/discord_adapter_setup.md` with instructions for bot creation, token retrieval, and configuration. (Done)
+- **Status:** Completed. Documentation created and verified.
+
+## Final Review
+- All steps for the Discord adapter are completed.
+- Unit and integration tests cover all core components (client, config, forwarder, state, utils, index).
+- TRPC observation enhancement implemented in daemon to support real-time message forwarding.
+- State management ensures no messages are missed during restarts.
+- Setup documentation provided.

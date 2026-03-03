@@ -87,4 +87,4 @@
   - Create `./docs/guides/discord_adapter_setup.md` with full setup instructions.
 - **Verification:**
   - File exists and contains clear steps for Bot creation, Token retrieval, and Configuration.
-- **Status:** not started
+- **Status:** completed
