@@ -24,3 +24,12 @@
 - Added unit tests for `calculateDelay` in `src/daemon/message-fallbacks.test.ts`.
 - Verified all checks and tests pass.
 - Ticket 3 complete.
+
+## 2026-03-03 (continued)
+
+- Starting on Ticket 4: UX Retry Notifications.
+- Identifying insertion point in `src/daemon/message.ts` for retry log messages.
+- Implemented `retry-delay` log message in `executeDirectMessage`.
+- Added unit test in `src/daemon/message-fallbacks.test.ts` to verify the log message is appended before the sleep delay.
+- Verified all checks and tests pass.
+- Ticket 4 complete.

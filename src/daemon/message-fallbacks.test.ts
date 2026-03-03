@@ -241,4 +241,63 @@ describe('Message Fallbacks & Retries', () => {
     expect(mockSpawn).toHaveBeenNthCalledWith(2, 'echo fallback', expect.anything());
     expect(mockSpawn).toHaveBeenNthCalledWith(3, 'echo fallback', expect.anything());
   });
+
+  it('appends a log message before waiting for retry delay', async () => {
+    let callCount = 0;
+    const mockSpawn = vi.fn().mockImplementation((_cmd, _options) => {
+      callCount++;
+      const emitter: any = {
+        on: vi.fn((event, cb) => {
+          if (event === 'close') {
+            // Call 1 (base) fails
+            // Call 2 (fallback attempt 0) fails
+            // Call 3 (fallback attempt 1) succeeds
+            cb(callCount < 3 ? 1 : 0);
+          }
+          return emitter;
+        }),
+        stdout: {
+          on: vi.fn((event, cb) => {
+            if (event === 'data') cb(Buffer.from('output'));
+            return emitter;
+          }),
+        },
+        stderr: { on: vi.fn() },
+      };
+      return emitter;
+    });
+    (spawn as any).mockImplementation(mockSpawn);
+
+    const settings = {
+      defaultAgent: {
+        commands: { new: 'echo base' },
+        fallbacks: [
+          {
+            commands: { new: 'echo fallback' },
+            retries: 1,
+            delayMs: 1000,
+          },
+        ],
+      },
+    };
+
+    await handleUserMessage(
+      'chat-log-retry',
+      'hello',
+      settings as any,
+      '/dir',
+      false,
+      runCommandCallback
+    );
+
+    // Should find the retry log message
+    expect(chats.appendMessage).toHaveBeenCalledWith(
+      'chat-log-retry',
+      expect.objectContaining({
+        role: 'log',
+        content: 'Error running agent, retrying in 1 seconds...',
+        command: 'retry-delay',
+      })
+    );
+  });
 });

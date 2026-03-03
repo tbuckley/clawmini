@@ -59,7 +59,7 @@ Implement the exponential backoff timing logic within the retry loop.
 ---
 
 ## Ticket 4: UX Retry Notifications
-**Status:** not started
+**Status:** completed
 
 ### Task
 Integrate log messages for retries into the execution loop in `src/daemon/message.ts`.

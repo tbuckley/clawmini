@@ -213,6 +213,18 @@ export async function executeDirectMessage(
       for (let attempt = 0; attempt <= config.retries; attempt++) {
         const delay = calculateDelay(attempt, config.delayMs);
         if (delay > 0) {
+          const retryLogMsg: CommandLogMessage = {
+            id: crypto.randomUUID(),
+            messageId: userMsg.id,
+            role: 'log',
+            content: `Error running agent, retrying in ${Math.round(delay / 1000)} seconds...`,
+            stderr: '',
+            timestamp: new Date().toISOString(),
+            command: 'retry-delay',
+            cwd: executionCwd,
+            exitCode: 0,
+          };
+          await appendMessage(chatId, retryLogMsg);
           await sleep(delay);
         }
 
