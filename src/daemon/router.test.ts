@@ -230,49 +230,49 @@ describe('Daemon TRPC Router', () => {
   });
 
   describe('logMessage', () => {
-          it('should save a log message without a file', async () => {
-            vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
-            vi.mocked(chats.appendMessage).mockResolvedValue(undefined);
-    
-            const caller = appRouter.createCaller({});
-            const result = await caller.logMessage({
-              chatId: 'default-chat',
-              message: 'Test log',
-            });
-    
-            expect(result.success).toBe(true);
-            expect(chats.appendMessage).toHaveBeenCalledWith(
-              'default-chat',
-              expect.objectContaining({
-                role: 'log',
-                content: 'Test log',
-              }),
-              expect.any(String)
-            );
-          });
-    
-          it('should validate and save a log message with a valid file path', async () => {
-            vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
-            vi.mocked(chats.appendMessage).mockResolvedValue(undefined);
-    
-            const caller = appRouter.createCaller({});
-            const result = await caller.logMessage({
-              chatId: 'default-chat',
-              message: 'Test log with file',
-              file: 'attachments/discord/image.png',
-            });
-    
-            expect(result.success).toBe(true);
-            expect(chats.appendMessage).toHaveBeenCalledWith(
-              'default-chat',
-              expect.objectContaining({
-                role: 'log',
-                content: 'Test log with file',
-                file: path.normalize('attachments/discord/image.png'),
-              }),
-              expect.any(String)
-            );
-          });
+    it('should save a log message without a file', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked(chats.appendMessage).mockResolvedValue(undefined);
+
+      const caller = appRouter.createCaller({});
+      const result = await caller.logMessage({
+        chatId: 'default-chat',
+        message: 'Test log',
+      });
+
+      expect(result.success).toBe(true);
+      expect(chats.appendMessage).toHaveBeenCalledWith(
+        'default-chat',
+        expect.objectContaining({
+          role: 'log',
+          content: 'Test log',
+        }),
+        expect.any(String)
+      );
+    });
+
+    it('should validate and save a log message with a valid file path', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked(chats.appendMessage).mockResolvedValue(undefined);
+
+      const caller = appRouter.createCaller({});
+      const result = await caller.logMessage({
+        chatId: 'default-chat',
+        message: 'Test log with file',
+        file: 'attachments/discord/image.png',
+      });
+
+      expect(result.success).toBe(true);
+      expect(chats.appendMessage).toHaveBeenCalledWith(
+        'default-chat',
+        expect.objectContaining({
+          role: 'log',
+          content: 'Test log with file',
+          file: path.normalize('attachments/discord/image.png'),
+        }),
+        expect.any(String)
+      );
+    });
     it('should reject file path with directory traversal (..)', async () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
 

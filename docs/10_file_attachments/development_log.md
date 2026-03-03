@@ -35,3 +35,11 @@
 - Added comprehensive unit tests in `src/daemon/router.test.ts` verifying path validation and log schemas.
 - Expanded end-to-end tests in `src/cli/e2e/messages.test.ts` and `src/cli/e2e/export-lite-func.test.ts` for explicit file handling and logging functionalities.
 - Ran all format, lint, and type checking pipelines successfully.
+
+- Implemented Ticket 5: Discord Adapter Forwarding Outgoing Files.
+- Updated `src/adapter-discord/forwarder.ts` to check for `message.file` when processing log messages from the daemon.
+- Updated `dm.send()` to include file attachments using the `files` array option in Discord.js.
+- Handled the 2000 character limit by correctly splitting messages into chunks, attaching the file only to the final chunk.
+- Updated existing forwarder tests in `src/adapter-discord/forwarder.test.ts` to use object payloads instead of string values.
+- Added comprehensive test cases ensuring files are forwarded, chunked messages handle attachments correctly, and empty messages with just file paths work without errors.
+- Ran formatting, linting, and tests successfully.

@@ -57,4 +57,4 @@
 **Verification:**
 - Add tests for the forwarder verifying that messages with attached file paths result in the correct `dm.send` payload.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status:** Not started
+**Status:** Complete

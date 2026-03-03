@@ -65,7 +65,10 @@ export async function startDaemonToDiscordForwarder(
 
                 // Only forward logs (agent responses, system messages)
                 if (message.role === 'log') {
-                  if (!message.content.trim()) {
+                  const hasContent = !!message.content?.trim();
+                  const hasFile = 'file' in message && !!message.file;
+
+                  if (!hasContent && !hasFile) {
                     lastMessageId = message.id;
                     continue;
                   }
@@ -75,14 +78,25 @@ export async function startDaemonToDiscordForwarder(
                     const dm = await user.createDM();
 
                     // Discord has a 2000 character limit for messages.
-                    if (message.content.length > 2000) {
+                    if (hasContent && message.content.length > 2000) {
                       const chunks = chunkString(message.content, 2000);
-                      for (const chunk of chunks) {
+                      for (let i = 0; i < chunks.length; i++) {
                         if (signal?.aborted) break;
-                        await dm.send(chunk);
+                        const chunkOptions: any = { content: chunks[i] };
+                        if (i === chunks.length - 1 && hasFile) {
+                          chunkOptions.files = [message.file];
+                        }
+                        await dm.send(chunkOptions);
                       }
                     } else {
-                      await dm.send(message.content);
+                      const options: any = {};
+                      if (hasContent) {
+                        options.content = message.content;
+                      }
+                      if (hasFile) {
+                        options.files = [message.file];
+                      }
+                      await dm.send(options);
                     }
                   } catch (error) {
                     console.error(

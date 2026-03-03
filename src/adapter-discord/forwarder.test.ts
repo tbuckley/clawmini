@@ -98,7 +98,7 @@ describe('Daemon to Discord Forwarder', () => {
 
     expect(mockClient.users.fetch).toHaveBeenCalledWith('user-123');
     expect(mockUser.createDM).toHaveBeenCalled();
-    expect(mockDm.send).toHaveBeenCalledWith('Agent response');
+    expect(mockDm.send).toHaveBeenCalledWith({ content: 'Agent response' });
     expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-2' });
 
     controller.abort();
@@ -188,9 +188,130 @@ describe('Daemon to Discord Forwarder', () => {
 
     await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalledTimes(2));
 
-    expect(mockDm.send).toHaveBeenNthCalledWith(1, 'a'.repeat(2000));
-    expect(mockDm.send).toHaveBeenNthCalledWith(2, 'a'.repeat(500));
+    expect(mockDm.send).toHaveBeenNthCalledWith(1, { content: 'a'.repeat(2000) });
+    expect(mockDm.send).toHaveBeenNthCalledWith(2, { content: 'a'.repeat(500) });
     expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' });
+
+    controller.abort();
+    await forwarderPromise;
+  });
+
+  it('should send file attachments when message includes a file', async () => {
+    const controller = new AbortController();
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+
+    const forwarderPromise = startDaemonToDiscordForwarder(
+      mockClient,
+      mockTrpc,
+      'user-123',
+      'default',
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-1',
+        role: 'log',
+        content: 'Here is your file',
+        timestamp: '',
+        messageId: 'msg-0',
+        command: 'test',
+        cwd: '',
+        exitCode: 0,
+        stderr: '',
+        file: '/path/to/my/file.txt',
+      },
+    ]);
+
+    await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalled());
+
+    expect(mockDm.send).toHaveBeenCalledWith({
+      content: 'Here is your file',
+      files: ['/path/to/my/file.txt'],
+    });
+
+    controller.abort();
+    await forwarderPromise;
+  });
+
+  it('should send ONLY the file attachment when message content is empty', async () => {
+    const controller = new AbortController();
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+
+    const forwarderPromise = startDaemonToDiscordForwarder(
+      mockClient,
+      mockTrpc,
+      'user-123',
+      'default',
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-1',
+        role: 'log',
+        content: '',
+        timestamp: '',
+        messageId: 'msg-0',
+        command: 'test',
+        cwd: '',
+        exitCode: 0,
+        stderr: '',
+        file: '/path/to/my/file.txt',
+      },
+    ]);
+
+    await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalled());
+
+    expect(mockDm.send).toHaveBeenCalledWith({
+      files: ['/path/to/my/file.txt'],
+    });
+
+    controller.abort();
+    await forwarderPromise;
+  });
+
+  it('should attach the file only to the last chunk when chunking long messages', async () => {
+    const controller = new AbortController();
+    const longContent = 'a'.repeat(2500);
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+
+    const forwarderPromise = startDaemonToDiscordForwarder(
+      mockClient,
+      mockTrpc,
+      'user-123',
+      'default',
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-1',
+        role: 'log',
+        content: longContent,
+        timestamp: '',
+        messageId: 'msg-0',
+        command: 'test',
+        cwd: '',
+        exitCode: 0,
+        stderr: '',
+        file: '/path/to/my/file.txt',
+      },
+    ]);
+
+    await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalledTimes(2));
+
+    expect(mockDm.send).toHaveBeenNthCalledWith(1, { content: 'a'.repeat(2000) });
+    expect(mockDm.send).toHaveBeenNthCalledWith(2, {
+      content: 'a'.repeat(500),
+      files: ['/path/to/my/file.txt'],
+    });
 
     controller.abort();
     await forwarderPromise;
@@ -252,7 +373,7 @@ describe('Daemon to Discord Forwarder', () => {
     await vi.runAllTimersAsync();
 
     expect(mockTrpc.waitForMessages.subscribe).toHaveBeenCalledTimes(3);
-    expect(mockDm.send).toHaveBeenCalledWith('Finally up');
+    expect(mockDm.send).toHaveBeenCalledWith({ content: 'Finally up' });
 
     controller.abort();
     await forwarderPromise;
