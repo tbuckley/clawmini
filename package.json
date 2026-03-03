@@ -6,7 +6,8 @@
     "web"
   ],
   "bin": {
-    "clawmini": "./dist/cli/index.mjs"
+    "clawmini": "./dist/cli/index.mjs",
+    "clawmini-adapter-discord": "./dist/adapter-discord/index.mjs"
   },
   "scripts": {
     "clean": "rm -rf dist",

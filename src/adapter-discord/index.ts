@@ -1,10 +1,19 @@
+#!/usr/bin/env node
+
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
-import { readDiscordConfig, isAuthorized } from './config.js';
+import { readDiscordConfig, isAuthorized, initDiscordConfig } from './config.js';
 import { getTRPCClient } from './client.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
 import { Debouncer } from './utils.js';
 
 export async function main() {
+  const args = process.argv.slice(2);
+
+  if (args[0] === 'init') {
+    await initDiscordConfig();
+    return;
+  }
+
   console.log('Discord Adapter starting...');
 
   const config = await readDiscordConfig();
@@ -27,6 +36,7 @@ export async function main() {
         client: 'cli',
         data: {
           message: combinedMessage,
+          chatId: config.chatId,
         },
       });
       console.log('Message forwarded to daemon successfully.');
@@ -48,9 +58,11 @@ export async function main() {
     console.log(`Ready! Logged in as ${readyClient.user.tag}`);
 
     // Start forwarding from daemon to Discord
-    startDaemonToDiscordForwarder(readyClient, trpc, config.authorizedUserId).catch((error) => {
-      console.error('Error in daemon-to-discord forwarder:', error);
-    });
+    startDaemonToDiscordForwarder(readyClient, trpc, config.authorizedUserId, config.chatId).catch(
+      (error) => {
+        console.error('Error in daemon-to-discord forwarder:', error);
+      }
+    );
   });
 
   client.on(Events.MessageCreate, async (message) => {

@@ -8,6 +8,12 @@ import {
 } from './config.js';
 
 vi.mock('node:fs/promises');
+vi.mock('node:fs', () => ({
+  default: {
+    existsSync: vi.fn(),
+  },
+  existsSync: vi.fn(),
+}));
 vi.mock('../shared/workspace.js', () => ({
   getClawminiDir: () => '/mock/clawmini',
 }));
@@ -22,7 +28,10 @@ describe('Discord Adapter Configuration', () => {
       const result = DiscordConfigSchema.safeParse(config);
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data).toEqual(config);
+        expect(result.data).toEqual({
+          ...config,
+          chatId: 'default',
+        });
       }
     });
 
@@ -50,6 +59,47 @@ describe('Discord Adapter Configuration', () => {
     });
   });
 
+  describe('initDiscordConfig', () => {
+    let fsMock: any;
+
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      fsMock = await import('node:fs');
+      vi.mocked(fsMock.existsSync).mockReturnValue(false);
+      if (fsMock.default) {
+        vi.mocked(fsMock.default.existsSync).mockReturnValue(false);
+      }
+    });
+
+    it('should create directory and template config file if they do not exist', async () => {
+      const { initDiscordConfig } = await import('./config.js');
+      await initDiscordConfig();
+
+      expect(fsPromises.mkdir).toHaveBeenCalledWith('/mock/clawmini/adapters/discord', {
+        recursive: true,
+      });
+      expect(fsPromises.writeFile).toHaveBeenCalled();
+      const writeCall = vi.mocked(fsPromises.writeFile).mock.calls[0];
+      expect(writeCall[0]).toBe(getDiscordConfigPath());
+      expect(JSON.parse(writeCall[1] as string)).toEqual({
+        botToken: 'YOUR_DISCORD_BOT_TOKEN',
+        authorizedUserId: 'YOUR_DISCORD_USER_ID',
+        chatId: 'default',
+      });
+    });
+
+    it('should not overwrite existing config file', async () => {
+      vi.mocked(fsMock.existsSync).mockReturnValue(true);
+      if (fsMock.default) {
+        vi.mocked(fsMock.default.existsSync).mockReturnValue(true);
+      }
+      const { initDiscordConfig } = await import('./config.js');
+      await initDiscordConfig();
+
+      expect(fsPromises.writeFile).not.toHaveBeenCalled();
+    });
+  });
+
   describe('readDiscordConfig', () => {
     beforeEach(() => {
       vi.clearAllMocks();
@@ -63,7 +113,7 @@ describe('Discord Adapter Configuration', () => {
       vi.mocked(fsPromises.readFile).mockResolvedValue(JSON.stringify(mockConfig));
 
       const config = await readDiscordConfig();
-      expect(config).toEqual(mockConfig);
+      expect(config).toEqual({ ...mockConfig, chatId: 'default' });
       expect(fsPromises.readFile).toHaveBeenCalledWith(getDiscordConfigPath(), 'utf-8');
     });
 

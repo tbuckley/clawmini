@@ -33,36 +33,37 @@ Discord bots cannot initiate a DM conversation with a user unless the user has f
 
 1. In the Discord Developer Portal, go to **OAuth2** -> **URL Generator**.
 2. Select the `bot` scope.
-3. Select the `Send Messages` and `Read Message History` permissions under **Bot Permissions**.
-4. Copy the generated URL and paste it into your browser.
-5. Select your personal server (or any server you share with the bot) to invite the bot.
-6. Once the bot is in a shared server, you can right-click the bot and select **Message** to start a DM conversation.
+3. If prompted for an **Installation Method**, ensure you select **Guild Install**. The `bot` scope is not valid for "User Install" and will cause an error.
+4. Select the `Send Messages` and `Read Message History` permissions under **Bot Permissions**.
+5. Copy the generated URL and paste it into your browser.
+6. Select your personal server (or any server you share with the bot) to invite the bot.
+7. Once the bot is in a shared server, you can right-click the bot and select **Message** to start a DM conversation.
 
 ## Step 4: Configure the Adapter
 
-1. Ensure the Clawmini configuration directory exists (typically `.clawmini` in your workspace).
-2. Create the following directory structure if it doesn't exist:
-   ```bash
-   mkdir -p .clawmini/adapters/discord
-   ```
-3. Create a `config.json` file in that directory:
-   ```bash
-   touch .clawmini/adapters/discord/config.json
-   ```
-4. Add the following content to `config.json`, replacing the placeholders with your actual bot token and user ID:
-   ```json
-   {
-     "botToken": "YOUR_DISCORD_BOT_TOKEN",
-     "authorizedUserId": "YOUR_DISCORD_USER_ID"
-   }
-   ```
+The adapter requires a configuration file with your bot token and user ID. You can generate a template configuration file by running the `init` command:
+
+```bash
+npx clawmini-adapter-discord init
+```
+
+This will create a `config.json` file at `.clawmini/adapters/discord/config.json`. Open this file and replace the placeholders with your actual bot token and user ID:
+
+```json
+{
+  "botToken": "YOUR_DISCORD_BOT_TOKEN",
+  "authorizedUserId": "YOUR_DISCORD_USER_ID",
+  "chatId": "default"
+}
+```
+*(Note: `chatId` defaults to `"default"`. You can change this if you want the bot to associate with a different chat).*
 
 ## Step 5: Start the Adapter
 
 Ensure the Clawmini daemon is running, then start the Discord adapter:
 
 ```bash
-node dist/adapter-discord/index.mjs
+npx clawmini-adapter-discord
 ```
 
 The adapter will now forward authorized Discord DM messages to your Clawmini daemon and vice versa.

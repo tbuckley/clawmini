@@ -36,6 +36,7 @@ vi.mock('discord.js', () => {
 
 vi.mock('./config.js', () => ({
   readDiscordConfig: vi.fn(),
+  initDiscordConfig: vi.fn(),
   isAuthorized: vi.fn(),
 }));
 
@@ -57,11 +58,23 @@ describe('Discord Adapter Entry Point', () => {
     vi.mocked(readDiscordConfig).mockResolvedValue({
       botToken: 'test-token',
       authorizedUserId: 'user-123',
+      chatId: 'default',
     });
 
     // Reset the mock implementation to return the instance
     vi.mocked(mockClientInstance.on).mockReturnValue(mockClientInstance);
     vi.mocked(mockClientInstance.once).mockReturnValue(mockClientInstance);
+  });
+
+  it('should initialize Discord config and exit if init argument is provided', async () => {
+    process.argv = ['node', 'index.js', 'init'];
+    const { initDiscordConfig } = await import('./config.js');
+    const { main } = await import('./index.js');
+    await main();
+
+    expect(initDiscordConfig).toHaveBeenCalled();
+    expect(vi.mocked(mockClientInstance.login)).not.toHaveBeenCalled();
+    process.argv = []; // reset
   });
 
   it('should initialize Discord client and forward authorized DM messages', async () => {
@@ -101,6 +114,7 @@ describe('Discord Adapter Entry Point', () => {
       client: 'cli',
       data: {
         message: 'Hello daemon!',
+        chatId: 'default',
       },
     });
     vi.useRealTimers();
@@ -146,6 +160,7 @@ describe('Discord Adapter Entry Point', () => {
       client: 'cli',
       data: {
         message: 'message 1\nmessage 2',
+        chatId: 'default',
       },
     });
     vi.useRealTimers();
