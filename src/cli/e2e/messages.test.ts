@@ -105,6 +105,35 @@ describe('E2E Messages Tests', () => {
     expect(stderrFail).toContain("Error: Agent 'non-existent-agent' not found.");
   });
 
+  it('should send a message with a file attachment', async () => {
+    await runCli(['chats', 'add', 'file-chat']);
+    const testFilePath = path.resolve(e2eDir, 'test-attach.txt');
+    fs.writeFileSync(testFilePath, 'file content');
+
+    const { stdout, code } = await runCli([
+      'messages',
+      'send',
+      'here is a file',
+      '--chat',
+      'file-chat',
+      '--file',
+      testFilePath,
+    ]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('Message sent successfully.');
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const chatLog = fs.readFileSync(
+      path.resolve(e2eDir, '.clawmini/chats/file-chat/chat.jsonl'),
+      'utf8'
+    );
+    expect(chatLog).toContain('here is a file');
+    expect(chatLog).toContain('Attached files:');
+    expect(chatLog).toContain('test-attach');
+  });
+
   it('should view history with tail and --json flag', async () => {
     const { stdout, code } = await runCli(['messages', 'tail', '--chat', 'specific-chat']);
     expect(code).toBe(0);

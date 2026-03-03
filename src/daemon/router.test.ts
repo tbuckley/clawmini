@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { appRouter } from './router.js';
 import * as workspace from '../shared/workspace.js';
@@ -49,6 +50,7 @@ vi.mock('../shared/chats.js', async (importOriginal) => {
   return {
     ...actual,
     getDefaultChatId: vi.fn(),
+    appendMessage: vi.fn(),
   };
 });
 
@@ -136,93 +138,166 @@ describe('Daemon TRPC Router', () => {
     });
   });
 
-    describe('sendMessage with files processing', () => {
-      it('should pass message through when no files are provided', async () => {
-        vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
-        vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
-  
-        const caller = appRouter.createCaller({});
-        await caller.sendMessage({
-          type: 'send-message',
-          client: 'cli',
-          data: { message: 'hello', chatId: 'default-chat' },
-        });
-  
-        expect(message.handleUserMessage).toHaveBeenCalledWith(
-          'default-chat',
-          'hello',
-          {},
-          undefined,
-          false,
-          expect.any(Function),
-          undefined,
-          undefined
-        );
-        expect((fs as any).default.mkdir).not.toHaveBeenCalled();
+  describe('sendMessage with files processing', () => {
+    it('should pass message through when no files are provided', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
+
+      const caller = appRouter.createCaller({});
+      await caller.sendMessage({
+        type: 'send-message',
+        client: 'cli',
+        data: { message: 'hello', chatId: 'default-chat' },
       });
-  
-      it('should process files and format message correctly', async () => {
-        vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
-        vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
-        vi.mocked(workspace.readChatSettings).mockResolvedValue({ defaultAgent: 'default' });
-        vi.mocked((fs as any).default.stat).mockRejectedValue(new Error('not found')); // Files do not exist (no collision)
-        vi.mocked((fs as any).default.rename).mockResolvedValue(undefined);
-  
-        const caller = appRouter.createCaller({});
-        await caller.sendMessage({
-          type: 'send-message',
-          client: 'cli',
-          data: {
-            message: 'hello',
-            chatId: 'default-chat',
-            files: ['/tmp/file1.txt', '/tmp/file2.png'],
-            adapter: 'discord',
-          },
-        });
-  
-        expect((fs as any).default.mkdir).toHaveBeenCalledWith(
-          expect.stringContaining(path.join('attachments', 'discord')),
-          { recursive: true }
-        );
-        expect((fs as any).default.rename).toHaveBeenCalledTimes(2);
-  
-        const handleUserMessageCall = vi.mocked(message.handleUserMessage).mock.calls[0];
-        expect(handleUserMessageCall).toBeDefined();
-        const formattedMessage = handleUserMessageCall![1];
-        expect(formattedMessage).toContain('Attached files:');
-        expect(formattedMessage).toContain('- ' + path.normalize('attachments/discord/file1.txt'));
-        expect(formattedMessage).toContain('- ' + path.normalize('attachments/discord/file2.png'));
+
+      expect(message.handleUserMessage).toHaveBeenCalledWith(
+        'default-chat',
+        'hello',
+        {},
+        undefined,
+        false,
+        expect.any(Function),
+        undefined,
+        undefined
+      );
+      expect((fs as any).default.mkdir).not.toHaveBeenCalled();
+    });
+
+    it('should process files and format message correctly', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
+      vi.mocked(workspace.readChatSettings).mockResolvedValue({ defaultAgent: 'default' });
+      vi.mocked((fs as any).default.stat).mockRejectedValue(new Error('not found')); // Files do not exist (no collision)
+      vi.mocked((fs as any).default.rename).mockResolvedValue(undefined);
+
+      const caller = appRouter.createCaller({});
+      await caller.sendMessage({
+        type: 'send-message',
+        client: 'cli',
+        data: {
+          message: 'hello',
+          chatId: 'default-chat',
+          files: ['/tmp/file1.txt', '/tmp/file2.png'],
+          adapter: 'discord',
+        },
       });
-  
-      it('should handle file collision by appending timestamp', async () => {
-        vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
-        vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
-        vi.mocked(workspace.readChatSettings).mockResolvedValue({ defaultAgent: 'default' });
-        
-        // Simulate file already exists for collision
-        vi.mocked((fs as any).default.stat).mockResolvedValue({} as import('node:fs').Stats);
-        vi.mocked((fs as any).default.rename).mockResolvedValue(undefined);
-  
-        const caller = appRouter.createCaller({});
-        await caller.sendMessage({
-          type: 'send-message',
-          client: 'cli',
-          data: {
-            message: 'hello',
-            chatId: 'default-chat',
-            files: ['/tmp/file1.txt'],
-            adapter: 'discord',
-          },
-        });
-  
-        expect((fs as any).default.rename).toHaveBeenCalledWith(
-          '/tmp/file1.txt',
-          expect.stringMatching(/file1-\d+\.txt$/)
-        );
-  
-        const handleUserMessageCall = vi.mocked(message.handleUserMessage).mock.calls[0];
-        expect(handleUserMessageCall).toBeDefined();
-        const formattedMessage = handleUserMessageCall![1];
-        expect(formattedMessage).toMatch(/- .*file1-\d+\.txt/);
+
+      expect((fs as any).default.mkdir).toHaveBeenCalledWith(
+        expect.stringContaining(path.join('attachments', 'discord')),
+        { recursive: true }
+      );
+      expect((fs as any).default.rename).toHaveBeenCalledTimes(2);
+
+      const handleUserMessageCall = vi.mocked(message.handleUserMessage).mock.calls[0];
+      expect(handleUserMessageCall).toBeDefined();
+      const formattedMessage = handleUserMessageCall![1];
+      expect(formattedMessage).toContain('Attached files:');
+      expect(formattedMessage).toContain('- ' + path.normalize('attachments/discord/file1.txt'));
+      expect(formattedMessage).toContain('- ' + path.normalize('attachments/discord/file2.png'));
+    });
+
+    it('should handle file collision by appending timestamp', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
+      vi.mocked(workspace.readChatSettings).mockResolvedValue({ defaultAgent: 'default' });
+
+      // Simulate file already exists for collision
+      vi.mocked((fs as any).default.stat).mockResolvedValue({} as import('node:fs').Stats);
+      vi.mocked((fs as any).default.rename).mockResolvedValue(undefined);
+
+      const caller = appRouter.createCaller({});
+      await caller.sendMessage({
+        type: 'send-message',
+        client: 'cli',
+        data: {
+          message: 'hello',
+          chatId: 'default-chat',
+          files: ['/tmp/file1.txt'],
+          adapter: 'discord',
+        },
       });
-    });});
+
+      expect((fs as any).default.rename).toHaveBeenCalledWith(
+        '/tmp/file1.txt',
+        expect.stringMatching(/file1-\d+\.txt$/)
+      );
+
+      const handleUserMessageCall = vi.mocked(message.handleUserMessage).mock.calls[0];
+      expect(handleUserMessageCall).toBeDefined();
+      const formattedMessage = handleUserMessageCall![1];
+      expect(formattedMessage).toMatch(/- .*file1-\d+\.txt/);
+    });
+  });
+
+  describe('logMessage', () => {
+          it('should save a log message without a file', async () => {
+            vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+            vi.mocked(chats.appendMessage).mockResolvedValue(undefined);
+    
+            const caller = appRouter.createCaller({});
+            const result = await caller.logMessage({
+              chatId: 'default-chat',
+              message: 'Test log',
+            });
+    
+            expect(result.success).toBe(true);
+            expect(chats.appendMessage).toHaveBeenCalledWith(
+              'default-chat',
+              expect.objectContaining({
+                role: 'log',
+                content: 'Test log',
+              }),
+              expect.any(String)
+            );
+          });
+    
+          it('should validate and save a log message with a valid file path', async () => {
+            vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+            vi.mocked(chats.appendMessage).mockResolvedValue(undefined);
+    
+            const caller = appRouter.createCaller({});
+            const result = await caller.logMessage({
+              chatId: 'default-chat',
+              message: 'Test log with file',
+              file: 'attachments/discord/image.png',
+            });
+    
+            expect(result.success).toBe(true);
+            expect(chats.appendMessage).toHaveBeenCalledWith(
+              'default-chat',
+              expect.objectContaining({
+                role: 'log',
+                content: 'Test log with file',
+                file: path.normalize('attachments/discord/image.png'),
+              }),
+              expect.any(String)
+            );
+          });
+    it('should reject file path with directory traversal (..)', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+
+      const caller = appRouter.createCaller({});
+      await expect(
+        caller.logMessage({
+          chatId: 'default-chat',
+          message: 'Malicious log',
+          file: '../secret.txt',
+        })
+      ).rejects.toThrow('Path traversal is not allowed.');
+    });
+
+    it('should reject file path outside agent workspace', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+
+      const caller = appRouter.createCaller({});
+      // Absolute path outside cwd
+      await expect(
+        caller.logMessage({
+          chatId: 'default-chat',
+          message: 'Malicious log',
+          file: '/etc/passwd',
+        })
+      ).rejects.toThrow('File must be within the agent workspace.');
+    });
+  });
+});

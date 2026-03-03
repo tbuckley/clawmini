@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { initTRPC, TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import fs from 'node:fs/promises';
@@ -261,12 +262,29 @@ const AppRouter = router({
       z.object({
         chatId: z.string().optional(),
         message: z.string(),
+        file: z.string().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
       const chatId = await resolveAndCheckChatId(ctx, input.chatId);
       const timestamp = new Date().toISOString();
       const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
+
+      let filePath = undefined;
+      if (input.file) {
+        if (input.file.includes('..')) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Path traversal is not allowed.' });
+        }
+        const resolvedPath = path.resolve(process.cwd(), input.file);
+        const { pathIsInsideDir } = await import('../shared/utils/fs.js');
+        if (!pathIsInsideDir(resolvedPath, process.cwd(), { allowSameDir: true })) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'File must be within the agent workspace.',
+          });
+        }
+        filePath = path.relative(process.cwd(), resolvedPath);
+      }
 
       const logMsg: import('./chats.js').CommandLogMessage = {
         id,
@@ -276,10 +294,11 @@ const AppRouter = router({
         content: input.message,
         stderr: '',
         timestamp,
-        command: 'clawmini-lite log',
+        command: `clawmini-lite log${filePath ? ' --file ' + filePath : ''}`,
         cwd: process.cwd(),
         exitCode: 0,
         stdout: input.message,
+        ...(filePath ? { file: filePath } : {}),
       };
 
       await import('./chats.js').then((m) => m.appendMessage(chatId, logMsg));

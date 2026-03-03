@@ -46,7 +46,7 @@
 - Add unit tests for the CLI's `--file` argument parsing.
 - Add unit tests for the daemon's path traversal validation and log recording.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status:** Not started
+**Status:** Complete
 
 ## Ticket 5: Discord Adapter Forwarding Outgoing Files
 **Description:** Update the Discord adapter's forwarder to read outgoing file paths from the chat log and send them as Discord attachments.

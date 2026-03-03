@@ -88,12 +88,15 @@ async function main() {
 
   try {
     if (cmd === 'log') {
-      const message = args.slice(1).join(' ');
+      const { opts, positional } = parseArgs(args.slice(1));
+      const message = positional.join(' ');
       if (!message) {
-        console.error('Usage: clawmini-lite log <message>');
+        console.error('Usage: clawmini-lite log <message> [options]');
         process.exit(1);
       }
-      await trpcCall('logMessage', 'POST', { message });
+      const fileArg = opts.file || opts.f;
+      const file = Array.isArray(fileArg) ? fileArg[0] : fileArg;
+      await trpcCall('logMessage', 'POST', { message, file });
       console.log('Log message appended.');
     } else if (cmd === 'jobs') {
       const subcmd = args[1];

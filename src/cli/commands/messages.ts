@@ -12,6 +12,7 @@ messagesCmd
   .option('-s, --session <id>', 'Specific session to send the message to')
   .option('-a, --agent <name>', 'Specific agent to use for this message')
   .option('--no-wait', 'Return immediately after the server queues the message')
+  .option('-f, --file <path>', 'File to attach', (val, prev: string[]) => prev.concat([val]), [])
   .action(async (message, options) => {
     try {
       if (options.agent) {
@@ -39,6 +40,7 @@ messagesCmd
           sessionId: options.session,
           agentId: options.agent,
           noWait: !options.wait,
+          files: options.file && options.file.length > 0 ? options.file : undefined,
         },
       });
       console.log('Message sent successfully.');

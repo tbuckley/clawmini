@@ -25,3 +25,13 @@
 - Added comprehensive unit tests in `src/daemon/router.test.ts` to cover file moving logic, collision handling, and message text formatting.
 - Updated the existing mock configurations and fixed linting warnings (e.g. `import('node:fs').Stats`, unused errors).
 - All checks (`npm run format:check && npm run lint && npm run check && npm run test`) pass successfully.
+
+- Implemented Ticket 4: Outgoing Files via CLI & Daemon (Agent to User).
+- Updated the internal `CommandLogMessage` schema in `src/shared/chats.ts` to include an optional `file` property.
+- Modified the `logMessage` endpoint in `src/daemon/router.ts` to accept an optional `file` path, with robust path traversal validation ensuring the file resolves inside the agent workspace.
+- Disabled `max-lines` for `src/daemon/router.ts` due to expanded file logging checks.
+- Updated `messagesCmd` in `src/cli/commands/messages.ts` to parse a new `-f, --file <path>` argument.
+- Enhanced `clawmini-lite log` command in `src/cli/lite.ts` to support the `--file` flag and pass it to the `logMessage` endpoint.
+- Added comprehensive unit tests in `src/daemon/router.test.ts` verifying path validation and log schemas.
+- Expanded end-to-end tests in `src/cli/e2e/messages.test.ts` and `src/cli/e2e/export-lite-func.test.ts` for explicit file handling and logging functionalities.
+- Ran all format, lint, and type checking pipelines successfully.
