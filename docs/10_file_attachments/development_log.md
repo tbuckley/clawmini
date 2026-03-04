@@ -43,3 +43,13 @@
 - Updated existing forwarder tests in `src/adapter-discord/forwarder.test.ts` to use object payloads instead of string values.
 - Added comprehensive test cases ensuring files are forwarded, chunked messages handle attachments correctly, and empty messages with just file paths work without errors.
 - Ran formatting, linting, and tests successfully.
+
+- Implemented Ticket 7: Path Validation Security Enhancements.
+- Updated `sendMessage` mutation in `src/daemon/router.ts` to strictly validate `targetDir` is within the workspace using `pathIsInsideDir`.
+- Ensured all incoming `files` are strictly inside `$WORKSPACE/.clawmini/tmp/` and actually exist via `fs.access`.
+- Updated `logMessage` mutation to forbid absolute paths and path traversal `..` in the `file` input.
+- Validated that the resolved file path in `logMessage` stays strictly within both the agent's folder and the overall workspace.
+- Enforced file existence checks on disk before persisting log entries.
+- Modified `src/cli/commands/messages.ts` (CLI send command) to automatically copy attached files to `.clawmini/tmp` prior to submitting them to the daemon.
+- Enhanced tests in `src/daemon/router.test.ts` to assert security validations for both `sendMessage` and `logMessage`.
+- Tests all run successfully including format, lint, type checking, and test suites.

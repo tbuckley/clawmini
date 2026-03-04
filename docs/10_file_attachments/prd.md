@@ -60,6 +60,8 @@ By supporting attachments natively:
 
 ### 4.4 Technical Constraints & Security
 - **File Limits:** Enforce `maxAttachmentSizeMB` in the Discord adapter. If a file exceeds this limit, ignore it or notify the user.
+- **Strict Path Validation (Incoming):** For incoming files, the daemon must verify that all provided temporary file paths exist and are strictly located within `$WORKSPACE/.clawmini/tmp/`. It must also ensure the target destination is within the `$WORKSPACE`.
+- **Strict Path Validation (Outgoing):** For outgoing files logged by the agent, the daemon must ensure the file path is a relative path, that it resolves to a location within the agent's subfolder and the overall `$WORKSPACE`, and that the file actually exists before processing the log.
 - **Path Traversal:** Ensure that file paths submitted by `clawmini-lite` or handled by the daemon do not allow directory traversal (e.g., `../../etc/passwd`). Validate that target paths stay within the `files` directory or the agent's workspace.
 - **File Name Collisions:** If two files with the same name are uploaded, standard conflict resolution should occur (e.g., appending a timestamp or UUID to the filename before saving to the agent's directory).
 

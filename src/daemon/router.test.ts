@@ -20,6 +20,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       rename: vi.fn(),
       copyFile: vi.fn(),
       unlink: vi.fn(),
+      access: vi.fn(),
     },
     readFile: vi.fn(),
     mkdir: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     rename: vi.fn(),
     copyFile: vi.fn(),
     unlink: vi.fn(),
+    access: vi.fn(),
   };
 });
 
@@ -170,6 +172,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(workspace.readChatSettings).mockResolvedValue({ defaultAgent: 'default' });
       vi.mocked((fs as any).default.stat).mockRejectedValue(new Error('not found')); // Files do not exist (no collision)
       vi.mocked((fs as any).default.rename).mockResolvedValue(undefined);
+      vi.mocked((fs as any).default.access).mockResolvedValue(undefined);
 
       const caller = appRouter.createCaller({});
       await caller.sendMessage({
@@ -178,7 +181,7 @@ describe('Daemon TRPC Router', () => {
         data: {
           message: 'hello',
           chatId: 'default-chat',
-          files: ['/tmp/file1.txt', '/tmp/file2.png'],
+          files: ['.clawmini/tmp/file1.txt', '.clawmini/tmp/file2.png'],
           adapter: 'discord',
         },
       });
@@ -201,6 +204,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
       vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
       vi.mocked(workspace.readChatSettings).mockResolvedValue({ defaultAgent: 'default' });
+      vi.mocked((fs as any).default.access).mockResolvedValue(undefined);
 
       // Simulate file already exists for collision
       vi.mocked((fs as any).default.stat).mockResolvedValue({} as import('node:fs').Stats);
@@ -213,13 +217,13 @@ describe('Daemon TRPC Router', () => {
         data: {
           message: 'hello',
           chatId: 'default-chat',
-          files: ['/tmp/file1.txt'],
+          files: ['.clawmini/tmp/file1.txt'],
           adapter: 'discord',
         },
       });
 
       expect((fs as any).default.rename).toHaveBeenCalledWith(
-        '/tmp/file1.txt',
+        '.clawmini/tmp/file1.txt',
         expect.stringMatching(/file1-\d+\.txt$/)
       );
 
@@ -227,6 +231,43 @@ describe('Daemon TRPC Router', () => {
       expect(handleUserMessageCall).toBeDefined();
       const formattedMessage = handleUserMessageCall![1];
       expect(formattedMessage).toMatch(/- .*file1-\d+\.txt/);
+    });
+
+    it('should reject file path outside .clawmini/tmp for sendMessage', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
+
+      const caller = appRouter.createCaller({});
+      await expect(
+        caller.sendMessage({
+          type: 'send-message',
+          client: 'cli',
+          data: {
+            message: 'hello',
+            chatId: 'default-chat',
+            files: ['/etc/passwd'],
+          },
+        })
+      ).rejects.toThrow('File must be inside the temporary directory.');
+    });
+
+    it('should reject non-existent file for sendMessage', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
+      vi.mocked((fs as any).default.access).mockRejectedValue(new Error('ENOENT'));
+
+      const caller = appRouter.createCaller({});
+      await expect(
+        caller.sendMessage({
+          type: 'send-message',
+          client: 'cli',
+          data: {
+            message: 'hello',
+            chatId: 'default-chat',
+            files: ['.clawmini/tmp/missing.txt'],
+          },
+        })
+      ).rejects.toThrow('File does not exist: .clawmini/tmp/missing.txt');
     });
   });
 
@@ -255,6 +296,7 @@ describe('Daemon TRPC Router', () => {
     it('should validate and save a log message with a valid file path', async () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
       vi.mocked(chats.appendMessage).mockResolvedValue(undefined);
+      vi.mocked((fs as any).default.access).mockResolvedValue(undefined);
 
       const caller = appRouter.createCaller({});
       const result = await caller.logMessage({
@@ -284,21 +326,20 @@ describe('Daemon TRPC Router', () => {
           message: 'Malicious log',
           file: '../secret.txt',
         })
-      ).rejects.toThrow('Path traversal is not allowed.');
+      ).rejects.toThrow('Path traversal and absolute paths are not allowed.');
     });
 
-    it('should reject file path outside agent workspace', async () => {
+    it('should reject file path with absolute path', async () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
 
       const caller = appRouter.createCaller({});
-      // Absolute path outside cwd
       await expect(
         caller.logMessage({
           chatId: 'default-chat',
           message: 'Malicious log',
           file: '/etc/passwd',
         })
-      ).rejects.toThrow('File must be within the agent workspace.');
+      ).rejects.toThrow('Path traversal and absolute paths are not allowed.');
     });
   });
 });

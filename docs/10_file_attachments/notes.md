@@ -41,3 +41,19 @@
 ## Refined approach (Q4)
 - File limits: allow configuration in discord adapter settings, with reasonable defaults (e.g. 10MB or 25MB).
 - Default agent files directory: `./attachments`.
+
+## Path Validation Security Enhancements
+Based on the new request, strict path validation is required for both incoming and outgoing files to ensure security and prevent path traversal or leaking arbitrary files.
+
+**For incoming messages (User -> Agent):**
+- In `sendMessage` TRPC endpoint (`src/daemon/router.ts`), before processing `input.data.files`:
+  - Verify every file path exists.
+  - Verify every file path is strictly located within `$WORKSPACE/.clawmini/tmp/`.
+  - Verify that the target directory (`targetDir`) where files are being moved is strictly within `$WORKSPACE`.
+
+**For outgoing files (Agent -> User):**
+- In `logMessage` TRPC endpoint (`src/daemon/router.ts`), when processing `input.file`:
+  - Ensure `input.file` is a relative path (e.g., does not start with `/` or `C:\`).
+  - Ensure the resolved path is within the agent's designated directory.
+  - Ensure the resolved path is within the overall `$WORKSPACE`.
+  - Ensure the file actually exists on the filesystem *before* resolving it or recording it in the log message.

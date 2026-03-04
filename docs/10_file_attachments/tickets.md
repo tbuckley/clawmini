@@ -69,3 +69,20 @@
 - Low Priority: Fix `any` typings in `src/adapter-discord/forwarder.ts` by using `MessageCreateOptions`.
 - Low Priority: Fix flaky e2e test `should maintain atomic ordering of user and log messages with --no-wait`.
 **Status:** Complete
+
+## Ticket 7: Path Validation Security Enhancements
+**Description:** Implement strict path validation and checks for incoming and outgoing file attachments to ensure security and prevent path traversal.
+**Tasks:**
+- Update `src/daemon/router.ts` (or relevant handler) for incoming files (`sendMessage` mutation):
+  - Verify that all files in `input.data.files` exist on the filesystem.
+  - Verify that all files are strictly within the `$WORKSPACE/.clawmini/tmp/` directory.
+  - Verify that the target directory (`targetDir`) where files will be moved is strictly within `$WORKSPACE`.
+- Update `src/daemon/router.ts` for outgoing files (`logMessage` mutation):
+  - Ensure `input.file` is a relative path.
+  - Ensure the file path resolves to a location within the agent's subfolder AND within `$WORKSPACE`.
+  - Verify the file actually exists on the filesystem *before* resolving it to an absolute path and recording it.
+- Ensure all relevant checks use a secure path comparison method (e.g., `pathIsInsideDir`).
+**Verification:**
+- Add unit tests verifying validation failures for absolute paths, non-existent files, files outside `.clawmini/tmp/` (for incoming), and files outside the agent folder/workspace (for outgoing).
+- Run `npm run format:check && npm run lint && npm run check && npm run test`.
+**Status:** Complete

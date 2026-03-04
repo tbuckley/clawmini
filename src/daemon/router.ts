@@ -119,6 +119,37 @@ const AppRouter = router({
         const absoluteFilesDir = path.resolve(agentDir, agentFilesDir);
         const adapterNamespace = input.data.adapter || 'cli';
         const targetDir = path.join(absoluteFilesDir, adapterNamespace);
+
+        const { pathIsInsideDir } = await import('../shared/utils/fs.js');
+        const { getClawminiDir } = await import('../shared/workspace.js');
+        const workspaceRoot = getWorkspaceRoot(process.cwd());
+
+        if (!pathIsInsideDir(targetDir, workspaceRoot, { allowSameDir: true })) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Target directory must be within the workspace.',
+          });
+        }
+
+        const tmpDir = path.join(getClawminiDir(process.cwd()), 'tmp');
+        for (const file of files) {
+          const absoluteFile = path.resolve(process.cwd(), file);
+          if (!pathIsInsideDir(absoluteFile, tmpDir)) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'File must be inside the temporary directory.',
+            });
+          }
+          try {
+            await fs.access(absoluteFile);
+          } catch {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `File does not exist: ${file}`,
+            });
+          }
+        }
+
         await fs.mkdir(targetDir, { recursive: true });
 
         const getUniquePath = async (p: string) => {
@@ -278,8 +309,11 @@ const AppRouter = router({
 
       let filePath = undefined;
       if (input.file) {
-        if (input.file.includes('..')) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Path traversal is not allowed.' });
+        if (input.file.includes('..') || path.isAbsolute(input.file)) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Path traversal and absolute paths are not allowed.',
+          });
         }
 
         const workspaceRoot = getWorkspaceRoot(process.cwd());
@@ -296,12 +330,30 @@ const AppRouter = router({
 
         const resolvedPath = path.resolve(agentDir, input.file);
         const { pathIsInsideDir } = await import('../shared/utils/fs.js');
-        if (!pathIsInsideDir(resolvedPath, process.cwd(), { allowSameDir: true })) {
+
+        if (!pathIsInsideDir(resolvedPath, agentDir, { allowSameDir: true })) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
             message: 'File must be within the agent workspace.',
           });
         }
+
+        if (!pathIsInsideDir(resolvedPath, workspaceRoot, { allowSameDir: true })) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'File must be within the overall workspace.',
+          });
+        }
+
+        try {
+          await fs.access(resolvedPath);
+        } catch {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `File does not exist: ${input.file}`,
+          });
+        }
+
         filePath = path.relative(process.cwd(), resolvedPath);
       }
 
