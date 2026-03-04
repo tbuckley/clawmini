@@ -98,39 +98,44 @@ const AppRouter = router({
         const chatSettings = (await readChatSettings(chatId)) ?? {};
         const targetAgentId = agentId ?? chatSettings.defaultAgent ?? 'default';
         let agentFilesDir = settings?.defaultAgent?.files || './attachments';
+        let agentDir = process.cwd();
+
         if (targetAgentId !== 'default') {
           const customAgent = await getAgent(targetAgentId, process.cwd());
-          if (customAgent && customAgent.files) {
-            agentFilesDir = customAgent.files;
+          if (customAgent) {
+            if (customAgent.files) {
+              agentFilesDir = customAgent.files;
+            }
+            if (customAgent.directory) {
+              agentDir = path.resolve(process.cwd(), customAgent.directory);
+            } else {
+              agentDir = path.resolve(process.cwd(), targetAgentId);
+            }
+          } else {
+            agentDir = path.resolve(process.cwd(), targetAgentId);
           }
         }
 
-        const absoluteFilesDir = path.resolve(
-          process.cwd(),
-          targetAgentId !== 'default' ? targetAgentId : '',
-          agentFilesDir
-        );
+        const absoluteFilesDir = path.resolve(agentDir, agentFilesDir);
         const adapterNamespace = input.data.adapter || 'cli';
         const targetDir = path.join(absoluteFilesDir, adapterNamespace);
         await fs.mkdir(targetDir, { recursive: true });
 
+        const getUniquePath = async (p: string) => {
+          try {
+            await fs.stat(p);
+            const ext = path.extname(p);
+            const base = path.basename(p, ext);
+            return path.join(path.dirname(p), `${base}-${Date.now()}${ext}`);
+          } catch {
+            return p;
+          }
+        };
+
         const finalPaths: string[] = [];
         for (const file of files) {
           const fileName = path.basename(file);
-          let targetPath = path.join(targetDir, fileName);
-
-          let fileExists = true;
-          try {
-            await fs.stat(targetPath);
-          } catch {
-            fileExists = false;
-          }
-
-          if (fileExists) {
-            const ext = path.extname(fileName);
-            const base = path.basename(fileName, ext);
-            targetPath = path.join(targetDir, `${base}-${Date.now()}${ext}`);
-          }
+          const targetPath = await getUniquePath(path.join(targetDir, fileName));
 
           try {
             await fs.rename(file, targetPath);

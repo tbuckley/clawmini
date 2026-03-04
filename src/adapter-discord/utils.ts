@@ -6,11 +6,12 @@ export class Debouncer<T> {
 
   constructor(
     private delay: number,
-    private callback: (items: T[]) => Promise<void> | void
+    private callback: (items: T[]) => Promise<void> | void,
+    private isEqual: (a: T, b: T) => boolean = (a, b) => a === b
   ) {}
 
   add(item: T) {
-    if (this.history.includes(item)) {
+    if (this.history.find((h) => this.isEqual(h, item))) {
       return;
     }
 

@@ -1,4 +1,4 @@
-import type { Client } from 'discord.js';
+import type { Client, MessageCreateOptions } from 'discord.js';
 import type { getTRPCClient } from './client.js';
 import { readDiscordState, writeDiscordState } from './state.js';
 
@@ -82,19 +82,19 @@ export async function startDaemonToDiscordForwarder(
                       const chunks = chunkString(message.content, 2000);
                       for (let i = 0; i < chunks.length; i++) {
                         if (signal?.aborted) break;
-                        const chunkOptions: any = { content: chunks[i] };
+                        const chunkOptions: MessageCreateOptions = { content: chunks[i] as string };
                         if (i === chunks.length - 1 && hasFile) {
-                          chunkOptions.files = [message.file];
+                          chunkOptions.files = [message.file as string];
                         }
                         await dm.send(chunkOptions);
                       }
                     } else {
-                      const options: any = {};
+                      const options: MessageCreateOptions = {};
                       if (hasContent) {
                         options.content = message.content;
                       }
                       if (hasFile) {
-                        options.files = [message.file];
+                        options.files = [message.file as string];
                       }
                       await dm.send(options);
                     }

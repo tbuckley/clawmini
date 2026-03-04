@@ -183,7 +183,7 @@ describe('E2E Messages Tests', () => {
 
     settings.defaultAgent = settings.defaultAgent || {};
     settings.defaultAgent.commands = settings.defaultAgent.commands || {};
-    settings.defaultAgent.commands.new = 'sleep 0.2 && echo $CLAW_CLI_MESSAGE';
+    settings.defaultAgent.commands.new = 'sleep 1 && echo $CLAW_CLI_MESSAGE';
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 
     await runCli(['chats', 'add', 'order-chat']);
@@ -191,7 +191,7 @@ describe('E2E Messages Tests', () => {
     await runCli(['messages', 'send', 'first', '--chat', 'order-chat', '--no-wait']);
     await runCli(['messages', 'send', 'second', '--chat', 'order-chat', '--no-wait']);
 
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 2500));
 
     settings.defaultAgent.commands.new = oldCmd;
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));

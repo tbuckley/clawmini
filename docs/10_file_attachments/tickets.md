@@ -58,3 +58,14 @@
 - Add tests for the forwarder verifying that messages with attached file paths result in the correct `dm.send` payload.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
 **Status:** Complete
+
+## Ticket 6: Code Critique and Fixes
+**Description:** Address DRY, YAGNI, naming, comments, and path violations in the initial file attachment implementation.
+**Tasks:**
+- High Priority: Update temporary download path for discord attachments to `.clawmini/adapters/discord/tmp` instead of `.gemini/tmp/discord-files`.
+- Medium Priority: Fix DRY violation and bug in `src/daemon/router.ts` where `sendMessage` did not correctly respect `agent.directory` when resolving the target files directory.
+- Medium Priority: Create a local `getUniquePath` utility in `src/daemon/router.ts` for DRYer renaming logic.
+- Low Priority: Remove `JSON.stringify` workaround in `src/adapter-discord/index.ts` Debouncer instantiation by updating the `Debouncer` class to accept an optional custom `isEqual` function.
+- Low Priority: Fix `any` typings in `src/adapter-discord/forwarder.ts` by using `MessageCreateOptions`.
+- Low Priority: Fix flaky e2e test `should maintain atomic ordering of user and log messages with --no-wait`.
+**Status:** Complete

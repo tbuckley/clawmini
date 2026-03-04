@@ -28,32 +28,39 @@ export async function main() {
 
   const trpc = getTRPCClient();
 
-  const messageDebouncer = new Debouncer<string>(1000, async (messages) => {
-    const items = messages.map((m) => JSON.parse(m) as { content: string; files: string[] });
-    const combinedMessage =
-      items.length > 1
-        ? items.map((m) => `<message>\n${m.content}\n</message>`).join('\n')
-        : items[0]?.content || '';
-    const allFiles = items.flatMap((item) => item.files);
+  interface DebouncerItem {
+    content: string;
+    files: string[];
+  }
 
-    console.log(`Forwarding aggregated message to daemon: ${combinedMessage}`);
+  const messageDebouncer = new Debouncer<DebouncerItem>(
+    1000,
+    async (items) => {
+      const combinedMessage =
+        items.length > 1
+          ? items.map((m) => `<message>\n${m.content}\n</message>`).join('\n')
+          : items[0]?.content || '';
+      const allFiles = items.flatMap((item) => item.files);
+      console.log(`Forwarding aggregated message to daemon: ${combinedMessage}`);
 
-    try {
-      await trpc.sendMessage.mutate({
-        type: 'send-message',
-        client: 'cli',
-        data: {
-          message: combinedMessage,
-          chatId: config.chatId,
-          files: allFiles.length > 0 ? allFiles : undefined,
-          adapter: 'discord',
-        },
-      });
-      console.log('Message forwarded to daemon successfully.');
-    } catch (error) {
-      console.error('Failed to forward message to daemon:', error);
-    }
-  });
+      try {
+        await trpc.sendMessage.mutate({
+          type: 'send-message',
+          client: 'cli',
+          data: {
+            message: combinedMessage,
+            chatId: config.chatId,
+            files: allFiles.length > 0 ? allFiles : undefined,
+            adapter: 'discord',
+          },
+        });
+        console.log('Message forwarded to daemon successfully.');
+      } catch (error) {
+        console.error('Failed to forward message to daemon:', error);
+      }
+    },
+    (a, b) => a.content === b.content && a.files.join(',') === b.files.join(',')
+  );
 
   const client = new Client({
     intents: [GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent],
@@ -90,7 +97,7 @@ export async function main() {
 
     const downloadedFiles: string[] = [];
     if (message.attachments.size > 0) {
-      const tmpDir = path.join(process.cwd(), '.gemini', 'tmp', 'discord-files');
+      const tmpDir = path.join(process.cwd(), '.clawmini', 'adapters', 'discord', 'tmp');
       await fs.mkdir(tmpDir, { recursive: true });
       const maxSizeMB = config.maxAttachmentSizeMB ?? 25;
       const maxSizeBytes = maxSizeMB * 1024 * 1024;
@@ -124,7 +131,7 @@ export async function main() {
       }
     }
 
-    messageDebouncer.add(JSON.stringify({ content: message.content, files: downloadedFiles }));
+    messageDebouncer.add({ content: message.content, files: downloadedFiles });
   });
 
   try {
