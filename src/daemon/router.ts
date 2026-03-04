@@ -9,6 +9,7 @@ import {
   readChatSettings,
   writeChatSettings,
   getAgent,
+  getWorkspaceRoot,
 } from '../shared/workspace.js';
 import { CronJobSchema } from '../shared/config.js';
 import { handleUserMessage } from './message.js';
@@ -275,7 +276,20 @@ const AppRouter = router({
         if (input.file.includes('..')) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Path traversal is not allowed.' });
         }
-        const resolvedPath = path.resolve(process.cwd(), input.file);
+
+        const workspaceRoot = getWorkspaceRoot(process.cwd());
+        let agentDir = workspaceRoot;
+
+        if (ctx.tokenPayload?.agentId && ctx.tokenPayload.agentId !== 'default') {
+          const agent = await getAgent(ctx.tokenPayload.agentId, workspaceRoot);
+          if (agent && agent.directory) {
+            agentDir = path.resolve(workspaceRoot, agent.directory);
+          } else {
+            agentDir = path.resolve(workspaceRoot, ctx.tokenPayload.agentId);
+          }
+        }
+
+        const resolvedPath = path.resolve(agentDir, input.file);
         const { pathIsInsideDir } = await import('../shared/utils/fs.js');
         if (!pathIsInsideDir(resolvedPath, process.cwd(), { allowSameDir: true })) {
           throw new TRPCError({

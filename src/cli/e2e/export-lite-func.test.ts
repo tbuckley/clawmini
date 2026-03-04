@@ -100,7 +100,7 @@ describe('E2E Export Lite Functionality Tests', () => {
 
     const chatLogContentUpdated = fs.readFileSync(chatLogPath, 'utf8');
     expect(chatLogContentUpdated).toContain('hello with file');
-    expect(chatLogContentUpdated).toContain('"file":"env.txt"');
+    expect(chatLogContentUpdated).toContain('"file":"lite-env-dumper/env.txt"');
 
     // 2. Test jobs add
     const addProcess = spawn(

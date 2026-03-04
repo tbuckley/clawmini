@@ -42,6 +42,7 @@ vi.mock('../shared/workspace.js', async (importOriginal) => {
     writeChatSettings: vi.fn(),
     getSettingsPath: vi.fn().mockReturnValue('/mock/settings.json'),
     getAgent: vi.fn(),
+    getWorkspaceRoot: vi.fn().mockReturnValue(process.cwd()),
   };
 });
 
