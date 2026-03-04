@@ -46,6 +46,31 @@ const apiAuthMiddleware = t.middleware(({ ctx, next }) => {
 
 export const apiProcedure = t.procedure.use(apiAuthMiddleware);
 
+export async function getUniquePath(p: string): Promise<string> {
+  try {
+    await fs.stat(p);
+    const ext = path.extname(p);
+    const base = path.basename(p, ext);
+    return path.join(path.dirname(p), `${base}-${Date.now()}${ext}`);
+  } catch {
+    return p;
+  }
+}
+
+async function resolveAgentDir(
+  agentId: string | undefined | null,
+  workspaceRoot: string
+): Promise<string> {
+  if (agentId && agentId !== 'default') {
+    const agent = await getAgent(agentId, workspaceRoot);
+    if (agent && agent.directory) {
+      return path.resolve(workspaceRoot, agent.directory);
+    }
+    return path.resolve(workspaceRoot, agentId);
+  }
+  return workspaceRoot;
+}
+
 async function resolveAndCheckChatId(ctx: Context, inputChatId?: string): Promise<string> {
   const chatId =
     inputChatId ??
@@ -95,24 +120,16 @@ const AppRouter = router({
 
       const files = input.data.files;
       if (files && files.length > 0) {
+        const workspaceRoot = getWorkspaceRoot(process.cwd());
         const chatSettings = (await readChatSettings(chatId)) ?? {};
         const targetAgentId = agentId ?? chatSettings.defaultAgent ?? 'default';
         let agentFilesDir = settings?.defaultAgent?.files || './attachments';
-        let agentDir = process.cwd();
+        const agentDir = await resolveAgentDir(targetAgentId, workspaceRoot);
 
         if (targetAgentId !== 'default') {
-          const customAgent = await getAgent(targetAgentId, process.cwd());
-          if (customAgent) {
-            if (customAgent.files) {
-              agentFilesDir = customAgent.files;
-            }
-            if (customAgent.directory) {
-              agentDir = path.resolve(process.cwd(), customAgent.directory);
-            } else {
-              agentDir = path.resolve(process.cwd(), targetAgentId);
-            }
-          } else {
-            agentDir = path.resolve(process.cwd(), targetAgentId);
+          const customAgent = await getAgent(targetAgentId, workspaceRoot);
+          if (customAgent?.files) {
+            agentFilesDir = customAgent.files;
           }
         }
 
@@ -122,7 +139,6 @@ const AppRouter = router({
 
         const { pathIsInsideDir } = await import('../shared/utils/fs.js');
         const { getClawminiDir } = await import('../shared/workspace.js');
-        const workspaceRoot = getWorkspaceRoot(process.cwd());
 
         if (!pathIsInsideDir(targetDir, workspaceRoot, { allowSameDir: true })) {
           throw new TRPCError({
@@ -151,17 +167,6 @@ const AppRouter = router({
         }
 
         await fs.mkdir(targetDir, { recursive: true });
-
-        const getUniquePath = async (p: string) => {
-          try {
-            await fs.stat(p);
-            const ext = path.extname(p);
-            const base = path.basename(p, ext);
-            return path.join(path.dirname(p), `${base}-${Date.now()}${ext}`);
-          } catch {
-            return p;
-          }
-        };
 
         const finalPaths: string[] = [];
         for (const file of files) {
@@ -317,16 +322,7 @@ const AppRouter = router({
         }
 
         const workspaceRoot = getWorkspaceRoot(process.cwd());
-        let agentDir = workspaceRoot;
-
-        if (ctx.tokenPayload?.agentId && ctx.tokenPayload.agentId !== 'default') {
-          const agent = await getAgent(ctx.tokenPayload.agentId, workspaceRoot);
-          if (agent && agent.directory) {
-            agentDir = path.resolve(workspaceRoot, agent.directory);
-          } else {
-            agentDir = path.resolve(workspaceRoot, ctx.tokenPayload.agentId);
-          }
-        }
+        const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
 
         const resolvedPath = path.resolve(agentDir, input.file);
         const { pathIsInsideDir } = await import('../shared/utils/fs.js');

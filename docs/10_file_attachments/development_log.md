@@ -52,4 +52,4 @@
 - Enforced file existence checks on disk before persisting log entries.
 - Modified `src/cli/commands/messages.ts` (CLI send command) to automatically copy attached files to `.clawmini/tmp` prior to submitting them to the daemon.
 - Enhanced tests in `src/daemon/router.test.ts` to assert security validations for both `sendMessage` and `logMessage`.
-- Tests all run successfully including format, lint, type checking, and test suites.
+- Tests all run successfully including format, lint, type checking, and test suites.- Implemented Ticket 6: Code Critique and Fixes. Fixed DRY violation in src/daemon/router.ts when resolving agent.directory by creating resolveAgentDir and getUniquePath utilities. Other tasks in Ticket 6 were already completed.

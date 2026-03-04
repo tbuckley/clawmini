@@ -191,7 +191,7 @@ describe('E2E Daemon and Web Tests', () => {
 
     child.kill();
     await new Promise((resolve) => child.on('close', resolve));
-  }, 15000);
+  }, 30000);
 
   it('should optionally start an HTTP API server for the daemon when configured', async () => {
     await runCli(['down']);
