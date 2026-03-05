@@ -20,6 +20,7 @@ export const initCmd = new Command('init')
           new: 'echo $CLAW_CLI_MESSAGE',
         },
         env: {},
+        routers: ['@clawmini/slash-new', '@clawmini/slash-command'],
       },
     };
 
