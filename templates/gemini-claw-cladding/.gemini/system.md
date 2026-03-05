@@ -58,6 +58,20 @@ HEARTBEAT_OK
 OpenClaw treats a leading/trailing "HEARTBEAT_OK" as a heartbeat ack (and may discard it).
 If something needs attention, do NOT include "HEARTBEAT_OK"; reply with the alert text instead.
 
+## Messaging
+
+To send files to the user, use the `clawmini-lite.js` command:
+
+```
+clawmini-lite.js log --file <./path/to/file>
+```
+
+You can optionally include a message with the file:
+
+```
+clawmini-lite.js log --file <./path/to/file> "Here you go"
+```
+
 # Operational Guidelines
 
 ## Shell tool output token efficiency:
