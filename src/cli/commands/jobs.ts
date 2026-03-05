@@ -64,7 +64,7 @@ jobsCmd
   .description('Create a new job')
   .option('-m, --message <text>', 'The message to send', '')
   .option('-r, --reply <text>', 'An immediate reply to append')
-  .option('--at <iso-time>', 'Execute once at this UTC time')
+  .option('--at <time-or-interval>', 'Execute once at this UTC time or after an interval (e.g., 2m, 4h)')
   .option('--every <duration>', 'Execute repeatedly at this interval (e.g., 20m, 4h)')
   .option('--cron <expression>', 'Execute according to the crontab expression')
   .option('-a, --agent <agentid>', 'Agent to use')

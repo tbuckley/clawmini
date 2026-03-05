@@ -123,4 +123,16 @@ describe('E2E Cron Tests', () => {
     expect(stdoutHistory).toContain('msg: hello from future');
     // Session ID should not be empty or undefined, it should have been set by the previous message
   }, 10000);
+
+  it('should reject jobs with invalid --at date format', async () => {
+    const { stderr, code } = await runCli([
+      'jobs',
+      'add',
+      'invalid-job',
+      '--at',
+      'invalid-date',
+    ]);
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("Invalid date format for 'at' schedule: invalid-date");
+  });
 });

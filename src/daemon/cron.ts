@@ -42,7 +42,14 @@ export class CronManager {
       const settings = await readChatSettings(chatId);
       if (settings?.jobs) {
         for (const job of settings.jobs) {
-          this.scheduleJob(chatId, job);
+          try {
+            this.scheduleJob(chatId, job);
+          } catch (err) {
+            console.error(
+              `Failed to initialize job ${job.id} for chat ${chatId}:`,
+              err instanceof Error ? err.message : err
+            );
+          }
         }
       }
     }
@@ -75,7 +82,23 @@ export class CronManager {
         rule = everyStr;
       }
     } else if ('at' in job.schedule) {
-      rule = new Date((job.schedule as { at: string }).at);
+      const atStr = (job.schedule as { at: string }).at;
+      const match = atStr.match(/^(\d+)\s*(m|min|minutes?|h|hours?|d|days?|s|sec|seconds?)$/i);
+      if (match) {
+        const val = parseInt(match[1]!, 10);
+        const unit = match[2]!.toLowerCase();
+        let ms = 0;
+        if (unit.startsWith('s')) ms = val * 1000;
+        else if (unit.startsWith('m')) ms = val * 60 * 1000;
+        else if (unit.startsWith('h')) ms = val * 60 * 60 * 1000;
+        else if (unit.startsWith('d')) ms = val * 24 * 60 * 60 * 1000;
+        rule = new Date(Date.now() + ms);
+      } else {
+        rule = new Date(atStr);
+        if (isNaN(rule.getTime())) {
+          throw new Error(`Invalid date format for 'at' schedule: ${atStr}`);
+        }
+      }
       isOneOff = true;
     } else {
       console.warn(`Unknown schedule format for job ${job.id}`);
