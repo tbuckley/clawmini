@@ -221,7 +221,7 @@ describe('Daemon to Discord Forwarder', () => {
         cwd: '',
         exitCode: 0,
         stderr: '',
-        file: '/path/to/my/file.txt',
+        files: ['/path/to/my/file.txt'],
       },
     ]);
 
@@ -261,7 +261,7 @@ describe('Daemon to Discord Forwarder', () => {
         cwd: '',
         exitCode: 0,
         stderr: '',
-        file: '/path/to/my/file.txt',
+        files: ['/path/to/my/file.txt'],
       },
     ]);
 
@@ -301,7 +301,7 @@ describe('Daemon to Discord Forwarder', () => {
         cwd: '',
         exitCode: 0,
         stderr: '',
-        file: '/path/to/my/file.txt',
+        files: ['/path/to/my/file.txt'],
       },
     ]);
 

@@ -47,13 +47,18 @@ const apiAuthMiddleware = t.middleware(({ ctx, next }) => {
 export const apiProcedure = t.procedure.use(apiAuthMiddleware);
 
 export async function getUniquePath(p: string): Promise<string> {
-  try {
-    await fs.stat(p);
-    const ext = path.extname(p);
-    const base = path.basename(p, ext);
-    return path.join(path.dirname(p), `${base}-${Date.now()}${ext}`);
-  } catch {
-    return p;
+  let currentPath = p;
+  let counter = 1;
+  while (true) {
+    try {
+      await fs.stat(currentPath);
+      const ext = path.extname(p);
+      const base = path.basename(p, ext);
+      currentPath = path.join(path.dirname(p), `${base}-${counter}${ext}`);
+      counter++;
+    } catch {
+      return currentPath;
+    }
   }
 }
 
@@ -83,6 +88,74 @@ async function resolveAndCheckChatId(ctx: Context, inputChatId?: string): Promis
   }
 
   return chatId;
+}
+
+async function getAgentFilesDir(
+  agentId: string | undefined,
+  chatId: string,
+  settings: any,
+  workspaceRoot: string
+): Promise<string> {
+  const chatSettings = (await readChatSettings(chatId)) ?? {};
+  const targetAgentId = agentId ?? chatSettings.defaultAgent ?? 'default';
+  let agentFilesDir = settings?.defaultAgent?.files || './attachments';
+  const agentDir = await resolveAgentDir(targetAgentId, workspaceRoot);
+
+  if (targetAgentId !== 'default') {
+    const customAgent = await getAgent(targetAgentId, workspaceRoot);
+    if (customAgent?.files) {
+      agentFilesDir = customAgent.files;
+    }
+  }
+
+  return path.resolve(agentDir, agentFilesDir);
+}
+
+async function validateAttachments(files: string[]): Promise<void> {
+  const { pathIsInsideDir } = await import('../shared/utils/fs.js');
+  const { getClawminiDir } = await import('../shared/workspace.js');
+  const tmpDir = path.join(getClawminiDir(process.cwd()), 'tmp');
+
+  for (const file of files) {
+    const absoluteFile = path.resolve(process.cwd(), file);
+    if (!pathIsInsideDir(absoluteFile, tmpDir)) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'File must be inside the temporary directory.',
+      });
+    }
+    try {
+      await fs.access(absoluteFile);
+    } catch {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: `File does not exist: ${file}`,
+      });
+    }
+  }
+}
+
+async function validateLogFile(file: string, agentDir: string): Promise<string> {
+  const { pathIsInsideDir } = await import('../shared/utils/fs.js');
+  const resolvedPath = path.resolve(agentDir, file);
+
+  if (!pathIsInsideDir(resolvedPath, agentDir, { allowSameDir: true })) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'File must be within the agent workspace.',
+    });
+  }
+
+  try {
+    await fs.access(resolvedPath);
+  } catch {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `File does not exist: ${file}`,
+    });
+  }
+
+  return path.relative(process.cwd(), resolvedPath);
 }
 
 const AppRouter = router({
@@ -123,22 +196,13 @@ const AppRouter = router({
         const workspaceRoot = getWorkspaceRoot(process.cwd());
         const chatSettings = (await readChatSettings(chatId)) ?? {};
         const targetAgentId = agentId ?? chatSettings.defaultAgent ?? 'default';
-        let agentFilesDir = settings?.defaultAgent?.files || './attachments';
         const agentDir = await resolveAgentDir(targetAgentId, workspaceRoot);
+        const absoluteFilesDir = await getAgentFilesDir(agentId, chatId, settings, workspaceRoot);
 
-        if (targetAgentId !== 'default') {
-          const customAgent = await getAgent(targetAgentId, workspaceRoot);
-          if (customAgent?.files) {
-            agentFilesDir = customAgent.files;
-          }
-        }
-
-        const absoluteFilesDir = path.resolve(agentDir, agentFilesDir);
         const adapterNamespace = input.data.adapter || 'cli';
         const targetDir = path.join(absoluteFilesDir, adapterNamespace);
 
         const { pathIsInsideDir } = await import('../shared/utils/fs.js');
-        const { getClawminiDir } = await import('../shared/workspace.js');
 
         if (!pathIsInsideDir(targetDir, workspaceRoot, { allowSameDir: true })) {
           throw new TRPCError({
@@ -147,24 +211,7 @@ const AppRouter = router({
           });
         }
 
-        const tmpDir = path.join(getClawminiDir(process.cwd()), 'tmp');
-        for (const file of files) {
-          const absoluteFile = path.resolve(process.cwd(), file);
-          if (!pathIsInsideDir(absoluteFile, tmpDir)) {
-            throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: 'File must be inside the temporary directory.',
-            });
-          }
-          try {
-            await fs.access(absoluteFile);
-          } catch {
-            throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: `File does not exist: ${file}`,
-            });
-          }
-        }
+        await validateAttachments(files);
 
         await fs.mkdir(targetDir, { recursive: true });
 
@@ -180,10 +227,11 @@ const AppRouter = router({
             await fs.unlink(file);
           }
 
-          finalPaths.push(path.relative(process.cwd(), targetPath));
+          finalPaths.push(path.relative(agentDir, targetPath));
         }
 
-        message = `${message}\n\nAttached files:\n${finalPaths.map((p) => `- ${p}`).join('\n')}`;
+        const fileList = `Attached files:\n${finalPaths.map((p) => `- ${p}`).join('\n')}`;
+        message = message ? `${message}\n\n${fileList}` : fileList;
       }
 
       await handleUserMessage(
@@ -304,7 +352,7 @@ const AppRouter = router({
       z.object({
         chatId: z.string().optional(),
         message: z.string(),
-        file: z.string().optional(),
+        files: z.array(z.string()).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -312,47 +360,18 @@ const AppRouter = router({
       const timestamp = new Date().toISOString();
       const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
 
-      let filePath = undefined;
-      if (input.file) {
-        if (input.file.includes('..') || path.isAbsolute(input.file)) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Path traversal and absolute paths are not allowed.',
-          });
-        }
-
+      const filePaths: string[] = [];
+      if (input.files && input.files.length > 0) {
         const workspaceRoot = getWorkspaceRoot(process.cwd());
         const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
 
-        const resolvedPath = path.resolve(agentDir, input.file);
-        const { pathIsInsideDir } = await import('../shared/utils/fs.js');
-
-        if (!pathIsInsideDir(resolvedPath, agentDir, { allowSameDir: true })) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'File must be within the agent workspace.',
-          });
+        for (const file of input.files) {
+          const validPath = await validateLogFile(file, agentDir);
+          filePaths.push(validPath);
         }
-
-        if (!pathIsInsideDir(resolvedPath, workspaceRoot, { allowSameDir: true })) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'File must be within the overall workspace.',
-          });
-        }
-
-        try {
-          await fs.access(resolvedPath);
-        } catch {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `File does not exist: ${input.file}`,
-          });
-        }
-
-        filePath = path.relative(process.cwd(), resolvedPath);
       }
 
+      const filesArgStr = filePaths.map((p) => ` --file ${p}`).join('');
       const logMsg: import('./chats.js').CommandLogMessage = {
         id,
         messageId: id,
@@ -361,11 +380,11 @@ const AppRouter = router({
         content: input.message,
         stderr: '',
         timestamp,
-        command: `clawmini-lite log${filePath ? ' --file ' + filePath : ''}`,
+        command: `clawmini-lite log${filesArgStr}`,
         cwd: process.cwd(),
         exitCode: 0,
         stdout: input.message,
-        ...(filePath ? { file: filePath } : {}),
+        ...(filePaths.length > 0 ? { files: filePaths } : {}),
       };
 
       await import('./chats.js').then((m) => m.appendMessage(chatId, logMsg));

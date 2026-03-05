@@ -25,7 +25,7 @@ export interface CommandLogMessage {
   cwd: string;
   exitCode: number;
   stdout?: string;
-  file?: string;
+  files?: string[];
 }
 
 export type ChatMessage = UserMessage | CommandLogMessage;

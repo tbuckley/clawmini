@@ -66,9 +66,10 @@ export async function startDaemonToDiscordForwarder(
                 // Only forward logs (agent responses, system messages)
                 if (message.role === 'log') {
                   const hasContent = !!message.content?.trim();
-                  const hasFile = 'file' in message && !!message.file;
+                  const hasFiles =
+                    'files' in message && Array.isArray(message.files) && message.files.length > 0;
 
-                  if (!hasContent && !hasFile) {
+                  if (!hasContent && !hasFiles) {
                     lastMessageId = message.id;
                     continue;
                   }
@@ -83,8 +84,8 @@ export async function startDaemonToDiscordForwarder(
                       for (let i = 0; i < chunks.length; i++) {
                         if (signal?.aborted) break;
                         const chunkOptions: MessageCreateOptions = { content: chunks[i] as string };
-                        if (i === chunks.length - 1 && hasFile) {
-                          chunkOptions.files = [message.file as string];
+                        if (i === chunks.length - 1 && hasFiles) {
+                          chunkOptions.files = message.files as string[];
                         }
                         await dm.send(chunkOptions);
                       }
@@ -93,8 +94,8 @@ export async function startDaemonToDiscordForwarder(
                       if (hasContent) {
                         options.content = message.content;
                       }
-                      if (hasFile) {
-                        options.files = [message.file as string];
+                      if (hasFiles) {
+                        options.files = message.files as string[];
                       }
                       await dm.send(options);
                     }

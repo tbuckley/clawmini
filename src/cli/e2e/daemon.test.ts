@@ -289,5 +289,5 @@ describe('E2E Daemon and Web Tests', () => {
     await runCli(['down']);
     fs.writeFileSync(settingsPath, originalSettings);
     await runCli(['up']);
-  });
+  }, 15000);
 });

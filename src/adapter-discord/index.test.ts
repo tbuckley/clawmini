@@ -168,11 +168,22 @@ describe('Discord Adapter Entry Point', () => {
     // Fast-forward time for debouncer
     await vi.runAllTimersAsync();
 
-    expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith({
+    expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledTimes(2);
+    expect(mockTrpc.sendMessage.mutate).toHaveBeenNthCalledWith(1, {
       type: 'send-message',
       client: 'cli',
       data: {
-        message: '<message>\nmessage 1\n</message>\n<message>\nmessage 2\n</message>',
+        message: 'message 1',
+        chatId: 'default',
+        files: undefined,
+        adapter: 'discord',
+      },
+    });
+    expect(mockTrpc.sendMessage.mutate).toHaveBeenNthCalledWith(2, {
+      type: 'send-message',
+      client: 'cli',
+      data: {
+        message: 'message 2',
         chatId: 'default',
         files: undefined,
         adapter: 'discord',

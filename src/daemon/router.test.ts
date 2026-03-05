@@ -207,7 +207,9 @@ describe('Daemon TRPC Router', () => {
       vi.mocked((fs as any).default.access).mockResolvedValue(undefined);
 
       // Simulate file already exists for collision
-      vi.mocked((fs as any).default.stat).mockResolvedValue({} as import('node:fs').Stats);
+      vi.mocked((fs as any).default.stat)
+        .mockResolvedValueOnce({} as import('node:fs').Stats)
+        .mockRejectedValue(new Error('not found'));
       vi.mocked((fs as any).default.rename).mockResolvedValue(undefined);
 
       const caller = appRouter.createCaller({});
@@ -302,7 +304,7 @@ describe('Daemon TRPC Router', () => {
       const result = await caller.logMessage({
         chatId: 'default-chat',
         message: 'Test log with file',
-        file: 'attachments/discord/image.png',
+        files: ['attachments/discord/image.png'],
       });
 
       expect(result.success).toBe(true);
@@ -311,7 +313,7 @@ describe('Daemon TRPC Router', () => {
         expect.objectContaining({
           role: 'log',
           content: 'Test log with file',
-          file: path.normalize('attachments/discord/image.png'),
+          files: [path.normalize('attachments/discord/image.png')],
         }),
         expect.any(String)
       );
@@ -324,9 +326,9 @@ describe('Daemon TRPC Router', () => {
         caller.logMessage({
           chatId: 'default-chat',
           message: 'Malicious log',
-          file: '../secret.txt',
+          files: ['../secret.txt'],
         })
-      ).rejects.toThrow('Path traversal and absolute paths are not allowed.');
+      ).rejects.toThrow('File must be within the agent workspace.');
     });
 
     it('should reject file path with absolute path', async () => {
@@ -337,9 +339,9 @@ describe('Daemon TRPC Router', () => {
         caller.logMessage({
           chatId: 'default-chat',
           message: 'Malicious log',
-          file: '/etc/passwd',
+          files: ['/etc/passwd'],
         })
-      ).rejects.toThrow('Path traversal and absolute paths are not allowed.');
+      ).rejects.toThrow('File must be within the agent workspace.');
     });
   });
 });

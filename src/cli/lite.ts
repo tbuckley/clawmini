@@ -95,8 +95,8 @@ async function main() {
         process.exit(1);
       }
       const fileArg = opts.file || opts.f;
-      const file = Array.isArray(fileArg) ? fileArg[0] : fileArg;
-      await trpcCall('logMessage', 'POST', { message, file });
+      const files = fileArg ? (Array.isArray(fileArg) ? fileArg : [fileArg]) : undefined;
+      await trpcCall('logMessage', 'POST', { message, files });
       console.log('Log message appended.');
     } else if (cmd === 'jobs') {
       const subcmd = args[1];

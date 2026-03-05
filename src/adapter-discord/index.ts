@@ -36,27 +36,23 @@ export async function main() {
   const messageDebouncer = new Debouncer<DebouncerItem>(
     1000,
     async (items) => {
-      const combinedMessage =
-        items.length > 1
-          ? items.map((m) => `<message>\n${m.content}\n</message>`).join('\n')
-          : items[0]?.content || '';
-      const allFiles = items.flatMap((item) => item.files);
-      console.log(`Forwarding aggregated message to daemon: ${combinedMessage}`);
-
-      try {
-        await trpc.sendMessage.mutate({
-          type: 'send-message',
-          client: 'cli',
-          data: {
-            message: combinedMessage,
-            chatId: config.chatId,
-            files: allFiles.length > 0 ? allFiles : undefined,
-            adapter: 'discord',
-          },
-        });
-        console.log('Message forwarded to daemon successfully.');
-      } catch (error) {
-        console.error('Failed to forward message to daemon:', error);
+      for (const item of items) {
+        console.log(`Forwarding message to daemon: ${item.content}`);
+        try {
+          await trpc.sendMessage.mutate({
+            type: 'send-message',
+            client: 'cli',
+            data: {
+              message: item.content,
+              chatId: config.chatId,
+              files: item.files.length > 0 ? item.files : undefined,
+              adapter: 'discord',
+            },
+          });
+          console.log('Message forwarded to daemon successfully.');
+        } catch (error) {
+          console.error('Failed to forward message to daemon:', error);
+        }
       }
     },
     (a, b) => a.content === b.content && a.files.join(',') === b.files.join(',')
@@ -97,7 +93,8 @@ export async function main() {
 
     const downloadedFiles: string[] = [];
     if (message.attachments.size > 0) {
-      const tmpDir = path.join(process.cwd(), '.clawmini', 'adapters', 'discord', 'tmp');
+      const { getClawminiDir } = await import('../shared/workspace.js');
+      const tmpDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'discord');
       await fs.mkdir(tmpDir, { recursive: true });
       const maxSizeMB = config.maxAttachmentSizeMB ?? 25;
       const maxSizeBytes = maxSizeMB * 1024 * 1024;
