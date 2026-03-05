@@ -1,6 +1,7 @@
 import type { Client, MessageCreateOptions } from 'discord.js';
 import type { getTRPCClient } from './client.js';
 import { readDiscordState, writeDiscordState } from './state.js';
+import type { ChatMessage, CommandLogMessage } from '../shared/chats.js';
 
 export async function startDaemonToDiscordForwarder(
   client: Client,
@@ -60,17 +61,19 @@ export async function startDaemonToDiscordForwarder(
 
             // Queue processing to ensure sequential execution
             messageQueue = messageQueue.then(async () => {
-              for (const message of messages) {
+              for (const rawMessage of messages) {
                 if (signal?.aborted) break;
+
+                const message = rawMessage as ChatMessage;
 
                 // Only forward logs (agent responses, system messages)
                 if (message.role === 'log') {
-                  const hasContent = !!message.content?.trim();
-                  const hasFiles =
-                    'files' in message && Array.isArray(message.files) && message.files.length > 0;
+                  const logMessage = message as CommandLogMessage;
+                  const hasContent = !!logMessage.content?.trim();
+                  const hasFiles = Array.isArray(logMessage.files) && logMessage.files.length > 0;
 
                   if (!hasContent && !hasFiles) {
-                    lastMessageId = message.id;
+                    lastMessageId = logMessage.id;
                     continue;
                   }
 
@@ -79,23 +82,23 @@ export async function startDaemonToDiscordForwarder(
                     const dm = await user.createDM();
 
                     // Discord has a 2000 character limit for messages.
-                    if (hasContent && message.content.length > 2000) {
-                      const chunks = chunkString(message.content, 2000);
+                    if (hasContent && logMessage.content.length > 2000) {
+                      const chunks = chunkString(logMessage.content, 2000);
                       for (let i = 0; i < chunks.length; i++) {
                         if (signal?.aborted) break;
                         const chunkOptions: MessageCreateOptions = { content: chunks[i] as string };
                         if (i === chunks.length - 1 && hasFiles) {
-                          chunkOptions.files = message.files as string[];
+                          chunkOptions.files = logMessage.files as string[];
                         }
                         await dm.send(chunkOptions);
                       }
                     } else {
                       const options: MessageCreateOptions = {};
                       if (hasContent) {
-                        options.content = message.content;
+                        options.content = logMessage.content;
                       }
                       if (hasFiles) {
-                        options.files = message.files as string[];
+                        options.files = logMessage.files as string[];
                       }
                       await dm.send(options);
                     }
