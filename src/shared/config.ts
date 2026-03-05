@@ -26,6 +26,7 @@ export const AgentSchema = z.looseObject({
   env: z.record(z.string(), z.string()).optional(),
   directory: z.string().optional(),
   fallbacks: z.array(FallbackSchema).optional(),
+  files: z.string().default('./attachments').optional(),
 });
 
 export type Agent = z.infer<typeof AgentSchema>;
@@ -70,6 +71,7 @@ export const SettingsSchema = z.looseObject({
     .optional(),
   defaultAgent: AgentSchema.optional(),
   routers: z.array(z.string()).optional(),
+  files: z.string().default('./attachments').optional(),
   api: z
     .union([
       z.boolean(),

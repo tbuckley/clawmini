@@ -1,8 +1,40 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { appRouter } from './router.js';
 import * as workspace from '../shared/workspace.js';
 import * as chats from '../shared/chats.js';
 import type { CronJob } from '../shared/config.js';
+import * as message from './message.js';
+import * as fs from 'node:fs/promises';
+import path from 'node:path';
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      readFile: vi.fn(),
+      mkdir: vi.fn(),
+      stat: vi.fn(),
+      rename: vi.fn(),
+      copyFile: vi.fn(),
+      unlink: vi.fn(),
+      access: vi.fn(),
+    },
+    readFile: vi.fn(),
+    mkdir: vi.fn(),
+    stat: vi.fn(),
+    rename: vi.fn(),
+    copyFile: vi.fn(),
+    unlink: vi.fn(),
+    access: vi.fn(),
+  };
+});
+
+vi.mock('./message.js', () => ({
+  handleUserMessage: vi.fn(),
+}));
 
 vi.mock('../shared/workspace.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../shared/workspace.js')>();
@@ -10,6 +42,9 @@ vi.mock('../shared/workspace.js', async (importOriginal) => {
     ...actual,
     readChatSettings: vi.fn(),
     writeChatSettings: vi.fn(),
+    getSettingsPath: vi.fn().mockReturnValue('/mock/settings.json'),
+    getAgent: vi.fn(),
+    getWorkspaceRoot: vi.fn().mockReturnValue(process.cwd()),
   };
 });
 
@@ -18,6 +53,7 @@ vi.mock('../shared/chats.js', async (importOriginal) => {
   return {
     ...actual,
     getDefaultChatId: vi.fn(),
+    appendMessage: vi.fn(),
   };
 });
 
@@ -102,6 +138,210 @@ describe('Daemon TRPC Router', () => {
       expect(result.success).toBe(true);
       expect(result.deleted).toBe(false);
       expect(workspace.writeChatSettings).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sendMessage with files processing', () => {
+    it('should pass message through when no files are provided', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
+
+      const caller = appRouter.createCaller({});
+      await caller.sendMessage({
+        type: 'send-message',
+        client: 'cli',
+        data: { message: 'hello', chatId: 'default-chat' },
+      });
+
+      expect(message.handleUserMessage).toHaveBeenCalledWith(
+        'default-chat',
+        'hello',
+        {},
+        undefined,
+        false,
+        expect.any(Function),
+        undefined,
+        undefined
+      );
+      expect((fs as any).default.mkdir).not.toHaveBeenCalled();
+    });
+
+    it('should process files and format message correctly', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
+      vi.mocked(workspace.readChatSettings).mockResolvedValue({ defaultAgent: 'default' });
+      vi.mocked((fs as any).default.stat).mockRejectedValue(new Error('not found')); // Files do not exist (no collision)
+      vi.mocked((fs as any).default.rename).mockResolvedValue(undefined);
+      vi.mocked((fs as any).default.access).mockResolvedValue(undefined);
+
+      const caller = appRouter.createCaller({});
+      await caller.sendMessage({
+        type: 'send-message',
+        client: 'cli',
+        data: {
+          message: 'hello',
+          chatId: 'default-chat',
+          files: ['.clawmini/tmp/file1.txt', '.clawmini/tmp/file2.png'],
+          adapter: 'discord',
+        },
+      });
+
+      expect((fs as any).default.mkdir).toHaveBeenCalledWith(
+        expect.stringContaining(path.join('attachments', 'discord')),
+        { recursive: true }
+      );
+      expect((fs as any).default.rename).toHaveBeenCalledTimes(2);
+
+      const handleUserMessageCall = vi.mocked(message.handleUserMessage).mock.calls[0];
+      expect(handleUserMessageCall).toBeDefined();
+      const formattedMessage = handleUserMessageCall![1];
+      expect(formattedMessage).toContain('Attached files:');
+      expect(formattedMessage).toContain('- ' + path.normalize('attachments/discord/file1.txt'));
+      expect(formattedMessage).toContain('- ' + path.normalize('attachments/discord/file2.png'));
+    });
+
+    it('should handle file collision by appending timestamp', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
+      vi.mocked(workspace.readChatSettings).mockResolvedValue({ defaultAgent: 'default' });
+      vi.mocked((fs as any).default.access).mockResolvedValue(undefined);
+
+      // Simulate file already exists for collision
+      vi.mocked((fs as any).default.stat)
+        .mockResolvedValueOnce({} as import('node:fs').Stats)
+        .mockRejectedValue(new Error('not found'));
+      vi.mocked((fs as any).default.rename).mockResolvedValue(undefined);
+
+      const caller = appRouter.createCaller({});
+      await caller.sendMessage({
+        type: 'send-message',
+        client: 'cli',
+        data: {
+          message: 'hello',
+          chatId: 'default-chat',
+          files: ['.clawmini/tmp/file1.txt'],
+          adapter: 'discord',
+        },
+      });
+
+      expect((fs as any).default.rename).toHaveBeenCalledWith(
+        '.clawmini/tmp/file1.txt',
+        expect.stringMatching(/file1-\d+\.txt$/)
+      );
+
+      const handleUserMessageCall = vi.mocked(message.handleUserMessage).mock.calls[0];
+      expect(handleUserMessageCall).toBeDefined();
+      const formattedMessage = handleUserMessageCall![1];
+      expect(formattedMessage).toMatch(/- .*file1-\d+\.txt/);
+    });
+
+    it('should reject file path outside .clawmini/tmp for sendMessage', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
+
+      const caller = appRouter.createCaller({});
+      await expect(
+        caller.sendMessage({
+          type: 'send-message',
+          client: 'cli',
+          data: {
+            message: 'hello',
+            chatId: 'default-chat',
+            files: ['/etc/passwd'],
+          },
+        })
+      ).rejects.toThrow('File must be inside the temporary directory.');
+    });
+
+    it('should reject non-existent file for sendMessage', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
+      vi.mocked((fs as any).default.access).mockRejectedValue(new Error('ENOENT'));
+
+      const caller = appRouter.createCaller({});
+      await expect(
+        caller.sendMessage({
+          type: 'send-message',
+          client: 'cli',
+          data: {
+            message: 'hello',
+            chatId: 'default-chat',
+            files: ['.clawmini/tmp/missing.txt'],
+          },
+        })
+      ).rejects.toThrow('File does not exist: .clawmini/tmp/missing.txt');
+    });
+  });
+
+  describe('logMessage', () => {
+    it('should save a log message without a file', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked(chats.appendMessage).mockResolvedValue(undefined);
+
+      const caller = appRouter.createCaller({});
+      const result = await caller.logMessage({
+        chatId: 'default-chat',
+        message: 'Test log',
+      });
+
+      expect(result.success).toBe(true);
+      expect(chats.appendMessage).toHaveBeenCalledWith(
+        'default-chat',
+        expect.objectContaining({
+          role: 'log',
+          content: 'Test log',
+        }),
+        expect.any(String)
+      );
+    });
+
+    it('should validate and save a log message with a valid file path', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+      vi.mocked(chats.appendMessage).mockResolvedValue(undefined);
+      vi.mocked((fs as any).default.access).mockResolvedValue(undefined);
+
+      const caller = appRouter.createCaller({});
+      const result = await caller.logMessage({
+        chatId: 'default-chat',
+        message: 'Test log with file',
+        files: ['attachments/discord/image.png'],
+      });
+
+      expect(result.success).toBe(true);
+      expect(chats.appendMessage).toHaveBeenCalledWith(
+        'default-chat',
+        expect.objectContaining({
+          role: 'log',
+          content: 'Test log with file',
+          files: [path.normalize('attachments/discord/image.png')],
+        }),
+        expect.any(String)
+      );
+    });
+    it('should reject file path with directory traversal (..)', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+
+      const caller = appRouter.createCaller({});
+      await expect(
+        caller.logMessage({
+          chatId: 'default-chat',
+          message: 'Malicious log',
+          files: ['../secret.txt'],
+        })
+      ).rejects.toThrow('File must be within the agent workspace.');
+    });
+
+    it('should reject file path with absolute path', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+
+      const caller = appRouter.createCaller({});
+      await expect(
+        caller.logMessage({
+          chatId: 'default-chat',
+          message: 'Malicious log',
+          files: ['/etc/passwd'],
+        })
+      ).rejects.toThrow('File must be within the agent workspace.');
     });
   });
 });

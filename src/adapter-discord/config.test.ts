@@ -31,7 +31,21 @@ describe('Discord Adapter Configuration', () => {
         expect(result.data).toEqual({
           ...config,
           chatId: 'default',
+          maxAttachmentSizeMB: 25,
         });
+      }
+    });
+
+    it('should validate a custom maxAttachmentSizeMB', () => {
+      const config = {
+        botToken: 'my-bot-token',
+        authorizedUserId: '1234567890',
+        maxAttachmentSizeMB: 50,
+      };
+      const result = DiscordConfigSchema.safeParse(config);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.maxAttachmentSizeMB).toBe(50);
       }
     });
 
@@ -114,7 +128,7 @@ describe('Discord Adapter Configuration', () => {
       vi.mocked(fsPromises.readFile).mockResolvedValue(JSON.stringify(mockConfig));
 
       const config = await readDiscordConfig();
-      expect(config).toEqual({ ...mockConfig, chatId: 'default' });
+      expect(config).toEqual({ ...mockConfig, chatId: 'default', maxAttachmentSizeMB: 25 });
       expect(fsPromises.readFile).toHaveBeenCalledWith(getDiscordConfigPath(), 'utf-8');
     });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SettingsSchema } from './config.js';
+import { SettingsSchema, AgentSchema } from './config.js';
 
 describe('SettingsSchema', () => {
   it('should parse empty settings', () => {
@@ -52,5 +52,39 @@ describe('SettingsSchema', () => {
   it('should parse api object with proxy_host', () => {
     const result = SettingsSchema.safeParse({ api: { proxy_host: 'http://my-proxy' } });
     expect(result.success).toBe(true);
+  });
+
+  it('should parse files property with default', () => {
+    const result = SettingsSchema.safeParse({});
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.files).toBe('./attachments');
+    }
+  });
+
+  it('should parse custom files property', () => {
+    const result = SettingsSchema.safeParse({ files: './my-files' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.files).toBe('./my-files');
+    }
+  });
+});
+
+describe('AgentSchema', () => {
+  it('should parse files property with default', () => {
+    const result = AgentSchema.safeParse({});
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.files).toBe('./attachments');
+    }
+  });
+
+  it('should parse custom files property', () => {
+    const result = AgentSchema.safeParse({ files: './my-files' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.files).toBe('./my-files');
+    }
   });
 });

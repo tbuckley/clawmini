@@ -82,6 +82,26 @@ describe('E2E Export Lite Functionality Tests', () => {
     expect(chatLogContent).toContain('hello from lite client');
     expect(chatLogContent).toContain('"role":"log"');
 
+    // 1.5 Test log with file
+    const logFileProcess = spawn(
+      'node',
+      [litePath, 'log', 'hello with file', '--file', 'env.txt'],
+      {
+        env: { ...process.env, CLAW_API_URL: envUrl, CLAW_API_TOKEN: envToken },
+        cwd: envDumperAgentDir,
+      }
+    );
+
+    let logFileStdout = '';
+    logFileProcess.stdout.on('data', (d) => (logFileStdout += d.toString()));
+    logFileProcess.stderr.on('data', (d) => (logFileStdout += d.toString()));
+    await new Promise((resolve) => logFileProcess.on('close', resolve));
+    expect(logFileStdout).toContain('Log message appended');
+
+    const chatLogContentUpdated = fs.readFileSync(chatLogPath, 'utf8');
+    expect(chatLogContentUpdated).toContain('hello with file');
+    expect(chatLogContentUpdated).toContain('"files":["lite-env-dumper/env.txt"]');
+
     // 2. Test jobs add
     const addProcess = spawn(
       'node',

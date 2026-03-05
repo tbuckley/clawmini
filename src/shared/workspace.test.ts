@@ -130,7 +130,7 @@ describe('workspace utilities', () => {
       expect(fs.existsSync(p)).toBe(true);
 
       const agent = await getAgent('agent-1', testDir);
-      expect(agent).toEqual(agentData);
+      expect(agent).toEqual({ ...agentData, files: './attachments' });
     });
 
     it('should return list of agents', async () => {

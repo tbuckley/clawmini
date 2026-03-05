@@ -5,6 +5,8 @@ import { readDiscordConfig, isAuthorized, initDiscordConfig } from './config.js'
 import { getTRPCClient } from './client.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
 import { Debouncer } from './utils.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 export async function main() {
   const args = process.argv.slice(2);
@@ -26,27 +28,35 @@ export async function main() {
 
   const trpc = getTRPCClient();
 
-  const messageDebouncer = new Debouncer<string>(1000, async (messages) => {
-    const combinedMessage =
-      messages.length > 1
-        ? messages.map((m) => `<message>\n${m}\n</message>`).join('\n')
-        : messages[0] || '';
-    console.log(`Forwarding aggregated message to daemon: ${combinedMessage}`);
+  interface DebouncerItem {
+    content: string;
+    files: string[];
+  }
 
-    try {
-      await trpc.sendMessage.mutate({
-        type: 'send-message',
-        client: 'cli',
-        data: {
-          message: combinedMessage,
-          chatId: config.chatId,
-        },
-      });
-      console.log('Message forwarded to daemon successfully.');
-    } catch (error) {
-      console.error('Failed to forward message to daemon:', error);
-    }
-  });
+  const messageDebouncer = new Debouncer<DebouncerItem>(
+    1000,
+    async (items) => {
+      for (const item of items) {
+        console.log(`Forwarding message to daemon: ${item.content}`);
+        try {
+          await trpc.sendMessage.mutate({
+            type: 'send-message',
+            client: 'cli',
+            data: {
+              message: item.content,
+              chatId: config.chatId,
+              files: item.files.length > 0 ? item.files : undefined,
+              adapter: 'discord',
+            },
+          });
+          console.log('Message forwarded to daemon successfully.');
+        } catch (error) {
+          console.error('Failed to forward message to daemon:', error);
+        }
+      }
+    },
+    (a, b) => a.content === b.content && a.files.join(',') === b.files.join(',')
+  );
 
   const client = new Client({
     intents: [GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent],
@@ -81,7 +91,44 @@ export async function main() {
 
     console.log(`Received message from ${message.author.tag}: ${message.content}`);
 
-    messageDebouncer.add(message.content);
+    const downloadedFiles: string[] = [];
+    if (message.attachments.size > 0) {
+      const { getClawminiDir } = await import('../shared/workspace.js');
+      const tmpDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'discord');
+      await fs.mkdir(tmpDir, { recursive: true });
+      const maxSizeMB = config.maxAttachmentSizeMB ?? 25;
+      const maxSizeBytes = maxSizeMB * 1024 * 1024;
+
+      for (const attachment of message.attachments.values()) {
+        if (attachment.size > maxSizeBytes) {
+          console.warn(
+            `Attachment ${attachment.name} exceeds size limit (${maxSizeMB}MB). Ignoring.`
+          );
+          await message.reply(
+            `Warning: Attachment ${attachment.name} exceeds the size limit of ${maxSizeMB}MB and was ignored.`
+          );
+          continue;
+        }
+
+        try {
+          const res = await fetch(attachment.url);
+          if (!res.ok) {
+            console.error(`Failed to download attachment ${attachment.name}`);
+            continue;
+          }
+
+          const uniqueName = `${Date.now()}-${attachment.name}`;
+          const filePath = path.join(tmpDir, uniqueName);
+          const arrayBuffer = await res.arrayBuffer();
+          await fs.writeFile(filePath, Buffer.from(arrayBuffer));
+          downloadedFiles.push(filePath);
+        } catch (err) {
+          console.error(`Error downloading attachment ${attachment.name}:`, err);
+        }
+      }
+    }
+
+    messageDebouncer.add({ content: message.content, files: downloadedFiles });
   });
 
   try {
