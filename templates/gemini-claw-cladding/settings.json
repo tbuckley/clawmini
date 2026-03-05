@@ -1,7 +1,7 @@
 {
     "commands": {
-        "new": "cladding run --env GEMINI_API_KEY --env GEMINI_SYSTEM_MD=true gemini --output-format json --model $MODEL -p \"$CLAW_CLI_MESSAGE\"",
-        "append": "cladding run --env GEMINI_API_KEY --env GEMINI_SYSTEM_MD=true gemini --output-format json --model $MODEL --resume $SESSION_ID -p \"$CLAW_CLI_MESSAGE\"",
+        "new": "cladding run --env CLAW_API_URL --env CLAW_API_TOKEN --env GEMINI_API_KEY --env GEMINI_SYSTEM_MD=true gemini --output-format json --model $MODEL -p \"$CLAW_CLI_MESSAGE\"",
+        "append": "cladding run --env CLAW_API_URL --env CLAW_API_TOKEN --env GEMINI_API_KEY --env GEMINI_SYSTEM_MD=true gemini --output-format json --model $MODEL --resume $SESSION_ID -p \"$CLAW_CLI_MESSAGE\"",
         "getSessionId": "jq -r '.session_id'",
         "getMessageContent": "jq -r '.response'"
     },
