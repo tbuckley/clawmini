@@ -18,3 +18,17 @@
 
 2. **Init Command Flags**: Add `--agent <name>` and `--agent-template <name>` flags to `initCmd` in `src/cli/commands/init.ts`.
    - After writing `.clawmini/settings.json`, invoke the agent creation logic using these flags. We will reuse the core logic from `agents add` by extracting it to a shared function or simply calling the workspace functions (`writeAgentSettings`, `applyTemplateToAgent`, plus the new chat creation logic).
+
+## New Feature: `--environment` Flag on `init`
+
+### Codebase Findings
+- The `environments enable <name>` command logic is currently tightly coupled to the commander action in `src/cli/commands/environments.ts`.
+- It performs the following:
+  1. Copies the environment template via `copyEnvironmentTemplate`.
+  2. Updates `.clawmini/settings.json` with the new environment mapping.
+  3. Executes the environment's `init` command if defined in `env.json`.
+- `initCmd` in `src/cli/commands/init.ts` handles workspace initialization.
+
+### Implementation Plan
+- Extract the environment enablement logic into a shared utility function, e.g., `enableEnvironment(name: string, targetPath: string = './')` in `src/shared/environments.ts` or `src/shared/workspace.ts`.
+- `initCmd` will parse the `--environment` flag and call `enableEnvironment(options.environment)` after creating `.clawmini/settings.json`.

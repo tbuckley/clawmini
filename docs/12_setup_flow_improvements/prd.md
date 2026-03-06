@@ -10,6 +10,7 @@ Currently, the process of initializing a clawmini workspace and adding an agent 
 1. **Quick Start**: A new user wants to set up a workspace and get right into using a predefined agent template. They run `clawmini init --agent bob --agent-template bob-template` and can immediately start chatting with `bob` in a dedicated chat also named `bob`.
 2. **Dedicated Contexts**: A developer creates a new agent using `clawmini agents add react-expert`. The system automatically spins up a chat called `react-expert` where `react-expert` is the default agent, keeping contexts nicely separated.
 3. **Preventing Accidental Overwrites**: A user creates an agent named `default`, but a `default` chat already exists. The system creates the agent, but avoids overwriting the existing `default` chat settings, warning the user instead.
+4. **Environment Initialization**: A user wants to initialize a workspace that immediately utilizes a specific environment sandbox (like `cladding`). They run `clawmini init --environment cladding`.
 
 ## 4. Requirements
 
@@ -19,12 +20,14 @@ Currently, the process of initializing a clawmini workspace and adding an agent 
 - **Handling Existing Chats**: If a chat with `<id>` ALREADY exists, the system MUST NOT overwrite or mutate the existing chat's settings (leave it untouched) and MUST output a warning to the user indicating that the chat already existed.
 
 ### 4.2. Workspace Initialization Flow (`clawmini init`)
-- **New Flags**: The `init` command MUST support two new optional flags:
+- **New Flags**: The `init` command MUST support three new optional flags:
   - `--agent <name>`: The name of the agent to create after initialization.
   - `--agent-template <name>`: The template to apply to the created agent.
+  - `--environment <name>`: The environment to enable for the workspace root (`./`) after initialization.
 - **Agent Initialization**: If `--agent <name>` is provided, the command MUST execute the equivalent of `clawmini agents add <name>` (including the new chat creation side-effect).
 - **Template Dependency**: If `--agent-template <name>` is provided but `--agent <name>` is OMITTED, the command MUST throw an error.
 - **Workspace Default Chat**: If `--agent <name>` is provided, the command MUST set the workspace's default chat (`settings.chats.defaultId` in `.clawmini/settings.json`) to `<name>`.
+- **Environment Initialization**: If `--environment <name>` is provided, the command MUST execute the equivalent of `clawmini environments enable <name>`, enabling the specified environment for the workspace root (`./`).
 
 ## 5. Security / Privacy / Accessibility Concerns
 - **Security**: Creating chats involves filesystem writes (`mkdir`, `writeFile`). Input validation for the agent/chat ID already exists (`isValidAgentId`) but we must ensure it's strictly applied to prevent directory traversal attacks. We must ensure the chat directory is always created within the designated workspace `chats` folder.

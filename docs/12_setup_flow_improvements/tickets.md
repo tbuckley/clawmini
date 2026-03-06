@@ -85,3 +85,38 @@ Error handling in `src/cli/commands/init.ts` uses `process.exit(1)` directly wit
 **Tasks**:
 - Create `src/cli/utils.ts` with `handleError`.
 - Update `init.ts` and `agents.ts` to use it.
+
+---
+
+## Ticket 7: Refactor Environment Enable Logic
+**Status**: Not Started
+
+**Description**:
+Extract the environment enablement logic from `src/cli/commands/environments.ts` into a shared utility function so it can be reused by the `init` command.
+
+**Tasks**:
+- Extract the `enableEnvironment(name: string, targetPath: string = './')` function to `src/shared/workspace.ts` (or a similar shared location).
+- Update `environmentsCmd.command('enable <name>')` to use the extracted function.
+
+**Verification**:
+- Run `npm run test` to ensure tests continue to pass.
+- Run type checking: `npm run check`.
+- Verify the manual `clawmini environments enable` command still works correctly.
+
+---
+
+## Ticket 8: Init Command `--environment` Flag
+**Status**: Not Started
+
+**Description**:
+Enhance the workspace initialization command (`clawmini init`) to support enabling an environment automatically.
+
+**Tasks**:
+- Add the `--environment <name>` optional flag to the `initCmd` in `src/cli/commands/init.ts`.
+- After standard initialization (writing `.clawmini/settings.json`), if `--environment <name>` is provided, invoke the `enableEnvironment` function (from Ticket 7) with the given name and default path `./`.
+- Update unit tests for `initCmd` to cover the new flag and verify the environment enablement logic is called.
+
+**Verification**:
+- Run `npm run build && node ./dist/cli/index.js init --environment cladding` on a dummy directory and verify `.clawmini/environments/cladding` exists and `.clawmini/settings.json` has `environments: {"./": "cladding"}` mapped.
+- Run unit tests for `initCmd`: `npm run test`.
+- Run type checking: `npm run check`.
