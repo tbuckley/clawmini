@@ -346,4 +346,55 @@ describe('Discord Adapter Entry Point', () => {
 
     vi.useRealTimers();
   });
+
+  it('should format message with blockquote when it is a reply', async () => {
+    vi.useFakeTimers();
+    let messageHandler: ((message: import('discord.js').Message) => Promise<void>) | undefined;
+    vi.mocked(mockClientInstance.on).mockImplementation(
+      (event: string, cb: (...args: unknown[]) => void) => {
+        if (event === 'messageCreate') {
+          messageHandler = cb as unknown as (
+            message: import('discord.js').Message
+          ) => Promise<void>;
+        }
+        return mockClientInstance as unknown as import('discord.js').Client;
+      }
+    );
+
+    const { main } = await import('./index.js');
+    await main();
+
+    const { isAuthorized } = await import('./config.js');
+    vi.mocked(isAuthorized).mockReturnValue(true);
+
+    const mockReferencedMessage = {
+      content: 'Would anyone like to get dinner Sunday?\nOr maybe lunch?',
+    };
+
+    if (messageHandler) {
+      await messageHandler({
+        author: { id: 'user-123', tag: 'user#1234' } as unknown as import('discord.js').User,
+        content: "Yes, I'm in!",
+        guild: null,
+        attachments: new Map(),
+        reference: { messageId: '12345' },
+        fetchReference: vi.fn().mockResolvedValue(mockReferencedMessage),
+      } as unknown as import('discord.js').Message);
+    }
+
+    // Fast-forward time for debouncer
+    await vi.runAllTimersAsync();
+
+    expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith({
+      type: 'send-message',
+      client: 'cli',
+      data: {
+        message: "> Would anyone like to get dinner Sunday?\n> Or maybe lunch?\nYes, I'm in!",
+        chatId: 'default',
+        files: undefined,
+        adapter: 'discord',
+      },
+    });
+    vi.useRealTimers();
+  });
 });

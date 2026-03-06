@@ -128,7 +128,24 @@ export async function main() {
       }
     }
 
-    messageDebouncer.add({ content: message.content, files: downloadedFiles });
+    let finalContent = message.content;
+
+    if (message.reference && message.reference.messageId) {
+      try {
+        const referencedMessage = await message.fetchReference();
+        if (referencedMessage && referencedMessage.content) {
+          const quotedContent = referencedMessage.content
+            .split('\n')
+            .map((line) => `> ${line}`)
+            .join('\n');
+          finalContent = `${quotedContent}\n${finalContent}`;
+        }
+      } catch (err) {
+        console.error('Failed to fetch referenced message:', err);
+      }
+    }
+
+    messageDebouncer.add({ content: finalContent, files: downloadedFiles });
   });
 
   try {
