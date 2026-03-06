@@ -1,31 +1,19 @@
 (version 1)
-(deny default)
 
-; Allow read access globally
-(allow file-read*)
+;; allow everything by default
+(allow default)
 
-; Restrict write access to the workspace directory
+;; deny all writes EXCEPT under specific paths
+(deny file-write*)
 (allow file-write*
     (subpath (param "WORKSPACE"))
-)
-
-; Allow writes to standard system devices to prevent basic command failures
-(allow file-write*
+    (subpath (string-append (param "HOME") "/.gemini"))
+    (subpath (string-append (param "HOME") "/.npm"))
+    (subpath (string-append (param "HOME") "/.cache"))
+    (subpath (string-append (param "HOME") "/.gitconfig"))
+    (literal "/dev/stdout")
+    (literal "/dev/stderr")
     (literal "/dev/null")
-    (literal "/dev/zero")
-    (literal "/dev/dtracehelper")
-    (literal "/dev/tty")
+    (literal "/dev/ptmx")
+    (regex #"^/dev/ttys[0-9]*$")
 )
-
-; Allow process execution and forking
-(allow process-exec*)
-(allow process-fork)
-
-; Allow networking capabilities
-(allow network*)
-
-; Allow necessary system calls and IPC for standard tools to function
-(allow sysctl-read)
-(allow mach-lookup)
-(allow ipc-posix-shm)
-(allow signal)

@@ -69,6 +69,7 @@ export const EnvironmentSchema = z.looseObject({
   down: z.string().optional(),
   prefix: z.string().optional(),
   envFormat: z.string().optional(),
+  env: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

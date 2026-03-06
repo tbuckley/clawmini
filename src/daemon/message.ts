@@ -132,6 +132,7 @@ async function runExtractionCommand(
   mainResult: RunCommandResult
 ): Promise<{ result?: string; error?: string }> {
   try {
+    console.log(`Executing extraction command (${name}): ${command}`);
     const res = await runCommand({
       command,
       cwd,
@@ -167,11 +168,11 @@ function formatEnvironmentPrefix(
   }
 ): string {
   return prefix
-    .replace('{WORKSPACE_DIR}', replacements.workspaceRoot)
-    .replace('{AGENT_DIR}', replacements.executionCwd)
-    .replace('{ENV_DIR}', replacements.envDir)
-    .replace('{HOME_DIR}', process.env.HOME || '')
-    .replace('{ENV_ARGS}', replacements.envArgs);
+    .replaceAll('{WORKSPACE_DIR}', replacements.workspaceRoot)
+    .replaceAll('{AGENT_DIR}', replacements.executionCwd)
+    .replaceAll('{ENV_DIR}', replacements.envDir)
+    .replaceAll('{HOME_DIR}', process.env.HOME || '')
+    .replaceAll('{ENV_ARGS}', replacements.envArgs);
 }
 
 export async function executeDirectMessage(
@@ -331,6 +332,19 @@ export async function executeDirectMessage(
         const activeEnvName = await getActiveEnvironmentName(executionCwd, cwd);
         if (activeEnvName) {
           const activeEnv = await readEnvironment(activeEnvName, cwd);
+
+          if (activeEnv?.env) {
+            for (const [key, value] of Object.entries(activeEnv.env)) {
+              if (value === false) {
+                delete env[key];
+                agentSpecificEnv.delete(key);
+              } else {
+                env[key] = String(value);
+                agentSpecificEnv.add(key);
+              }
+            }
+          }
+
           if (activeEnv?.prefix) {
             const envArgs = Array.from(agentSpecificEnv)
               .map((key) => {
@@ -348,10 +362,15 @@ export async function executeDirectMessage(
               envArgs,
             });
 
-            command = `${prefixReplaced} ${command}`;
+            if (prefixReplaced.includes('{COMMAND}')) {
+              command = prefixReplaced.replace('{COMMAND}', command);
+            } else {
+              command = `${prefixReplaced} ${command}`;
+            }
           }
         }
 
+        console.log(`Executing command: ${command}`);
         const mainResult = await runCommand({ command, cwd: executionCwd, env });
 
         const logMsg: CommandLogMessage = {
