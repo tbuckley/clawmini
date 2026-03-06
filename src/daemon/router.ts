@@ -93,6 +93,7 @@ async function resolveAndCheckChatId(ctx: Context, inputChatId?: string): Promis
 async function getAgentFilesDir(
   agentId: string | undefined,
   chatId: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   settings: any,
   workspaceRoot: string
 ): Promise<string> {

@@ -5,12 +5,28 @@ import { defineConfig } from 'eslint/config';
 import eslintConfigPrettier from 'eslint-config-prettier';
 
 export default defineConfig([
-  { ignores: ['dist', 'node_modules', '.cladding', '.clawmini', '**/.svelte-kit', '**/build', 'web/.svelte-kit'] },
+  {
+    ignores: [
+      'dist',
+      'node_modules',
+      '.cladding',
+      '.clawmini',
+      '**/.svelte-kit',
+      '**/build',
+      'web/.svelte-kit',
+      'test-workspace*',
+    ],
+  },
   {
     files: ['**/*.{js,mjs,cjs,ts,mts,cts}'],
     plugins: { js },
     extends: ['js/recommended'],
-    languageOptions: { globals: globals.browser },
+    languageOptions: {
+      globals: globals.browser,
+      parserOptions: {
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
   },
   tseslint.configs.recommended,
   // Your custom rules
@@ -19,6 +35,12 @@ export default defineConfig([
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'max-lines': ['error', { max: 300, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    files: ['**/*.test.ts', '**/*.spec.ts'],
+    rules: {
+      'max-lines': 'off',
     },
   },
   eslintConfigPrettier,
