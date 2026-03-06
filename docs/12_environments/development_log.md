@@ -31,3 +31,13 @@
 - Implemented `runHooks('down')` in the `SIGINT` and `SIGTERM` handlers to gracefully execute the `down` hook for each enabled environment prior to daemon shutdown.
 - Ensured any exceptions during hook execution are logged but do not crash the initialization or shutdown process entirely.
 - Ran formatting, linting, and all tests successfully.
+
+## Ticket 5: Command Wrapping in Daemon
+
+- Imported `getActiveEnvironmentName`, `readEnvironment`, and `getEnvironmentPath` from `src/shared/workspace.ts` into `src/daemon/message.ts`.
+- Updated `executeDirectMessage` in `src/daemon/message.ts` to wrap the execution command with the active environment's prefix.
+- Handled merging the agent's environment variables and formatted them using `envFormat` to replace `{ENV_ARGS}`.
+- Safely replaced `{WORKSPACE_DIR}`, `{AGENT_DIR}`, `{ENV_DIR}`, and `{HOME_DIR}` inside the prefix string.
+- Ran tests, linting, and typechecks.
+- Fixed a testing issue where mocked functions were missing from `workspace.js` mock objects by injecting mock implementations into 8 separate test files using a Node script. All tests passed.
+

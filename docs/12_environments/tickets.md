@@ -50,7 +50,7 @@
 - Run: `npm run format:check && npm run lint && npm run check && npm run test`
 
 ## Ticket 5: Command Wrapping in Daemon
-**Status:** Not started
+**Status:** Completed
 **Description:** Wrap agent commands with the environment prefix before execution.
 **Tasks:**
 - Update `src/daemon/message.ts` (specifically where commands are executed).

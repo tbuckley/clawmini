@@ -17,6 +17,9 @@ import {
   writeAgentSessionSettings,
   getAgent,
   getWorkspaceRoot,
+  getActiveEnvironmentName,
+  getEnvironmentPath,
+  readEnvironment,
 } from '../shared/workspace.js';
 import { getApiContext, generateToken } from './auth.js';
 import { z } from 'zod';
@@ -236,33 +239,72 @@ export async function executeDirectMessage(
           await sleep(delay);
         }
 
-        const { command, env, currentAgent } = prepareCommandAndEnv(
+        const prepared = prepareCommandAndEnv(
           mergedAgent,
           state.message,
           isNewSession,
           agentSessionSettings,
           config.fallback
         );
+        let command = prepared.command;
+        const env = prepared.env;
+        const currentAgent = prepared.currentAgent;
 
         if (!command) {
           continue;
         }
 
+        const agentSpecificEnv: Record<string, string> = {
+          CLAW_CLI_MESSAGE: state.message,
+          ...(currentAgent.env || {}),
+        };
+        if (!isNewSession) {
+          Object.assign(agentSpecificEnv, agentSessionSettings?.env || {});
+        }
+
         Object.assign(env, routerEnv);
+        Object.assign(agentSpecificEnv, routerEnv);
 
         const apiCtx = getApiContext(settings);
         if (apiCtx) {
-          if (apiCtx.proxy_host) {
-            env['CLAW_API_URL'] = `${apiCtx.proxy_host}:${apiCtx.port}`;
-          } else {
-            env['CLAW_API_URL'] = `http://${apiCtx.host}:${apiCtx.port}`;
-          }
-          env['CLAW_API_TOKEN'] = generateToken({
+          const proxyUrl = apiCtx.proxy_host
+            ? `${apiCtx.proxy_host}:${apiCtx.port}`
+            : `http://${apiCtx.host}:${apiCtx.port}`;
+          env['CLAW_API_URL'] = proxyUrl;
+          agentSpecificEnv['CLAW_API_URL'] = proxyUrl;
+
+          const token = generateToken({
             chatId,
             agentId,
             sessionId: finalSessionId,
             timestamp: Date.now(),
           });
+          env['CLAW_API_TOKEN'] = token;
+          agentSpecificEnv['CLAW_API_TOKEN'] = token;
+        }
+
+        const activeEnvName = await getActiveEnvironmentName(executionCwd, cwd);
+        if (activeEnvName) {
+          const activeEnv = await readEnvironment(activeEnvName, cwd);
+          if (activeEnv?.prefix) {
+            const envArgs = Object.entries(agentSpecificEnv)
+              .map(([key, value]) => {
+                if (activeEnv.envFormat) {
+                  return activeEnv.envFormat.replace('{key}', key).replace('{value}', value || '');
+                }
+                return `${key}="${(value || '').replace(/"/g, '\\"')}"`;
+              })
+              .join(' ');
+
+            const prefixReplaced = activeEnv.prefix
+              .replace('{WORKSPACE_DIR}', workspaceRoot)
+              .replace('{AGENT_DIR}', executionCwd)
+              .replace('{ENV_DIR}', getEnvironmentPath(activeEnvName, cwd))
+              .replace('{HOME_DIR}', process.env.HOME || '')
+              .replace('{ENV_ARGS}', envArgs);
+
+            command = `${prefixReplaced} ${command}`;
+          }
         }
 
         const mainResult = await runCommand({ command, cwd: executionCwd, env });

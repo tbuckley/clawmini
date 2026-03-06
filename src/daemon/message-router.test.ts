@@ -19,6 +19,9 @@ vi.mock('../shared/workspace.js', () => ({
   writeAgentSessionSettings: vi.fn().mockResolvedValue(undefined),
   getAgent: vi.fn().mockResolvedValue(null),
   getWorkspaceRoot: vi.fn().mockImplementation((cwd) => cwd),
+  getActiveEnvironmentName: vi.fn().mockResolvedValue(null),
+  getEnvironmentPath: vi.fn().mockReturnValue(''),
+  readEnvironment: vi.fn().mockResolvedValue(null),
 }));
 
 describe('Router Pipeline Execution', () => {
