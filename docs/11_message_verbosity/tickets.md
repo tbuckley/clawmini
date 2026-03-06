@@ -12,7 +12,7 @@
 - **Task**: In `web/src/lib/app-state.svelte.ts` (or equivalent Web UI state file), replace the boolean `debugView` property with a string `verbosityLevel` initialized to `'default'`. The valid values should be `'default' | 'debug' | 'verbose'`.
 - **Verification**: Run `npm run check` and `npm run test` to verify state changes compile and pass tests.
 
-## 4. Update Web UI Controls (Status: Not Started)
+## 4. Update Web UI Controls (Status: Complete)
 - **Task**: In `web/src/routes/+layout.svelte`, replace the existing `Switch` component used for `debugView` with a cyclical toggle button. This button should rotate between the three states ('default', 'debug', 'verbose') using distinct icons/colors and must include a dynamic `aria-label` for accessibility.
 - **Verification**: Run `npm run check` and `npm run test`.
 

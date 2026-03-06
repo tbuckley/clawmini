@@ -16,3 +16,9 @@
 - Implemented temporary shims in `web/src/routes/+layout.svelte` and `web/src/routes/chats/[id]/+page.svelte` to translate the new string type back to the boolean checks expected by existing UI components in order to maintain a passing build until subsequent UI tickets are fulfilled.
 - Updated `web/src/routes/chats/[id]/page.svelte.spec.ts` to use `appState.verbosityLevel = 'verbose'`.
 - Verified changes by successfully running all typechecks and tests (`npm run check && npm run test`).
+
+## Ticket 4: Update Web UI Controls
+- Replaced the boolean `Switch` component in `web/src/routes/+layout.svelte` with a cyclical toggle button that iterates through `default`, `debug`, and `verbose` levels.
+- Added visual distinctions using `lucide-svelte` icons (`MessageSquare` for default, `Bug` for debug, `Terminal` for verbose) and varied text colors.
+- Ensured a dynamic `aria-label` is used for accessibility, indicating the current verbosity level.
+- Ran formatting, linting, type-checking, and tests (`npm run format:check && npm run lint && npm run check && npm run test`), all passing successfully.
