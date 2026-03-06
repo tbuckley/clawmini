@@ -161,6 +161,7 @@ export async function executeDirectMessage(
       command: 'router',
       cwd,
       exitCode: 0,
+      ...(state.reply.includes('NO_REPLY_NECESSARY') ? { level: 'verbose' as const } : {}),
     };
     await appendMessage(chatId, routerLogMsg);
   }
@@ -277,6 +278,9 @@ export async function executeDirectMessage(
           command,
           cwd: executionCwd,
           exitCode: mainResult.exitCode,
+          ...(mainResult.stdout.includes('NO_REPLY_NECESSARY')
+            ? { level: 'verbose' as const }
+            : {}),
         };
 
         const errors: string[] = [];
@@ -299,6 +303,11 @@ export async function executeDirectMessage(
             if (result !== undefined) {
               logMsg.content = result;
               logMsg.stdout = mainResult.stdout;
+              if (result.includes('NO_REPLY_NECESSARY')) {
+                logMsg.level = 'verbose';
+              } else {
+                delete logMsg.level;
+              }
               if (result.trim() === '') {
                 currentSuccess = false;
               }

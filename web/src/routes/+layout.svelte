@@ -3,11 +3,20 @@
   import * as Sidebar from '$lib/components/ui/sidebar/index.js';
   import { page } from '$app/state';
   import AppSidebar from '$lib/components/app/app-sidebar.svelte';
-  import { Switch } from '$lib/components/ui/switch/index.js';
   import { appState } from '$lib/app-state.svelte.js';
-  import { Settings } from 'lucide-svelte';
+  import { Settings, MessageSquare, Bug, Terminal } from 'lucide-svelte';
 
   let { data, children } = $props();
+
+  function toggleVerbosity() {
+    if (appState.verbosityLevel === 'default') {
+      appState.verbosityLevel = 'debug';
+    } else if (appState.verbosityLevel === 'debug') {
+      appState.verbosityLevel = 'verbose';
+    } else {
+      appState.verbosityLevel = 'default';
+    }
+  }
 </script>
 
 <Sidebar.Provider class="h-[100dvh] overflow-hidden">
@@ -31,10 +40,22 @@
             </a>
           {/if}
           <div class="flex items-center gap-2">
-            <label for="debug-toggle" class="text-sm text-muted-foreground font-medium cursor-pointer">
-              Debug view
-            </label>
-            <Switch id="debug-toggle" bind:checked={appState.debugView} />
+            <button
+              id="verbosity-toggle"
+              type="button"
+              class="flex items-center justify-center p-2 rounded-md hover:bg-muted transition-colors"
+              aria-label={`Verbosity level: ${appState.verbosityLevel}`}
+              onclick={toggleVerbosity}
+              title={`Verbosity: ${appState.verbosityLevel}`}
+            >
+              {#if appState.verbosityLevel === 'default'}
+                <MessageSquare class="w-5 h-5 text-muted-foreground" />
+              {:else if appState.verbosityLevel === 'debug'}
+                <Bug class="w-5 h-5 text-amber-500" />
+              {:else if appState.verbosityLevel === 'verbose'}
+                <Terminal class="w-5 h-5 text-red-500" />
+              {/if}
+            </button>
           </div>
         </div>
       </div>

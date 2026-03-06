@@ -157,6 +157,45 @@ describe('Daemon to Discord Forwarder', () => {
     await forwarderPromise;
   });
 
+  it('should ignore verbose log messages in the observation loop but update state', async () => {
+    const controller = new AbortController();
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+
+    const forwarderPromise = startDaemonToDiscordForwarder(
+      mockClient,
+      mockTrpc,
+      'user-123',
+      'default',
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-1',
+        role: 'log',
+        level: 'verbose',
+        content: 'I should be ignored because I am verbose',
+        timestamp: '',
+        messageId: 'msg-0',
+        command: 'test',
+        cwd: '',
+        exitCode: 0,
+        stderr: '',
+      },
+    ]);
+
+    await vi.waitFor(() =>
+      expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' })
+    );
+
+    expect(mockDm.send).not.toHaveBeenCalled();
+
+    controller.abort();
+    await forwarderPromise;
+  });
+
   it('should chunk long messages', async () => {
     const controller = new AbortController();
     const longContent = 'a'.repeat(2500);
