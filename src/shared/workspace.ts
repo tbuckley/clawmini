@@ -234,6 +234,10 @@ export async function resolveTemplatePath(
   templateName: string,
   startDir = process.cwd()
 ): Promise<string> {
+  if (templateName === 'environments' || templateName.startsWith('environments/')) {
+    throw new Error(`Template not found: ${templateName}`);
+  }
+
   const workspaceRoot = getWorkspaceRoot(startDir);
   const localTemplatePath = path.join(workspaceRoot, '.clawmini', 'templates', templateName);
 

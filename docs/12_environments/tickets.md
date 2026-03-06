@@ -12,7 +12,7 @@
 - Run: `npm run format:check && npm run lint && npm run check && npm run test`
 
 ## Ticket 2: Environment Templates
-**Status:** Not started
+**Status:** Completed
 **Description:** Create the built-in environment templates and ensure they are ignored by standard agent scaffolding.
 **Tasks:**
 - Create directory `templates/environments/cladding` and `templates/environments/macos`.
