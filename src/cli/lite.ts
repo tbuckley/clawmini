@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { createTRPCClient, httpLink } from '@trpc/client';
+import type { AppRouter } from '../daemon/router.js';
+import type { CronJob } from '../shared/config.js';
 
 /**
  * clawmini-lite - A standalone client
@@ -8,47 +11,20 @@ import { Command } from 'commander';
 const API_URL = process.env.CLAW_API_URL;
 const API_TOKEN = process.env.CLAW_API_TOKEN;
 
-async function trpcCall(endpoint: string, method: string = 'POST', input: unknown = undefined) {
-  let url = `${API_URL}/${endpoint}`;
-  const options: RequestInit = {
-    method,
-    headers: {
-      Authorization: `Bearer ${API_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-  };
-
-  if (method === 'GET') {
-    if (input !== undefined) {
-      url += `?batch=1&input=${encodeURIComponent(JSON.stringify({ '0': input }))}`;
-    }
-  } else {
-    if (input !== undefined) {
-      options.body = JSON.stringify(input);
-    }
-  }
-
-  const res = await fetch(url, options);
-  const text = await res.text();
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error(`Failed to parse response: ${text}`);
-  }
-
-  if (!res.ok) {
-    const isBatched = method === 'GET';
-    const errMsg =
-      (isBatched ? data?.[0]?.error?.message : data?.error?.message) ||
-      `HTTP ${res.status} ${res.statusText}`;
-    throw new Error(errMsg);
-  }
-
-  if (method === 'GET') {
-    return data[0].result.data;
-  }
-  return data.result.data;
+function getClient() {
+  return createTRPCClient<AppRouter>({
+    links: [
+      httpLink({
+        url: API_URL as string,
+        headers() {
+          return {
+            Authorization: `Bearer ${API_TOKEN}`,
+            'Content-Type': 'application/json',
+          };
+        },
+      }),
+    ],
+  });
 }
 
 const program = new Command();
@@ -66,15 +42,21 @@ program
 program
   .command('log [message]')
   .description('Log a message')
-  .option('-f, --file <path>', 'File path(s) to attach (can specify multiple)', (val: string, prev: string[]) => prev.concat([val]), [])
+  .option(
+    '-f, --file <path>',
+    'File path(s) to attach (can specify multiple)',
+    (val: string, prev: string[]) => prev.concat([val]),
+    []
+  )
   .action(async (message, options) => {
     try {
       const files = options.file.length > 0 ? options.file : undefined;
       const payload: { message?: string; files?: string[] } = {};
       if (message !== undefined) payload.message = message;
       if (files !== undefined) payload.files = files;
-      
-      await trpcCall('logMessage', 'POST', payload);
+
+      const client = getClient();
+      await client.logMessage.mutate(payload);
       console.log('Log message appended.');
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
@@ -89,7 +71,8 @@ jobs
   .description('List cron jobs')
   .action(async () => {
     try {
-      const jobsList = await trpcCall('listCronJobs', 'GET', {});
+      const client = getClient();
+      const jobsList = await client.listCronJobs.query({});
       console.log(JSON.stringify(jobsList, null, 2));
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
@@ -107,7 +90,12 @@ jobs
   .option('-r, --reply <reply>', 'Reply text')
   .option('-a, --agent <agentId>', 'Agent ID')
   .option('-s, --session <type>', 'Session type (must be "new")')
-  .option('-e, --env <env>', 'Environment variables in key=value format', (val: string, prev: string[]) => prev.concat([val]), [])
+  .option(
+    '-e, --env <env>',
+    'Environment variables in key=value format',
+    (val: string, prev: string[]) => prev.concat([val]),
+    []
+  )
   .option('-c, --chat <chatId>', 'Chat ID')
   .action(async (name, options) => {
     try {
@@ -117,7 +105,7 @@ jobs
       else if (options.cron) schedule = { cron: options.cron };
       else throw new Error('A schedule must be specified (--at, --every, or --cron).');
 
-      const job: Record<string, unknown> = {
+      const job: CronJob = {
         id: name,
         createdAt: new Date().toISOString(),
         message: options.message || '',
@@ -140,7 +128,8 @@ jobs
         job.env = jobEnv;
       }
 
-      await trpcCall('addCronJob', 'POST', { chatId: options.chat, job });
+      const client = getClient();
+      await client.addCronJob.mutate({ chatId: options.chat, job });
       console.log(`Job '${name}' created successfully.`);
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
@@ -154,9 +143,8 @@ jobs
   .option('-c, --chat <chatId>', 'Chat ID')
   .action(async (name, options) => {
     try {
-      const result = (await trpcCall('deleteCronJob', 'POST', { chatId: options.chat, id: name })) as {
-        deleted: boolean;
-      };
+      const client = getClient();
+      const result = await client.deleteCronJob.mutate({ chatId: options.chat, id: name });
       if (result && result.deleted) {
         console.log(`Job '${name}' deleted successfully.`);
       } else {
