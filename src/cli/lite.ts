@@ -64,13 +64,17 @@ program
   });
 
 program
-  .command('log <message>')
+  .command('log [message]')
   .description('Log a message')
   .option('-f, --file <path>', 'File path(s) to attach (can specify multiple)', (val: string, prev: string[]) => prev.concat([val]), [])
   .action(async (message, options) => {
     try {
       const files = options.file.length > 0 ? options.file : undefined;
-      await trpcCall('logMessage', 'POST', { message, files });
+      const payload: { message?: string; files?: string[] } = {};
+      if (message !== undefined) payload.message = message;
+      if (files !== undefined) payload.files = files;
+      
+      await trpcCall('logMessage', 'POST', payload);
       console.log('Log message appended.');
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);

@@ -19,13 +19,13 @@ describe('E2E Export Lite Tests', () => {
     expect(fs.existsSync(expectedPath)).toBe(true);
 
     const content = fs.readFileSync(expectedPath, 'utf8');
-    expect(content).toContain('clawmini-lite - A standalone zero-dependency client');
+    expect(content).toContain('clawmini-lite - A standalone client');
   });
 
   it('should export clawmini-lite script to stdout', async () => {
     const { stdout, code } = await runCli(['export-lite', '--stdout']);
     expect(code).toBe(0);
-    expect(stdout).toContain('clawmini-lite - A standalone zero-dependency client');
+    expect(stdout).toContain('clawmini-lite - A standalone client');
     expect(stdout).not.toContain('Successfully exported clawmini-lite to');
   });
 

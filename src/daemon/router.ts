@@ -360,7 +360,7 @@ const AppRouter = router({
     .input(
       z.object({
         chatId: z.string().optional(),
-        message: z.string(),
+        message: z.string().optional(),
         files: z.array(z.string()).optional(),
       })
     )
@@ -381,18 +381,18 @@ const AppRouter = router({
       }
 
       const filesArgStr = filePaths.map((p) => ` --file ${p}`).join('');
+      const messageStr = input.message || '';
       const logMsg: import('./chats.js').CommandLogMessage = {
         id,
         messageId: id,
         role: 'log',
         source: 'router',
-        content: input.message,
+        content: messageStr,
         stderr: '',
         timestamp,
         command: `clawmini-lite log${filesArgStr}`,
         cwd: process.cwd(),
         exitCode: 0,
-        stdout: input.message,
         ...(filePaths.length > 0 ? { files: filePaths } : {}),
       };
 
