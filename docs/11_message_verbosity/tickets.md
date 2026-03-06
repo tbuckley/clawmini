@@ -8,7 +8,7 @@
 - **Task**: Modify message generation logic in the daemon (e.g., `src/daemon/message.ts`) so that when a `CommandLogMessage` is generated, if its content includes the exact string `"NO_REPLY_NECESSARY"`, the `level` property is set to `'verbose'`.
 - **Verification**: Write/update tests in `src/daemon/` to verify this behavior, and run `npm run format:check && npm run lint && npm run check && npm run test`.
 
-## 3. Update Web UI State Management (Status: Not Started)
+## 3. Update Web UI State Management (Status: Complete)
 - **Task**: In `web/src/lib/app-state.svelte.ts` (or equivalent Web UI state file), replace the boolean `debugView` property with a string `verbosityLevel` initialized to `'default'`. The valid values should be `'default' | 'debug' | 'verbose'`.
 - **Verification**: Run `npm run check` and `npm run test` to verify state changes compile and pass tests.
 

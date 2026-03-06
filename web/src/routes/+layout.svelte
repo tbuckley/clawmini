@@ -8,6 +8,11 @@
   import { Settings } from 'lucide-svelte';
 
   let { data, children } = $props();
+
+  let debugProxy = $state(appState.verbosityLevel !== 'default');
+  $effect(() => {
+    appState.verbosityLevel = debugProxy ? 'verbose' : 'default';
+  });
 </script>
 
 <Sidebar.Provider class="h-[100dvh] overflow-hidden">
@@ -34,7 +39,7 @@
             <label for="debug-toggle" class="text-sm text-muted-foreground font-medium cursor-pointer">
               Debug view
             </label>
-            <Switch id="debug-toggle" bind:checked={appState.debugView} />
+            <Switch id="debug-toggle" bind:checked={debugProxy} />
           </div>
         </div>
       </div>

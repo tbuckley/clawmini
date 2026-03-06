@@ -1,3 +1,3 @@
-export const appState = $state({
-  debugView: false,
+export const appState = $state<{ verbosityLevel: 'default' | 'debug' | 'verbose' }>({
+  verbosityLevel: 'default',
 });

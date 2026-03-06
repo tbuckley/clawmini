@@ -278,7 +278,9 @@ export async function executeDirectMessage(
           command,
           cwd: executionCwd,
           exitCode: mainResult.exitCode,
-          ...(mainResult.stdout.includes('NO_REPLY_NECESSARY') ? { level: 'verbose' as const } : {}),
+          ...(mainResult.stdout.includes('NO_REPLY_NECESSARY')
+            ? { level: 'verbose' as const }
+            : {}),
         };
 
         const errors: string[] = [];

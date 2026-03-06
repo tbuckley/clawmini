@@ -10,3 +10,9 @@
 - Added unit tests in `src/daemon/message-verbosity.test.ts` to verify log messages correctly receive the `verbose` level when `NO_REPLY_NECESSARY` is printed.
 - Configured ESLint overrides and formatting in the new test file to resolve linting failures.
 - Ran all required validation checks (`npm run format:check`, `npm run lint`, `npm run check`, `npm run test`) and confirmed full suite success.
+
+## Ticket 3: Update Web UI State Management
+- Replaced the boolean `debugView` with a string `verbosityLevel` (values: `'default' | 'debug' | 'verbose'`) in `web/src/lib/app-state.svelte.ts`.
+- Implemented temporary shims in `web/src/routes/+layout.svelte` and `web/src/routes/chats/[id]/+page.svelte` to translate the new string type back to the boolean checks expected by existing UI components in order to maintain a passing build until subsequent UI tickets are fulfilled.
+- Updated `web/src/routes/chats/[id]/page.svelte.spec.ts` to use `appState.verbosityLevel = 'verbose'`.
+- Verified changes by successfully running all typechecks and tests (`npm run check && npm run test`).

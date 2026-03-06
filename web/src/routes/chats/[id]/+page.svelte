@@ -302,7 +302,7 @@
             </div>
           {:else}
             <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm" data-testid="log-message">
-              {#if appState.debugView}
+              {#if appState.verbosityLevel !== 'default'}
                 <div class="font-mono text-xs text-muted-foreground mb-2 flex items-center gap-2">
                   <span>$ {msg.command}</span>
                   {#if msg.exitCode !== 0}

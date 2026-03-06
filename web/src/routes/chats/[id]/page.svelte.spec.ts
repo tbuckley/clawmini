@@ -45,7 +45,7 @@ const mockData = {
 
 describe('Chat Page', () => {
   it('renders user and log messages distinctly', async () => {
-    appState.debugView = true;
+    appState.verbosityLevel = 'verbose';
     render(ChatPage, { props: { data: mockData } });
 
     const userMsgs = page.getByTestId('user-message').all();
