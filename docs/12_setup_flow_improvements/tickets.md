@@ -20,7 +20,7 @@ Update the agent creation process so that when a new agent is added (e.g., via `
 ---
 
 ## Ticket 2: Init Command Flags and Agent Initialization
-**Status**: Not Started
+**Status**: Completed
 
 **Description**:
 Enhance the workspace initialization command (`clawmini init`) to support bootstrapping a workspace directly with a specific agent and template.
