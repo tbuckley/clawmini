@@ -146,7 +146,16 @@ export class CronManager {
         overrideSessionId
       );
 
-      if (job.env !== undefined) routerState.env = job.env;
+      if (job.env !== undefined) {
+        routerState.env = routerState.env || {};
+        for (const [key, val] of Object.entries(job.env)) {
+          if (val === true && process.env[key] !== undefined) {
+            routerState.env[key] = process.env[key];
+          } else if (typeof val === 'string') {
+            routerState.env[key] = val;
+          }
+        }
+      }
       if (job.reply !== undefined) routerState.reply = job.reply;
 
       await executeDirectMessage(

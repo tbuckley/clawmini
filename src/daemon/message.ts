@@ -95,16 +95,29 @@ function prepareCommandAndEnv(
   };
 
   let command = currentAgent.commands?.new ?? '';
-  let env = {
+  const env = {
     ...process.env,
-    ...(currentAgent.env || {}),
     CLAW_CLI_MESSAGE: message,
   } as Record<string, string>;
+
+  for (const [key, val] of Object.entries(currentAgent.env || {})) {
+    if (val === true && process.env[key] !== undefined) {
+      env[key] = process.env[key];
+    } else if (typeof val === 'string') {
+      env[key] = val;
+    }
+  }
 
   if (!isNewSession && currentAgent.commands?.append) {
     command = currentAgent.commands.append;
     const sessionEnv = agentSessionSettings?.env || {};
-    env = { ...env, ...sessionEnv };
+    for (const [key, val] of Object.entries(sessionEnv)) {
+      if (val === true && process.env[key] !== undefined) {
+        env[key] = process.env[key];
+      } else if (typeof val === 'string') {
+        env[key] = val;
+      }
+    }
   }
 
   return { command, env, currentAgent };
@@ -265,7 +278,11 @@ export async function executeDirectMessage(
           await sleep(delay);
         }
 
-        const { env, currentAgent, command: initialCommand } = prepareCommandAndEnv(
+        const {
+          env,
+          currentAgent,
+          command: initialCommand,
+        } = prepareCommandAndEnv(
           mergedAgent,
           state.message,
           isNewSession,
@@ -278,16 +295,20 @@ export async function executeDirectMessage(
           continue;
         }
 
-        const agentSpecificEnv: Record<string, string> = {
-          CLAW_CLI_MESSAGE: state.message,
-          ...(currentAgent.env || {}),
-        };
+        const agentSpecificEnv = new Set<string>(['CLAW_CLI_MESSAGE']);
+
+        Object.entries(currentAgent.env || {}).forEach(([key, val]) => {
+          if (val === true || typeof val === 'string') agentSpecificEnv.add(key);
+        });
+
         if (!isNewSession) {
-          Object.assign(agentSpecificEnv, agentSessionSettings?.env || {});
+          Object.entries(agentSessionSettings?.env || {}).forEach(([key, val]) => {
+            if (val === true || typeof val === 'string') agentSpecificEnv.add(key);
+          });
         }
 
         Object.assign(env, routerEnv);
-        Object.assign(agentSpecificEnv, routerEnv);
+        Object.keys(routerEnv).forEach((k) => agentSpecificEnv.add(k));
 
         const apiCtx = getApiContext(settings);
         if (apiCtx) {
@@ -295,7 +316,7 @@ export async function executeDirectMessage(
             ? `${apiCtx.proxy_host}:${apiCtx.port}`
             : `http://${apiCtx.host}:${apiCtx.port}`;
           env['CLAW_API_URL'] = proxyUrl;
-          agentSpecificEnv['CLAW_API_URL'] = proxyUrl;
+          agentSpecificEnv.add('CLAW_API_URL');
 
           const token = generateToken({
             chatId,
@@ -304,19 +325,19 @@ export async function executeDirectMessage(
             timestamp: Date.now(),
           });
           env['CLAW_API_TOKEN'] = token;
-          agentSpecificEnv['CLAW_API_TOKEN'] = token;
+          agentSpecificEnv.add('CLAW_API_TOKEN');
         }
 
         const activeEnvName = await getActiveEnvironmentName(executionCwd, cwd);
         if (activeEnvName) {
           const activeEnv = await readEnvironment(activeEnvName, cwd);
           if (activeEnv?.prefix) {
-            const envArgs = Object.entries(agentSpecificEnv)
-              .map(([key, value]) => {
+            const envArgs = Array.from(agentSpecificEnv)
+              .map((key) => {
                 if (activeEnv.envFormat) {
-                  return activeEnv.envFormat.replace('{key}', key).replace('{value}', value || '');
+                  return activeEnv.envFormat.replace('{key}', key);
                 }
-                return `${key}="${(value || '').replace(/"/g, '\\"')}"`;
+                return key;
               })
               .join(' ');
 

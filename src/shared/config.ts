@@ -9,7 +9,7 @@ export const FallbackSchema = z.looseObject({
       getMessageContent: z.string().optional(),
     })
     .optional(),
-  env: z.record(z.string(), z.string()).optional(),
+  env: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   retries: z.number().int().min(0).default(1),
   delayMs: z.number().int().min(0).default(1000),
 });
@@ -23,7 +23,7 @@ export const AgentSchema = z.looseObject({
       getMessageContent: z.string().optional(),
     })
     .optional(),
-  env: z.record(z.string(), z.string()).optional(),
+  env: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   directory: z.string().optional(),
   fallbacks: z.array(FallbackSchema).optional(),
   files: z.string().default('./attachments').optional(),
@@ -37,7 +37,7 @@ export const CronJobSchema = z.looseObject({
   message: z.string().default(''),
   reply: z.string().optional(),
   agentId: z.string().optional(),
-  env: z.record(z.string(), z.string()).optional(),
+  env: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   session: z.looseObject({ type: z.string() }).optional(),
   schedule: z.union([
     z.looseObject({ cron: z.string() }),
@@ -58,7 +58,7 @@ export const ChatSettingsSchema = z.looseObject({
 export type ChatSettings = z.infer<typeof ChatSettingsSchema>;
 
 export const AgentSessionSettingsSchema = z.looseObject({
-  env: z.record(z.string(), z.string()).optional(),
+  env: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
 });
 
 export type AgentSessionSettings = z.infer<typeof AgentSessionSettingsSchema>;
