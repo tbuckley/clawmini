@@ -135,6 +135,32 @@ async function runExtractionCommand(
   }
 }
 
+/**
+ * Formats the environment prefix string by replacing placeholders with actual values.
+ * Available placeholders:
+ * - {WORKSPACE_DIR}: The root directory of the workspace.
+ * - {AGENT_DIR}: The directory where the agent is executing.
+ * - {ENV_DIR}: The directory of the active environment.
+ * - {HOME_DIR}: The home directory of the current user.
+ * - {ENV_ARGS}: The formatted environment arguments based on envFormat.
+ */
+function formatEnvironmentPrefix(
+  prefix: string,
+  replacements: {
+    workspaceRoot: string;
+    executionCwd: string;
+    envDir: string;
+    envArgs: string;
+  }
+): string {
+  return prefix
+    .replace('{WORKSPACE_DIR}', replacements.workspaceRoot)
+    .replace('{AGENT_DIR}', replacements.executionCwd)
+    .replace('{ENV_DIR}', replacements.envDir)
+    .replace('{HOME_DIR}', process.env.HOME || '')
+    .replace('{ENV_ARGS}', replacements.envArgs);
+}
+
 export async function executeDirectMessage(
   chatId: string,
   state: RouterState,
@@ -239,16 +265,14 @@ export async function executeDirectMessage(
           await sleep(delay);
         }
 
-        const prepared = prepareCommandAndEnv(
+        const { env, currentAgent, command: initialCommand } = prepareCommandAndEnv(
           mergedAgent,
           state.message,
           isNewSession,
           agentSessionSettings,
           config.fallback
         );
-        let command = prepared.command;
-        const env = prepared.env;
-        const currentAgent = prepared.currentAgent;
+        let command = initialCommand;
 
         if (!command) {
           continue;
@@ -296,12 +320,12 @@ export async function executeDirectMessage(
               })
               .join(' ');
 
-            const prefixReplaced = activeEnv.prefix
-              .replace('{WORKSPACE_DIR}', workspaceRoot)
-              .replace('{AGENT_DIR}', executionCwd)
-              .replace('{ENV_DIR}', getEnvironmentPath(activeEnvName, cwd))
-              .replace('{HOME_DIR}', process.env.HOME || '')
-              .replace('{ENV_ARGS}', envArgs);
+            const prefixReplaced = formatEnvironmentPrefix(activeEnv.prefix, {
+              workspaceRoot,
+              executionCwd,
+              envDir: getEnvironmentPath(activeEnvName, cwd),
+              envArgs,
+            });
 
             command = `${prefixReplaced} ${command}`;
           }

@@ -64,3 +64,24 @@
 - Execute Test Flow 3 from `prd.md` (Command Wrapping and Variables).
 - Execute Test Flow 4 from `prd.md` (Environment Specificity).
 - Run: `npm run format:check && npm run lint && npm run check && npm run test`
+
+## Ticket 6: DRY Violation in Template Resolution (High)
+**Status:** Completed
+**Description:** Refactor `resolveEnvironmentTemplatePath` and `copyEnvironmentTemplate` in `src/shared/workspace.ts` to share logic with or reuse `resolveTemplatePath` and `copyTemplate` to eliminate DRY violations.
+**Tasks:**
+- Extract a `resolveTemplatePathBase` function that handles the core path resolution logic.
+- Extract a `copyTemplateBase` function that handles the directory copying logic.
+- Refactor `resolveTemplatePath`, `resolveEnvironmentTemplatePath`, `copyTemplate`, and `copyEnvironmentTemplate` to use these base functions.
+
+## Ticket 7: Environment Prefix Formatting Clarity (Medium)
+**Status:** Completed
+**Description:** Extract the inline environment prefix substitution logic in `src/daemon/message.ts` into a named helper function to improve readability and maintainability.
+**Tasks:**
+- Create a `formatEnvironmentPrefix` helper function with JSDoc comments explaining available variables.
+- Use the helper inside `src/daemon/message.ts` where environment prefix replacement occurs.
+
+## Ticket 8: Destructuring Assignment in message.ts (Low)
+**Status:** Completed
+**Description:** Update `src/daemon/message.ts` to use object destructuring for the result of `prepareCommandAndEnv` rather than manual assignments (`let { command, env, currentAgent } = ...`).
+**Tasks:**
+- Replace manual destructuring with inline destructuring for the `prepareCommandAndEnv` return value in `src/daemon/message.ts`.

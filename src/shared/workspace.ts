@@ -230,14 +230,10 @@ async function isDirectory(dirPath: string): Promise<boolean> {
   }
 }
 
-export async function resolveTemplatePath(
+export async function resolveTemplatePathBase(
   templateName: string,
   startDir = process.cwd()
 ): Promise<string> {
-  if (templateName === 'environments' || templateName.startsWith('environments/')) {
-    throw new Error(`Template not found: ${templateName}`);
-  }
-
   const workspaceRoot = getWorkspaceRoot(startDir);
   const localTemplatePath = path.join(workspaceRoot, '.clawmini', 'templates', templateName);
 
@@ -266,50 +262,28 @@ export async function resolveTemplatePath(
   );
 }
 
+export async function resolveTemplatePath(
+  templateName: string,
+  startDir = process.cwd()
+): Promise<string> {
+  if (templateName === 'environments' || templateName.startsWith('environments/')) {
+    throw new Error(`Template not found: ${templateName}`);
+  }
+  return resolveTemplatePathBase(templateName, startDir);
+}
+
 export async function resolveEnvironmentTemplatePath(
   templateName: string,
   startDir = process.cwd()
 ): Promise<string> {
-  const workspaceRoot = getWorkspaceRoot(startDir);
-  const localTemplatePath = path.join(
-    workspaceRoot,
-    '.clawmini',
-    'templates',
-    'environments',
-    templateName
-  );
-
-  if (await isDirectory(localTemplatePath)) {
-    return localTemplatePath;
-  }
-
-  // Fallback to built-in templates
-  let currentDir = path.dirname(fileURLToPath(import.meta.url));
-  while (
-    currentDir !== path.parse(currentDir).root &&
-    !fs.existsSync(path.join(currentDir, 'package.json'))
-  ) {
-    currentDir = path.dirname(currentDir);
-  }
-
-  const searchPath = path.join(currentDir, 'templates', 'environments', templateName);
-
-  if (await isDirectory(searchPath)) {
-    return searchPath;
-  }
-
-  throw new Error(
-    `Environment template not found: ${templateName} (searched local: ${localTemplatePath}, built-in: ${searchPath})`
-  );
+  return resolveTemplatePathBase(path.join('environments', templateName), startDir);
 }
 
-export async function copyTemplate(
-  templateName: string,
+export async function copyTemplateBase(
+  templatePath: string,
   targetDir: string,
-  startDir = process.cwd()
+  allowMissingDir: boolean = false
 ): Promise<void> {
-  const templatePath = await resolveTemplatePath(templateName, startDir);
-
   // Check if target directory exists and is not empty
   try {
     const entries = await fsPromises.readdir(targetDir);
@@ -318,13 +292,27 @@ export async function copyTemplate(
     }
   } catch (err: unknown) {
     if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
-      throw new Error(`Target directory does not exist: ${targetDir}`, { cause: err });
+      if (allowMissingDir) {
+        await fsPromises.mkdir(targetDir, { recursive: true });
+      } else {
+        throw new Error(`Target directory does not exist: ${targetDir}`, { cause: err });
+      }
+    } else {
+      throw err;
     }
-    throw err;
   }
 
   // Recursively copy
   await fsPromises.cp(templatePath, targetDir, { recursive: true });
+}
+
+export async function copyTemplate(
+  templateName: string,
+  targetDir: string,
+  startDir = process.cwd()
+): Promise<void> {
+  const templatePath = await resolveTemplatePath(templateName, startDir);
+  await copyTemplateBase(templatePath, targetDir, false);
 }
 
 export async function copyEnvironmentTemplate(
@@ -333,23 +321,7 @@ export async function copyEnvironmentTemplate(
   startDir = process.cwd()
 ): Promise<void> {
   const templatePath = await resolveEnvironmentTemplatePath(templateName, startDir);
-
-  try {
-    const entries = await fsPromises.readdir(targetDir);
-    if (entries.length > 0) {
-      throw new Error(`Target directory is not empty: ${targetDir}`);
-    }
-  } catch (err: unknown) {
-    if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
-      // Create if doesn't exist, we will allow missing dir
-      await fsPromises.mkdir(targetDir, { recursive: true });
-    } else {
-      throw err;
-    }
-  }
-
-  // Recursively copy
-  await fsPromises.cp(templatePath, targetDir, { recursive: true });
+  await copyTemplateBase(templatePath, targetDir, true);
 }
 
 export async function applyTemplateToAgent(
