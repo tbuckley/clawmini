@@ -28,6 +28,11 @@ describe('E2E Agents Tests', () => {
     expect(codeAdd).toBe(0);
     expect(stdoutAdd).toContain('Agent test-agent created successfully.');
 
+    const chatSettingsPath = path.resolve(e2eDir, '.clawmini/chats/test-agent/settings.json');
+    expect(fs.existsSync(chatSettingsPath)).toBe(true);
+    const chatData = JSON.parse(fs.readFileSync(chatSettingsPath, 'utf8'));
+    expect(chatData.defaultAgent).toBe('test-agent');
+
     const agentSettingsPath = path.resolve(e2eDir, '.clawmini/agents/test-agent/settings.json');
     expect(fs.existsSync(agentSettingsPath)).toBe(true);
     const agentData = JSON.parse(fs.readFileSync(agentSettingsPath, 'utf8'));
@@ -63,6 +68,18 @@ describe('E2E Agents Tests', () => {
     expect(codeDelete).toBe(0);
     expect(stdoutDelete).toContain('Agent test-agent deleted successfully.');
     expect(fs.existsSync(agentSettingsPath)).toBe(false);
+  });
+
+  it('should output a warning if chat already exists when adding an agent', async () => {
+    // First, manually create a chat directory
+    const chatDir = path.resolve(e2eDir, '.clawmini/chats/existing-chat');
+    fs.mkdirSync(chatDir, { recursive: true });
+
+    const { stdout, stderr, code } = await runCli(['agents', 'add', 'existing-chat']);
+
+    expect(code).toBe(0);
+    expect(stderr).toContain('Warning: Chat existing-chat already exists.');
+    expect(stdout).toContain('Agent existing-chat created successfully.');
   });
 
   it('should create an agent using a template and merge settings correctly', async () => {

@@ -1,10 +1,25 @@
 import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
+import { isValidAgentId } from '../../shared/workspace.js';
+import { setDefaultChatId } from '../../shared/chats.js';
+import { type Agent } from '../../shared/config.js';
+import { createAgentWithChat } from '../../shared/agent-utils.js';
+import { handleError } from '../utils.js';
 
 export const initCmd = new Command('init')
   .description('Initialize a new .clawmini settings folder')
-  .action(() => {
+  .option('--agent <name>', 'Initialize with a specific agent')
+  .option('--agent-template <name>', 'Template to use for the agent')
+  .action(async (options: { agent?: string; agentTemplate?: string }) => {
+    if (options.agentTemplate && !options.agent) {
+      handleError('initialize', new Error('--agent-template cannot be used without --agent'));
+    }
+
+    if (options.agent && !isValidAgentId(options.agent)) {
+      handleError('initialize', new Error(`Invalid agent ID: ${options.agent}`));
+    }
+
     const cwd = process.cwd();
     const dirPath = path.join(cwd, '.clawmini');
     const settingsPath = path.join(dirPath, 'settings.json');
@@ -30,4 +45,19 @@ export const initCmd = new Command('init')
 
     fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2));
     console.log('Initialized .clawmini/settings.json');
+
+    if (options.agent) {
+      try {
+        const agentId = options.agent;
+        const agentData: Agent = {};
+        await createAgentWithChat(agentId, agentData, options.agentTemplate);
+
+        console.log(`Agent ${agentId} created successfully.`);
+
+        await setDefaultChatId(agentId);
+        console.log(`Default chat set to ${agentId}.`);
+      } catch (err) {
+        handleError('create agent', err);
+      }
+    }
   });

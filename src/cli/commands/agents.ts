@@ -5,9 +5,10 @@ import {
   writeAgentSettings,
   deleteAgent,
   isValidAgentId,
-  applyTemplateToAgent,
 } from '../../shared/workspace.js';
 import { type Agent } from '../../shared/config.js';
+import { createAgentWithChat } from '../../shared/agent-utils.js';
+import { handleError } from '../utils.js';
 
 export const agentsCmd = new Command('agents').description('Manage agents');
 
@@ -21,11 +22,6 @@ function parseEnv(envArray: string[] | undefined): Record<string, string> | unde
     }
   }
   return env;
-}
-
-function handleError(action: string, err: unknown): never {
-  console.error(`Failed to ${action}:`, err instanceof Error ? err.message : String(err));
-  process.exit(1);
 }
 
 function assertValidAgentId(id: string): void {
@@ -80,11 +76,7 @@ agentsCmd
           agentData.env = { ...(agentData.env || {}), ...env };
         }
 
-        await writeAgentSettings(id, agentData);
-
-        if (options.template) {
-          await applyTemplateToAgent(id, options.template, agentData);
-        }
+        await createAgentWithChat(id, agentData, options.template);
 
         console.log(`Agent ${id} created successfully.`);
       } catch (err) {
