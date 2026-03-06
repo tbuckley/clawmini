@@ -309,7 +309,7 @@
               {msg.content}
             </div>
           {:else}
-            <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm {appState.verbosityLevel === 'verbose' ? 'border-primary/50 bg-primary/5 shadow-md' : ''}" data-testid="log-message">
+            <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm {msg.level === 'verbose' ? 'border-primary/50 bg-primary/5 shadow-md' : ''}" data-testid="log-message">
               {#if appState.verbosityLevel === 'verbose'}
                 <div class="font-mono text-xs text-muted-foreground mb-2 flex items-center gap-2">
                   <span>$ {msg.command}</span>
