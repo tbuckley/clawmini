@@ -11,10 +11,10 @@ Clawmini is an orchestration layer for command-line AI agents, providing a unifi
 - **Routers & Middleware Pipeline:** Process user messages through an extensible pipeline to dynamically alter content, target specific agents or sessions, and expand slash commands before they reach an agent.
 - **Local File System Storage:** Everything is stored completely locally in `.clawmini/` within your workspace as transparent JSON/JSONL files. No cloud syncing required.
 - **Sandboxed Agent API:** The daemon can optionally expose a secure HTTP server configured via the `api` setting in `.clawmini/settings.json`, allowing remote or containerized access. Give agents a minimal zero-dependency standalone client exported via `clawmini export-lite`. It securely authenticates with the Agent API using dynamically generated HMAC tokens (`CLAW_API_TOKEN`) to allow sandboxed agents to log messages and manage cron jobs without needing direct access to the host's Unix socket.
+- **Proactivity:** Incoming messages or events from various external sources can be proactively routed back to the user or directly to the agent for autonomous handling.
 
 ### Coming Soon
 
-- **Proactivity:** Incoming messages or events from various external sources can be proactively routed back to the user or directly to the agent for autonomous handling.
 - **Human Approval Requests:** When an agent needs permission to execute a sensitive action or requires input, it will pause and ask the user for approval via a dedicated UI or dashboard.
 
 ## Quick Start
@@ -22,20 +22,8 @@ Clawmini is an orchestration layer for command-line AI agents, providing a unifi
 Assuming you have built and linked the package globally:
 
 ```bash
-# Initialize a new .clawmini settings folder in your project
-clawmini init
-
-# Create a new agent with a specific working directory and template
-clawmini agents add coder --template gemini-cladding --directory ./src
-
-# Start the background daemon server
-clawmini up
-
-# Send a message to the daemon, handled by the new agent
-clawmini messages send "Hello world!" --agent coder
-
-# View the chat history in the terminal
-clawmini messages tail
+# Initialize a new .clawmini settings folder, create an agent named 'coder' with the 'gemini-cladding' template, and set it as the default chat
+clawmini init --agent coder --agent-template gemini-cladding
 
 # Start the local web interface on http://localhost:8080
 clawmini web
