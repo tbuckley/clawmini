@@ -49,3 +49,39 @@ Ensure all code quality checks and tests pass across the entire project.
 - Run linting: `npm run lint`
 - Run type checking: `npm run check`
 - Run all tests: `npm run test`
+
+---
+
+## Ticket 4: Refactor Duplicate Logic in CLI Commands
+**Status**: Completed
+
+**Description**:
+DRY violation: Agent creation and default chat configuration logic is duplicated between `src/cli/commands/agents.ts` and `src/cli/commands/init.ts`. This logic should be extracted into a shared helper function `createAgentWithChat` in a new file `src/shared/agent-utils.ts`.
+
+**Tasks**:
+- Create `src/shared/agent-utils.ts`.
+- Extract `createAgentWithChat` helper.
+- Update `src/cli/commands/agents.ts` and `src/cli/commands/init.ts` to use it.
+
+---
+
+## Ticket 5: Direct FS write for Chat Settings in `init.ts`
+**Status**: Completed
+
+**Description**:
+In `src/cli/commands/init.ts`, `settingsPath` is read and written directly via `fs` to update the default chat. This should use workspace config helpers like `setDefaultChatId` from `src/shared/chats.ts`.
+
+**Tasks**:
+- Update `src/cli/commands/init.ts` to use `setDefaultChatId`.
+
+---
+
+## Ticket 6: Consistent Error Handling in `init.ts`
+**Status**: Completed
+
+**Description**:
+Error handling in `src/cli/commands/init.ts` uses `process.exit(1)` directly with `console.error`. `agents.ts` uses a `handleError` function. We should consistently use a shared `handleError` or simply throw an error if appropriate, but since it's a CLI command, maybe create a shared `handleError` in `src/cli/utils.ts` and use it.
+
+**Tasks**:
+- Create `src/cli/utils.ts` with `handleError`.
+- Update `init.ts` and `agents.ts` to use it.
