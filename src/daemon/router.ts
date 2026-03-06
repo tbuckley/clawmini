@@ -136,8 +136,14 @@ async function validateAttachments(files: string[]): Promise<void> {
   }
 }
 
-async function validateLogFile(file: string, agentDir: string): Promise<string> {
+async function validateLogFile(
+  file: string,
+  agentDir: string,
+  workspaceRoot: string
+): Promise<string> {
   const { pathIsInsideDir } = await import('../shared/utils/fs.js');
+  // The agent sends paths relative to its working directory.
+  // We resolve to an absolute path to verify it is within the agent's directory.
   const resolvedPath = path.resolve(agentDir, file);
 
   if (!pathIsInsideDir(resolvedPath, agentDir, { allowSameDir: true })) {
@@ -156,7 +162,9 @@ async function validateLogFile(file: string, agentDir: string): Promise<string> 
     });
   }
 
-  return path.relative(process.cwd(), resolvedPath);
+  // Convert the absolute path to a path relative to the WORKSPACE directory.
+  // This allows adapters (like discord-adapter) to easily resolve it against their own view of the workspace.
+  return path.relative(workspaceRoot, resolvedPath);
 }
 
 const AppRouter = router({
@@ -367,7 +375,7 @@ const AppRouter = router({
         const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
 
         for (const file of input.files) {
-          const validPath = await validateLogFile(file, agentDir);
+          const validPath = await validateLogFile(file, agentDir, workspaceRoot);
           filePaths.push(validPath);
         }
       }
