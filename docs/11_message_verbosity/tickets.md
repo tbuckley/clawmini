@@ -28,6 +28,6 @@
 - **Task**: Modify `src/adapter-discord/forwarder.ts` to check the `level` property of incoming `CommandLogMessage`s. Ensure that messages with `level: 'verbose'` are NOT forwarded to Discord.
 - **Verification**: Update Discord forwarder unit tests, then run `npm run check` and `npm run test`.
 
-## 7. Final Quality Check (Status: Not Started)
+## 7. Final Quality Check (Status: Complete)
 - **Task**: Ensure all code meets the project's formatting, linting, and testing standards.
 - **Verification**: Run `npm run format:check && npm run lint && npm run check && npm run test` and confirm everything passes cleanly.
