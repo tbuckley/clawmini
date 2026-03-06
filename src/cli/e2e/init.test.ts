@@ -43,4 +43,28 @@ describe('initCmd with flags', () => {
     const chatSettingsPath = path.join(clawminiDir, 'chats', 'test-agent', 'settings.json');
     expect(fs.existsSync(chatSettingsPath)).toBe(true);
   });
+
+  it('should run init and enable an environment', async () => {
+    const clawminiDir = path.resolve(e2eDir, '.clawmini');
+    if (fs.existsSync(clawminiDir)) {
+      fs.rmSync(clawminiDir, { recursive: true, force: true });
+    }
+
+    const { stdout, stderr, code } = await runCli(['init', '--environment', 'cladding']);
+
+    expect(stderr).toBe('');
+    expect(code).toBe(0);
+    expect(stdout).toContain('Initialized .clawmini/settings.json');
+    expect(stdout).toContain("Copied environment template 'cladding'");
+    expect(stdout).toContain("Enabled environment 'cladding' for path './'");
+
+    const settingsPath = path.join(clawminiDir, 'settings.json');
+    expect(fs.existsSync(settingsPath)).toBe(true);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(settings.environments?.['./']).toBe('cladding');
+
+    const envDir = path.join(clawminiDir, 'environments', 'cladding');
+    expect(fs.existsSync(envDir)).toBe(true);
+  });
 });

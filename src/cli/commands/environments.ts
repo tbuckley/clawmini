@@ -1,9 +1,5 @@
 import { Command } from 'commander';
-import {
-  readSettings,
-  writeSettings,
-  enableEnvironment,
-} from '../../shared/workspace.js';
+import { readSettings, writeSettings, enableEnvironment } from '../../shared/workspace.js';
 import { handleError } from '../utils.js';
 
 export const environmentsCmd = new Command('environments').description('Manage environments');

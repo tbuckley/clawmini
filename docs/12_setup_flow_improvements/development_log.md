@@ -30,3 +30,11 @@
 - Maintained exact logging format from original command logic inside `enableEnvironment`.
 - Executed `npm run test` and `npm run check` with full passes.
 - Verified manual execution of `node ./dist/cli/index.mjs environments enable cladding` in dummy directory.
+
+## Ticket 8: Init Command `--environment` Flag
+- Read `src/cli/commands/init.ts` and `src/cli/e2e/init.test.ts`.
+- Updated `initCmd` to accept an `--environment <name>` flag.
+- Imported and invoked `enableEnvironment(options.environment)` if the flag is provided after initialization.
+- Added a new e2e test to `src/cli/e2e/init.test.ts` to assert that `--environment` correctly copies the environment template and updates `settings.json`.
+- Fixed test environment conflict by clearing the `.clawmini` directory before the new test runs.
+- Executed `npm run test` and `npm run check` with full passes.

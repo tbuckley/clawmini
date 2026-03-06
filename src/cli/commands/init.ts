@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
-import { isValidAgentId } from '../../shared/workspace.js';
+import { isValidAgentId, enableEnvironment } from '../../shared/workspace.js';
 import { setDefaultChatId } from '../../shared/chats.js';
 import { type Agent } from '../../shared/config.js';
 import { createAgentWithChat } from '../../shared/agent-utils.js';
@@ -11,7 +11,8 @@ export const initCmd = new Command('init')
   .description('Initialize a new .clawmini settings folder')
   .option('--agent <name>', 'Initialize with a specific agent')
   .option('--agent-template <name>', 'Template to use for the agent')
-  .action(async (options: { agent?: string; agentTemplate?: string }) => {
+  .option('--environment <name>', 'Enable a specific environment')
+  .action(async (options: { agent?: string; agentTemplate?: string; environment?: string }) => {
     if (options.agentTemplate && !options.agent) {
       handleError('initialize', new Error('--agent-template cannot be used without --agent'));
     }
@@ -58,6 +59,14 @@ export const initCmd = new Command('init')
         console.log(`Default chat set to ${agentId}.`);
       } catch (err) {
         handleError('create agent', err);
+      }
+    }
+
+    if (options.environment) {
+      try {
+        await enableEnvironment(options.environment);
+      } catch (err) {
+        handleError('enable environment', err);
       }
     }
   });

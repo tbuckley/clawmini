@@ -106,7 +106,7 @@ Extract the environment enablement logic from `src/cli/commands/environments.ts`
 ---
 
 ## Ticket 8: Init Command `--environment` Flag
-**Status**: Not Started
+**Status**: Completed
 
 **Description**:
 Enhance the workspace initialization command (`clawmini init`) to support enabling an environment automatically.
