@@ -4,7 +4,7 @@
 - **Task**: Update `src/shared/chats.ts` to add an optional `level` property (`'default' | 'debug' | 'verbose'`) to the `CommandLogMessage` interface.
 - **Verification**: Run `npm run check` and `npm run test` to ensure there are no TypeScript compilation errors resulting from this interface change.
 
-## 2. Update Daemon Message Generation (Status: Not Started)
+## 2. Update Daemon Message Generation (Status: Complete)
 - **Task**: Modify message generation logic in the daemon (e.g., `src/daemon/message.ts`) so that when a `CommandLogMessage` is generated, if its content includes the exact string `"NO_REPLY_NECESSARY"`, the `level` property is set to `'verbose'`.
 - **Verification**: Write/update tests in `src/daemon/` to verify this behavior, and run `npm run format:check && npm run lint && npm run check && npm run test`.
 
