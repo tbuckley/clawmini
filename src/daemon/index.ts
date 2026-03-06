@@ -1,13 +1,21 @@
 import http from 'node:http';
 import fs from 'node:fs';
+import { execSync } from 'node:child_process';
 import { createHTTPHandler } from '@trpc/server/adapters/standalone';
 import { appRouter } from './router.js';
-import { getSocketPath, getClawminiDir, getSettingsPath } from '../shared/workspace.js';
+import {
+  getSocketPath,
+  getClawminiDir,
+  getSettingsPath,
+  readSettings,
+  readEnvironment,
+  getEnvironmentPath,
+} from '../shared/workspace.js';
 import { cronManager } from './cron.js';
 import { SettingsSchema } from '../shared/config.js';
 import { validateToken, getApiContext } from './auth.js';
 
-export function initDaemon() {
+export async function initDaemon() {
   const socketPath = getSocketPath();
   const clawminiDir = getClawminiDir();
 
@@ -32,6 +40,31 @@ export function initDaemon() {
       console.warn(`Failed to read or parse settings from ${settingsPath}:`, err);
     }
   }
+
+  const runHooks = async (hookType: 'up' | 'down') => {
+    try {
+      const currentSettings = await readSettings();
+      if (!currentSettings?.environments) return;
+      const envNames = new Set(Object.values(currentSettings.environments));
+      for (const envName of envNames) {
+        try {
+          const envConfig = await readEnvironment(envName);
+          const command = envConfig?.[hookType];
+          if (command) {
+            console.log(`Executing '${hookType}' hook for environment '${envName}': ${command}`);
+            const targetDir = getEnvironmentPath(envName);
+            execSync(command, { cwd: targetDir, stdio: 'inherit' });
+          }
+        } catch (err) {
+          console.error(`Failed to execute '${hookType}' hook for environment '${envName}':`, err);
+        }
+      }
+    } catch (err) {
+      console.error(`Failed to run '${hookType}' hooks:`, err);
+    }
+  };
+
+  await runHooks('up');
 
   // Initialize cron jobs
   cronManager.init().catch((err) => {
@@ -83,17 +116,21 @@ export function initDaemon() {
     });
   }
 
-  process.on('SIGINT', () => {
-    server.close();
-    if (apiServer) apiServer.close();
-    process.exit(0);
-  });
+  let isShuttingDown = false;
+  const shutdown = async () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log('Daemon shutting down...');
 
-  process.on('SIGTERM', () => {
+    await runHooks('down');
+
     server.close();
     if (apiServer) apiServer.close();
     process.exit(0);
-  });
+  };
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 
   process.on('exit', () => {
     if (fs.existsSync(socketPath)) {
@@ -108,5 +145,8 @@ export function initDaemon() {
 
 // Only auto-initialize if run directly
 if (process.argv[1] === new URL(import.meta.url).pathname) {
-  initDaemon();
+  initDaemon().catch((err) => {
+    console.error('Daemon initialization failed:', err);
+    process.exit(1);
+  });
 }

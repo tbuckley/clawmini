@@ -23,3 +23,11 @@
 - Implemented `resolveEnvironmentTemplatePath` and `copyEnvironmentTemplate` in `src/shared/workspace.ts` to cleanly copy environment templates since `resolveTemplatePath` restricts environments.
 - Ensured it successfully updates `.clawmini/settings.json` with mappings and executes the `init` command if configured in `env.json` using `child_process.execSync`.
 - Verified passing of all automated checks via `npm run format:check && npm run lint && npm run check && npm run test`.
+
+## Ticket 4: Daemon Lifecycle Hooks
+
+- Updated `initDaemon` in `src/daemon/index.ts` to asynchronously read enabled environments from the workspace settings on startup.
+- Implemented `runHooks('up')` during daemon startup to execute the `up` hook for each enabled environment using `child_process.execSync` in the environment's directory.
+- Implemented `runHooks('down')` in the `SIGINT` and `SIGTERM` handlers to gracefully execute the `down` hook for each enabled environment prior to daemon shutdown.
+- Ensured any exceptions during hook execution are logged but do not crash the initialization or shutdown process entirely.
+- Ran formatting, linting, and all tests successfully.

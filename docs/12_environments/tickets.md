@@ -40,7 +40,7 @@
 - Run: `npm run format:check && npm run lint && npm run check && npm run test`
 
 ## Ticket 4: Daemon Lifecycle Hooks
-**Status:** Not started
+**Status:** Completed
 **Description:** Execute environment `up` and `down` commands during daemon startup and shutdown.
 **Tasks:**
 - Update the daemon startup logic to find all enabled environments in the workspace and execute their `up` commands.
