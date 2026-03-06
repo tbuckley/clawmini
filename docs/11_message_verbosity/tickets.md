@@ -16,7 +16,7 @@
 - **Task**: In `web/src/routes/+layout.svelte`, replace the existing `Switch` component used for `debugView` with a cyclical toggle button. This button should rotate between the three states ('default', 'debug', 'verbose') using distinct icons/colors and must include a dynamic `aria-label` for accessibility.
 - **Verification**: Run `npm run check` and `npm run test`.
 
-## 5. Update Web UI Message Filtering and Display (Status: Not Started)
+## 5. Update Web UI Message Filtering and Display (Status: Complete)
 - **Task**: Update `web/src/routes/chats/[id]/+page.svelte` to implement filtering and detailed views based on `verbosityLevel`:
   - `'default'` level: Show only `level: 'default'` (or undefined). Show only the message content.
   - `'debug'` level: Show `level: 'default'` and `'debug'`. Show only the message content.

@@ -22,3 +22,12 @@
 - Added visual distinctions using `lucide-svelte` icons (`MessageSquare` for default, `Bug` for debug, `Terminal` for verbose) and varied text colors.
 - Ensured a dynamic `aria-label` is used for accessibility, indicating the current verbosity level.
 - Ran formatting, linting, type-checking, and tests (`npm run format:check && npm run lint && npm run check && npm run test`), all passing successfully.
+
+## Ticket 5: Update Web UI Message Filtering and Display
+- Updated `web/src/routes/chats/[id]/+page.svelte` to implement filtering and detailed views based on `verbosityLevel`.
+  - Added a `$derived` state `filteredMessages` to filter log messages appropriately for `default`, `debug`, and `verbose` levels.
+  - Distinct styling added for `verbose` messages (primary background tint with border).
+  - Detailed output (`command`, `stdout`, `stderr`, and `exitCode`) now display conditionally when in `verbose` mode.
+- Added `level` property to `CommandLogMessage` type in `web/src/lib/types.ts` to fix TypeScript issues and properly align with `shared/chats.ts`.
+- Updated `web/src/routes/chats/[id]/page.svelte.spec.ts` to include multiple test cases verifying the filtering behavior for `default`, `debug`, and `verbose` verbosity levels.
+- Ran formatting, linting, type-checking, and tests (`npm run format && npm run lint:fix && npm run check && npm run test`) and successfully passed all checks.

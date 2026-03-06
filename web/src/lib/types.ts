@@ -17,6 +17,7 @@ export interface CommandLogMessage extends BaseMessage {
   exitCode: number;
   stdout?: string;
   stderr?: string;
+  level?: 'default' | 'debug' | 'verbose';
 }
 
 export type ChatMessage = UserMessage | CommandLogMessage;
