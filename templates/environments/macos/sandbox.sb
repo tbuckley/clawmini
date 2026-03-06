@@ -1,0 +1,31 @@
+(version 1)
+(deny default)
+
+; Allow read access globally
+(allow file-read*)
+
+; Restrict write access to the workspace directory
+(allow file-write*
+    (subpath (param "WORKSPACE"))
+)
+
+; Allow writes to standard system devices to prevent basic command failures
+(allow file-write*
+    (literal "/dev/null")
+    (literal "/dev/zero")
+    (literal "/dev/dtracehelper")
+    (literal "/dev/tty")
+)
+
+; Allow process execution and forking
+(allow process-exec*)
+(allow process-fork)
+
+; Allow networking capabilities
+(allow network*)
+
+; Allow necessary system calls and IPC for standard tools to function
+(allow sysctl-read)
+(allow mach-lookup)
+(allow ipc-posix-shm)
+(allow signal)
