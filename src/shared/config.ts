@@ -63,6 +63,16 @@ export const AgentSessionSettingsSchema = z.looseObject({
 
 export type AgentSessionSettings = z.infer<typeof AgentSessionSettingsSchema>;
 
+export const EnvironmentSchema = z.looseObject({
+  init: z.string().optional(),
+  up: z.string().optional(),
+  down: z.string().optional(),
+  prefix: z.string().optional(),
+  envFormat: z.string().optional(),
+});
+
+export type Environment = z.infer<typeof EnvironmentSchema>;
+
 export const SettingsSchema = z.looseObject({
   chats: z
     .looseObject({
@@ -70,6 +80,7 @@ export const SettingsSchema = z.looseObject({
     })
     .optional(),
   defaultAgent: AgentSchema.optional(),
+  environments: z.record(z.string(), z.string()).optional(),
   routers: z.array(z.string()).optional(),
   files: z.string().default('./attachments').optional(),
   api: z

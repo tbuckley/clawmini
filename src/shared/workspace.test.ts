@@ -19,8 +19,12 @@ import {
   deleteAgent,
   resolveTemplatePath,
   copyTemplate,
+  readSettings,
+  writeSettings,
+  readEnvironment,
+  getActiveEnvironmentName,
 } from './workspace.js';
-import type { Agent } from './config.js';
+import type { Agent, Settings, Environment } from './config.js';
 
 describe('workspace utilities', () => {
   const testDir = path.join(process.cwd(), '.clawmini-test-workspace');
@@ -259,6 +263,67 @@ describe('workspace utilities', () => {
       await expect(copyTemplate(templateName, targetDir, testDir)).rejects.toThrow(
         `Target directory does not exist: ${targetDir}`
       );
+    });
+  });
+
+  describe('Settings and Environments', () => {
+    it('should read and write settings', async () => {
+      const data: Settings = { environments: { './': 'default-env' }, files: './files' };
+      await writeSettings(data, testDir);
+      const read = await readSettings(testDir);
+      expect(read).toEqual(data);
+    });
+
+    it('should return null if reading non-existent settings', async () => {
+      const read = await readSettings(testDir);
+      expect(read).toBeNull();
+    });
+
+    it('should return null if reading non-existent environment', async () => {
+      const read = await readEnvironment('non-existent', testDir);
+      expect(read).toBeNull();
+    });
+
+    it('should read environment env.json', async () => {
+      const envDir = path.join(clawminiDir, 'environments', 'test-env');
+      await fsPromises.mkdir(envDir, { recursive: true });
+      const envData: Environment = { prefix: 'test run {ENV_ARGS}' };
+      await fsPromises.writeFile(path.join(envDir, 'env.json'), JSON.stringify(envData));
+
+      const read = await readEnvironment('test-env', testDir);
+      expect(read).toEqual(envData);
+    });
+
+    it('should get active environment name based on specificity', async () => {
+      const data: Settings = {
+        environments: {
+          './': 'root-env',
+          './agents': 'agents-env',
+          './agents/specific-agent': 'specific-env',
+        },
+      };
+      await writeSettings(data, testDir);
+
+      expect(await getActiveEnvironmentName('./', testDir)).toBe('root-env');
+      expect(await getActiveEnvironmentName('./other', testDir)).toBe('root-env');
+      expect(await getActiveEnvironmentName('./agents/some-agent', testDir)).toBe('agents-env');
+      expect(await getActiveEnvironmentName('./agents/specific-agent', testDir)).toBe(
+        'specific-env'
+      );
+      expect(await getActiveEnvironmentName('./agents/specific-agent/sub', testDir)).toBe(
+        'specific-env'
+      );
+    });
+
+    it('should return null if no environment matches', async () => {
+      const data: Settings = {
+        environments: {
+          './agents': 'agents-env',
+        },
+      };
+      await writeSettings(data, testDir);
+      // './' is not inside './agents'
+      expect(await getActiveEnvironmentName('./', testDir)).toBeNull();
     });
   });
 });

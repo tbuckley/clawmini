@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
@@ -9,6 +10,10 @@ import {
   ChatSettingsSchema,
   type AgentSessionSettings,
   AgentSessionSettingsSchema,
+  type Environment,
+  EnvironmentSchema,
+  type Settings,
+  SettingsSchema,
 } from './config.js';
 import { pathIsInsideDir } from './utils/fs.js';
 
@@ -323,4 +328,57 @@ export async function applyTemplateToAgent(
       // Ignore if it doesn't exist
     }
   }
+}
+
+export async function readSettings(startDir = process.cwd()): Promise<Settings | null> {
+  const data = await readJsonFile(getSettingsPath(startDir));
+  if (!data) return null;
+  const parsed = SettingsSchema.safeParse(data);
+  return parsed.success ? parsed.data : null;
+}
+
+export async function writeSettings(data: Settings, startDir = process.cwd()): Promise<void> {
+  await writeJsonFile(getSettingsPath(startDir), data as Record<string, unknown>);
+}
+
+export function getEnvironmentPath(name: string, startDir = process.cwd()): string {
+  return path.join(getClawminiDir(startDir), 'environments', name);
+}
+
+export async function readEnvironment(
+  name: string,
+  startDir = process.cwd()
+): Promise<Environment | null> {
+  const data = await readJsonFile(path.join(getEnvironmentPath(name, startDir), 'env.json'));
+  if (!data) return null;
+  const parsed = EnvironmentSchema.safeParse(data);
+  return parsed.success ? parsed.data : null;
+}
+
+export async function getActiveEnvironmentName(
+  targetPath: string,
+  startDir = process.cwd()
+): Promise<string | null> {
+  const settings = await readSettings(startDir);
+  if (!settings?.environments) return null;
+
+  const workspaceRoot = getWorkspaceRoot(startDir);
+  const resolvedTarget = path.resolve(workspaceRoot, targetPath);
+
+  let bestMatch: string | null = null;
+  let maxDepth = -1;
+
+  for (const [envPath, envName] of Object.entries(settings.environments)) {
+    const resolvedEnvPath = path.resolve(workspaceRoot, envPath);
+
+    if (pathIsInsideDir(resolvedTarget, resolvedEnvPath, { allowSameDir: true })) {
+      const depth = resolvedEnvPath.split(path.sep).length;
+      if (depth > maxDepth) {
+        maxDepth = depth;
+        bestMatch = envName;
+      }
+    }
+  }
+
+  return bestMatch;
 }

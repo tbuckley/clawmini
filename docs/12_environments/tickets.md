@@ -1,7 +1,7 @@
 # Environments Feature Tickets
 
 ## Ticket 1: Configuration Schema and Workspace Utilities
-**Status:** Not started
+**Status:** Completed
 **Description:** Update the shared configuration schemas and utilities to support environments.
 **Tasks:**
 - Update `SettingsSchema` in `src/shared/config.ts` to include `environments: z.record(z.string(), z.string()).optional()`.
