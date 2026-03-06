@@ -15,3 +15,11 @@
 - Created `templates/environments/macos/env.json` with `sandbox_exec` command mapping. 
 - Modified `resolveTemplatePath` in `src/shared/workspace.ts` to reject `environments` or `environments/*` explicitly. This ensures agent creation logic doesn't treat the environments directory as an agent template.
 - All tests and formatting checks passed.
+
+## Ticket 3: CLI Commands (`environments enable` and `disable`)
+
+- Implemented `environments enable <name> [--path <subpath>]` and `disable [--path <subpath>]` commands in `src/cli/commands/environments.ts`.
+- Registered `environmentsCmd` in `src/cli/index.ts`.
+- Implemented `resolveEnvironmentTemplatePath` and `copyEnvironmentTemplate` in `src/shared/workspace.ts` to cleanly copy environment templates since `resolveTemplatePath` restricts environments.
+- Ensured it successfully updates `.clawmini/settings.json` with mappings and executes the `init` command if configured in `env.json` using `child_process.execSync`.
+- Verified passing of all automated checks via `npm run format:check && npm run lint && npm run check && npm run test`.

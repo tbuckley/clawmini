@@ -23,7 +23,7 @@
 - Run: `npm run format:check && npm run lint && npm run check && npm run test`
 
 ## Ticket 3: CLI Commands (`environments enable` and `disable`)
-**Status:** Not started
+**Status:** Completed
 **Description:** Implement the `clawmini environments` CLI command group.
 **Tasks:**
 - Create `src/cli/commands/environments.ts`.
