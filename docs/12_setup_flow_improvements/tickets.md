@@ -89,7 +89,7 @@ Error handling in `src/cli/commands/init.ts` uses `process.exit(1)` directly wit
 ---
 
 ## Ticket 7: Refactor Environment Enable Logic
-**Status**: Not Started
+**Status**: Completed
 
 **Description**:
 Extract the environment enablement logic from `src/cli/commands/environments.ts` into a shared utility function so it can be reused by the `init` command.

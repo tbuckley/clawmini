@@ -1,4 +1,5 @@
 /* eslint-disable max-lines */
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
@@ -419,4 +420,36 @@ export async function getActiveEnvironmentName(
   }
 
   return bestMatch;
+}
+
+export async function enableEnvironment(
+  name: string,
+  targetPath: string = './',
+  startDir = process.cwd()
+): Promise<void> {
+  const targetDir = getEnvironmentPath(name, startDir);
+
+  // Copy template to targetDir if it does not already exist
+  if (!fs.existsSync(targetDir)) {
+    await copyEnvironmentTemplate(name, targetDir, startDir);
+    console.log(`Copied environment template '${name}'.`);
+  } else {
+    console.log(`Environment template '${name}' already exists in workspace.`);
+  }
+
+  const settings = (await readSettings(startDir)) || { chats: { defaultId: '' } };
+  const environments = settings.environments || {};
+
+  environments[targetPath] = name;
+  settings.environments = environments;
+
+  await writeSettings(settings, startDir);
+  console.log(`Enabled environment '${name}' for path '${targetPath}'.`);
+
+  // Execute init command if present
+  const envConfig = await readEnvironment(name, startDir);
+  if (envConfig?.init) {
+    console.log(`Executing init command for environment '${name}': ${envConfig.init}`);
+    execSync(envConfig.init, { cwd: targetDir, stdio: 'inherit' });
+  }
 }

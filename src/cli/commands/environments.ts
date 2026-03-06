@@ -1,14 +1,10 @@
 import { Command } from 'commander';
 import {
-  copyEnvironmentTemplate,
-  getEnvironmentPath,
   readSettings,
   writeSettings,
-  readEnvironment,
+  enableEnvironment,
 } from '../../shared/workspace.js';
 import { handleError } from '../utils.js';
-import { execSync } from 'node:child_process';
-import fs from 'node:fs';
 
 export const environmentsCmd = new Command('environments').description('Manage environments');
 
@@ -18,31 +14,7 @@ environmentsCmd
   .option('-p, --path <subpath>', 'Path to apply the environment to', './')
   .action(async (name: string, options: { path: string }) => {
     try {
-      const targetDir = getEnvironmentPath(name);
-
-      // Copy template to targetDir if it does not already exist
-      if (!fs.existsSync(targetDir)) {
-        await copyEnvironmentTemplate(name, targetDir);
-        console.log(`Copied environment template '${name}'.`);
-      } else {
-        console.log(`Environment template '${name}' already exists in workspace.`);
-      }
-
-      const settings = (await readSettings()) || {};
-      const environments = settings.environments || {};
-
-      environments[options.path] = name;
-      settings.environments = environments;
-
-      await writeSettings(settings);
-      console.log(`Enabled environment '${name}' for path '${options.path}'.`);
-
-      // Execute init command if present
-      const envConfig = await readEnvironment(name);
-      if (envConfig?.init) {
-        console.log(`Executing init command for environment '${name}': ${envConfig.init}`);
-        execSync(envConfig.init, { cwd: targetDir, stdio: 'inherit' });
-      }
+      await enableEnvironment(name, options.path);
     } catch (err) {
       handleError('enable environment', err);
     }

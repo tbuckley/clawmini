@@ -23,3 +23,10 @@
 - Ran all codebase checks: formatting (`npm run format:check`), linting (`npm run lint`), type checking (`npm run check`), and tests (`npm run test`).
 - Verified that all unit and e2e tests pass for both `clawmini` daemon and web interface.
 - Checked git status to ensure tree is clean before finalizing the feature.
+
+## Ticket 7: Refactor Environment Enable Logic
+- Extracted `enableEnvironment` function to `src/shared/workspace.ts`.
+- Updated `src/cli/commands/environments.ts` to use `enableEnvironment`.
+- Maintained exact logging format from original command logic inside `enableEnvironment`.
+- Executed `npm run test` and `npm run check` with full passes.
+- Verified manual execution of `node ./dist/cli/index.mjs environments enable cladding` in dummy directory.
