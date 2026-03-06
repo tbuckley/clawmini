@@ -6,8 +6,11 @@ import {
   deleteAgent,
   isValidAgentId,
   applyTemplateToAgent,
+  readChatSettings,
+  writeChatSettings,
 } from '../../shared/workspace.js';
 import { type Agent } from '../../shared/config.js';
+import { listChats, createChat } from '../../shared/chats.js';
 
 export const agentsCmd = new Command('agents').description('Manage agents');
 
@@ -84,6 +87,15 @@ agentsCmd
 
         if (options.template) {
           await applyTemplateToAgent(id, options.template, agentData);
+        }
+
+        const existingChats = await listChats();
+        if (existingChats.includes(id)) {
+          console.warn(`Warning: Chat ${id} already exists.`);
+        } else {
+          await createChat(id);
+          const currentSettings = (await readChatSettings(id)) || {};
+          await writeChatSettings(id, { ...currentSettings, defaultAgent: id });
         }
 
         console.log(`Agent ${id} created successfully.`);

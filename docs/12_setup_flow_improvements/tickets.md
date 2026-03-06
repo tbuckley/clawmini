@@ -1,7 +1,7 @@
 # Implementation Tickets: Setup Flow Improvements
 
 ## Ticket 1: Agent Creation Side-effect (Chat Creation)
-**Status**: Not Started
+**Status**: Completed
 
 **Description**:
 Update the agent creation process so that when a new agent is added (e.g., via `clawmini agents add <id>`), a corresponding chat with the same `<id>` is automatically created. If the chat is newly created, its `defaultAgent` setting should be assigned to the new agent `<id>`. If a chat with the same `<id>` already exists, do not modify its settings, but instead output a warning indicating the chat existed.
