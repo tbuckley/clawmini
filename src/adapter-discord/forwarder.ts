@@ -69,11 +69,23 @@ export async function startDaemonToDiscordForwarder(
                 // Only forward logs (agent responses, system messages)
                 if (message.role === 'log') {
                   const logMessage = message as CommandLogMessage;
+
+                  if (logMessage.level === 'verbose') {
+                    lastMessageId = logMessage.id;
+                    await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
+                      console.error
+                    );
+                    continue;
+                  }
+
                   const hasContent = !!logMessage.content?.trim();
                   const hasFiles = Array.isArray(logMessage.files) && logMessage.files.length > 0;
 
                   if (!hasContent && !hasFiles) {
                     lastMessageId = logMessage.id;
+                    await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
+                      console.error
+                    );
                     continue;
                   }
 

@@ -24,7 +24,7 @@
   - Ensure verbose messages look visually distinct (e.g., distinct background color, border, or icon).
 - **Verification**: Run `npm run check` and `npm run test`.
 
-## 6. Update Discord Forwarder (Status: Not Started)
+## 6. Update Discord Forwarder (Status: Complete)
 - **Task**: Modify `src/adapter-discord/forwarder.ts` to check the `level` property of incoming `CommandLogMessage`s. Ensure that messages with `level: 'verbose'` are NOT forwarded to Discord.
 - **Verification**: Update Discord forwarder unit tests, then run `npm run check` and `npm run test`.
 

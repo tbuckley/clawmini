@@ -31,3 +31,9 @@
 - Added `level` property to `CommandLogMessage` type in `web/src/lib/types.ts` to fix TypeScript issues and properly align with `shared/chats.ts`.
 - Updated `web/src/routes/chats/[id]/page.svelte.spec.ts` to include multiple test cases verifying the filtering behavior for `default`, `debug`, and `verbose` verbosity levels.
 - Ran formatting, linting, type-checking, and tests (`npm run format && npm run lint:fix && npm run check && npm run test`) and successfully passed all checks.
+
+## Ticket 6: Update Discord Forwarder
+- Modified `src/adapter-discord/forwarder.ts` to filter out `CommandLogMessage`s with `level: 'verbose'` from being forwarded to Discord.
+- Ensured that `writeDiscordState` is still correctly called for ignored verbose messages to keep `lastSyncedMessageId` updated, preventing an infinite loop or repeated fetches.
+- Updated unit tests in `src/adapter-discord/forwarder.test.ts` to mock and verify that verbose messages are ignored by `mockDm.send` but state gets updated via `writeDiscordState`.
+- Ran all required validation checks (`npm run format:check`, `npm run lint`, `npm run check`, `npm run test`) and confirmed they all passed successfully.
