@@ -1,6 +1,6 @@
 # Message Verbosity Feature Tickets
 
-## 1. Update Data Model (Status: Not Started)
+## 1. Update Data Model (Status: Complete)
 - **Task**: Update `src/shared/chats.ts` to add an optional `level` property (`'default' | 'debug' | 'verbose'`) to the `CommandLogMessage` interface.
 - **Verification**: Run `npm run check` and `npm run test` to ensure there are no TypeScript compilation errors resulting from this interface change.
 
