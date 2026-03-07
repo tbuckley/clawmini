@@ -70,3 +70,18 @@
 - Run `npm run test -- src/adapter-google-chat/index.test.ts`.
 - Run checks from `CHECKS.md`: `npm run format:check && npm run lint && npm run check && npm run test`.
 **Status**: not started
+
+## Ticket 7: Remove unused state management (YAGNI)
+**Priority**: High
+**Description**: Delete `state.ts` and `state.test.ts`. Pub/Sub manages cursors via message ACKs, so manual state tracking of `lastSyncedMessageId` is unnecessary.
+**Status**: completed
+
+## Ticket 8: Cache Google Auth client in utils (Performance/DRY)
+**Priority**: Medium
+**Description**: Refactor `downloadAttachment` in `utils.ts` to cache the Google Auth client so it's not recreated on every download.
+**Status**: completed
+
+## Ticket 9: Use crypto.randomUUID for attachment filenames (Collision Risk)
+**Priority**: Low
+**Description**: Update `client.ts` to use `crypto.randomUUID()` instead of `Date.now()` for downloaded attachment filenames to prevent collision if multiple attachments arrive in the same millisecond.
+**Status**: completed

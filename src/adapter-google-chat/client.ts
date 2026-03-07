@@ -3,6 +3,7 @@ import { createTRPCClient, httpLink, splitLink, httpSubscriptionLink } from '@tr
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 import type { AppRouter } from '../daemon/router.js';
 import { getSocketPath, getClawminiDir } from '../shared/workspace.js';
@@ -81,7 +82,7 @@ export function startGoogleChatIngestion(
           if (downloadUri) {
             try {
               const buffer = await downloadAttachment(downloadUri);
-              const uniqueName = `${Date.now()}-${att.contentName || 'attachment'}`;
+              const uniqueName = `${crypto.randomUUID()}-${att.contentName || 'attachment'}`;
               const filePath = path.join(tmpDir, uniqueName);
               await fsPromises.writeFile(filePath, buffer);
               downloadedFiles.push(filePath);
