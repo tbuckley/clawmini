@@ -12,3 +12,10 @@
 - Copied the structure from Discord adapter but updated the state file path to use `adapters/google-chat/state.json`.
 - State tracks `lastSyncedMessageId` to prevent duplicate message dispatch.
 - Tested and verified code via `vitest` and all checks passed successfully.
+
+## Ticket 3: Utilities and File Attachments
+- Created `src/adapter-google-chat/utils.ts` and `src/adapter-google-chat/utils.test.ts` for file attachment downloads.
+- Implemented `downloadAttachment` using `google.auth.getClient()` to authenticate with Application Default Credentials (ADC).
+- Enforced a 25MB attachment size limit based on `googleapis` request buffers.
+- Verified attachment utilities via tests using `vitest`.
+- All checks in `CHECKS.md` passed. Ticket 3 completed.

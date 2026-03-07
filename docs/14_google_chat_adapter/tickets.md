@@ -32,7 +32,7 @@
 **Verification**:
 - Run `npm run test -- src/adapter-google-chat/utils.test.ts`.
 - Run checks from `CHECKS.md`: `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status**: not started
+**Status**: completed
 
 ## Ticket 4: Message Ingestion (Pub/Sub Client)
 **Description**: Implement the Pub/Sub listener that receives incoming Google Chat events, validates authorized users, and forwards valid messages to the Clawmini daemon.
