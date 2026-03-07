@@ -170,10 +170,28 @@ export async function writeAgentSessionSettings(
 }
 
 export async function getAgent(agentId: string, startDir = process.cwd()): Promise<Agent | null> {
-  const data = await readJsonFile(getAgentSettingsPath(agentId, startDir));
-  if (!data) return null;
+  const filePath = getAgentSettingsPath(agentId, startDir);
+  let dataStr: string;
+  try {
+    dataStr = await fsPromises.readFile(filePath, 'utf-8');
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') return null;
+    throw err;
+  }
+
+  let data: unknown;
+  try {
+    data = JSON.parse(dataStr);
+  } catch (parseErr: unknown) {
+    const message = parseErr instanceof Error ? parseErr.message : String(parseErr);
+    throw new Error(`Invalid JSON in ${filePath}: ${message}`, { cause: parseErr });
+  }
+
   const parsed = AgentSchema.safeParse(data);
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) {
+    throw new Error(`Invalid schema in ${filePath}: ${parsed.error.message}`);
+  }
+  return parsed.data;
 }
 
 export async function writeAgentSettings(

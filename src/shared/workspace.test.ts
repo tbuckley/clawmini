@@ -122,6 +122,22 @@ describe('workspace utilities', () => {
       expect(agent).toBeNull();
     });
 
+    it('should throw an error if agent settings JSON is invalid', async () => {
+      const p = getAgentSettingsPath('agent-invalid-json', testDir);
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, '{ invalid json', 'utf-8');
+
+      await expect(getAgent('agent-invalid-json', testDir)).rejects.toThrow(/Invalid JSON/);
+    });
+
+    it('should throw an error if agent settings schema is invalid', async () => {
+      const p = getAgentSettingsPath('agent-invalid-schema', testDir);
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, JSON.stringify({ directory: 123 }), 'utf-8'); // directory should be string
+
+      await expect(getAgent('agent-invalid-schema', testDir)).rejects.toThrow(/Invalid schema/);
+    });
+
     it('should write and read agent settings', async () => {
       const agentData: Agent = {
         env: { FOO: 'bar' },
