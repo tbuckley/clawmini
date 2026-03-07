@@ -11,7 +11,7 @@
 - Run `npm install`.
 - Run `npm run test -- src/adapter-google-chat/config.test.ts`.
 - Run checks from `CHECKS.md`: `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status**: not started
+**Status**: completed
 
 ## Ticket 2: State Management
 **Description**: Implement state tracking to avoid processing or dispatching duplicate messages across restarts.
