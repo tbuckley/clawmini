@@ -5,4 +5,5 @@ export interface RouterState {
   sessionId?: string;
   env?: Record<string, string>;
   reply?: string;
+  action?: 'stop' | 'interrupt' | 'continue';
 }

@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process';
 import type { RouterState } from './routers/types.js';
 import { slashNew } from './routers/slash-new.js';
 import { slashCommand } from './routers/slash-command.js';
+import { slashStop } from './routers/slash-stop.js';
+import { slashInterrupt } from './routers/slash-interrupt.js';
 
 export async function executeRouterPipeline(
   initialState: RouterState,
@@ -14,6 +16,10 @@ export async function executeRouterPipeline(
       state = slashNew(state);
     } else if (router === '@clawmini/slash-command') {
       state = await slashCommand(state);
+    } else if (router === '@clawmini/slash-stop') {
+      state = slashStop(state);
+    } else if (router === '@clawmini/slash-interrupt') {
+      state = slashInterrupt(state);
     } else {
       // Execute as custom shell command
       try {
@@ -66,6 +72,7 @@ async function executeCustomRouter(command: string, state: RouterState): Promise
           newState.env = { ...newState.env, ...result.env };
         }
         if (typeof result.reply === 'string') newState.reply = result.reply;
+        if (typeof result.action === 'string') newState.action = result.action;
 
         resolve(newState);
       } catch (err) {
@@ -85,6 +92,7 @@ async function executeCustomRouter(command: string, state: RouterState): Promise
       agentId: state.agentId,
       sessionId: state.sessionId,
       env: state.env,
+      action: state.action,
     };
 
     if (child.stdin) {

@@ -16,5 +16,15 @@
   - Plumbed `signal` down from `queue.enqueue` callback through `executeDirectMessage` and `runExtractionCommand`.
   - Ran validation checks to ensure tests continue to pass and `tsconfig.json` requirements (`exactOptionalPropertyTypes`) are met.
 
+- **Step 3: Implement Interruption Routers**
+  - Added `action?: 'stop' | 'interrupt' | 'continue'` to `RouterState` interface in `src/daemon/routers/types.ts`.
+  - Created `@clawmini/slash-stop` router (`src/daemon/routers/slash-stop.ts`) to handle `/stop` command, which sets `action: 'stop'` and provides an acknowledgment reply.
+  - Created `@clawmini/slash-interrupt` router (`src/daemon/routers/slash-interrupt.ts`) to handle `/interrupt` command, which sets `action: 'interrupt'` and provides an acknowledgment reply.
+  - Plumbed `action` property parsing into the fallback shell execution logic within `executeCustomRouter` (`src/daemon/routers.ts`).
+  - Added `slashStop` and `slashInterrupt` to the `executeRouterPipeline` in `src/daemon/routers.ts`.
+  - Added the new routers to the default settings initialization list in `src/cli/commands/init.ts`.
+  - Wrote full test coverage in `src/daemon/routers/slash-stop.test.ts` and `src/daemon/routers/slash-interrupt.test.ts`, and updated `src/daemon/routers.test.ts`.
+  - Ensured all tests pass and typing is correct.
+
 ## Next Steps
-- Implement Step 3: Implement Interruption Routers to handle `/stop` and `/interrupt` commands.
+- Implement Step 4: Integrate Interruptions in Message Handler.
