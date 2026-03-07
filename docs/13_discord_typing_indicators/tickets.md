@@ -29,7 +29,7 @@ Expose a new `waitForTyping` subscription endpoint on the daemon's `AppRouter` t
 - Run all checks: `npm run format:check && npm run lint && npm run check && npm run test`.
 
 ## Ticket 3: Emit Typing Events During Command Execution
-**Status**: Not Started
+**Status**: Completed
 
 **Description**:
 Update the daemon's message execution logic to periodically emit the typing event while a command is running.
