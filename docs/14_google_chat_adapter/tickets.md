@@ -21,7 +21,7 @@
 **Verification**:
 - Run `npm run test -- src/adapter-google-chat/state.test.ts`.
 - Run checks from `CHECKS.md`: `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status**: not started
+**Status**: completed
 
 ## Ticket 3: Utilities and File Attachments
 **Description**: Implement utility functions for handling Google Chat API authentication using Application Default Credentials (ADC) and downloading attachments.
