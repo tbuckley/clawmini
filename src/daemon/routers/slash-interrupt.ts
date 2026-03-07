@@ -1,14 +1,7 @@
-import type { RouterState } from './types.js';
+import { createSlashActionRouter } from './utils.js';
 
-export function slashInterrupt(state: RouterState): RouterState {
-  if (/^\/interrupt(\s|$)/.test(state.message)) {
-    const newMessage = state.message.replace(/^\/interrupt(\s+|$)/, '').trim();
-    return {
-      ...state,
-      message: newMessage,
-      action: 'interrupt',
-      reply: 'Interrupting current task...',
-    };
-  }
-  return state;
-}
+export const slashInterrupt = createSlashActionRouter(
+  'interrupt',
+  'interrupt',
+  'Interrupting current task...'
+);

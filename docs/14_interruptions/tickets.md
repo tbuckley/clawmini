@@ -48,3 +48,22 @@
 **Verification:**
 - Run: `npm run format:check && npm run lint && npm run check && npm run test`
 **Status:** Complete
+
+## Step 5: DRY Violation - Extract shared spawn logic
+**Description:** The logic for `spawn` and wrapping it in a Promise for `runCommand` is duplicated in `src/daemon/cron.ts`, `src/daemon/router.ts`, and `src/daemon/message-test-utils.ts`. Extract it into a shared utility function.
+**Tasks:**
+- Create `src/daemon/utils/spawn.ts` or a suitable shared location.
+- Extract the common `runCommand` Promise wrapper logic there.
+- Update `cron.ts`, `router.ts`, and `message-test-utils.ts` to use this new utility.
+- Ensure type definitions (`RunCommandFn` etc) are imported correctly.
+**Status:** Complete
+**Priority:** High
+
+## Step 6: DRY Violation - Consolidate slash command routers
+**Description:** `slash-stop.ts` and `slash-interrupt.ts` are almost identical. Refactor to use a shared factory or utility for creating these static action routers to follow DRY principles.
+**Tasks:**
+- Create a shared utility function in `src/daemon/routers/utils.ts` (or similar) that generates these basic slash command routers.
+- Update `slash-stop.ts` and `slash-interrupt.ts` to use this utility.
+- Verify tests still pass.
+**Status:** Complete
+**Priority:** Medium

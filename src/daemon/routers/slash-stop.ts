@@ -1,14 +1,3 @@
-import type { RouterState } from './types.js';
+import { createSlashActionRouter } from './utils.js';
 
-export function slashStop(state: RouterState): RouterState {
-  if (/^\/stop(\s|$)/.test(state.message)) {
-    const newMessage = state.message.replace(/^\/stop(\s+|$)/, '').trim();
-    return {
-      ...state,
-      message: newMessage,
-      action: 'stop',
-      reply: 'Stopping current task...',
-    };
-  }
-  return state;
-}
+export const slashStop = createSlashActionRouter('stop', 'stop', 'Stopping current task...');
