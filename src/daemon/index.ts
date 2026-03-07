@@ -60,14 +60,17 @@ export async function initDaemon() {
               cwd: affectedDir,
               stdio: 'inherit',
               env: { ...process.env, ENV_DIR: envDir },
+              timeout: hookType === 'down' ? 10000 : undefined,
             });
           }
         } catch (err) {
           console.error(`Failed to execute '${hookType}' hook for environment '${envName}':`, err);
+          if (hookType === 'up') throw err;
         }
       }
     } catch (err) {
       console.error(`Failed to run '${hookType}' hooks:`, err);
+      if (hookType === 'up') throw err;
     }
   };
 

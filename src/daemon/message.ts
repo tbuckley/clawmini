@@ -22,6 +22,7 @@ import {
   readEnvironment,
 } from '../shared/workspace.js';
 import { getApiContext, generateToken } from './auth.js';
+import { applyEnvOverrides, getActiveEnvKeys } from '../shared/utils/env.js';
 import { z } from 'zod';
 
 type Fallback = z.infer<typeof FallbackSchema>;
@@ -100,24 +101,11 @@ function prepareCommandAndEnv(
     CLAW_CLI_MESSAGE: message,
   } as Record<string, string>;
 
-  for (const [key, val] of Object.entries(currentAgent.env || {})) {
-    if (val === true && process.env[key] !== undefined) {
-      env[key] = process.env[key];
-    } else if (typeof val === 'string') {
-      env[key] = val;
-    }
-  }
+  applyEnvOverrides(env, currentAgent.env);
 
   if (!isNewSession && currentAgent.commands?.append) {
     command = currentAgent.commands.append;
-    const sessionEnv = agentSessionSettings?.env || {};
-    for (const [key, val] of Object.entries(sessionEnv)) {
-      if (val === true && process.env[key] !== undefined) {
-        env[key] = process.env[key];
-      } else if (typeof val === 'string') {
-        env[key] = val;
-      }
-    }
+    applyEnvOverrides(env, agentSessionSettings?.env);
   }
 
   return { command, env, currentAgent };
@@ -167,12 +155,17 @@ function formatEnvironmentPrefix(
     envArgs: string;
   }
 ): string {
-  return prefix
-    .replaceAll('{WORKSPACE_DIR}', replacements.workspaceRoot)
-    .replaceAll('{AGENT_DIR}', replacements.executionCwd)
-    .replaceAll('{ENV_DIR}', replacements.envDir)
-    .replaceAll('{HOME_DIR}', process.env.HOME || '')
-    .replaceAll('{ENV_ARGS}', replacements.envArgs);
+  const map: Record<string, string> = {
+    '{WORKSPACE_DIR}': replacements.workspaceRoot,
+    '{AGENT_DIR}': replacements.executionCwd,
+    '{ENV_DIR}': replacements.envDir,
+    '{HOME_DIR}': process.env.HOME || '',
+    '{ENV_ARGS}': replacements.envArgs,
+  };
+  return prefix.replace(
+    /{(WORKSPACE_DIR|AGENT_DIR|ENV_DIR|HOME_DIR|ENV_ARGS)}/g,
+    (match) => map[match] || match
+  );
 }
 
 export async function executeDirectMessage(
@@ -296,17 +289,11 @@ export async function executeDirectMessage(
           continue;
         }
 
-        const agentSpecificEnv = new Set<string>(['CLAW_CLI_MESSAGE']);
-
-        Object.entries(currentAgent.env || {}).forEach(([key, val]) => {
-          if (val === true || typeof val === 'string') agentSpecificEnv.add(key);
-        });
-
-        if (!isNewSession) {
-          Object.entries(agentSessionSettings?.env || {}).forEach(([key, val]) => {
-            if (val === true || typeof val === 'string') agentSpecificEnv.add(key);
-          });
-        }
+        const agentSpecificEnv = getActiveEnvKeys(
+          currentAgent.env,
+          !isNewSession ? agentSessionSettings?.env : undefined
+        );
+        agentSpecificEnv.add('CLAW_CLI_MESSAGE');
 
         Object.assign(env, routerEnv);
         Object.keys(routerEnv).forEach((k) => agentSpecificEnv.add(k));
