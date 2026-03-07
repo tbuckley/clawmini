@@ -15,7 +15,7 @@ Define the new `DAEMON_EVENT_TYPING` event string in the daemon's event definiti
 - Run all checks: `npm run format:check && npm run lint && npm run check && npm run test`.
 
 ## Ticket 2: Add tRPC Subscription Endpoint
-**Status**: Not Started
+**Status**: Completed
 
 **Description**:
 Expose a new `waitForTyping` subscription endpoint on the daemon's `AppRouter` to allow clients to listen for typing events.

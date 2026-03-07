@@ -3,7 +3,7 @@ import { initTRPC, TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from './events.js';
+import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, DAEMON_EVENT_TYPING } from './events.js';
 import {
   getSettingsPath,
   readChatSettings,
@@ -336,6 +336,29 @@ const AppRouter = router({
         for await (const [event] of on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, { signal })) {
           if (event.chatId === chatId) {
             yield [event.message];
+          }
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          return;
+        }
+        throw err;
+      }
+    }),
+  waitForTyping: apiProcedure
+    .input(
+      z.object({
+        chatId: z.string().optional(),
+      })
+    )
+    .subscription(async function* ({ input, ctx, signal }) {
+      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
+
+      const { on } = await import('node:events');
+      try {
+        for await (const [event] of on(daemonEvents, DAEMON_EVENT_TYPING, { signal })) {
+          if (event.chatId === chatId) {
+            yield event;
           }
         }
       } catch (err) {

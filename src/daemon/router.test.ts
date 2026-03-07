@@ -347,4 +347,33 @@ describe('Daemon TRPC Router', () => {
       ).rejects.toThrow('File must be within the agent workspace.');
     });
   });
+
+  describe('Subscriptions', () => {
+    it('waitForTyping should yield typing events for the correct chatId', async () => {
+      vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
+
+      const caller = appRouter.createCaller({});
+      const iterable = await caller.waitForTyping({ chatId: 'default-chat' });
+      const iterator = iterable[Symbol.asyncIterator]();
+
+      const events: any[] = [];
+      const iteratePromise = (async () => {
+        const e1 = await iterator.next();
+        if (e1.value) events.push(e1.value);
+        const e2 = await iterator.next();
+        if (e2.value) events.push(e2.value);
+      })();
+
+      const { daemonEvents, DAEMON_EVENT_TYPING } = await import('./events.js');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      daemonEvents.emit(DAEMON_EVENT_TYPING, { chatId: 'default-chat' });
+      daemonEvents.emit(DAEMON_EVENT_TYPING, { chatId: 'other-chat' });
+      daemonEvents.emit(DAEMON_EVENT_TYPING, { chatId: 'default-chat' });
+
+      await iteratePromise;
+
+      expect(events).toEqual([{ chatId: 'default-chat' }, { chatId: 'default-chat' }]);
+    });
+  });
 });
