@@ -15,12 +15,15 @@ describe('Daemon to Discord Forwarder', () => {
   let mockDm: import('discord.js').DMChannel;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let subscribeCallbacks: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let typingSubscribeCallbacks: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
     mockDm = {
       send: vi.fn().mockResolvedValue({}),
+      sendTyping: vi.fn().mockResolvedValue({}),
     } as unknown as import('discord.js').DMChannel;
 
     mockUser = {
@@ -34,6 +37,7 @@ describe('Daemon to Discord Forwarder', () => {
     } as unknown as import('discord.js').Client;
 
     subscribeCallbacks = null;
+    typingSubscribeCallbacks = null;
 
     mockTrpc = {
       getMessages: {
@@ -42,6 +46,12 @@ describe('Daemon to Discord Forwarder', () => {
       waitForMessages: {
         subscribe: vi.fn().mockImplementation((input, options) => {
           subscribeCallbacks = options;
+          return { unsubscribe: vi.fn() };
+        }),
+      },
+      waitForTyping: {
+        subscribe: vi.fn().mockImplementation((input, options) => {
+          typingSubscribeCallbacks = options;
           return { unsubscribe: vi.fn() };
         }),
       },
@@ -413,6 +423,68 @@ describe('Daemon to Discord Forwarder', () => {
 
     expect(mockTrpc.waitForMessages.subscribe).toHaveBeenCalledTimes(3);
     expect(mockDm.send).toHaveBeenCalledWith({ content: 'Finally up' });
+
+    controller.abort();
+    await forwarderPromise;
+    vi.useRealTimers();
+  });
+
+  it('should start waitForTyping subscription and call dm.sendTyping on data', async () => {
+    const controller = new AbortController();
+
+    const forwarderPromise = startDaemonToDiscordForwarder(
+      mockClient,
+      mockTrpc,
+      'user-123',
+      'default',
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(typingSubscribeCallbacks).toBeTruthy());
+
+    expect(mockTrpc.waitForTyping.subscribe).toHaveBeenCalledWith(
+      { chatId: 'default' },
+      expect.any(Object)
+    );
+
+    typingSubscribeCallbacks.onData({ chatId: 'default' });
+
+    await vi.waitFor(() => expect(mockDm.sendTyping).toHaveBeenCalled());
+    expect(mockClient.users.fetch).toHaveBeenCalledWith('user-123');
+    expect(mockUser.createDM).toHaveBeenCalled();
+
+    controller.abort();
+    await forwarderPromise;
+  });
+
+  it('should retry waitForTyping with exponential backoff on daemon error', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+
+    const forwarderPromise = startDaemonToDiscordForwarder(
+      mockClient,
+      mockTrpc,
+      'user-123',
+      'default',
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(typingSubscribeCallbacks).toBeTruthy());
+
+    let callbacks = typingSubscribeCallbacks;
+    typingSubscribeCallbacks = null;
+
+    callbacks.onError(new Error('Daemon down'));
+    await vi.runAllTimersAsync();
+
+    expect(typingSubscribeCallbacks).toBeTruthy();
+    callbacks = typingSubscribeCallbacks;
+    typingSubscribeCallbacks = null;
+
+    callbacks.onError(new Error('Still down'));
+    await vi.runAllTimersAsync();
+
+    expect(typingSubscribeCallbacks).toBeTruthy();
 
     controller.abort();
     await forwarderPromise;

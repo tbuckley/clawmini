@@ -172,10 +172,65 @@ export async function startDaemonToDiscordForwarder(
       );
     };
 
+    let typingSubscription: { unsubscribe: () => void } | null = null;
+    let typingRetryDelay = 1000;
+
+    const connectTyping = () => {
+      if (signal?.aborted) {
+        return;
+      }
+
+      typingSubscription = trpc.waitForTyping.subscribe(
+        { chatId },
+        {
+          onData: async (event) => {
+            typingRetryDelay = 1000; // Reset retry delay on successful data
+            if (!event) return;
+
+            try {
+              const user = await client.users.fetch(discordUserId);
+              const dm = await user.createDM();
+              await dm.sendTyping();
+            } catch (error) {
+              console.error(
+                `Failed to send typing indicator to Discord user ${discordUserId}:`,
+                error
+              );
+            }
+          },
+          onError: (error) => {
+            console.error(
+              `Error in daemon-to-discord typing forwarder subscription. Retrying in ${typingRetryDelay}ms.`,
+              error
+            );
+            typingSubscription?.unsubscribe();
+            typingSubscription = null;
+
+            if (signal?.aborted) {
+              return;
+            }
+
+            setTimeout(() => {
+              typingRetryDelay = Math.min(typingRetryDelay * 2, maxRetryDelay);
+              connectTyping();
+            }, typingRetryDelay);
+          },
+          onComplete: () => {
+            typingSubscription = null;
+            if (!signal?.aborted) {
+              setTimeout(() => connectTyping(), typingRetryDelay);
+            }
+          },
+        }
+      );
+    };
+
     connect();
+    connectTyping();
 
     signal?.addEventListener('abort', () => {
       subscription?.unsubscribe();
+      typingSubscription?.unsubscribe();
       resolve();
     });
   });

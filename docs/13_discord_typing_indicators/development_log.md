@@ -24,3 +24,15 @@
 - Created `src/daemon/message-typing.test.ts` to test the new interval logic and mocked the `emitTyping` behavior and advance timers.
 - Verified test coverage and passed formatting, linting, and type-checking checks.
 - Ticket 3 completed.
+
+## Ticket 4: Discord Adapter Integration
+- Started work on Ticket 4.
+- Located `src/adapter-discord/forwarder.ts` and `src/adapter-discord/forwarder.test.ts`.
+- Added the `waitForTyping` subscription loop to `startDaemonToDiscordForwarder` alongside the existing `waitForMessages` loop.
+- The typing loop resolves the discord DM channel via `client.users.fetch` and `user.createDM()`, then calls `dm.sendTyping()`.
+- Error handling matches the `waitForMessages` implementation with an exponential backoff retry.
+- Updated `forwarder.test.ts` to mock `waitForTyping` in `mockTrpc`.
+- Wrote two new tests to assert that `dm.sendTyping` is called when typing data is received, and that the subscription handles errors and retries with exponential backoff.
+- Fixed a minor copy-paste syntax error in the test suite and ensured tests run correctly.
+- Ran all checks via `npm run format:check && npm run lint && npm run check && npm run test`. They all passed successfully.
+- Ticket 4 completed.

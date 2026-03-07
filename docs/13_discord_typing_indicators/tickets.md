@@ -44,7 +44,7 @@ Update the daemon's message execution logic to periodically emit the typing even
 - Run all checks: `npm run format:check && npm run lint && npm run check && npm run test`.
 
 ## Ticket 4: Discord Adapter Integration
-**Status**: Not Started
+**Status**: Completed
 
 **Description**:
 Integrate the typing event subscription into the Discord adapter to provide visual feedback to users.
