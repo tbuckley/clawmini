@@ -67,9 +67,13 @@ async function resolveAgentDir(
   workspaceRoot: string
 ): Promise<string> {
   if (agentId && agentId !== 'default') {
-    const agent = await getAgent(agentId, workspaceRoot);
-    if (agent && agent.directory) {
-      return path.resolve(workspaceRoot, agent.directory);
+    try {
+      const agent = await getAgent(agentId, workspaceRoot);
+      if (agent && agent.directory) {
+        return path.resolve(workspaceRoot, agent.directory);
+      }
+    } catch (err: unknown) {
+      console.warn(`Could not load custom agent '${agentId}' for resolving directory:`, err);
     }
     return path.resolve(workspaceRoot, agentId);
   }
@@ -103,9 +107,16 @@ async function getAgentFilesDir(
   const agentDir = await resolveAgentDir(targetAgentId, workspaceRoot);
 
   if (targetAgentId !== 'default') {
-    const customAgent = await getAgent(targetAgentId, workspaceRoot);
-    if (customAgent?.files) {
-      agentFilesDir = customAgent.files;
+    try {
+      const customAgent = await getAgent(targetAgentId, workspaceRoot);
+      if (customAgent?.files) {
+        agentFilesDir = customAgent.files;
+      }
+    } catch (err: unknown) {
+      console.warn(
+        `Could not load custom agent '${targetAgentId}' for resolving files directory:`,
+        err
+      );
     }
   }
 

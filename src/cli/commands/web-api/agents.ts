@@ -18,9 +18,15 @@ export async function handleApiAgents(
     const agentIds = await listAgents();
     const agents = [];
     for (const id of agentIds) {
-      const agent = await getAgent(id);
-      if (agent) {
-        agents.push({ id, ...agent });
+      try {
+        const agent = await getAgent(id);
+        if (agent) {
+          agents.push({ id, ...agent });
+        }
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error(`Failed to load agent ${id}: ${errorMessage}`);
+        agents.push({ id, error: errorMessage });
       }
     }
     sendJsonResponse(res, 200, agents);
@@ -76,12 +82,17 @@ export async function handleApiAgents(
     }
 
     if (req.method === 'GET') {
-      const agent = await getAgent(agentId);
-      if (!agent) {
-        sendJsonResponse(res, 404, { error: 'Agent not found' });
-        return true;
+      try {
+        const agent = await getAgent(agentId);
+        if (!agent) {
+          sendJsonResponse(res, 404, { error: 'Agent not found' });
+          return true;
+        }
+        sendJsonResponse(res, 200, { id: agentId, ...agent });
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        sendJsonResponse(res, 500, { error: errorMessage });
       }
-      sendJsonResponse(res, 200, { id: agentId, ...agent });
       return true;
     }
 
