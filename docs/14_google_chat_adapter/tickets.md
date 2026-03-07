@@ -45,7 +45,7 @@
 **Verification**:
 - Run `npm run test -- src/adapter-google-chat/client.test.ts`.
 - Run checks from `CHECKS.md`: `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status**: not started
+**Status**: completed
 
 ## Ticket 5: Message Reply (Forwarding)
 **Description**: Implement the forwarder that subscribes to messages from the daemon and replies to the corresponding Google Chat space using the Google Chat API.

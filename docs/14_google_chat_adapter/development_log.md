@@ -19,3 +19,12 @@
 - Enforced a 25MB attachment size limit based on `googleapis` request buffers.
 - Verified attachment utilities via tests using `vitest`.
 - All checks in `CHECKS.md` passed. Ticket 3 completed.
+## Ticket 4: Message Ingestion (Pub/Sub Client)
+- Created `src/adapter-google-chat/client.ts`.
+- Implemented `startGoogleChatIngestion` to listen to `@google-cloud/pubsub` subscription events.
+- Handled `MESSAGE` events specifically, parsing them and ensuring email addresses match `authorizedUsers`.
+- Automatically downloaded attachments using `downloadAttachment` utility up to the 25MB limit.
+- Forwarded extracted text and file paths to Clawmini daemon using `trpc.sendMessage.mutate`.
+- Wrote robust tests using `vi.hoisted` to correctly mock `@google-cloud/pubsub`.
+- Addressed linting and formatting issues and ran full tests against the workspace.
+- Ticket 4 completed.
