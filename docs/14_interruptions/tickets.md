@@ -10,7 +10,7 @@
 - Update `src/daemon/queue.test.ts` to cover these new methods and ensure promises are handled correctly without unhandled rejections.
 **Verification:**
 - Run: `npm run format:check && npm run lint && npm run check && npm run test`
-**Status:** Not Started
+**Status:** Complete
 
 ## Step 2: Update Command Execution with AbortSignal
 **Description:** Plumb the `AbortSignal` down to the actual process execution so that `child_process.spawn` can terminate the task.

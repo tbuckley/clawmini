@@ -460,6 +460,12 @@ export async function executeDirectMessage(
 
   if (!noWait) {
     await taskPromise;
+  } else {
+    taskPromise.catch((err) => {
+      if (err.name !== 'AbortError') {
+        console.error('Task execution error:', err);
+      }
+    });
   }
 }
 
