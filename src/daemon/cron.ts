@@ -9,9 +9,9 @@ import { getSettingsPath } from '../shared/workspace.js';
 import { applyEnvOverrides } from '../shared/utils/env.js';
 import { spawn } from 'node:child_process';
 
-const runCommand: RunCommandFn = async ({ command, cwd, env, stdin }) => {
-  return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
-    const p = spawn(command, { shell: true, cwd, env });
+const runCommand: RunCommandFn = async ({ command, cwd, env, stdin, signal }) => {
+  return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve, reject) => {
+    const p = spawn(command, { shell: true, cwd, env, signal });
     if (stdin && p.stdin) {
       p.stdin.on('error', () => {}); // Ignore pipe errors
       p.stdin.write(stdin);
@@ -26,7 +26,13 @@ const runCommand: RunCommandFn = async ({ command, cwd, env, stdin }) => {
       p.stderr.on('data', (data) => (stderr += data.toString()));
     }
     p.on('close', (code) => resolve({ stdout, stderr, exitCode: code ?? 1 }));
-    p.on('error', (err) => resolve({ stdout: '', stderr: err.toString(), exitCode: 1 }));
+    p.on('error', (err) => {
+      if (err.name === 'AbortError') {
+        reject(err);
+        return;
+      }
+      resolve({ stdout: '', stderr: err.toString(), exitCode: 1 });
+    });
   });
 };
 

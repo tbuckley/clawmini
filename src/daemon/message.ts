@@ -51,7 +51,8 @@ export type RunCommandFn = (args: {
   command: string;
   cwd: string;
   env: Record<string, string>;
-  stdin?: string;
+  stdin?: string | undefined;
+  signal?: AbortSignal | undefined;
 }) => Promise<RunCommandResult>;
 
 async function resolveSessionState(
@@ -118,7 +119,8 @@ async function runExtractionCommand(
   runCommand: RunCommandFn,
   cwd: string,
   env: Record<string, string>,
-  mainResult: RunCommandResult
+  mainResult: RunCommandResult,
+  signal?: AbortSignal
 ): Promise<{ result?: string; error?: string }> {
   try {
     console.log(`Executing extraction command (${name}): ${command}`);
@@ -127,6 +129,7 @@ async function runExtractionCommand(
       cwd,
       env,
       stdin: mainResult.stdout,
+      signal,
     });
     if (res.exitCode === 0) {
       return { result: res.stdout.trim() };
@@ -210,7 +213,7 @@ export async function executeDirectMessage(
   const queue = getQueue(cwd);
   const routerEnv = state.env ?? {};
 
-  const taskPromise = queue.enqueue(async () => {
+  const taskPromise = queue.enqueue(async (signal) => {
     const {
       agentId,
       agentSessionSettings,
@@ -364,7 +367,7 @@ export async function executeDirectMessage(
           emitTyping(chatId);
         }, 5000);
         try {
-          mainResult = await runCommand({ command, cwd: executionCwd, env });
+          mainResult = await runCommand({ command, cwd: executionCwd, env, signal });
         } finally {
           clearInterval(typingInterval);
         }
@@ -400,7 +403,8 @@ export async function executeDirectMessage(
               runCommand,
               executionCwd,
               env,
-              mainResult
+              mainResult,
+              signal
             );
             if (result !== undefined) {
               logMsg.content = result;
@@ -432,7 +436,8 @@ export async function executeDirectMessage(
               runCommand,
               executionCwd,
               env,
-              mainResult
+              mainResult,
+              signal
             );
             if (result) {
               await writeAgentSessionSettings(

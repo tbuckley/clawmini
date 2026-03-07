@@ -260,55 +260,62 @@ const AppRouter = router({
         settings,
         undefined,
         noWait,
-        async ({ command, cwd, env, stdin }) => {
-          return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
-            const p = spawn(command, {
-              shell: true,
-              cwd,
-              env,
-            });
-
-            if (stdin && p.stdin) {
-              p.stdin.on('error', (err) => {
-                if ((err as NodeJS.ErrnoException).code !== 'EPIPE') {
-                  console.error('stdin error:', err);
-                }
+        async ({ command, cwd, env, stdin, signal }) => {
+          return new Promise<{ stdout: string; stderr: string; exitCode: number }>(
+            (resolve, reject) => {
+              const p = spawn(command, {
+                shell: true,
+                cwd,
+                env,
+                signal,
               });
-              p.stdin.write(stdin);
-              p.stdin.end();
-            }
 
-            let stdout = '';
-            let stderr = '';
+              if (stdin && p.stdin) {
+                p.stdin.on('error', (err) => {
+                  if ((err as NodeJS.ErrnoException).code !== 'EPIPE') {
+                    console.error('stdin error:', err);
+                  }
+                });
+                p.stdin.write(stdin);
+                p.stdin.end();
+              }
 
-            if (p.stdout) {
-              p.stdout.on('data', (data) => {
-                stdout += data.toString();
-                // Only write to terminal if it's the main command (no stdin passed)
-                if (!stdin) {
-                  process.stdout.write(data);
+              let stdout = '';
+              let stderr = '';
+
+              if (p.stdout) {
+                p.stdout.on('data', (data) => {
+                  stdout += data.toString();
+                  // Only write to terminal if it's the main command (no stdin passed)
+                  if (!stdin) {
+                    process.stdout.write(data);
+                  }
+                });
+              }
+
+              if (p.stderr) {
+                p.stderr.on('data', (data) => {
+                  stderr += data.toString();
+                  // Only write to terminal if it's the main command (no stdin passed)
+                  if (!stdin) {
+                    process.stderr.write(data);
+                  }
+                });
+              }
+
+              p.on('close', (code) => {
+                resolve({ stdout, stderr, exitCode: code ?? 1 });
+              });
+
+              p.on('error', (err) => {
+                if (err.name === 'AbortError') {
+                  reject(err);
+                  return;
                 }
+                resolve({ stdout: '', stderr: err.toString(), exitCode: 1 });
               });
             }
-
-            if (p.stderr) {
-              p.stderr.on('data', (data) => {
-                stderr += data.toString();
-                // Only write to terminal if it's the main command (no stdin passed)
-                if (!stdin) {
-                  process.stderr.write(data);
-                }
-              });
-            }
-
-            p.on('close', (code) => {
-              resolve({ stdout, stderr, exitCode: code ?? 1 });
-            });
-
-            p.on('error', (err) => {
-              resolve({ stdout: '', stderr: err.toString(), exitCode: 1 });
-            });
-          });
+          );
         },
         sessionId,
         agentId

@@ -3,9 +3,9 @@ import { vi } from 'vitest';
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 
-export const runCommandCallback = async ({ command, cwd, env, stdin }: any) => {
-  return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
-    const p = spawn(command, { shell: true, cwd, env });
+export const runCommandCallback = async ({ command, cwd, env, stdin, signal }: any) => {
+  return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve, reject) => {
+    const p = spawn(command, { shell: true, cwd, env, signal });
     if (stdin && p.stdin) {
       p.stdin.on('error', (err: any) => {
         if (err.code !== 'EPIPE') console.error('stdin error:', err);
@@ -18,7 +18,13 @@ export const runCommandCallback = async ({ command, cwd, env, stdin }: any) => {
     if (p.stdout) p.stdout.on('data', (data: any) => (stdout += data.toString()));
     if (p.stderr) p.stderr.on('data', (data: any) => (stderr += data.toString()));
     p.on('close', (code: any) => resolve({ stdout, stderr, exitCode: code ?? 1 }));
-    p.on('error', (err: any) => resolve({ stdout: '', stderr: err.toString(), exitCode: 1 }));
+    p.on('error', (err: any) => {
+      if (err.name === 'AbortError') {
+        reject(err);
+        return;
+      }
+      resolve({ stdout: '', stderr: err.toString(), exitCode: 1 });
+    });
   });
 };
 
