@@ -4,7 +4,7 @@ interface QueueEntry {
   task: Task;
   textPayload?: string | undefined;
   resolve: (value: void | PromiseLike<void>) => void;
-  reject: (reason?: any) => void;
+  reject: (reason?: unknown) => void;
 }
 
 export class Queue {

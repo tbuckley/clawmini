@@ -47,4 +47,4 @@
 - Update tests in `src/daemon/message.test.ts` (or similar) to verify the end-to-end interruption flow.
 **Verification:**
 - Run: `npm run format:check && npm run lint && npm run check && npm run test`
-**Status:** Not Started
+**Status:** Complete

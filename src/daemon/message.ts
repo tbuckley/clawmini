@@ -206,11 +206,30 @@ export async function executeDirectMessage(
     await appendMessage(chatId, routerLogMsg);
   }
 
-  if (!state.message.trim()) {
+  if (!state.message.trim() && state.action !== 'stop' && state.action !== 'interrupt') {
     return;
   }
 
   const queue = getQueue(cwd);
+
+  if (state.action === 'stop') {
+    queue.abortCurrent();
+    queue.clear();
+    return;
+  }
+
+  if (state.action === 'interrupt') {
+    queue.abortCurrent();
+    const pendingText = queue.extractPending().join('\n\n');
+    if (pendingText) {
+      state.message = `${pendingText}\n\n${state.message}`.trim();
+    }
+  }
+
+  if (!state.message.trim()) {
+    return;
+  }
+
   const routerEnv = state.env ?? {};
 
   const taskPromise = queue.enqueue(async (signal) => {
@@ -461,7 +480,7 @@ export async function executeDirectMessage(
     if (lastLogMsg) {
       await appendMessage(chatId, lastLogMsg);
     }
-  });
+  }, state.message);
 
   if (!noWait) {
     await taskPromise;

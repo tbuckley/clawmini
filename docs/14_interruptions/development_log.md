@@ -26,5 +26,15 @@
   - Wrote full test coverage in `src/daemon/routers/slash-stop.test.ts` and `src/daemon/routers/slash-interrupt.test.ts`, and updated `src/daemon/routers.test.ts`.
   - Ensured all tests pass and typing is correct.
 
+- **Step 4: Integrate Interruptions in Message Handler**
+  - Updated `src/daemon/message.ts` to intercept `stop` and `interrupt` actions from the `RouterState` inside `executeDirectMessage`.
+  - For `stop`, called `queue.abortCurrent()` and `queue.clear()`, avoiding queuing any new tasks.
+  - For `interrupt`, called `queue.abortCurrent()` and batching any pending tasks by extracting their payloads via `queue.extractPending()` and concatenating them into the new message.
+  - Updated `queue.enqueue()` call in `executeDirectMessage` to accept `state.message` as `textPayload` for the new task.
+  - Resolved type checking errors regarding `any` usage in `src/daemon/queue.ts` where `reject` expected `unknown`.
+  - Created new unit tests `src/daemon/message-interruption.test.ts` to cover the queue aborting and batching flow.
+  - Tests verify that stopping avoids queuing and clears the queue, while interrupting aggregates pending task messages.
+  - All format, lint, type-check, and vitest suites successfully pass.
+
 ## Next Steps
-- Implement Step 4: Integrate Interruptions in Message Handler.
+- Interruption handling feature is complete.
