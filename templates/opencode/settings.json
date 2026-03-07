@@ -1,0 +1,11 @@
+{
+  "commands": {
+    "new": "opencode run --format json \"$CLAW_CLI_MESSAGE\"",
+    "append": "opencode run --format json --session $SESSION_ID \"$CLAW_CLI_MESSAGE\"",
+    "getSessionId": "jq -rn 'first(inputs | .sessionID)'",
+    "getMessageContent": "jq -j 'select(.type == \"text\") | .part.text'"
+  },
+  "env": {
+  },
+  "files": "./attachments"
+}
