@@ -1,7 +1,7 @@
 # Discord Typing Indicators Tickets
 
 ## Ticket 1: Define Daemon Event
-**Status**: Not Started
+**Status**: Completed
 
 **Description**:
 Define the new `DAEMON_EVENT_TYPING` event string in the daemon's event definitions.
