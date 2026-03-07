@@ -1,20 +1,21 @@
 export type Task<T = void> = (signal: AbortSignal) => Promise<T>;
 
-interface QueueEntry {
+interface QueueEntry<TPayload = string> {
   task: Task;
-  textPayload?: string | undefined;
+  payload?: TPayload | undefined;
   resolve: (value: void | PromiseLike<void>) => void;
   reject: (reason?: unknown) => void;
 }
 
-export class Queue {
-  private pending: QueueEntry[] = [];
+export class Queue<TPayload = string> {
+  private pending: QueueEntry<TPayload>[] = [];
   private isRunning = false;
   private currentController: AbortController | null = null;
+  private currentPayload?: TPayload | undefined;
 
-  enqueue(task: Task, textPayload?: string): Promise<void> {
+  enqueue(task: Task, payload?: TPayload): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.pending.push({ task, textPayload, resolve, reject });
+      this.pending.push({ task, payload, resolve, reject });
       // We don't await processNext because we want enqueue to return the task's promise
       // and let processNext run in the background.
       this.processNext().catch(() => {});
@@ -27,6 +28,7 @@ export class Queue {
     this.isRunning = true;
     const entry = this.pending.shift()!;
     this.currentController = new AbortController();
+    this.currentPayload = entry.payload;
 
     try {
       await entry.task(this.currentController.signal);
@@ -36,6 +38,7 @@ export class Queue {
     } finally {
       this.isRunning = false;
       this.currentController = null;
+      this.currentPayload = undefined;
       // Continue processing the next item
       this.processNext().catch(() => {});
     }
@@ -49,29 +52,26 @@ export class Queue {
     }
   }
 
-  clear(): void {
+  getCurrentPayload(): TPayload | undefined {
+    return this.currentPayload;
+  }
+
+  clear(reason: string = 'Task cleared'): void {
     const tasksToClear = [...this.pending];
     this.pending = [];
     for (const { reject } of tasksToClear) {
-      const error = new Error('Task cleared');
+      const error = new Error(reason);
       error.name = 'AbortError';
       reject(error);
     }
   }
 
-  extractPending(): string[] {
+  extractPending(): TPayload[] {
     const extracted = this.pending
-      .map((p) => p.textPayload)
-      .filter((text): text is string => text !== undefined);
+      .map((p) => p.payload)
+      .filter((p): p is TPayload => p !== undefined);
 
-    const tasksToClear = [...this.pending];
-    this.pending = [];
-
-    for (const { reject } of tasksToClear) {
-      const error = new Error('Task extracted for batching');
-      error.name = 'AbortError';
-      reject(error);
-    }
+    this.clear('Task extracted for batching');
 
     return extracted;
   }

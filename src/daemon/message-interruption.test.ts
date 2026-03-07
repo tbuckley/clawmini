@@ -93,7 +93,9 @@ describe('Interruption flow in message handler', () => {
     // In our executeDirectMessage, the state.message gets mutated.
     // However, it's easier to verify what was enqueued by extracting pending again,
     // or by checking state.message.
-    expect(state.message).toBe('pending 1\n\npending 2\n\nnew urgent task');
+    expect(state.message).toBe(
+      '<message>\npending 1\n</message>\n\n<message>\npending 2\n</message>\n\n<message>\nnew urgent task\n</message>'
+    );
   });
 
   it('returns early when message is empty and no action is specified', async () => {

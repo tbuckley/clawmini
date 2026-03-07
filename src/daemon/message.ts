@@ -219,10 +219,15 @@ export async function executeDirectMessage(
   }
 
   if (state.action === 'interrupt') {
+    const currentPayload = queue.getCurrentPayload();
     queue.abortCurrent();
-    const pendingText = queue.extractPending().join('\n\n');
-    if (pendingText) {
-      state.message = `${pendingText}\n\n${state.message}`.trim();
+
+    const extracted = queue.extractPending();
+    const payloads = currentPayload ? [currentPayload, ...extracted] : extracted;
+
+    if (payloads.length > 0) {
+      const pendingText = payloads.map((text) => `<message>\n${text}\n</message>`).join('\n\n');
+      state.message = `${pendingText}\n\n<message>\n${state.message}\n</message>`.trim();
     }
   }
 
