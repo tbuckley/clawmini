@@ -93,7 +93,7 @@ describe('Google Chat Adapter Client', () => {
     it('should ignore non-MESSAGE events', async () => {
       const onMessage = mockSubscription.on.mock.calls.find(
         (c: unknown[]) => c[0] === 'message'
-      )![1] as any;
+      )![1] as (msg: unknown) => Promise<void>;
       const mockMsg = {
         data: Buffer.from(JSON.stringify({ type: 'ADDED_TO_SPACE' })),
         ack: vi.fn(),
@@ -108,7 +108,7 @@ describe('Google Chat Adapter Client', () => {
     it('should ignore messages from unauthorized users', async () => {
       const onMessage = mockSubscription.on.mock.calls.find(
         (c: unknown[]) => c[0] === 'message'
-      )![1] as any;
+      )![1] as (msg: unknown) => Promise<void>;
       const mockMsg = {
         data: Buffer.from(
           JSON.stringify({
@@ -128,7 +128,7 @@ describe('Google Chat Adapter Client', () => {
     it('should process authorized messages without attachments', async () => {
       const onMessage = mockSubscription.on.mock.calls.find(
         (c: unknown[]) => c[0] === 'message'
-      )![1] as any;
+      )![1] as (msg: unknown) => Promise<void>;
       const mockMsg = {
         data: Buffer.from(
           JSON.stringify({
@@ -163,7 +163,7 @@ describe('Google Chat Adapter Client', () => {
 
       const onMessage = mockSubscription.on.mock.calls.find(
         (c: unknown[]) => c[0] === 'message'
-      )![1] as any;
+      )![1] as (msg: unknown) => Promise<void>;
       const mockMsg = {
         data: Buffer.from(
           JSON.stringify({
@@ -209,7 +209,7 @@ describe('Google Chat Adapter Client', () => {
     it('should nack the message on unexpected error', async () => {
       const onMessage = mockSubscription.on.mock.calls.find(
         (c: unknown[]) => c[0] === 'message'
-      )![1] as any;
+      )![1] as (msg: unknown) => Promise<void>;
       const mockMsg = {
         data: Buffer.from(JSON.stringify({ type: 'MESSAGE' })),
         ack: vi.fn(),

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { downloadAttachment, MAX_ATTACHMENT_SIZE } from './utils.js';
+import { downloadAttachment, MAX_ATTACHMENT_SIZE, resetAuthClient } from './utils.js';
 import { google } from 'googleapis';
 
 vi.mock('googleapis', () => {
@@ -15,6 +15,7 @@ vi.mock('googleapis', () => {
 describe('downloadAttachment', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    resetAuthClient();
   });
 
   it('should successfully download an attachment within the size limit', async () => {

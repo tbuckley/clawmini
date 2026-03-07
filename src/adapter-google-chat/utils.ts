@@ -2,6 +2,12 @@ import { google } from 'googleapis';
 
 export const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25 MB
 
+let authClient: Awaited<ReturnType<typeof google.auth.getClient>> | null = null;
+
+export function resetAuthClient(): void {
+  authClient = null;
+}
+
 /**
  * Downloads a file attachment securely using Application Default Credentials (ADC).
  * @param downloadUri The URI of the attachment to download.
@@ -9,9 +15,12 @@ export const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25 MB
  */
 export async function downloadAttachment(downloadUri: string): Promise<Buffer> {
   // Use ADC to authenticate
-  const client = await google.auth.getClient({
-    scopes: ['https://www.googleapis.com/auth/chat.bot'],
-  });
+  if (!authClient) {
+    authClient = await google.auth.getClient({
+      scopes: ['https://www.googleapis.com/auth/chat.bot'],
+    });
+  }
+  const client = authClient;
 
   const response = await client.request<ArrayBuffer>({
     url: downloadUri,
