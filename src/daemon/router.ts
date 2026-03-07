@@ -352,7 +352,7 @@ const AppRouter = router({
     // Schedule a shutdown shortly after the response is sent
     setTimeout(() => {
       console.log('Shutting down daemon...');
-      process.exit(0);
+      process.kill(process.pid, 'SIGTERM');
     }, 100);
     return { success: true };
   }),

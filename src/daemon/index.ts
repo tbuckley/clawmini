@@ -10,10 +10,12 @@ import {
   readSettings,
   readEnvironment,
   getEnvironmentPath,
+  getWorkspaceRoot,
 } from '../shared/workspace.js';
 import { cronManager } from './cron.js';
 import { SettingsSchema } from '../shared/config.js';
 import { validateToken, getApiContext } from './auth.js';
+import path from 'node:path';
 
 export async function initDaemon() {
   const socketPath = getSocketPath();
@@ -44,16 +46,21 @@ export async function initDaemon() {
   const runHooks = async (hookType: 'up' | 'down') => {
     try {
       const currentSettings = await readSettings();
+      const workspaceRoot = getWorkspaceRoot(process.cwd());
       if (!currentSettings?.environments) return;
-      const envNames = new Set(Object.values(currentSettings.environments));
-      for (const envName of envNames) {
+      for (const [envPath, envName] of Object.entries(currentSettings.environments)) {
         try {
           const envConfig = await readEnvironment(envName);
           const command = envConfig?.[hookType];
           if (command) {
             console.log(`Executing '${hookType}' hook for environment '${envName}': ${command}`);
-            const targetDir = getEnvironmentPath(envName);
-            execSync(command, { cwd: targetDir, stdio: 'inherit' });
+            const envDir = getEnvironmentPath(envName);
+            const affectedDir = path.resolve(workspaceRoot, envPath);
+            execSync(command, {
+              cwd: affectedDir,
+              stdio: 'inherit',
+              env: { ...process.env, ENV_DIR: envDir },
+            });
           }
         } catch (err) {
           console.error(`Failed to execute '${hookType}' hook for environment '${envName}':`, err);

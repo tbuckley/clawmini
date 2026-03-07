@@ -449,7 +449,10 @@ export async function enableEnvironment(
   // Execute init command if present
   const envConfig = await readEnvironment(name, startDir);
   if (envConfig?.init) {
+    // Get the target directory for the environment
+    const workspaceRoot = getWorkspaceRoot(startDir);
+    const affectedDir = path.resolve(workspaceRoot, targetPath);
     console.log(`Executing init command for environment '${name}': ${envConfig.init}`);
-    execSync(envConfig.init, { cwd: targetDir, stdio: 'inherit' });
+    execSync(envConfig.init, { cwd: affectedDir, stdio: 'inherit' });
   }
 }
