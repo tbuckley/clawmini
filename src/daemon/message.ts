@@ -22,6 +22,7 @@ import {
   readEnvironment,
 } from '../shared/workspace.js';
 import { getApiContext, generateToken } from './auth.js';
+import { emitTyping } from './events.js';
 import { applyEnvOverrides, getActiveEnvKeys } from '../shared/utils/env.js';
 import { z } from 'zod';
 
@@ -358,7 +359,15 @@ export async function executeDirectMessage(
         }
 
         console.log(`Executing command: ${command}`);
-        const mainResult = await runCommand({ command, cwd: executionCwd, env });
+        let mainResult;
+        const typingInterval = setInterval(() => {
+          emitTyping(chatId);
+        }, 5000);
+        try {
+          mainResult = await runCommand({ command, cwd: executionCwd, env });
+        } finally {
+          clearInterval(typingInterval);
+        }
 
         const logMsg: CommandLogMessage = {
           id: crypto.randomUUID(),
