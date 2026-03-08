@@ -579,6 +579,7 @@ export async function handleUserMessage(
   if (finalAgentId !== undefined) directState.agentId = finalAgentId;
   if (finalSessionId !== undefined) directState.sessionId = finalSessionId;
   if (finalState.reply !== undefined) directState.reply = finalState.reply;
+  if (finalState.action !== undefined) directState.action = finalState.action;
 
   await executeDirectMessage(chatId, directState, settings, cwd, runCommand, noWait, message);
 }

@@ -44,3 +44,7 @@
 - Fixed type issues with `exactOptionalPropertyTypes: true` on `currentPayload` in `src/daemon/queue.ts`.
 - Addressed code formatting issues.
 - Confirmed all formatting, linting, type-checking, and tests now pass perfectly.
+## Bug Fix: Map Router Action State in Message Handler
+- **Hypothesis:** When `/stop` or `/interrupt` is sent, the router correctly sets `finalState.action = 'stop'`. However, `handleUserMessage` converts this `finalState` into a new `directState` object before passing it to `executeDirectMessage`. If `action` is not mapped over to the new object, the queue handler never receives the `action === 'stop'` flag and therefore never calls `queue.abortCurrent()`.
+- **Plan:** Update `src/daemon/message.ts` where `directState` is constructed to map `if (finalState.action !== undefined) directState.action = finalState.action;`.
+- **Result:** Applied the mapping fix and verified all tests pass. Interruption signals now properly reach the execution queue and instantly terminate running processes.
