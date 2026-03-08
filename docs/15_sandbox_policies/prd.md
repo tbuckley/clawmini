@@ -34,19 +34,21 @@ The following scenario illustrates an end-to-end interaction using this feature:
 ### Registration (JSON Configuration)
 Users will register new commands in a concise JSON configuration file (e.g., `policies.json`). To keep the system simple and flexible, we want to keep logic out of the configuration file. Users will manually create and edit this configuration.
 
-Instead of writing scripts inside the JSON, actions simply point to an executable file (e.g., a `.sh`, `.py`, or `.js` script). The configuration explicitly lists allowed string arguments (`params`) and file arguments (`path_params`). This standardizes the CLI format (enforcing `--arg value` spacing rather than `--arg=value` or positional arguments).
+Instead of writing scripts inside the JSON, actions simply point to an executable file (e.g., a `.sh`, `.py`, or `.js` script). To simplify argument passing and avoid rigid formatting rules, the configuration allows defining a single list of `params`. Any parameter name ending in `-snapshot` (e.g., `--body-snapshot`) will be treated as a file path that requires snapshotting and path-bounding validation. This removes the need to enforce strict spacing or separate parameter lists.
 
-The system performs no regex validation or sanitization—arguments are passed directly through. **Target scripts are strictly responsible for sanitizing their own inputs.** 
+**Security & Sanitization Strategy:**
+To prevent Command Injection and other vulnerabilities, the system will *not* naively pass raw strings to a shell. 
 
-*Milestone 2 (Snapshotting):* When a request is made, the system will snapshot any files referenced by `path_params`. The user will review these exact snapshots, eliminating TOCTOU (Time-of-Check to Time-of-Use) risks. Upon approval, the system executes the command, substituting the original sandbox paths with the local snapshot paths. For the initial MVP, paths will be passed directly to the target scripts.
+**Direct Exec (Bypassing Shell):** The framework must implement strict execution boundaries by executing commands directly via an exec array (e.g., `spawn('script.sh', ['--to', value])`) rather than a concatenated shell string. This ensures that all arguments are passed safely to the underlying OS APIs as pure data, completely mitigating shell injection attacks (like `&& rm -rf /`).
+
+*MVP Phase 2 (Snapshotting & Path Bounding):* TOCTOU (Time-of-Check to Time-of-Use) prevention is a core requirement of the MVP, sequenced immediately after the foundational request/approve flow is established. When a request is made, the system will snapshot any files referenced by arguments ending in `-snapshot`. The user will review these exact snapshots. **Crucially, the system will strictly verify that all `-snapshot` paths resolve to a location *within* the agent's permitted sandbox directory to prevent path traversal attacks (e.g., `../../etc/shadow`), making sure to resolve symlinks during this validation.** Upon approval, the system executes the command, substituting the original sandbox paths with the local snapshot paths.
 
 ```json
 {
   "actions": {
     "promote-file": {
       "description": "Move a file to the network-enabled read-only area.",
-      "params": ["--destination"],
-      "path_params": ["--source"],
+      "params": ["--destination", "--source-snapshot"],
       "execute": {
         "environment": "host",
         "command": "./scripts/promote-file.sh"
@@ -54,8 +56,7 @@ The system performs no regex validation or sanitization—arguments are passed d
     },
     "send-email": {
       "description": "Send an email.",
-      "params": ["--to", "--subject"],
-      "path_params": ["--body"],
+      "params": ["--to", "--subject", "--body-snapshot"],
       "execute": {
         "environment": "sandbox",
         "command": "./scripts/send-email.py"
@@ -72,12 +73,12 @@ The agent interacts with the `clawmini` CLI to discover, create, and monitor req
 **1. Discovery**
 The agent can query available sandbox policies to construct its toolset dynamically:
 - `clawmini requests list`: Outputs all registered policies and their descriptions.
-- `clawmini requests <cmd> --help`: Outputs the expected arguments (`params` and `path_params`), allowing the agent to generate a valid schema or Skill definition.
+- `clawmini requests <cmd> --help`: Outputs the expected arguments (`params`), allowing the agent to generate a valid schema or Skill definition.
 
 **2. Making a Request**
 ```bash
 # Agent wants to promote a file
-clawmini request promote-file --source ./script.sh --destination script.sh
+clawmini request promote-file --source-snapshot ./script.sh --destination script.sh
 ```
 
 Behind the scenes:
@@ -87,7 +88,7 @@ Behind the scenes:
 
 ```bash
 # Agent wants to send an email
-clawmini request send-email --to admin@example.com --subject "Daily Report" --body ./report.txt
+clawmini request send-email --to admin@example.com --subject "Daily Report" --body-snapshot ./report.txt
 ```
 *Outputs a Request ID (e.g., `32`).*
 
@@ -107,16 +108,18 @@ When a request is made, the daemon presents the user with a preview message (e.g
 
 ### Core Requirements
 1. **CLI Extensibility:** Agents must have access to a `clawmini` CLI binary inside their environment.
-2. **Configuration:** Users define permissible actions via a centralized JSON configuration specifying `params` (strings) and `path_params` (sandbox paths). No framework-level sanitization is performed. User manages this JSON file manually.
-3. **Snapshotting (Milestone 2):** Any file referenced by `path_params` must be snapshotted to a local daemon-managed directory to eliminate TOCTOU risks. Enforce strict file size limits on snapshots (e.g., max 5MB).
+2. **Configuration & Security:** Users define permissible actions via a centralized JSON configuration specifying `params`. Arguments ending in `-snapshot` indicate sandbox paths that require security validation and snapshotting. The framework enforces secure execution (via direct exec arrays) to prevent command injection. User manages this JSON file manually.
+3. **Snapshotting & Path Bounding (MVP Phase 2):** Any file referenced by `-snapshot` arguments must strictly resolve to a location *inside* the agent's sandbox (preventing path traversal, with symlinks fully resolved). Validated files are snapshotted to a local daemon-managed directory to eliminate TOCTOU risks. Enforce strict file size limits on snapshots (e.g., max 5MB).
 4. **Chat Integration & Previews:** Requests must be routed to the user's Chat UI, showing the requested command and arguments.
-5. **Execution Engine:** Approved actions must execute safely according to the policy. Scripts are completely responsible for their own input sanitization.
+5. **Execution Engine:** Approved actions must execute safely according to the policy.
 6. **Automatic Callbacks:** The daemon must automatically inject a message into the active chat session when a request is approved (along with command output) or rejected (along with user feedback).
 7. **State Management:** Request state should be saved locally as `.json` files (e.g., in `.gemini/tmp/requests/`) to gracefully handle frequent daemon restarts and persist pending requests.
 
 ### Non-Functional Requirements
 - **Security:** 
-  - Target scripts must sanitize their own inputs. 
+  - **Input Sanitization:** The framework must safely handle user inputs, strictly using direct exec arrays to completely mitigate command injection risks. 
+  - **Path Bounding & Symlinks:** All requested file paths must be strictly validated to remain within the agent's restricted directory. **Crucially, path validation must resolve all symlinks** before checking boundaries to prevent an agent from escaping the sandbox via malicious symlinks (e.g., pointing to `/etc/shadow`).
+  - **Denial of Service (DoS) Prevention:** The system must cap the number of pending requests (e.g., a maximum of 100 open requests) to prevent an agent from spamming requests and exhausting system resources (disk space, inodes, or memory).
   - **Spoofing & Self-Approval Prevention:** The system must strictly verify the origin of `/approve` and `/reject` commands to ensure they come from direct user input (e.g., validating the `role: user` tag on the message), not from agent outputs or background jobs.
 
 ## Open Issues / Future Considerations
@@ -153,4 +156,4 @@ To ensure the sandbox policies feature works correctly and securely, perform the
 
 5. **Discovery Commands:**
    - Run `clawmini requests list` and verify all configured policies are listed.
-   - Run `clawmini requests <cmd> --help` and verify the expected `params` and `path_params` are accurately displayed.
+   - Run `clawmini requests <cmd> --help` and verify the expected `params` are accurately displayed.
