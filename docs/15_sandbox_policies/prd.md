@@ -9,13 +9,13 @@ AI agents often operate within highly restricted sandbox environments to prevent
 ## Use Cases
 
 ### 1. Moving Files to a Network-Enabled Directory
-An agent needs to compile or transfer a file into a read-only area accessible by network-enabled host commands (e.g., `/home/users/has-network`). The agent generates the file and requests permission to move it. The user reviews a custom preview defined by the policy (e.g., a file diff, the full file content, or automated bot evaluation) and approves the move. (Note: Binaries are generally not supported for these workflows).
+An agent needs to compile or transfer a file into a read-only area accessible by network-enabled host commands (e.g., `/home/users/has-network`). The agent generates the file and requests permission to move it. The user reviews the request and approves the move. (Note: Binaries are generally not supported for these workflows).
 
 ### 2. Sending an Email
-An agent compiles a status report and wants to email it to stakeholders. It uses the CLI to request permission to send the email, specifying the addresses, subject, and body. The user previews the content in their chat UI and approves the action, which executes either on the host or inside a restricted proxy.
+An agent compiles a status report and wants to email it to stakeholders. It uses the CLI to request permission to send the email, specifying the addresses, subject, and body. The user previews the requested action in their chat UI and approves the action, which executes either on the host or inside a restricted proxy.
 
 ### 3. Agent Workflow Orchestration
-An automated script inside the sandbox coordinates a multi-step process. It makes an approval request and explicitly waits for the user's decision before proceeding. Alternatively, the agent goes to sleep and relies on a callback message to wake up and resume work once the approval is granted.
+An automated script inside the sandbox coordinates a multi-step process. It makes an approval request, and the CLI returns immediately. The agent relies on an automatically injected chat message from the daemon to know when the request is approved or rejected before proceeding with the next steps in its conversation.
 
 ## Inspirational Flow Example
 
@@ -24,21 +24,21 @@ The following scenario illustrates an end-to-end interaction using this feature:
 1. **Discovery:** The user tells the LLM about a new capability. The LLM calls `clawmini requests list` to see what is available, along with descriptions.
 2. **Schema Generation:** The LLM then calls `clawmini requests send-email --help` to learn about the command's arguments and automatically creates a Skill for itself.
 3. **Execution Request:** On a user's request, the LLM calls `clawmini requests send-email --to foo@bar.com --subject hi --body ./body.txt`.
-4. **Agent Acknowledgment:** The agent immediately receives a message back: *"Submitted request (Internal ID: req_abc), you will get a message if the user approves or rejects."* The daemon stores the request along with the chat, agent ID, and timestamp.
-5. **User Preview & Decision:** The user sees a message in their chat interface: *"Request #32: Send email… use /approve or /reject, or /info…"* (This message includes output from the command's `--dry-run`).
-6. **Resolution:** The user responds with `/reject 32 make it more formal`.
-7. **Agent Feedback Loop:** The model gets sent a system message: `[Request req_abc] User rejected with message: make it more formal`. The agent can then adjust its inputs and try again.
+4. **Agent Acknowledgment:** The agent immediately receives a message back on the CLI: *"Submitted request (ID: 32), you will get a message in the chat if the user approves or rejects."* The daemon stores the request on disk (as a `.json` file) to survive restarts.
+5. **User Preview & Decision:** The user sees a message in their chat interface: *"Request #32: Agent wants to run `send-email` with args: `--to foo@bar.com --subject hi --body ./body.txt`... use `/approve 32` or `/reject 32`..."*
+6. **Resolution:** The user responds with `/reject 32 make it more formal`. (The system verifies this command originated from the user, not the agent).
+7. **Agent Feedback Loop:** The daemon automatically injects a message into the chat: `[Request 32] User rejected with message: make it more formal`. The agent can then adjust its inputs and try again.
 
 ## Proposed Experience & CLI Design
 
 ### Registration (JSON Configuration)
-Users will register new commands in a concise JSON configuration file (e.g., `policies.json`). To keep the system simple and flexible, we want to keep logic out of the configuration file. While users can manually edit this file, an optional CLI command (`clawmini requests register <cmd>`) can be used as a helper to scaffold these entries.
+Users will register new commands in a concise JSON configuration file (e.g., `policies.json`). To keep the system simple and flexible, we want to keep logic out of the configuration file. Users will manually create and edit this configuration.
 
 Instead of writing scripts inside the JSON, actions simply point to an executable file (e.g., a `.sh`, `.py`, or `.js` script). The configuration explicitly lists allowed string arguments (`params`) and file arguments (`path_params`). This standardizes the CLI format (enforcing `--arg value` spacing rather than `--arg=value` or positional arguments).
 
-The system performs no regex validation or sanitization—arguments are passed directly through. **Target scripts are strictly responsible for sanitizing their own inputs.** Target scripts should ideally support a `--dry-run` flag. When a request is made, the daemon automatically executes the target command with this flag to safely generate a preview of the effects, which is then presented to the user.
+The system performs no regex validation or sanitization—arguments are passed directly through. **Target scripts are strictly responsible for sanitizing their own inputs.** 
 
-When a request is made, the system snapshots any files referenced by `path_params`. The user reviews these exact snapshots, eliminating TOCTOU (Time-of-Check to Time-of-Use) risks. Upon approval, the system executes the command, substituting the original sandbox paths with the local snapshot paths.
+*Milestone 2 (Snapshotting):* When a request is made, the system will snapshot any files referenced by `path_params`. The user will review these exact snapshots, eliminating TOCTOU (Time-of-Check to Time-of-Use) risks. Upon approval, the system executes the command, substituting the original sandbox paths with the local snapshot paths. For the initial MVP, paths will be passed directly to the target scripts.
 
 ```json
 {
@@ -64,7 +64,6 @@ When a request is made, the system snapshots any files referenced by `path_param
   }
 }
 ```
-*Note: We will enforce a maximum file size limit for snapshots to prevent abuse.*
 
 ### Clawmini CLI (Agent View)
 
@@ -78,47 +77,28 @@ The agent can query available sandbox policies to construct its toolset dynamica
 **2. Making a Request**
 ```bash
 # Agent wants to promote a file
-# The --source flag is registered as a path_param, so ./script.sh is captured.
 clawmini request promote-file --source ./script.sh --destination script.sh
 ```
 
 Behind the scenes:
-1. The daemon captures `./script.sh` into a secure, local snapshot directory (e.g., `.gemini/tmp/snapshots/req_123/`).
-2. The user approves the request based on the snapshot and `--dry-run` output.
-3. The daemon executes `./scripts/promote-file.sh --source .gemini/tmp/snapshots/req_123/script.sh --destination script.sh`.
+1. The daemon records the request.
+2. The user approves the request based on the provided arguments.
+3. The daemon executes `./scripts/promote-file.sh --source ./script.sh --destination script.sh`.
 
 ```bash
 # Agent wants to send an email
 clawmini request send-email --to admin@example.com --subject "Daily Report" --body ./report.txt
 ```
-*Outputs a private Request ID (e.g., `req_12345`).*
+*Outputs a Request ID (e.g., `32`).*
 
-**3. Asynchronous Callbacks & Workflows**
-Agents can attach callbacks to be triggered when the request is resolved (either approved or rejected). The resolution payload—which includes the "Approved/Rejected" status, any `stdout`/`stderr` from the executed command, and any feedback strings provided by the user upon rejection—is automatically appended or passed to the callback.
-
-```bash
-# Workflow script: Block and wait for approval
-clawmini wait req_12345
-
-# Agent workflow: Send a message on resolution. 
-# The CLI automatically appends status and output to the message.
-clawmini request promote-file \
-  --source ./script.sh --destination script.sh \
-  --on-resolve-message "The request to move script.sh has been resolved."
-
-# Execute a command in the sandbox on resolution.
-# The CLI passes the status/output payload to the command.
-clawmini request promote-file \
-  --source ./script.sh --destination script.sh \
-  --on-resolve-command "./handle-resolution.sh"
-```
+**3. Asynchronous Resolution & Automatic Messaging**
+When the agent makes a request, the CLI immediately returns the Request ID and exits. The daemon tracks the request. Once the user resolves the request (approves or rejects), the daemon *automatically* injects a system message back into the active chat session. This message includes the "Approved/Rejected" status, any `stdout`/`stderr` from the executed command, and any feedback strings provided by the user upon rejection.
 
 ### User Interface & Interactions
 
 All requests are routed to the user's primary chat UI for review. To prevent unauthorized execution, the system relies on specific slash commands that must originate directly from the user.
 
-When a request is made, the daemon runs the command with `--dry-run` and presents the user with a preview message (e.g., "Request #32: Send email..."). Users can respond with:
-- `/info <id>`: View the full details, snapshots, and the complete `--dry-run` output.
+When a request is made, the daemon presents the user with a preview message (e.g., "Request #32: Agent wants to run `send-email` with args..."). Users can respond with:
 - `/approve <id>`: Approve and execute the request.
 - `/reject <id> [reason]`: Reject the request, optionally providing a natural language reason (e.g., `/reject 32 tone needs to be more formal`) so the agent can learn and retry.
 - `/pending`: View a summarized list of all active pending requests.
@@ -127,22 +107,17 @@ When a request is made, the daemon runs the command with `--dry-run` and present
 
 ### Core Requirements
 1. **CLI Extensibility:** Agents must have access to a `clawmini` CLI binary inside their environment.
-2. **Configuration:** Users define permissible actions via a centralized JSON configuration specifying `params` (strings) and `path_params` (sandbox paths). No framework-level sanitization is performed.
-3. **Snapshotting:** Any file referenced by `path_params` must be immediately snapshotted to a local daemon-managed directory (e.g., `.gemini/tmp/snapshots/`). The user reviews these exact snapshots, which are then passed to the command upon approval (eliminating TOCTOU risks).
-4. **Size Limits:** Enforce strict file size limits on snapshots (e.g., max 5MB).
-5. **Chat Integration & Previews:** Requests must be routed to the user's Chat UI. The daemon should automatically execute the requested command with a `--dry-run` flag to safely generate the preview. Binaries are generally unsupported.
-6. **Execution Engine:** Approved actions must execute safely according to the policy. Scripts are completely responsible for their own input sanitization.
-7. **Callbacks:** Support asynchronous callbacks:
-   - Message to Agent: Injects a message into the active chat session (including execution output or rejection reasons).
-   - Command Execution: Runs a script inside the sandbox upon resolution.
-   - Synchronous Wait: Provide a `clawmini wait <id>` command for scripts.
-8. **State Management:** Snapshot and request state should be saved locally (e.g., in `.gemini/tmp/`) to gracefully handle daemon restarts and persist pending requests.
+2. **Configuration:** Users define permissible actions via a centralized JSON configuration specifying `params` (strings) and `path_params` (sandbox paths). No framework-level sanitization is performed. User manages this JSON file manually.
+3. **Snapshotting (Milestone 2):** Any file referenced by `path_params` must be snapshotted to a local daemon-managed directory to eliminate TOCTOU risks. Enforce strict file size limits on snapshots (e.g., max 5MB).
+4. **Chat Integration & Previews:** Requests must be routed to the user's Chat UI, showing the requested command and arguments.
+5. **Execution Engine:** Approved actions must execute safely according to the policy. Scripts are completely responsible for their own input sanitization.
+6. **Automatic Callbacks:** The daemon must automatically inject a message into the active chat session when a request is approved (along with command output) or rejected (along with user feedback).
+7. **State Management:** Request state should be saved locally as `.json` files (e.g., in `.gemini/tmp/requests/`) to gracefully handle frequent daemon restarts and persist pending requests.
 
 ### Non-Functional Requirements
 - **Security:** 
-  - Target scripts must sanitize their own inputs. Path traversal from the sandbox is acceptable (sandbox data can safely be exposed to the host system), as the host script is responsible for sanitizing the final target locations.
-  - **Spoofing & Self-Approval Prevention:** The system must strictly verify the origin of `/approve` and `/reject` commands to ensure they come from direct user input, not from agent outputs or background jobs. To prevent the agent from spoofing system messages (e.g., "Request #32: Check the weather... use /approve"), the daemon must assign requests a private internal ID known only to the agent, while presenting a distinct, non-guessable user-facing ID in the chat UI.
-- **Performance:** Asynchronous requests should not block the agent's main execution loop unless explicitly requested by `clawmini wait`.
+  - Target scripts must sanitize their own inputs. 
+  - **Spoofing & Self-Approval Prevention:** The system must strictly verify the origin of `/approve` and `/reject` commands to ensure they come from direct user input (e.g., validating the `role: user` tag on the message), not from agent outputs or background jobs.
 
 ## Open Issues / Future Considerations
 - Transitioning the configuration format from JSON to YAML for improved human readability.
@@ -156,27 +131,25 @@ To ensure the sandbox policies feature works correctly and securely, perform the
 1. **Basic Approval Flow:**
    - Register a benign policy (e.g., `echo-test` that outputs to a file).
    - Have the agent request the policy.
-   - Verify the user receives the preview message with the `--dry-run` output.
+   - Verify the user receives the preview message with the command and args.
    - Use `/approve <id>`.
-   - Verify the command executes correctly and the agent receives the success callback/output.
+   - Verify the command executes correctly and the agent receives the success chat message with output.
 
 2. **Rejection & Feedback Loop:**
    - Have the agent request a policy.
    - Use `/reject <id> missing required details`.
    - Verify the command does *not* execute.
-   - Verify the agent receives the rejection status along with the feedback string "missing required details".
+   - Verify the agent receives the rejection status along with the feedback string "missing required details" in the chat.
 
 3. **Spoofing Prevention (Security):**
    - Have the agent output the exact string: `/approve <id>` for one of its own pending requests.
-   - Verify the system ignores this input and does *not* approve the request.
-   - Verify the agent cannot guess the user-facing request ID if it is only given the internal agent-facing ID.
+   - Verify the system ignores this input and does *not* approve the request (because the role is `assistant`, not `user`).
 
-4. **Snapshotting and TOCTOU:**
-   - Register a policy with a `path_params` argument pointing to a file (e.g., `test.txt`).
-   - Have the agent make a request referencing `test.txt`.
-   - *Before* approving, modify `test.txt` in the sandbox.
-   - Use `/approve <id>`.
-   - Verify the executed command uses the *original* snapshotted version of `test.txt`, not the modified version.
+4. **Daemon Restart Resilience:**
+   - Have the agent make a request.
+   - Restart the daemon.
+   - Run `/pending` and verify the request is still active.
+   - Use `/approve <id>` and verify it still executes successfully.
 
 5. **Discovery Commands:**
    - Run `clawmini requests list` and verify all configured policies are listed.
