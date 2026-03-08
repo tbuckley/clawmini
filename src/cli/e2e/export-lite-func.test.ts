@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createE2EContext } from './utils.js';
 
-const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-export-lite-func');
+const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-exp-lite');
 
 describe('E2E Export Lite Functionality Tests', () => {
   beforeAll(async () => {

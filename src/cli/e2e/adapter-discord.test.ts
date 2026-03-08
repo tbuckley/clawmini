@@ -3,8 +3,7 @@ import path from 'node:path';
 import { createE2EContext } from './utils.js';
 import { getTRPCClient } from '../../adapter-discord/client.js';
 
-const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-discord-adapter');
-
+const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-discord');
 describe('Discord Adapter Client E2E', () => {
   beforeAll(async () => {
     await setupE2E();

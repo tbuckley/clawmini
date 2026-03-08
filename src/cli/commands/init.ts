@@ -37,7 +37,12 @@ export const initCmd = new Command('init')
         },
         env: {},
       },
-      routers: ['@clawmini/slash-new', '@clawmini/slash-command'],
+      routers: [
+        '@clawmini/slash-new',
+        '@clawmini/slash-stop',
+        '@clawmini/slash-interrupt',
+        '@clawmini/slash-command',
+      ],
     };
 
     if (!fs.existsSync(dirPath)) {

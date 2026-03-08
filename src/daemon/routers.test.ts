@@ -13,6 +13,14 @@ vi.mock('./routers/slash-command.js', () => ({
   })),
 }));
 
+vi.mock('./routers/slash-stop.js', () => ({
+  slashStop: vi.fn((state: RouterState) => ({ ...state, action: 'stop' })),
+}));
+
+vi.mock('./routers/slash-interrupt.js', () => ({
+  slashInterrupt: vi.fn((state: RouterState) => ({ ...state, action: 'interrupt' })),
+}));
+
 describe('Router Pipeline Execution', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -48,6 +56,24 @@ describe('Router Pipeline Execution', () => {
     };
     const finalState = await executeRouterPipeline(initialState, ['@clawmini/slash-command']);
     expect(finalState.message).toBe('slash-command-called');
+  });
+
+  it('should call built-in @clawmini/slash-stop router', async () => {
+    const initialState: RouterState = {
+      message: 'hello',
+      chatId: 'chat-1',
+    };
+    const finalState = await executeRouterPipeline(initialState, ['@clawmini/slash-stop']);
+    expect(finalState.action).toBe('stop');
+  });
+
+  it('should call built-in @clawmini/slash-interrupt router', async () => {
+    const initialState: RouterState = {
+      message: 'hello',
+      chatId: 'chat-1',
+    };
+    const finalState = await executeRouterPipeline(initialState, ['@clawmini/slash-interrupt']);
+    expect(finalState.action).toBe('interrupt');
   });
 
   it('should execute custom shell command router and merge state correctly', async () => {

@@ -51,7 +51,8 @@ export type RunCommandFn = (args: {
   command: string;
   cwd: string;
   env: Record<string, string>;
-  stdin?: string;
+  stdin?: string | undefined;
+  signal?: AbortSignal | undefined;
 }) => Promise<RunCommandResult>;
 
 async function resolveSessionState(
@@ -118,7 +119,8 @@ async function runExtractionCommand(
   runCommand: RunCommandFn,
   cwd: string,
   env: Record<string, string>,
-  mainResult: RunCommandResult
+  mainResult: RunCommandResult,
+  signal?: AbortSignal
 ): Promise<{ result?: string; error?: string }> {
   try {
     console.log(`Executing extraction command (${name}): ${command}`);
@@ -127,6 +129,7 @@ async function runExtractionCommand(
       cwd,
       env,
       stdin: mainResult.stdout,
+      signal,
     });
     if (res.exitCode === 0) {
       return { result: res.stdout.trim() };
@@ -203,14 +206,38 @@ export async function executeDirectMessage(
     await appendMessage(chatId, routerLogMsg);
   }
 
-  if (!state.message.trim()) {
+  if (!state.message.trim() && state.action !== 'stop' && state.action !== 'interrupt') {
     return;
   }
 
   const queue = getQueue(cwd);
+
+  if (state.action === 'stop') {
+    queue.abortCurrent();
+    queue.clear();
+    return;
+  }
+
+  if (state.action === 'interrupt') {
+    const currentPayload = queue.getCurrentPayload();
+    queue.abortCurrent();
+
+    const extracted = queue.extractPending();
+    const payloads = currentPayload ? [currentPayload, ...extracted] : extracted;
+
+    if (payloads.length > 0) {
+      const pendingText = payloads.map((text) => `<message>\n${text}\n</message>`).join('\n\n');
+      state.message = `${pendingText}\n\n<message>\n${state.message}\n</message>`.trim();
+    }
+  }
+
+  if (!state.message.trim()) {
+    return;
+  }
+
   const routerEnv = state.env ?? {};
 
-  const taskPromise = queue.enqueue(async () => {
+  const taskPromise = queue.enqueue(async (signal) => {
     const {
       agentId,
       agentSessionSettings,
@@ -364,7 +391,7 @@ export async function executeDirectMessage(
           emitTyping(chatId);
         }, 5000);
         try {
-          mainResult = await runCommand({ command, cwd: executionCwd, env });
+          mainResult = await runCommand({ command, cwd: executionCwd, env, signal });
         } finally {
           clearInterval(typingInterval);
         }
@@ -400,7 +427,8 @@ export async function executeDirectMessage(
               runCommand,
               executionCwd,
               env,
-              mainResult
+              mainResult,
+              signal
             );
             if (result !== undefined) {
               logMsg.content = result;
@@ -432,7 +460,8 @@ export async function executeDirectMessage(
               runCommand,
               executionCwd,
               env,
-              mainResult
+              mainResult,
+              signal
             );
             if (result) {
               await writeAgentSessionSettings(
@@ -456,10 +485,16 @@ export async function executeDirectMessage(
     if (lastLogMsg) {
       await appendMessage(chatId, lastLogMsg);
     }
-  });
+  }, state.message);
 
   if (!noWait) {
     await taskPromise;
+  } else {
+    taskPromise.catch((err) => {
+      if (err.name !== 'AbortError') {
+        console.error('Task execution error:', err);
+      }
+    });
   }
 }
 
@@ -544,6 +579,7 @@ export async function handleUserMessage(
   if (finalAgentId !== undefined) directState.agentId = finalAgentId;
   if (finalSessionId !== undefined) directState.sessionId = finalSessionId;
   if (finalState.reply !== undefined) directState.reply = finalState.reply;
+  if (finalState.action !== undefined) directState.action = finalState.action;
 
   await executeDirectMessage(chatId, directState, settings, cwd, runCommand, noWait, message);
 }

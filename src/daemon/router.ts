@@ -14,7 +14,7 @@ import {
 import { CronJobSchema } from '../shared/config.js';
 import { handleUserMessage } from './message.js';
 import { getDefaultChatId, getMessages } from './chats.js';
-import { spawn } from 'node:child_process';
+import { runCommand } from './utils/spawn.js';
 import { cronManager } from './cron.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { TokenPayload } from './auth.js';
@@ -260,56 +260,7 @@ const AppRouter = router({
         settings,
         undefined,
         noWait,
-        async ({ command, cwd, env, stdin }) => {
-          return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
-            const p = spawn(command, {
-              shell: true,
-              cwd,
-              env,
-            });
-
-            if (stdin && p.stdin) {
-              p.stdin.on('error', (err) => {
-                if ((err as NodeJS.ErrnoException).code !== 'EPIPE') {
-                  console.error('stdin error:', err);
-                }
-              });
-              p.stdin.write(stdin);
-              p.stdin.end();
-            }
-
-            let stdout = '';
-            let stderr = '';
-
-            if (p.stdout) {
-              p.stdout.on('data', (data) => {
-                stdout += data.toString();
-                // Only write to terminal if it's the main command (no stdin passed)
-                if (!stdin) {
-                  process.stdout.write(data);
-                }
-              });
-            }
-
-            if (p.stderr) {
-              p.stderr.on('data', (data) => {
-                stderr += data.toString();
-                // Only write to terminal if it's the main command (no stdin passed)
-                if (!stdin) {
-                  process.stderr.write(data);
-                }
-              });
-            }
-
-            p.on('close', (code) => {
-              resolve({ stdout, stderr, exitCode: code ?? 1 });
-            });
-
-            p.on('error', (err) => {
-              resolve({ stdout: '', stderr: err.toString(), exitCode: 1 });
-            });
-          });
-        },
+        (args) => runCommand({ ...args, logToTerminal: true }),
         sessionId,
         agentId
       );

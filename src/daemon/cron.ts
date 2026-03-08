@@ -2,33 +2,12 @@
 import schedule from 'node-schedule';
 import { listChats } from '../shared/chats.js';
 import { readChatSettings, writeChatSettings } from '../shared/workspace.js';
-import { executeDirectMessage, getInitialRouterState, type RunCommandFn } from './message.js';
+import { executeDirectMessage, getInitialRouterState } from './message.js';
 import type { CronJob, Settings } from '../shared/config.js';
 import fs from 'node:fs/promises';
 import { getSettingsPath } from '../shared/workspace.js';
 import { applyEnvOverrides } from '../shared/utils/env.js';
-import { spawn } from 'node:child_process';
-
-const runCommand: RunCommandFn = async ({ command, cwd, env, stdin }) => {
-  return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
-    const p = spawn(command, { shell: true, cwd, env });
-    if (stdin && p.stdin) {
-      p.stdin.on('error', () => {}); // Ignore pipe errors
-      p.stdin.write(stdin);
-      p.stdin.end();
-    }
-    let stdout = '';
-    let stderr = '';
-    if (p.stdout) {
-      p.stdout.on('data', (data) => (stdout += data.toString()));
-    }
-    if (p.stderr) {
-      p.stderr.on('data', (data) => (stderr += data.toString()));
-    }
-    p.on('close', (code) => resolve({ stdout, stderr, exitCode: code ?? 1 }));
-    p.on('error', (err) => resolve({ stdout: '', stderr: err.toString(), exitCode: 1 }));
-  });
-};
+import { runCommand } from './utils/spawn.js';
 
 export class CronManager {
   private jobs = new Map<string, schedule.Job>();

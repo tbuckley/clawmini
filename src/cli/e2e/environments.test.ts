@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { createE2EContext } from './utils.js';
 
 describe('Environments E2E', () => {
-  const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-tmp-environments');
+  const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-env');
 
   beforeAll(async () => {
     await setupE2E();
