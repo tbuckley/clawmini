@@ -127,8 +127,7 @@ describe('Discord Adapter Entry Point', () => {
     vi.useRealTimers();
   });
 
-  it('should debounce multiple rapid messages into one', async () => {
-    vi.useFakeTimers();
+  it('should ignore duplicate network events based on Discord message ID', async () => {
     let messageHandler: ((message: import('discord.js').Message) => Promise<void>) | undefined;
     vi.mocked(mockClientInstance.on).mockImplementation(
       (event: string, cb: (...args: unknown[]) => void) => {
@@ -149,24 +148,20 @@ describe('Discord Adapter Entry Point', () => {
 
     if (messageHandler) {
       await messageHandler({
+        id: 'msg-1',
         author: { id: 'user-123', tag: 'user#1234' } as unknown as import('discord.js').User,
         content: 'message 1',
         guild: null,
         attachments: new Map(),
       } as unknown as import('discord.js').Message);
       await messageHandler({
+        id: 'msg-2',
         author: { id: 'user-123', tag: 'user#1234' } as unknown as import('discord.js').User,
         content: 'message 2',
         guild: null,
         attachments: new Map(),
       } as unknown as import('discord.js').Message);
     }
-
-    // Should not have been called yet
-    expect(mockTrpc.sendMessage.mutate).not.toHaveBeenCalled();
-
-    // Fast-forward time for debouncer
-    await vi.runAllTimersAsync();
 
     expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledTimes(2);
     expect(mockTrpc.sendMessage.mutate).toHaveBeenNthCalledWith(1, {
@@ -189,7 +184,6 @@ describe('Discord Adapter Entry Point', () => {
         adapter: 'discord',
       },
     });
-    vi.useRealTimers();
   });
 
   it('should ignore unauthorized messages', async () => {

@@ -50,21 +50,21 @@ describe('initCmd with flags', () => {
       fs.rmSync(clawminiDir, { recursive: true, force: true });
     }
 
-    const { stdout, stderr, code } = await runCli(['init', '--environment', 'cladding']);
+    const { stdout, stderr, code } = await runCli(['init', '--environment', 'macos']);
 
     expect(stderr).toBe('');
     expect(code).toBe(0);
     expect(stdout).toContain('Initialized .clawmini/settings.json');
-    expect(stdout).toContain("Copied environment template 'cladding'");
-    expect(stdout).toContain("Enabled environment 'cladding' for path './'");
+    expect(stdout).toContain("Copied environment template 'macos'");
+    expect(stdout).toContain("Enabled environment 'macos' for path './'");
 
     const settingsPath = path.join(clawminiDir, 'settings.json');
     expect(fs.existsSync(settingsPath)).toBe(true);
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-    expect(settings.environments?.['./']).toBe('cladding');
+    expect(settings.environments?.['./']).toBe('macos');
 
-    const envDir = path.join(clawminiDir, 'environments', 'cladding');
+    const envDir = path.join(clawminiDir, 'environments', 'macos');
     expect(fs.existsSync(envDir)).toBe(true);
   });
 });

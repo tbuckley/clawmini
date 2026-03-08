@@ -4,7 +4,6 @@ import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import { readDiscordConfig, isAuthorized, initDiscordConfig } from './config.js';
 import { getTRPCClient } from './client.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
-import { Debouncer } from './utils.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -27,36 +26,6 @@ export async function main() {
   }
 
   const trpc = getTRPCClient();
-
-  interface DebouncerItem {
-    content: string;
-    files: string[];
-  }
-
-  const messageDebouncer = new Debouncer<DebouncerItem>(
-    1000,
-    async (items) => {
-      for (const item of items) {
-        console.log(`Forwarding message to daemon: ${item.content}`);
-        try {
-          await trpc.sendMessage.mutate({
-            type: 'send-message',
-            client: 'cli',
-            data: {
-              message: item.content,
-              chatId: config.chatId,
-              files: item.files.length > 0 ? item.files : undefined,
-              adapter: 'discord',
-            },
-          });
-          console.log('Message forwarded to daemon successfully.');
-        } catch (error) {
-          console.error('Failed to forward message to daemon:', error);
-        }
-      }
-    },
-    (a, b) => a.content === b.content && a.files.join(',') === b.files.join(',')
-  );
 
   const client = new Client({
     intents: [GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent],
@@ -145,7 +114,22 @@ export async function main() {
       }
     }
 
-    messageDebouncer.add({ content: finalContent, files: downloadedFiles });
+    console.log(`Forwarding message to daemon: ${finalContent}`);
+    try {
+      await trpc.sendMessage.mutate({
+        type: 'send-message',
+        client: 'cli',
+        data: {
+          message: finalContent,
+          chatId: config.chatId,
+          files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
+          adapter: 'discord',
+        },
+      });
+      console.log('Message forwarded to daemon successfully.');
+    } catch (error) {
+      console.error('Failed to forward message to daemon:', error);
+    }
   });
 
   try {

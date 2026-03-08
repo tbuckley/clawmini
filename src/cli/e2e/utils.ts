@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 
@@ -37,6 +37,7 @@ export function createE2EContext(dirName: string) {
       fs.rmSync(e2eDir, { recursive: true, force: true });
     }
     fs.mkdirSync(e2eDir, { recursive: true });
+    execSync('git init', { cwd: e2eDir, stdio: 'ignore' });
   }
 
   async function teardownE2E() {
