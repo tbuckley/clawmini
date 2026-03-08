@@ -1,4 +1,5 @@
 import http from 'node:http';
+import net from 'node:net';
 import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 import { createHTTPHandler } from '@trpc/server/adapters/standalone';
@@ -74,30 +75,72 @@ export async function initDaemon() {
     }
   };
 
-  await runHooks('up');
-
-  // Initialize cron jobs
-  cronManager.init().catch((err) => {
-    console.error('Failed to initialize cron manager:', err);
-  });
-
-  // Ensure the old socket file is removed
+  // Ensure the old socket file is removed, but first check if another daemon is actively listening
   if (fs.existsSync(socketPath)) {
-    fs.unlinkSync(socketPath);
+    const isSocketInUse = await new Promise<boolean>((resolve) => {
+      const client = net.createConnection({ path: socketPath });
+      client.on('connect', () => {
+        client.destroy();
+        resolve(true);
+      });
+      client.on('error', () => {
+        resolve(false);
+      });
+    });
+
+    if (isSocketInUse) {
+      console.log('Daemon is already running (socket is active). Exiting.');
+      process.exit(0);
+    }
+
+    try {
+      fs.unlinkSync(socketPath);
+    } catch {
+      // Ignore
+    }
   }
+
+  let isReady = false;
+  let readyPromiseResolve: () => void;
+  const readyPromise = new Promise<void>((resolve) => {
+    readyPromiseResolve = resolve;
+  });
 
   const handler = createHTTPHandler({
     router: appRouter,
     createContext: ({ req, res }) => ({ req, res, isApiServer: false }),
   });
 
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
+    if (!isReady) {
+      await readyPromise;
+    }
     // Only accept POST requests on /trpc/ path if needed, but since we are running over Unix socket, we map directly
     handler(req, res);
   });
 
-  server.listen(socketPath, () => {
-    console.log(`Daemon initialized and listening on ${socketPath}`);
+  await new Promise<void>((resolve, reject) => {
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        console.log('Daemon is already running (socket bind failed). Exiting.');
+        process.exit(0);
+      }
+      reject(err);
+    });
+    server.listen(socketPath, () => {
+      console.log(`Daemon initialized and listening on ${socketPath}`);
+      resolve();
+    });
+  });
+
+  await runHooks('up');
+
+  isReady = true;
+  readyPromiseResolve!();
+
+  // Initialize cron jobs
+  cronManager.init().catch((err) => {
+    console.error('Failed to initialize cron manager:', err);
   });
 
   let apiServer: http.Server | undefined;
