@@ -54,15 +54,15 @@ When a request is made, the system snapshots any files referenced by `path_param
 ```
 *Note: We will enforce a maximum file size limit for snapshots to prevent abuse.*
 
-### Sandbox CLI (Agent View)
+### Clawmini CLI (Agent View)
 
-The agent interacts with the `sandbox` CLI to create and monitor requests. All arguments are passed opaquely to the underlying script.
+The agent interacts with the `clawmini` CLI to create and monitor requests. All arguments are passed opaquely to the underlying script.
 
 **1. Making a Request**
 ```bash
 # Agent wants to promote a file
 # The --source flag is registered as a path_param, so ./script.sh is captured.
-sandbox request promote-file --source ./script.sh --destination script.sh
+clawmini request promote-file --source ./script.sh --destination script.sh
 ```
 
 Behind the scenes:
@@ -72,7 +72,7 @@ Behind the scenes:
 
 ```bash
 # Agent wants to send an email
-sandbox request send-email --to admin@example.com --subject "Daily Report" --body ./report.txt
+clawmini request send-email --to admin@example.com --subject "Daily Report" --body ./report.txt
 ```
 *Outputs a Request ID (e.g., `req_12345`).*
 
@@ -81,17 +81,17 @@ Agents can attach callbacks to be triggered when the request is resolved (either
 
 ```bash
 # Workflow script: Block and wait for approval
-sandbox wait req_12345
+clawmini wait req_12345
 
 # Agent workflow: Send a message on resolution. 
 # The CLI automatically appends "Status: [Approved/Rejected]" to the message.
-sandbox request promote-file \
+clawmini request promote-file \
   --source ./script.sh --destination script.sh \
   --on-resolve-message "The request to move script.sh has been resolved."
 
 # Execute a command in the sandbox on resolution.
 # The CLI passes the status (e.g., "approved" or "rejected") as the final argument to the command.
-sandbox request promote-file \
+clawmini request promote-file \
   --source ./script.sh --destination script.sh \
   --on-resolve-command "./handle-resolution.sh"
 ```
@@ -99,7 +99,7 @@ sandbox request promote-file \
 ## Requirements
 
 ### Core Requirements
-1. **CLI Extensibility:** Agents must have access to a `sandbox` CLI binary inside their environment.
+1. **CLI Extensibility:** Agents must have access to a `clawmini` CLI binary inside their environment.
 2. **Configuration:** Users define permissible actions via a centralized JSON configuration specifying `params` (strings) and `path_params` (sandbox paths). No framework-level sanitization is performed.
 3. **Snapshotting:** Any file referenced by `path_params` must be immediately snapshotted to a local daemon-managed directory (e.g., `.gemini/tmp/snapshots/`). The user reviews these exact snapshots, which are then passed to the command upon approval (eliminating TOCTOU risks).
 4. **Size Limits:** Enforce strict file size limits on snapshots (e.g., max 5MB).
@@ -108,12 +108,12 @@ sandbox request promote-file \
 7. **Callbacks:** Support asynchronous callbacks:
    - Message to Agent: Injects a message into the active chat session.
    - Command Execution: Runs a script inside the sandbox upon resolution.
-   - Synchronous Wait: Provide a `sandbox wait <id>` command for scripts.
+   - Synchronous Wait: Provide a `clawmini wait <id>` command for scripts.
 8. **State Management:** Snapshot and request state should be saved locally (e.g., in `.gemini/tmp/`) to gracefully handle daemon restarts and persist pending requests.
 
 ### Non-Functional Requirements
 - **Security:** Target scripts must sanitize their own inputs. Path traversal from the sandbox is acceptable (sandbox data can safely be exposed to the host system), as the host script is responsible for sanitizing the final target locations.
-- **Performance:** Asynchronous requests should not block the agent's main execution loop unless explicitly requested by `sandbox wait`.
+- **Performance:** Asynchronous requests should not block the agent's main execution loop unless explicitly requested by `clawmini wait`.
 
 ## Open Issues / Future Considerations
 - Transitioning the configuration format from JSON to YAML for improved human readability.
