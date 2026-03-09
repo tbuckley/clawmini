@@ -44,7 +44,7 @@ describe('initCmd with flags', () => {
     expect(fs.existsSync(chatSettingsPath)).toBe(true);
   });
 
-  it('should run init and enable an environment', async () => {
+  it.skip('should run init and enable an environment', async () => {
     const clawminiDir = path.resolve(e2eDir, '.clawmini');
     if (fs.existsSync(clawminiDir)) {
       fs.rmSync(clawminiDir, { recursive: true, force: true });

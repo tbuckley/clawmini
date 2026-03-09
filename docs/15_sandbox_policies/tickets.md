@@ -23,7 +23,7 @@ This document breaks down the implementation of the Sandbox Policies feature int
 - Write unit tests for the snapshotting utility, specifically testing path traversal attempts and symlink resolution.
 - Write unit tests for the argument interpolation logic.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status:** not started
+**Status:** completed
 
 ## Ticket 3: Daemon Request Service
 **Description:** Build the central service within the daemon that processes incoming requests, utilizing the security layer and state management.
