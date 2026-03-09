@@ -377,4 +377,49 @@ describe('Daemon TRPC Router', () => {
       expect(events).toEqual([{ chatId: 'default-chat' }, { chatId: 'default-chat' }]);
     });
   });
+
+  describe('fetchPendingMessages', () => {
+    let queue: import('./queue.js').Queue;
+    beforeEach(async () => {
+      const { getQueue } = await import('./queue.js');
+      queue = getQueue(process.cwd());
+      queue.clear();
+    });
+
+    it('should extract pending messages from queue and format them', async () => {
+      let resolveFirstTask: () => void;
+      const firstTaskPromise = new Promise<void>((r) => {
+        resolveFirstTask = r;
+      });
+
+      // The first task will start and block, leaving the others in pending
+      queue.enqueue(async () => {
+        await firstTaskPromise;
+      }, 'Task 1');
+
+      // These will stay in pending
+      const p2 = queue.enqueue(async () => {}, 'Task 2');
+      const p3 = queue.enqueue(async () => {}, 'Task 3');
+
+      // We expect them to throw AbortError when extracted
+      p2.catch(() => {});
+      p3.catch(() => {});
+
+      const caller = appRouter.createCaller({});
+      const result = await caller.fetchPendingMessages();
+
+      expect(result.messages).toBe(
+        '<message>\nTask 2\n</message>\n\n<message>\nTask 3\n</message>'
+      );
+      expect(queue.extractPending()).toEqual([]);
+
+      resolveFirstTask!(); // cleanup
+    });
+
+    it('should return empty string if no pending messages', async () => {
+      const caller = appRouter.createCaller({});
+      const result = await caller.fetchPendingMessages();
+      expect(result.messages).toBe('');
+    });
+  });
 });

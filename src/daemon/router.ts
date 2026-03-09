@@ -410,6 +410,18 @@ const AppRouter = router({
       cronManager.scheduleJob(chatId, input.job);
       return { success: true };
     }),
+  fetchPendingMessages: apiProcedure.mutation(async () => {
+    const cwd = process.cwd();
+    const queue = await import('./queue.js').then((m) => m.getQueue(cwd));
+    const extracted = queue.extractPending();
+    if (extracted.length === 0) {
+      return { messages: '' };
+    }
+    const formattedMessages = extracted
+      .map((text) => `<message>\n${text}\n</message>`)
+      .join('\n\n');
+    return { messages: formattedMessages };
+  }),
   deleteCronJob: apiProcedure
     .input(z.object({ chatId: z.string().optional(), id: z.string() }))
     .mutation(async ({ input, ctx }) => {

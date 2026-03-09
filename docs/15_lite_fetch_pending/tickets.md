@@ -3,7 +3,7 @@
 ## Step 1: Add TRPC Endpoint `fetchPendingMessages`
 - **Description**: Add the `fetchPendingMessages` mutation to `src/daemon/router.ts` that retrieves the queue, extracts pending messages, formats them in `<message>` tags, and returns them as a single string. Update `src/daemon/message.ts` to ensure `AbortError` is handled gracefully when tasks are extracted.
 - **Verification**: Write a unit test to verify the TRPC mutation extracts and formats messages properly without aborting current tasks. Check `npm run format:check && npm run lint && npm run check && npm run test`.
-- **Status**: Not started
+- **Status**: Complete
 
 ## Step 2: Add `fetch-pending` Command to `clawmini-lite`
 - **Description**: In `src/cli/lite.ts`, register a new `fetch-pending` command under the main program. This command should invoke the new TRPC mutation via `getClient().fetchPendingMessages.mutate()` and output the result to `stdout`.

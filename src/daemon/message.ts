@@ -499,7 +499,15 @@ export async function executeDirectMessage(
   }, state.message);
 
   if (!noWait) {
-    await taskPromise;
+    try {
+      await taskPromise;
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        // Task was aborted or cleared, likely due to fetchPendingMessages extraction
+      } else {
+        throw err;
+      }
+    }
   } else {
     taskPromise.catch((err) => {
       if (err.name !== 'AbortError') {
