@@ -22,7 +22,8 @@ describe('Google Chat Adapter Configuration', () => {
   describe('GoogleChatConfigSchema', () => {
     it('should validate a correct configuration', () => {
       const config = {
-        pubsubSubscriptionName: 'projects/test/subscriptions/test-sub',
+        projectId: 'test-project',
+        subscriptionName: 'test-sub',
         authorizedUsers: ['test@example.com'],
       };
       const result = GoogleChatConfigSchema.safeParse(config);
@@ -30,7 +31,6 @@ describe('Google Chat Adapter Configuration', () => {
       if (result.success) {
         expect(result.data).toEqual({
           ...config,
-          defaultChatId: 'default',
           maxAttachmentSizeMB: 25,
         });
       }
@@ -38,7 +38,8 @@ describe('Google Chat Adapter Configuration', () => {
 
     it('should validate a custom maxAttachmentSizeMB', () => {
       const config = {
-        pubsubSubscriptionName: 'projects/test/subscriptions/test-sub',
+        projectId: 'test-project',
+        subscriptionName: 'test-sub',
         authorizedUsers: ['test@example.com'],
         maxAttachmentSizeMB: 50,
       };
@@ -56,7 +57,8 @@ describe('Google Chat Adapter Configuration', () => {
 
     it('should fail validation if fields are empty', () => {
       const result = GoogleChatConfigSchema.safeParse({
-        pubsubSubscriptionName: '',
+        projectId: '',
+        subscriptionName: '',
         authorizedUsers: [],
       });
       expect(result.success).toBe(false);
@@ -99,9 +101,9 @@ describe('Google Chat Adapter Configuration', () => {
       const writeCall = vi.mocked(fsPromises.writeFile).mock.calls[0];
       expect(writeCall![0]).toBe(getGoogleChatConfigPath());
       expect(JSON.parse(writeCall![1] as string)).toEqual({
-        pubsubSubscriptionName: 'projects/YOUR_PROJECT_ID/subscriptions/YOUR_SUBSCRIPTION_NAME',
+        projectId: 'YOUR_PROJECT_ID',
+        subscriptionName: 'YOUR_SUBSCRIPTION_NAME',
         authorizedUsers: ['user@example.com'],
-        defaultChatId: 'default',
       });
     });
 
@@ -124,13 +126,14 @@ describe('Google Chat Adapter Configuration', () => {
 
     it('should successfully read and parse a valid config file', async () => {
       const mockConfig = {
-        pubsubSubscriptionName: 'projects/test/subscriptions/test-sub',
+        projectId: 'test-project',
+        subscriptionName: 'test-sub',
         authorizedUsers: ['user@example.com'],
       };
       vi.mocked(fsPromises.readFile).mockResolvedValue(JSON.stringify(mockConfig));
 
       const config = await readGoogleChatConfig();
-      expect(config).toEqual({ ...mockConfig, defaultChatId: 'default', maxAttachmentSizeMB: 25 });
+      expect(config).toEqual({ ...mockConfig, maxAttachmentSizeMB: 25 });
       expect(fsPromises.readFile).toHaveBeenCalledWith(getGoogleChatConfigPath(), 'utf-8');
     });
 
@@ -150,7 +153,7 @@ describe('Google Chat Adapter Configuration', () => {
 
     it('should return null if the config fails schema validation', async () => {
       vi.mocked(fsPromises.readFile).mockResolvedValue(
-        JSON.stringify({ pubsubSubscriptionName: 'test' })
+        JSON.stringify({ subscriptionName: 'test' })
       );
 
       const config = await readGoogleChatConfig();

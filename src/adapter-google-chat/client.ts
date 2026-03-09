@@ -46,8 +46,8 @@ export function startGoogleChatIngestion(
   config: GoogleChatConfig,
   trpc: ReturnType<typeof getTRPCClient>
 ) {
-  const pubsub = new PubSub();
-  const subscription = pubsub.subscription(config.pubsubSubscriptionName);
+  const pubsub = new PubSub({ projectId: config.projectId });
+  const subscription = pubsub.subscription(config.subscriptionName);
 
   subscription.on('message', async (message: Message) => {
     try {
@@ -67,8 +67,25 @@ export function startGoogleChatIngestion(
         return;
       }
 
+      // Ensure the message is from a 1:1 DM
+      const spaceType = event.space?.type || event.message?.space?.type;
+      const isSingleUserDm = event.space?.singleUserBotDm || event.message?.space?.singleUserBotDm;
+
+      if (spaceType !== 'DIRECT_MESSAGE' || !isSingleUserDm) {
+        console.log(`Ignoring message from non-1:1 space. (Type: ${spaceType})`);
+        message.ack();
+        return;
+      }
+
       const text = event.message?.text || '';
-      const threadName = event.message?.thread?.name || config.defaultChatId;
+      const threadName =
+        event.message?.thread?.name || event.space?.name || event.message?.space?.name;
+
+      if (!threadName) {
+        console.log('Ignoring message: Could not determine thread or space name.');
+        message.ack();
+        return;
+      }
 
       const downloadedFiles: string[] = [];
       const attachments = event.message?.attachment || [];
