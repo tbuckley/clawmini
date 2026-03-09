@@ -39,6 +39,10 @@ export function calculateDelay(
   return Math.min(delay, 15000);
 }
 
+export function formatPendingMessages(payloads: string[]): string {
+  return payloads.map((text) => `<message>\n${text}\n</message>`).join('\n\n');
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export type RunCommandResult = {
@@ -226,7 +230,7 @@ export async function executeDirectMessage(
     const payloads = currentPayload ? [currentPayload, ...extracted] : extracted;
 
     if (payloads.length > 0) {
-      const pendingText = payloads.map((text) => `<message>\n${text}\n</message>`).join('\n\n');
+      const pendingText = formatPendingMessages(payloads);
       state.message = `${pendingText}\n\n<message>\n${state.message}\n</message>`.trim();
     }
   }
@@ -502,9 +506,7 @@ export async function executeDirectMessage(
     try {
       await taskPromise;
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        // Task was aborted or cleared, likely due to fetchPendingMessages extraction
-      } else {
+      if (!(err instanceof Error && err.name === 'AbortError')) {
         throw err;
       }
     }

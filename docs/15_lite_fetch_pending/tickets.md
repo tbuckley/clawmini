@@ -14,3 +14,11 @@
 - **Description**: Update `templates/gemini-claw-cladding/.gemini/system.md` to inform the agent that additional user messages may be batched in `<message>` tags following tool calls.
 - **Verification**: Ensure the updated system prompt text makes sense and matches the PRD requirements.
 - **Status**: Complete
+
+## Step 4: Refactor and Cleanup (Code Review)
+- **Description**:
+  1. **High - DRY Violation**: `<message>\n${text}\n</message>` formatting logic is duplicated in `src/daemon/message.ts` and `src/daemon/router.ts`. Extract this logic into a shared helper function `formatPendingMessages` in `src/daemon/message.ts` and use it in both places.
+  2. **Medium - Dynamic Imports**: Unnecessary dynamic import of `./queue.js` inside `fetchPendingMessages` in `src/daemon/router.ts` and in `beforeEach` in `src/daemon/router.test.ts`. Change these to static imports at the top of the files.
+  3. **Low - Empty Catch Block**: The catch block handling `AbortError` in `src/daemon/message.ts` (`if (err instanceof Error && err.name === 'AbortError') { ... } else { throw err; }`) should be simplified to `if (!(err instanceof Error && err.name === 'AbortError')) throw err;`.
+- **Verification**: Ensure all checks pass (`npm run format:check && npm run lint && npm run check && npm run test`).
+- **Status**: Complete

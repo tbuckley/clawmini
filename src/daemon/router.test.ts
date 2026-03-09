@@ -5,6 +5,7 @@ import * as workspace from '../shared/workspace.js';
 import * as chats from '../shared/chats.js';
 import type { CronJob } from '../shared/config.js';
 import * as message from './message.js';
+import { getQueue, type Queue } from './queue.js';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -32,9 +33,13 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   };
 });
 
-vi.mock('./message.js', () => ({
-  handleUserMessage: vi.fn(),
-}));
+vi.mock('./message.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./message.js')>();
+  return {
+    ...actual,
+    handleUserMessage: vi.fn(),
+  };
+});
 
 vi.mock('../shared/workspace.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../shared/workspace.js')>();
@@ -379,9 +384,8 @@ describe('Daemon TRPC Router', () => {
   });
 
   describe('fetchPendingMessages', () => {
-    let queue: import('./queue.js').Queue;
-    beforeEach(async () => {
-      const { getQueue } = await import('./queue.js');
+    let queue: Queue;
+    beforeEach(() => {
       queue = getQueue(process.cwd());
       queue.clear();
     });

@@ -21,7 +21,8 @@ import {
 import { PolicyRequestService } from './policy-request-service.js';
 import { RequestStore } from './request-store.js';
 import { CronJobSchema } from '../shared/config.js';
-import { handleUserMessage } from './message.js';
+import { handleUserMessage, formatPendingMessages } from './message.js';
+import { getQueue } from './queue.js';
 import { getDefaultChatId, getMessages } from './chats.js';
 import { runCommand } from './utils/spawn.js';
 import { cronManager } from './cron.js';
@@ -412,15 +413,12 @@ const AppRouter = router({
     }),
   fetchPendingMessages: apiProcedure.mutation(async () => {
     const cwd = process.cwd();
-    const queue = await import('./queue.js').then((m) => m.getQueue(cwd));
+    const queue = getQueue(cwd);
     const extracted = queue.extractPending();
     if (extracted.length === 0) {
       return { messages: '' };
     }
-    const formattedMessages = extracted
-      .map((text) => `<message>\n${text}\n</message>`)
-      .join('\n\n');
-    return { messages: formattedMessages };
+    return { messages: formatPendingMessages(extracted) };
   }),
   deleteCronJob: apiProcedure
     .input(z.object({ chatId: z.string().optional(), id: z.string() }))
