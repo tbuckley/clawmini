@@ -43,6 +43,7 @@ export const initCmd = new Command('init')
         '@clawmini/slash-interrupt',
         '@clawmini/slash-command',
       ],
+      api: true,
     };
 
     if (!fs.existsSync(dirPath)) {
