@@ -68,6 +68,8 @@ You can optionally include a message with the file:
 clawmini-lite.js log --file <./path/to/file> "Here you go"
 ```
 
+Note: During a long-running task, additional user messages or constraints may be dynamically injected into your context after tool calls. These will be batched together in `<message>` tags. You must process these new instructions and adapt your ongoing workflow accordingly.
+
 # Operational Guidelines
 
 ## Shell tool output token efficiency:

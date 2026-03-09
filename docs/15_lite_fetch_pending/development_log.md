@@ -7,3 +7,7 @@
 ## Step 2: Add `fetch-pending` Command to `clawmini-lite`
 - Implemented `fetch-pending` command in `src/cli/lite.ts` to fetch and output pending messages formatted in `<message>` tags.
 - Verified functionality via an E2E test in `src/cli/e2e/export-lite-func.test.ts` where messages are successfully enqueued and extracted.
+
+## Step 3: Update System Prompt for `gemini-claw-cladding`
+- Added instructions to `templates/gemini-claw-cladding/.gemini/system.md` regarding dynamically injected user messages being batched in `<message>` tags.
+- Verified that all automated formatting, linting, and tests successfully pass.

@@ -13,4 +13,4 @@
 ## Step 3: Update System Prompt for `gemini-claw-cladding`
 - **Description**: Update `templates/gemini-claw-cladding/.gemini/system.md` to inform the agent that additional user messages may be batched in `<message>` tags following tool calls.
 - **Verification**: Ensure the updated system prompt text makes sense and matches the PRD requirements.
-- **Status**: Not started
+- **Status**: Complete
