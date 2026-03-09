@@ -9,6 +9,7 @@ export function createE2EContext(dirName: string) {
   function runCli(
     args: string[]
   ): Promise<{ stdout: string; stderr: string; code: number | null }> {
+    const isInit = args[0] === 'init';
     return new Promise((resolve) => {
       const child = spawn('node', [binPath, ...args], {
         cwd: e2eDir,
@@ -27,6 +28,19 @@ export function createE2EContext(dirName: string) {
       });
 
       child.on('close', (code) => {
+        if (isInit && code === 0) {
+          // Update settings to set API port to 0, assigning a random available port
+          const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
+          if (fs.existsSync(settingsPath)) {
+            try {
+              const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+              settings.api = { port: 0 }; // Use random available port to avoid EADDRINUSE during parallel e2e tests
+              fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+            } catch {
+              // ignore
+            }
+          }
+        }
         resolve({ stdout, stderr, code });
       });
     });

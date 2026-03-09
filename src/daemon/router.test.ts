@@ -46,6 +46,7 @@ vi.mock('../shared/workspace.js', async (importOriginal) => {
     getAgent: vi.fn(),
     getWorkspaceRoot: vi.fn().mockReturnValue(process.cwd()),
     getActiveEnvironmentName: vi.fn().mockResolvedValue(null),
+  getActiveEnvironmentInfo: vi.fn().mockResolvedValue(null),
     getEnvironmentPath: vi.fn().mockReturnValue(''),
     readEnvironment: vi.fn().mockResolvedValue(null),
   };
