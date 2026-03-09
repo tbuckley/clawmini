@@ -1,0 +1,34 @@
+(version 1)
+
+;; allow everything by default
+(allow default)
+
+;; deny all writes EXCEPT under specific paths
+(deny file-write*)
+(allow file-write*
+    (subpath (param "WORKSPACE"))
+    (subpath (string-append (param "HOME") "/.gemini"))
+    (subpath (string-append (param "HOME") "/.npm"))
+    (subpath (string-append (param "HOME") "/.cache"))
+    (subpath (string-append (param "HOME") "/.gitconfig"))
+    (subpath "/var")
+    (subpath "/private/var")
+    (literal "/dev/stdout")
+    (literal "/dev/stderr")
+    (literal "/dev/null")
+    (literal "/dev/ptmx")
+    (regex #"^/dev/ttys[0-9]*$")
+)
+
+;; deny all network EXCEPT local proxy and basic network operations
+(deny network-outbound)
+
+;; Allow Clawmini API
+(allow network-outbound (remote tcp "localhost:8888"))
+(allow network-outbound (remote tcp "localhost:3000"))
+
+(deny network-inbound)
+
+;; Also allow local Unix domain sockets for mDNSResponder (DNS resolution via localhost proxy might need this or just general system functionality)
+;; (allow network-outbound (literal "/private/var/run/mDNSResponder"))
+;; (allow network-outbound (remote unix-socket))
