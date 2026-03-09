@@ -21,6 +21,10 @@ vi.mock('./routers/slash-interrupt.js', () => ({
   slashInterrupt: vi.fn((state: RouterState) => ({ ...state, action: 'interrupt' })),
 }));
 
+vi.mock('./routers/slash-policies.js', () => ({
+  slashPolicies: vi.fn(async (state: RouterState) => state),
+}));
+
 describe('Router Pipeline Execution', () => {
   beforeEach(() => {
     vi.clearAllMocks();

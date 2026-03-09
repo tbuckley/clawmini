@@ -4,12 +4,17 @@ import { slashNew } from './routers/slash-new.js';
 import { slashCommand } from './routers/slash-command.js';
 import { slashStop } from './routers/slash-stop.js';
 import { slashInterrupt } from './routers/slash-interrupt.js';
+import { slashPolicies } from './routers/slash-policies.js';
 
 export async function executeRouterPipeline(
   initialState: RouterState,
   routers: string[]
 ): Promise<RouterState> {
-  let state = { ...initialState };
+  let state = await slashPolicies({ ...initialState });
+
+  if (state.action === 'stop') {
+    return state;
+  }
 
   for (const router of routers) {
     if (router === '@clawmini/slash-new') {

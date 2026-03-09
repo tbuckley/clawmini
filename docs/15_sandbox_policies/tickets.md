@@ -59,7 +59,7 @@ This document breaks down the implementation of the Sandbox Policies feature int
 - Write unit tests for the preview message generation (ensuring files are abbreviated correctly).
 - Write tests for the slash commands, explicitly testing the spoofing prevention mechanism.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status:** not started
+**Status:** completed
 
 ## Ticket 6: Execution and Feedback Loop
 **Description:** Complete the workflow by executing approved requests and notifying the agent of the outcome.

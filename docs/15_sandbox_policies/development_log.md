@@ -33,3 +33,14 @@ Starting implementation of Ticket 1.
 - Created `src/cli/e2e/requests.test.ts` which tests the entire flow successfully.
 - Ticket 4 is complete.
 
+## Ticket 5: Chat UI Routing and User Slash Commands
+**Notes:**
+- Implemented `slashPolicies` router in `src/daemon/routers/slash-policies.ts` to process user messages directly.
+- The router acts as an interceptor for `/approve <id>`, `/reject <id> [reason]`, and `/pending` commands.
+- It guarantees strict spoofing prevention by being integrated natively into the router pipeline via `executeRouterPipeline` which strictly evaluates user inputs (`role: 'user'`).
+- In `src/daemon/router.ts`, updated `createPolicyRequest` to generate and append a preview message inside the chat when requests are generated.
+- The preview correctly abbreviates snapshotted file contents to 500 characters and handles failures safely.
+- Wrote full unit test coverage for the preview message and the slash command router spoofing prevention mechanisms.
+- Verified test suite and all quality checks successfully passed (`npm run format:check && npm run lint && npm run check && npm run test`).
+- Ticket 5 is complete.
+

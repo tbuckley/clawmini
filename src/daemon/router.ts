@@ -438,14 +438,59 @@ const AppRouter = router({
         commandName: z.string(),
         args: z.array(z.string()),
         fileMappings: z.record(z.string(), z.string()),
+        chatId: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const workspaceRoot = getWorkspaceRoot(process.cwd());
       const snapshotDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'snapshots');
       const store = new RequestStore(process.cwd());
       const service = new PolicyRequestService(store, workspaceRoot, snapshotDir);
-      return await service.createRequest(input.commandName, input.args, input.fileMappings);
+
+      const request = await service.createRequest(
+        input.commandName,
+        input.args,
+        input.fileMappings
+      );
+      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
+
+      let previewContent = `Sandbox Policy Request: ${request.commandName}\n`;
+      previewContent += `ID: ${request.id}\n`;
+      if (request.args.length > 0) {
+        previewContent += `Args: ${request.args.join(' ')}\n`;
+      }
+
+      for (const [name, snapPath] of Object.entries(request.fileMappings)) {
+        previewContent += `\nFile [${name}]:\n`;
+        try {
+          const fs = await import('node:fs/promises');
+          let content = await fs.readFile(snapPath, 'utf8');
+          if (content.length > 500) {
+            content = content.substring(0, 500) + '\n... (truncated)';
+          }
+          previewContent += content;
+        } catch (e: unknown) {
+          previewContent += `<Error reading file: ${(e as Error).message}>`;
+        }
+      }
+
+      previewContent += `\n\nUse /approve ${request.id} or /reject ${request.id} [reason]`;
+
+      const logMsg = {
+        id: (await import('node:crypto')).randomUUID(),
+        messageId: (await import('node:crypto')).randomUUID(),
+        role: 'log' as const,
+        source: 'router' as const,
+        content: previewContent,
+        stderr: '',
+        timestamp: new Date().toISOString(),
+        command: 'policy-request',
+        cwd: process.cwd(),
+        exitCode: 0,
+      };
+
+      await import('./chats.js').then((m) => m.appendMessage(chatId, logMsg));
+      return request;
     }),
 });
 
