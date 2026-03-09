@@ -75,6 +75,10 @@ export function getSettingsPath(startDir = process.cwd()): string {
   return path.join(getClawminiDir(startDir), 'settings.json');
 }
 
+export function getPoliciesPath(startDir = process.cwd()): string {
+  return path.join(getClawminiDir(startDir), 'policies.json');
+}
+
 export function getChatSettingsPath(chatId: string, startDir = process.cwd()): string {
   return path.join(getClawminiDir(startDir), 'chats', chatId, 'settings.json');
 }
@@ -396,6 +400,18 @@ export async function readSettings(startDir = process.cwd()): Promise<Settings |
 
 export async function writeSettings(data: Settings, startDir = process.cwd()): Promise<void> {
   await writeJsonFile(getSettingsPath(startDir), data as Record<string, unknown>);
+}
+
+export async function readPolicies(
+  startDir = process.cwd()
+): Promise<import('./policies.js').PolicyConfig | null> {
+  const data = await readJsonFile(getPoliciesPath(startDir));
+  if (!data) return null;
+  // Basic validation, assuming PolicyConfig structure
+  if (data.policies && typeof data.policies === 'object') {
+    return data as unknown as import('./policies.js').PolicyConfig;
+  }
+  return null;
 }
 
 export function getEnvironmentPath(name: string, startDir = process.cwd()): string {

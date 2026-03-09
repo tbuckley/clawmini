@@ -10,7 +10,11 @@ import {
   writeChatSettings,
   getAgent,
   getWorkspaceRoot,
+  readPolicies,
+  getClawminiDir,
 } from '../shared/workspace.js';
+import { PolicyRequestService } from './policy-request-service.js';
+import { RequestStore } from './request-store.js';
 import { CronJobSchema } from '../shared/config.js';
 import { handleUserMessage } from './message.js';
 import { getDefaultChatId, getMessages } from './chats.js';
@@ -424,6 +428,24 @@ const AppRouter = router({
         return { success: true, deleted: true };
       }
       return { success: true, deleted: false };
+    }),
+  listPolicies: apiProcedure.query(async () => {
+    return await readPolicies();
+  }),
+  createPolicyRequest: apiProcedure
+    .input(
+      z.object({
+        commandName: z.string(),
+        args: z.array(z.string()),
+        fileMappings: z.record(z.string(), z.string()),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const workspaceRoot = getWorkspaceRoot(process.cwd());
+      const snapshotDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'snapshots');
+      const store = new RequestStore(process.cwd());
+      const service = new PolicyRequestService(store, workspaceRoot, snapshotDir);
+      return await service.createRequest(input.commandName, input.args, input.fileMappings);
     }),
 });
 

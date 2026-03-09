@@ -24,3 +24,12 @@ Starting implementation of Ticket 1.
 - Authored passing unit tests for request creation, rejection (on threshold), and argument interpolation handling.
 - Ensured all codebase formatting, linting, and tests passed via the required checks.
 - Ticket 3 is complete.
+## Ticket 4: CLI Agent Commands
+**Notes:**
+- Implemented `clawmini requests list` to view available policies.
+- Implemented `clawmini request <cmd> [--help] [--file name=path] -- [args]` to spawn policies or send them as requests to the daemon.
+- Added `listPolicies` and `createPolicyRequest` to the daemon's AppRouter.
+- Handled Commander's excess argument parsing correctly to allow passing opaque arguments without errors.
+- Created `src/cli/e2e/requests.test.ts` which tests the entire flow successfully.
+- Ticket 4 is complete.
+

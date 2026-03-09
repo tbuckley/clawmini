@@ -46,7 +46,7 @@ This document breaks down the implementation of the Sandbox Policies feature int
 **Verification:**
 - Write tests for the CLI commands, verifying correct argument parsing (especially the `--` separator) and interaction with the daemon service.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status:** not started
+**Status:** completed
 
 ## Ticket 5: Chat UI Routing and User Slash Commands
 **Description:** Surface requests to the user for review and provide commands to act on them.
