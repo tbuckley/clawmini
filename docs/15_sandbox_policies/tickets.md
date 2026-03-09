@@ -72,4 +72,4 @@ This document breaks down the implementation of the Sandbox Policies feature int
 - Write integration tests simulating the full end-to-end flow: request creation -> user approval -> execution -> feedback injection.
 - Write integration tests for the rejection flow.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status:** not started
+**Status:** completed

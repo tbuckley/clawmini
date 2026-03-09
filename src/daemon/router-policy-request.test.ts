@@ -1,7 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { appRouter } from './router.js';
 import * as chats from '../shared/chats.js';
-import fs from 'node:fs/promises';
 
 vi.mock('../shared/chats.js', () => ({
   getDefaultChatId: vi.fn().mockResolvedValue('default-chat'),
@@ -22,14 +22,14 @@ vi.mock('./policy-request-service.js', () => {
           commandName: 'test-cmd',
           args: ['arg1', 'arg2'],
           fileMappings: {
-            'file1': '/mock/.clawmini/tmp/snapshots/file1.txt',
-            'file2': '/mock/.clawmini/tmp/snapshots/file2.txt'
+            file1: '/mock/.clawmini/tmp/snapshots/file1.txt',
+            file2: '/mock/.clawmini/tmp/snapshots/file2.txt',
           },
           state: 'Pending',
-          createdAt: Date.now()
+          createdAt: Date.now(),
         };
       }
-    }
+    },
   };
 });
 
@@ -39,9 +39,9 @@ const { mockReadFile } = vi.hoisted(() => {
 
 vi.mock('node:fs/promises', () => ({
   default: {
-    readFile: mockReadFile
+    readFile: mockReadFile,
   },
-  readFile: mockReadFile
+  readFile: mockReadFile,
 }));
 
 describe('createPolicyRequest preview message', () => {
