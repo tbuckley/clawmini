@@ -411,14 +411,16 @@ const AppRouter = router({
       cronManager.scheduleJob(chatId, input.job);
       return { success: true };
     }),
-  fetchPendingMessages: apiProcedure.mutation(async () => {
+  fetchPendingMessages: apiProcedure.mutation(async ({ ctx }) => {
     const cwd = process.cwd();
     const queue = getQueue(cwd);
-    const extracted = queue.extractPending();
+    const sessionId = ctx.tokenPayload?.sessionId;
+
+    const extracted = queue.extractPending((p) => !sessionId || p.sessionId === sessionId);
     if (extracted.length === 0) {
       return { messages: '' };
     }
-    return { messages: formatPendingMessages(extracted) };
+    return { messages: formatPendingMessages(extracted.map((p) => p.text)) };
   }),
   deleteCronJob: apiProcedure
     .input(z.object({ chatId: z.string().optional(), id: z.string() }))

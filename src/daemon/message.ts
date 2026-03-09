@@ -223,14 +223,17 @@ export async function executeDirectMessage(
   }
 
   if (state.action === 'interrupt') {
+    const isMatchingSession = (p: { sessionId: string }) => p.sessionId === state.sessionId;
     const currentPayload = queue.getCurrentPayload();
-    queue.abortCurrent();
+    const currentMatches = currentPayload ? isMatchingSession(currentPayload) : false;
 
-    const extracted = queue.extractPending();
-    const payloads = currentPayload ? [currentPayload, ...extracted] : extracted;
+    queue.abortCurrent(isMatchingSession);
+
+    const extracted = queue.extractPending(isMatchingSession);
+    const payloads = currentMatches && currentPayload ? [currentPayload, ...extracted] : extracted;
 
     if (payloads.length > 0) {
-      const pendingText = formatPendingMessages(payloads);
+      const pendingText = formatPendingMessages(payloads.map((p) => p.text));
       state.message = `${pendingText}\n\n<message>\n${state.message}\n</message>`.trim();
     }
   }
@@ -500,7 +503,7 @@ export async function executeDirectMessage(
     if (lastLogMsg) {
       await appendMessage(chatId, lastLogMsg);
     }
-  }, state.message);
+  }, { text: state.message, sessionId: state.sessionId || 'default' });
 
   if (!noWait) {
     try {

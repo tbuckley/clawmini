@@ -31,9 +31,9 @@
 ## Step 6: Session-Scope Enqueue and Interruptions
 - **Description**: In `src/daemon/message.ts`, change the `TPayload` object type passed to `queue.enqueue` to contain `{ text: string; sessionId: string }` instead of a raw string. Update the `/interrupt` handler to extract and abort *only* the tasks where the payload `sessionId` matches `state.sessionId`.
 - **Verification**: Update any broken tests. Verify that sending `/interrupt` only interrupts tasks matching the current session, while `/stop` still clears the entire queue. Run `npm run lint && npm run check && npm run test`.
-- **Status**: Not Started
+- **Status**: Complete
 
 ## Step 7: Session-Scope `fetchPendingMessages` Endpoint
 - **Description**: Update `fetchPendingMessages` in `src/daemon/router.ts` to utilize the new `QueuePayload` type. Extract the caller's session ID from `ctx.tokenPayload?.sessionId`. Pass a predicate to `queue.extractPending` that only matches payloads belonging to this `sessionId`. Ensure the returned formatted text extracts the `.text` property from the payloads.
 - **Verification**: Add/update unit tests in `src/daemon/router.test.ts` proving that tasks from different sessions are ignored by the fetch endpoint. Run `npm run test -- router.test.ts` and `npm run test -- export-lite-func.test.ts`.
-- **Status**: Not Started
+- **Status**: Complete

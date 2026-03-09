@@ -17,3 +17,15 @@
 - Ensured existing functionality remains intact when no predicate is provided.
 - Added a unit test in `src/daemon/queue.test.ts` to verify `extractPending` only clears matching tasks and leaves non-matching tasks in the queue.
 - Tested successfully using `vitest run src/daemon/queue.test.ts`.
+
+## Step 6: Session-Scope Enqueue and Interruptions
+- Updated `src/daemon/queue.ts` to export a `QueuePayload` interface `{ text: string; sessionId: string }` and updated `getQueue` to use it.
+- Updated `src/daemon/message.ts` to pass the new object payload when enqueuing tasks.
+- Modified the `/interrupt` handler in `src/daemon/message.ts` to only extract and abort pending tasks matching the current session ID.
+- Fixed broken tests in `message-interruption.test.ts` to account for the new payload type and session-matching logic.
+
+## Step 7: Session-Scope fetchPendingMessages Endpoint
+- Updated `fetchPendingMessages` in `src/daemon/router.ts` to read `sessionId` from `ctx.tokenPayload?.sessionId`.
+- Passed a predicate to `queue.extractPending` to only extract tasks belonging to the caller's session.
+- Updated the map function to properly format the extracted `.text` strings.
+- Refactored `src/daemon/router.test.ts` to use `QueuePayload` and added assertions verifying that tasks from different sessions are correctly ignored when fetching.

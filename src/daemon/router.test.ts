@@ -5,7 +5,7 @@ import * as workspace from '../shared/workspace.js';
 import * as chats from '../shared/chats.js';
 import type { CronJob } from '../shared/config.js';
 import * as message from './message.js';
-import { getQueue, type Queue } from './queue.js';
+import { getQueue } from './queue.js';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -384,38 +384,47 @@ describe('Daemon TRPC Router', () => {
   });
 
   describe('fetchPendingMessages', () => {
-    let queue: Queue;
+    let queue: ReturnType<typeof getQueue>;
     beforeEach(() => {
       queue = getQueue(process.cwd());
       queue.clear();
     });
 
-    it('should extract pending messages from queue and format them', async () => {
+    it('should extract pending messages from queue matching the session and format them', async () => {
       let resolveFirstTask: () => void;
       const firstTaskPromise = new Promise<void>((r) => {
         resolveFirstTask = r;
       });
 
       // The first task will start and block, leaving the others in pending
-      queue.enqueue(async () => {
-        await firstTaskPromise;
-      }, 'Task 1');
+      queue.enqueue(
+        async () => {
+          await firstTaskPromise;
+        },
+        { text: 'Task 1', sessionId: 's1' }
+      );
 
       // These will stay in pending
-      const p2 = queue.enqueue(async () => {}, 'Task 2');
-      const p3 = queue.enqueue(async () => {}, 'Task 3');
+      const p2 = queue.enqueue(async () => {}, { text: 'Task 2', sessionId: 's1' });
+      const p3 = queue.enqueue(async () => {}, { text: 'Task 3', sessionId: 's1' });
+      const p4 = queue.enqueue(async () => {}, { text: 'Task 4', sessionId: 's2' });
 
       // We expect them to throw AbortError when extracted
       p2.catch(() => {});
       p3.catch(() => {});
+      p4.catch(() => {});
 
-      const caller = appRouter.createCaller({});
+      const caller = appRouter.createCaller({
+        tokenPayload: { sessionId: 's1', chatId: 'c1', agentId: 'a1', timestamp: 123 },
+      });
       const result = await caller.fetchPendingMessages();
 
       expect(result.messages).toBe(
         '<message>\nTask 2\n</message>\n\n<message>\nTask 3\n</message>'
       );
-      expect(queue.extractPending()).toEqual([]);
+      expect(queue.extractPending((p) => p.sessionId === 's2')).toEqual([
+        { text: 'Task 4', sessionId: 's2' },
+      ]);
 
       resolveFirstTask!(); // cleanup
     });

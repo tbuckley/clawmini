@@ -60,14 +60,20 @@ describe('Interruption flow in message handler', () => {
 
     // Enqueue some dummy tasks with payloads
     queue
-      .enqueue(async () => {
-        await new Promise((r) => setTimeout(r, 100));
-      }, 'pending 1')
+      .enqueue(
+        async () => {
+          await new Promise((r) => setTimeout(r, 100));
+        },
+        { text: 'pending 1', sessionId: 'test-session' }
+      )
       .catch(() => {});
     queue
-      .enqueue(async () => {
-        await new Promise((r) => setTimeout(r, 100));
-      }, 'pending 2')
+      .enqueue(
+        async () => {
+          await new Promise((r) => setTimeout(r, 100));
+        },
+        { text: 'pending 2', sessionId: 'test-session' }
+      )
       .catch(() => {});
 
     const state: RouterState = {
@@ -75,6 +81,7 @@ describe('Interruption flow in message handler', () => {
       messageId: 'mock-msg-id',
       chatId: 'chat1',
       action: 'interrupt',
+      sessionId: 'test-session',
     };
 
     const runCommand = vi.fn().mockResolvedValue({ stdout: 'done', stderr: '', exitCode: 0 });
