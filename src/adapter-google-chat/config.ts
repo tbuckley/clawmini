@@ -9,6 +9,7 @@ export const GoogleChatConfigSchema = z.looseObject({
   subscriptionName: z.string().min(1, 'Pub/Sub Subscription Name is required.'),
   authorizedUsers: z.array(z.string()).min(1, 'At least one Authorized User is required.'),
   maxAttachmentSizeMB: z.number().default(25).optional(),
+  chatId: z.string().default('default').optional(),
 });
 
 export type GoogleChatConfig = z.infer<typeof GoogleChatConfigSchema>;
@@ -51,6 +52,7 @@ export async function initGoogleChatConfig(startDir = process.cwd()): Promise<vo
     projectId: 'YOUR_PROJECT_ID',
     subscriptionName: 'YOUR_SUBSCRIPTION_NAME',
     authorizedUsers: ['user@example.com'],
+    chatId: 'default',
   };
 
   await fsPromises.writeFile(configPath, JSON.stringify(templateConfig, null, 2), 'utf-8');

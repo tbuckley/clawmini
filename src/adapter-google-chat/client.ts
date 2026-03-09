@@ -12,6 +12,7 @@ import { createUnixSocketEventSource } from '../shared/event-source.js';
 import type { GoogleChatConfig } from './config.js';
 import { isAuthorized } from './config.js';
 import { downloadAttachment } from './utils.js';
+import { setActiveThread } from './active-thread.js';
 
 export function getTRPCClient(options: { socketPath?: string } = {}) {
   const socketPath = options.socketPath ?? getSocketPath();
@@ -67,25 +68,18 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      // Ensure the message is from a 1:1 DM
-      const spaceType = event.space?.type || event.message?.space?.type;
-      const isSingleUserDm = event.space?.singleUserBotDm || event.message?.space?.singleUserBotDm;
-
-      if (spaceType !== 'DIRECT_MESSAGE' || !isSingleUserDm) {
-        console.log(`Ignoring message from non-1:1 space. (Type: ${spaceType})`);
-        message.ack();
-        return;
-      }
-
       const text = event.message?.text || '';
+      const spaceName = event.space?.name || event.message?.space?.name;
       const threadName =
-        event.message?.thread?.name || event.space?.name || event.message?.space?.name;
+        event.message?.thread?.name || spaceName;
 
-      if (!threadName) {
+      if (!threadName || !spaceName) {
         console.log('Ignoring message: Could not determine thread or space name.');
         message.ack();
         return;
       }
+
+      setActiveThread(spaceName, threadName);
 
       const downloadedFiles: string[] = [];
       const attachments = event.message?.attachment || [];
@@ -115,7 +109,7 @@ export function startGoogleChatIngestion(
         client: 'cli',
         data: {
           message: text,
-          chatId: threadName,
+          chatId: config.chatId || 'default',
           files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
           adapter: 'google-chat',
           noWait: true,
