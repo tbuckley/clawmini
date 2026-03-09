@@ -29,9 +29,9 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
   const approveMatch = message.match(/^\/approve\s+([^\s]+)/);
   if (approveMatch) {
     const id = approveMatch[1];
+    if (!id) return state;
     const store = new RequestStore(process.cwd());
-    const requests = await store.list();
-    const req = requests.find((r) => r.id === id);
+    const req = await store.load(id);
     if (!req) return { ...state, reply: `Request not found: ${id}`, action: 'stop' };
     if (req.state !== 'Pending')
       return { ...state, reply: `Request is not pending: ${id}`, action: 'stop' };
@@ -75,10 +75,10 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
   const rejectMatch = message.match(/^\/reject\s+([^\s]+)(?:\s+(.*))?/);
   if (rejectMatch) {
     const id = rejectMatch[1];
+    if (!id) return state;
     const reason = rejectMatch[2] || 'No reason provided';
     const store = new RequestStore(process.cwd());
-    const requests = await store.list();
-    const req = requests.find((r) => r.id === id);
+    const req = await store.load(id);
     if (!req) return { ...state, reply: `Request not found: ${id}`, action: 'stop' };
     if (req.state !== 'Pending')
       return { ...state, reply: `Request is not pending: ${id}`, action: 'stop' };

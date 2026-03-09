@@ -21,10 +21,12 @@ describe('slashPolicies', () => {
   beforeEach(() => {
     mockStore = {
       list: vi.fn(),
+      load: vi.fn(),
       save: vi.fn(),
     };
     vi.mocked(RequestStore).mockImplementation(function (this: any) {
       this.list = mockStore.list;
+      this.load = mockStore.load;
       this.save = mockStore.save;
       return this;
     } as any);
@@ -86,7 +88,7 @@ describe('slashPolicies', () => {
       state: 'Pending',
       createdAt: Date.now(),
     };
-    mockStore.list.mockResolvedValue([pendingReq]);
+    mockStore.load.mockResolvedValue(pendingReq);
 
     const state = { message: '/approve req-1', chatId: 'chat-1' };
     const result = await slashPolicies(state);
@@ -116,7 +118,7 @@ describe('slashPolicies', () => {
       state: 'Pending',
       createdAt: Date.now(),
     };
-    mockStore.list.mockResolvedValue([pendingReq]);
+    mockStore.load.mockResolvedValue(pendingReq);
 
     const state = { message: '/reject req-1 Not allowed', chatId: 'chat-1' };
     const result = await slashPolicies(state);
@@ -140,7 +142,7 @@ describe('slashPolicies', () => {
   });
 
   it('should not act if request is not found', async () => {
-    mockStore.list.mockResolvedValue([]);
+    mockStore.load.mockResolvedValue(null);
 
     const state = { message: '/approve req-1', chatId: 'chat-1' };
     const result = await slashPolicies(state);

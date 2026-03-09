@@ -58,16 +58,8 @@ export const requestCmd = new Command('request')
       }
 
       const dashDashIndex = process.argv.indexOf('--');
-      let opaqueArgs: string[] = [];
-      if (dashDashIndex !== -1) {
-        opaqueArgs = process.argv.slice(dashDashIndex + 1);
-      } else {
-        // Fallback to what commander didn't parse
-        const rawArgs = command.args.slice(1);
-        // Exclude the options commander didn't parse but were passed before `--`?
-        // We'll just take whatever commander gives us in `command.args.slice(1)`
-        opaqueArgs = rawArgs;
-      }
+      const opaqueArgs =
+        dashDashIndex !== -1 ? process.argv.slice(dashDashIndex + 1) : command.args.slice(1);
 
       const fileMappings: Record<string, string> = {};
       if (options.file) {

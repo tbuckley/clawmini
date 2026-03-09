@@ -73,3 +73,13 @@ This document breaks down the implementation of the Sandbox Policies feature int
 - Write integration tests for the rejection flow.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
 **Status:** completed
+
+## Ticket 7: Code Review Fixes
+**Description:** Address code review feedback to improve performance and code quality.
+**Tasks:**
+- **High Priority:** In `src/daemon/routers/slash-policies.ts`, use `store.load(id)` instead of `store.list().find()` to fetch single requests in `/approve` and `/reject`, avoiding O(N) file reads.
+- **Medium Priority:** In `src/daemon/request-store.ts`, extract the duplicated `ENOENT` error checking logic into a reusable helper function to adhere to DRY principles.
+- **Low Priority:** In `src/cli/commands/request.ts`, simplify the opaque arguments fallback logic for argument extraction.
+**Verification:**
+- Run `npm run format:check && npm run lint && npm run check && npm run test`.
+**Status:** completed

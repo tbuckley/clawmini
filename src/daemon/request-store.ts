@@ -3,6 +3,12 @@ import path from 'path';
 import { getClawminiDir } from '../shared/workspace.js';
 import type { PolicyRequest } from '../shared/policies.js';
 
+function isENOENT(err: unknown): boolean {
+  return Boolean(
+    err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'ENOENT'
+  );
+}
+
 export class RequestStore {
   private baseDir: string;
 
@@ -30,12 +36,7 @@ export class RequestStore {
       const data = await fs.readFile(filePath, 'utf8');
       return JSON.parse(data) as PolicyRequest;
     } catch (err: unknown) {
-      if (
-        err &&
-        typeof err === 'object' &&
-        'code' in err &&
-        (err as { code: string }).code === 'ENOENT'
-      ) {
+      if (isENOENT(err)) {
         return null;
       }
       const msg = err instanceof Error ? err.message : String(err);
@@ -58,14 +59,7 @@ export class RequestStore {
         }
       }
     } catch (err: unknown) {
-      if (
-        !(
-          err &&
-          typeof err === 'object' &&
-          'code' in err &&
-          (err as { code: string }).code === 'ENOENT'
-        )
-      ) {
+      if (!isENOENT(err)) {
         throw err;
       }
     }
