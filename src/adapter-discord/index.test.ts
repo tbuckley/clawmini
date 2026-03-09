@@ -122,6 +122,7 @@ describe('Discord Adapter Entry Point', () => {
         chatId: 'default',
         files: undefined,
         adapter: 'discord',
+        noWait: true,
       },
     });
     vi.useRealTimers();
@@ -172,6 +173,7 @@ describe('Discord Adapter Entry Point', () => {
         chatId: 'default',
         files: undefined,
         adapter: 'discord',
+        noWait: true,
       },
     });
     expect(mockTrpc.sendMessage.mutate).toHaveBeenNthCalledWith(2, {
@@ -182,6 +184,7 @@ describe('Discord Adapter Entry Point', () => {
         chatId: 'default',
         files: undefined,
         adapter: 'discord',
+        noWait: true,
       },
     });
   });
@@ -335,6 +338,7 @@ describe('Discord Adapter Entry Point', () => {
         chatId: 'default',
         files: undefined, // no files should be attached
         adapter: 'discord',
+        noWait: true,
       },
     });
 
@@ -387,6 +391,7 @@ describe('Discord Adapter Entry Point', () => {
         chatId: 'default',
         files: undefined,
         adapter: 'discord',
+        noWait: true,
       },
     });
     vi.useRealTimers();

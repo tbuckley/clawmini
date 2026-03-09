@@ -124,6 +124,7 @@ export async function main() {
           chatId: config.chatId,
           files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
           adapter: 'discord',
+          noWait: true,
         },
       });
       console.log('Message forwarded to daemon successfully.');
