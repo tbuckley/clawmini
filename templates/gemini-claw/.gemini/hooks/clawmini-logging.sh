@@ -10,4 +10,8 @@ tool_name=$(echo "$input" | jq -r '.tool_name')
 tool_input=$(echo "$input" | jq -rc '.tool_input')
 
 # Note: This assumes the clawmini-lite.js script is on your PATH
-clawmini-lite.js log "🛠️ $tool_name: $tool_input"
+if command -v clawmini-lite.js >/dev/null 2>&1; then
+  clawmini-lite.js log "🛠️ $tool_name: $tool_input"
+else
+  echo "clawmini-logging hook: clawmini-lite.js not found in PATH. Skipping log." >&2
+fi
