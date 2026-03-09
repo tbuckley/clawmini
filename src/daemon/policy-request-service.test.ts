@@ -1,0 +1,75 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { RequestStore } from './request-store.js';
+import { PolicyRequestService } from './policy-request-service.js';
+
+describe('PolicyRequestService', () => {
+  let tmpDir: string;
+  let workspaceRoot: string;
+  let snapshotDir: string;
+  let store: RequestStore;
+  let service: PolicyRequestService;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'policy-request-service-test-'));
+    workspaceRoot = path.join(tmpDir, 'workspace');
+    snapshotDir = path.join(tmpDir, 'snapshots');
+
+    await fs.mkdir(workspaceRoot, { recursive: true });
+
+    store = new RequestStore(tmpDir);
+    service = new PolicyRequestService(store, workspaceRoot, snapshotDir, 2);
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should create a request, snapshotting files and storing it', async () => {
+    const testFile = path.join(workspaceRoot, 'test.txt');
+    await fs.writeFile(testFile, 'hello world');
+
+    const request = await service.createRequest('testCmd', ['--file', '{{myFile}}'], {
+      myFile: 'test.txt',
+    });
+
+    expect(request.id).toBeDefined();
+    expect(request.commandName).toBe('testCmd');
+    expect(request.state).toBe('Pending');
+    expect(Object.keys(request.fileMappings)).toHaveLength(1);
+
+    const snapshotPath = request.fileMappings['myFile'];
+    expect(snapshotPath).toBeDefined();
+    expect(snapshotPath!.startsWith(snapshotDir)).toBe(true);
+
+    const snapshotContent = await fs.readFile(snapshotPath!, 'utf8');
+    expect(snapshotContent).toBe('hello world');
+
+    const storedRequests = await store.list();
+    expect(storedRequests).toHaveLength(1);
+    expect(storedRequests[0]?.id).toBe(request.id);
+  });
+
+  it('should reject when pending limit is reached', async () => {
+    await service.createRequest('cmd1', [], {});
+    await service.createRequest('cmd2', [], {});
+
+    await expect(service.createRequest('cmd3', [], {})).rejects.toThrow(
+      'Maximum number of pending requests (2) reached.'
+    );
+  });
+
+  it('should correctly interpolate arguments', async () => {
+    const testFile = path.join(workspaceRoot, 'test.txt');
+    await fs.writeFile(testFile, 'hello world');
+
+    const request = await service.createRequest('testCmd', ['--input', '{{inputFile}}'], {
+      inputFile: 'test.txt',
+    });
+
+    const interpolatedArgs = service.getInterpolatedArgs(request);
+    expect(interpolatedArgs).toEqual(['--input', request.fileMappings['inputFile']]);
+  });
+});

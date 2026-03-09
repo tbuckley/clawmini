@@ -35,7 +35,7 @@ This document breaks down the implementation of the Sandbox Policies feature int
 **Verification:**
 - Write unit tests for `PolicyRequestService`, ensuring it correctly coordinates snapshotting and storage, and properly rejects requests when the pending limit is reached.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status:** not started
+**Status:** completed
 
 ## Ticket 4: CLI Agent Commands
 **Description:** Expose the sandbox policies to the agent via the `clawmini` CLI.

@@ -14,3 +14,13 @@ Starting implementation of Ticket 1.
 - `src/daemon/policy-utils.ts` and `src/daemon/policy-utils.test.ts` implement snapshotting, argument interpolation, and safe execution.
 - Verified test coverage and passed formatting/linting checks.
 - Ticket 2 is complete.
+
+## Ticket 3: Daemon Request Service
+**Notes:**
+- Created `src/daemon/policy-request-service.ts` and `src/daemon/policy-request-service.test.ts`.
+- The service enforces maximum limit of pending requests (100).
+- Handled snapshot generation for mapping file paths using `createSnapshot`.
+- Stored requested payloads via `RequestStore`.
+- Authored passing unit tests for request creation, rejection (on threshold), and argument interpolation handling.
+- Ensured all codebase formatting, linting, and tests passed via the required checks.
+- Ticket 3 is complete.
