@@ -1,7 +1,10 @@
 import { Command } from 'commander';
-import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import {
+  getLiteScriptContent,
+  writeLiteScript,
+  exportLiteToAllEnvironments,
+} from '../../shared/lite.js';
 
 export const exportLiteCmd = new Command('export-lite')
   .description('Export the standalone clawmini-lite client script')
@@ -13,24 +16,7 @@ export const exportLiteCmd = new Command('export-lite')
   .action(async (options: { out?: string; stdout?: boolean }) => {
     let liteScriptContent = '';
     try {
-      const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-      // When running from dist/cli/index.mjs, lite.mjs is in the same directory.
-      let liteScriptPath = path.resolve(__dirname, 'lite.mjs');
-
-      try {
-        await fs.access(liteScriptPath);
-      } catch {
-        // Fallback for development/testing when running from src/cli/commands
-        liteScriptPath = path.resolve(__dirname, '../../../dist/cli/lite.mjs');
-      }
-
-      liteScriptContent = await fs.readFile(liteScriptPath, 'utf8');
-
-      // Ensure it has the hashbang (if tsdown stripped it or if missing)
-      if (!liteScriptContent.startsWith('#!')) {
-        liteScriptContent = '#!/usr/bin/env node\n' + liteScriptContent;
-      }
+      liteScriptContent = await getLiteScriptContent();
     } catch (err) {
       console.error(
         `Failed to read compiled clawmini-lite script. Ensure you have built the project (npm run build). Error: ${err instanceof Error ? err.message : String(err)}`
@@ -47,24 +33,30 @@ export const exportLiteCmd = new Command('export-lite')
     let finalPath = path.resolve(process.cwd(), defaultFilename);
 
     if (options.out) {
+      finalPath = path.resolve(process.cwd(), options.out);
       try {
-        const stats = await fs.stat(options.out);
-        if (stats.isDirectory()) {
-          finalPath = path.resolve(options.out, defaultFilename);
-        } else {
-          finalPath = path.resolve(options.out);
-        }
-      } catch {
-        // Path doesn't exist, assume it's a file path
-        finalPath = path.resolve(options.out);
+        const writtenPath = await writeLiteScript(finalPath);
+        console.log(`Successfully exported clawmini-lite to ${writtenPath}`);
+      } catch (err) {
+        console.error(
+          `Failed to export script: ${err instanceof Error ? err.message : String(err)}`
+        );
+        process.exit(1);
       }
+      return;
     }
 
-    try {
-      await fs.writeFile(finalPath, liteScriptContent, { mode: 0o755 });
-      console.log(`Successfully exported clawmini-lite to ${finalPath}`);
-    } catch (err) {
-      console.error(`Failed to export script: ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
+    const exportedToEnvironments = await exportLiteToAllEnvironments(process.cwd());
+
+    if (!exportedToEnvironments) {
+      try {
+        const writtenPath = await writeLiteScript(finalPath);
+        console.log(`Successfully exported clawmini-lite to ${writtenPath}`);
+      } catch (err) {
+        console.error(
+          `Failed to export script: ${err instanceof Error ? err.message : String(err)}`
+        );
+        process.exit(1);
+      }
     }
   });

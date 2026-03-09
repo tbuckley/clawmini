@@ -17,6 +17,7 @@ import { cronManager } from './cron.js';
 import { SettingsSchema } from '../shared/config.js';
 import { validateToken, getApiContext } from './auth.js';
 import path from 'node:path';
+import { exportLiteToEnvironment } from '../shared/lite.js';
 
 export async function initDaemon() {
   const socketPath = getSocketPath();
@@ -52,11 +53,17 @@ export async function initDaemon() {
       for (const [envPath, envName] of Object.entries(currentSettings.environments)) {
         try {
           const envConfig = await readEnvironment(envName);
+          const envDir = getEnvironmentPath(envName);
+          const affectedDir = path.resolve(workspaceRoot, envPath);
+
+          // Try to export clawmini-lite to the environment directory
+          if (hookType === 'up' && envConfig) {
+            await exportLiteToEnvironment(envName, envConfig, affectedDir);
+          }
+
           const command = envConfig?.[hookType];
           if (command) {
             console.log(`Executing '${hookType}' hook for environment '${envName}': ${command}`);
-            const envDir = getEnvironmentPath(envName);
-            const affectedDir = path.resolve(workspaceRoot, envPath);
             execSync(command, {
               cwd: affectedDir,
               stdio: 'inherit',

@@ -17,7 +17,7 @@ import {
   writeAgentSessionSettings,
   getAgent,
   getWorkspaceRoot,
-  getActiveEnvironmentName,
+  getActiveEnvironmentInfo,
   getEnvironmentPath,
   readEnvironment,
 } from '../shared/workspace.js';
@@ -344,8 +344,9 @@ export async function executeDirectMessage(
           agentSpecificEnv.add('CLAW_API_TOKEN');
         }
 
-        const activeEnvName = await getActiveEnvironmentName(executionCwd, cwd);
-        if (activeEnvName) {
+        const activeEnvInfo = await getActiveEnvironmentInfo(executionCwd, cwd);
+        if (activeEnvInfo) {
+          const activeEnvName = activeEnvInfo.name;
           const activeEnv = await readEnvironment(activeEnvName, cwd);
 
           if (activeEnv?.env) {
@@ -354,7 +355,17 @@ export async function executeDirectMessage(
                 delete env[key];
                 agentSpecificEnv.delete(key);
               } else {
-                env[key] = String(value);
+                let interpolatedValue = String(value);
+                interpolatedValue = interpolatedValue.replace(/\{PATH\}/g, process.env.PATH || '');
+                interpolatedValue = interpolatedValue.replace(
+                  /\{ENV_DIR\}/g,
+                  getEnvironmentPath(activeEnvName, cwd)
+                );
+                interpolatedValue = interpolatedValue.replace(
+                  /\{WORKSPACE_DIR\}/g,
+                  activeEnvInfo.targetPath
+                );
+                env[key] = interpolatedValue;
                 agentSpecificEnv.add(key);
               }
             }

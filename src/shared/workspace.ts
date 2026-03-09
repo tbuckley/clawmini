@@ -412,17 +412,17 @@ export async function readEnvironment(
   return parsed.success ? parsed.data : null;
 }
 
-export async function getActiveEnvironmentName(
+export async function getActiveEnvironmentInfo(
   targetPath: string,
   startDir = process.cwd()
-): Promise<string | null> {
+): Promise<{ name: string; targetPath: string } | null> {
   const settings = await readSettings(startDir);
   if (!settings?.environments) return null;
 
   const workspaceRoot = getWorkspaceRoot(startDir);
   const resolvedTarget = path.resolve(workspaceRoot, targetPath);
 
-  let bestMatch: string | null = null;
+  let bestMatch: { name: string; targetPath: string } | null = null;
   let maxDepth = -1;
 
   for (const [envPath, envName] of Object.entries(settings.environments)) {
@@ -432,12 +432,20 @@ export async function getActiveEnvironmentName(
       const depth = resolvedEnvPath.split(path.sep).length;
       if (depth > maxDepth) {
         maxDepth = depth;
-        bestMatch = envName;
+        bestMatch = { name: envName, targetPath: resolvedEnvPath };
       }
     }
   }
 
   return bestMatch;
+}
+
+export async function getActiveEnvironmentName(
+  targetPath: string,
+  startDir = process.cwd()
+): Promise<string | null> {
+  const info = await getActiveEnvironmentInfo(targetPath, startDir);
+  return info ? info.name : null;
 }
 
 export async function enableEnvironment(

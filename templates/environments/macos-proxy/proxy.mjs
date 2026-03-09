@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// eslint-disable-next-line no-undef
 const envDir = process.env.ENV_DIR || __dirname;
 const allowlistPath = path.join(envDir, 'allowlist.txt');
 
@@ -50,7 +51,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(500);
       res.end(err.message);
     });
-  } catch (e) {
+  } catch {
     res.writeHead(400);
     res.end('Bad request');
   }
@@ -75,7 +76,7 @@ server.on('connect', (req, clientSocket, head) => {
     });
     serverSocket.on('error', () => clientSocket.end());
     clientSocket.on('error', () => serverSocket.end());
-  } catch (e) {
+  } catch {
     clientSocket.end();
   }
 });
