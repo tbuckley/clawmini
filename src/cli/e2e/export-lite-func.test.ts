@@ -148,6 +148,45 @@ describe('E2E Export Lite Functionality Tests', () => {
     await new Promise((resolve) => delProcess.on('close', resolve));
     expect(delStdout).toContain("Job 'lite-job' deleted successfully.");
 
+    // 5. Test fetch-pending
+    const sleeperAgentDir = path.resolve(e2eDir, 'sleeper');
+    fs.mkdirSync(sleeperAgentDir, { recursive: true });
+    await runCli(['agents', 'add', 'sleeper', '--dir', 'sleeper']);
+    const sleeperSettings = path.resolve(e2eDir, '.clawmini/agents/sleeper/settings.json');
+    fs.mkdirSync(path.dirname(sleeperSettings), { recursive: true });
+    const sleepCommand =
+      process.platform === 'win32' ? 'node -e "setTimeout(() => {}, 5000)"' : 'sleep 5';
+    fs.writeFileSync(sleeperSettings, JSON.stringify({ commands: { new: sleepCommand } }));
+
+    await runCli(['chats', 'add', 'sleep-chat']);
+    // Start the sleeper agent to block the queue
+    await runCli([
+      'messages',
+      'send',
+      'block queue',
+      '--chat',
+      'sleep-chat',
+      '--agent',
+      'sleeper',
+      '--no-wait',
+    ]);
+
+    // Send a pending message that will be queued
+    await runCli(['messages', 'send', 'my pending message', '--chat', 'sleep-chat', '--no-wait']);
+
+    // Fetch the pending message
+    const fetchProcess = spawn('node', [litePath, 'fetch-pending'], {
+      env: { ...process.env, CLAW_API_URL: envUrl, CLAW_API_TOKEN: envToken },
+    });
+    let fetchStdout = '';
+    fetchProcess.stdout.on('data', (d) => (fetchStdout += d.toString()));
+    fetchProcess.stderr.on('data', (d) => (fetchStdout += d.toString()));
+    await new Promise((resolve) => fetchProcess.on('close', resolve));
+
+    expect(fetchStdout).toContain('<message>');
+    expect(fetchStdout).toContain('my pending message');
+    expect(fetchStdout).toContain('</message>');
+
     await runCli(['down']);
     fs.writeFileSync(settingsPath, originalSettings);
     await runCli(['up']);

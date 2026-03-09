@@ -64,6 +64,25 @@ program
     }
   });
 
+program
+  .command('fetch-pending')
+  .description('Fetch pending messages and output them as formatted strings')
+  .action(async () => {
+    try {
+      const client = getClient();
+      const result = await client.fetchPendingMessages.mutate();
+      if (result && result.messages) {
+        process.stdout.write(result.messages);
+        if (!result.messages.endsWith('\n')) {
+          process.stdout.write('\n');
+        }
+      }
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
 const jobs = program.command('jobs').description('Manage cron jobs');
 
 jobs
