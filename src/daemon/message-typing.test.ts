@@ -17,7 +17,7 @@ vi.mock('../shared/chats.js', () => ({
 }));
 
 vi.mock('./queue.js', () => ({
-  getQueue: vi.fn().mockReturnValue({
+  getMessageQueue: vi.fn().mockReturnValue({
     enqueue: (fn: any) => fn(),
   }),
 }));

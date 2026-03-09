@@ -33,7 +33,10 @@
 - **Verification**: Update any broken tests. Verify that sending `/interrupt` only interrupts tasks matching the current session, while `/stop` still clears the entire queue. Run `npm run lint && npm run check && npm run test`.
 - **Status**: Complete
 
-## Step 7: Session-Scope `fetchPendingMessages` Endpoint
-- **Description**: Update `fetchPendingMessages` in `src/daemon/router.ts` to utilize the new `QueuePayload` type. Extract the caller's session ID from `ctx.tokenPayload?.sessionId`. Pass a predicate to `queue.extractPending` that only matches payloads belonging to this `sessionId`. Ensure the returned formatted text extracts the `.text` property from the payloads.
-- **Verification**: Add/update unit tests in `src/daemon/router.test.ts` proving that tasks from different sessions are ignored by the fetch endpoint. Run `npm run test -- router.test.ts` and `npm run test -- export-lite-func.test.ts`.
+## Step 8: Final Review Fixes
+- **Description**: 
+  1. **High - Bug / Logic Error in `/interrupt`**: In `src/daemon/message.ts`, the `/interrupt` handler compares `p.sessionId === state.sessionId`. However, when enqueuing tasks, `state.sessionId || 'default'` is used. If `state.sessionId` is `undefined`, `/interrupt` will fail to match any tasks (since `p.sessionId` will be `'default'`). It must fall back to `'default'` when creating the `isMatchingSession` predicate.
+  2. **Medium - Unintended Global Scope in `fetchPendingMessages`**: In `src/daemon/router.ts`, `fetchPendingMessages` uses `!sessionId || p.sessionId === sessionId`. If `sessionId` is undefined, it fetches *all* messages across all sessions, breaking session isolation. It should default to `'default'` (just like `enqueue`) rather than matching all sessions.
+  3. **Low - Naming / Cohesion**: In `src/daemon/queue.ts`, the generic `Queue` class exports `getQueue` which is hardcoded to `Queue<QueuePayload>`. Rename `getQueue` to `getMessageQueue`, `QueuePayload` to `MessageQueuePayload`, and `directoryQueues` to `messageQueues` to better reflect their domain-specific purpose. Update usages across the codebase.
+- **Verification**: Run all checks (`npm run format:check && npm run lint && npm run check && npm run test`). Ensure tests pass.
 - **Status**: Complete

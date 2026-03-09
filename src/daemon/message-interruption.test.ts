@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeDirectMessage } from './message.js';
-import { getQueue } from './queue.js';
+import { getMessageQueue } from './queue.js';
 import type { RouterState } from './routers/types.js';
 
 vi.mock('./chats.js', () => ({
@@ -25,7 +25,7 @@ describe('Interruption flow in message handler', () => {
   });
 
   it('stops execution and clears queue when action is stop', async () => {
-    const queue = getQueue('/test-interrupt-stop');
+    const queue = getMessageQueue('/test-interrupt-stop');
     const abortSpy = vi.spyOn(queue, 'abortCurrent');
     const clearSpy = vi.spyOn(queue, 'clear');
 
@@ -48,7 +48,7 @@ describe('Interruption flow in message handler', () => {
   });
 
   it('interrupts execution and batches pending tasks when action is interrupt', async () => {
-    const queue = getQueue('/test-interrupt-batch');
+    const queue = getMessageQueue('/test-interrupt-batch');
     const abortSpy = vi.spyOn(queue, 'abortCurrent');
 
     // Block the queue with a running task so subsequent ones stay pending
@@ -109,7 +109,7 @@ describe('Interruption flow in message handler', () => {
   });
 
   it('returns early when message is empty and no action is specified', async () => {
-    const queue = getQueue('/test-interrupt-empty');
+    const queue = getMessageQueue('/test-interrupt-empty');
     const state: RouterState = {
       message: '   ',
       messageId: 'mock-msg-id',

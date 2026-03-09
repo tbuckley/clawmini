@@ -22,7 +22,7 @@ import { PolicyRequestService } from './policy-request-service.js';
 import { RequestStore } from './request-store.js';
 import { CronJobSchema } from '../shared/config.js';
 import { handleUserMessage, formatPendingMessages } from './message.js';
-import { getQueue } from './queue.js';
+import { getMessageQueue } from './queue.js';
 import { getDefaultChatId, getMessages } from './chats.js';
 import { runCommand } from './utils/spawn.js';
 import { cronManager } from './cron.js';
@@ -413,10 +413,10 @@ const AppRouter = router({
     }),
   fetchPendingMessages: apiProcedure.mutation(async ({ ctx }) => {
     const cwd = process.cwd();
-    const queue = getQueue(cwd);
-    const sessionId = ctx.tokenPayload?.sessionId;
+    const queue = getMessageQueue(cwd);
+    const targetSessionId = ctx.tokenPayload?.sessionId || 'default';
 
-    const extracted = queue.extractPending((p) => !sessionId || p.sessionId === sessionId);
+    const extracted = queue.extractPending((p) => p.sessionId === targetSessionId);
     if (extracted.length === 0) {
       return { messages: '' };
     }

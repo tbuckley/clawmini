@@ -87,16 +87,16 @@ export class Queue<TPayload = string> {
   }
 }
 
-export interface QueuePayload {
+export interface MessageQueuePayload {
   text: string;
   sessionId: string;
 }
 
-const directoryQueues = new Map<string, Queue<QueuePayload>>();
+const messageQueues = new Map<string, Queue<MessageQueuePayload>>();
 
-export function getQueue(dir: string): Queue<QueuePayload> {
-  if (!directoryQueues.has(dir)) {
-    directoryQueues.set(dir, new Queue<QueuePayload>());
+export function getMessageQueue(dir: string): Queue<MessageQueuePayload> {
+  if (!messageQueues.has(dir)) {
+    messageQueues.set(dir, new Queue<MessageQueuePayload>());
   }
-  return directoryQueues.get(dir)!;
+  return messageQueues.get(dir)!;
 }

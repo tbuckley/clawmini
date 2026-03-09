@@ -5,7 +5,7 @@ import * as workspace from '../shared/workspace.js';
 import * as chats from '../shared/chats.js';
 import type { CronJob } from '../shared/config.js';
 import * as message from './message.js';
-import { getQueue } from './queue.js';
+import { getMessageQueue } from './queue.js';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -384,9 +384,9 @@ describe('Daemon TRPC Router', () => {
   });
 
   describe('fetchPendingMessages', () => {
-    let queue: ReturnType<typeof getQueue>;
+    let queue: ReturnType<typeof getMessageQueue>;
     beforeEach(() => {
-      queue = getQueue(process.cwd());
+      queue = getMessageQueue(process.cwd());
       queue.clear();
     });
 

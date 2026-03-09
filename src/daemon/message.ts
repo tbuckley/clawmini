@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import path from 'node:path';
 import { appendMessage, type UserMessage, type CommandLogMessage } from './chats.js';
-import { getQueue } from './queue.js';
+import { getMessageQueue } from './queue.js';
 import { executeRouterPipeline } from './routers.js';
 import type { RouterState } from './routers/types.js';
 import {
@@ -214,7 +214,7 @@ export async function executeDirectMessage(
     return;
   }
 
-  const queue = getQueue(cwd);
+  const queue = getMessageQueue(cwd);
 
   if (state.action === 'stop') {
     queue.abortCurrent();
@@ -223,7 +223,8 @@ export async function executeDirectMessage(
   }
 
   if (state.action === 'interrupt') {
-    const isMatchingSession = (p: { sessionId: string }) => p.sessionId === state.sessionId;
+    const targetSessionId = state.sessionId || 'default';
+    const isMatchingSession = (p: { sessionId: string }) => p.sessionId === targetSessionId;
     const currentPayload = queue.getCurrentPayload();
     const currentMatches = currentPayload ? isMatchingSession(currentPayload) : false;
 
