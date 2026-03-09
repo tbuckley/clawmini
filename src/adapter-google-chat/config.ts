@@ -5,9 +5,9 @@ import { getClawminiDir } from '../shared/workspace.js';
 import fs from 'node:fs';
 
 export const GoogleChatConfigSchema = z.looseObject({
-  pubsubSubscriptionName: z.string().min(1, 'Pub/Sub Subscription Name is required.'),
+  projectId: z.string().min(1, 'GCP Project ID is required.'),
+  subscriptionName: z.string().min(1, 'Pub/Sub Subscription Name is required.'),
   authorizedUsers: z.array(z.string()).min(1, 'At least one Authorized User is required.'),
-  defaultChatId: z.string().default('default'),
   maxAttachmentSizeMB: z.number().default(25).optional(),
 });
 
@@ -48,14 +48,16 @@ export async function initGoogleChatConfig(startDir = process.cwd()): Promise<vo
   }
 
   const templateConfig = {
-    pubsubSubscriptionName: 'projects/YOUR_PROJECT_ID/subscriptions/YOUR_SUBSCRIPTION_NAME',
+    projectId: 'YOUR_PROJECT_ID',
+    subscriptionName: 'YOUR_SUBSCRIPTION_NAME',
     authorizedUsers: ['user@example.com'],
-    defaultChatId: 'default',
   };
 
   await fsPromises.writeFile(configPath, JSON.stringify(templateConfig, null, 2), 'utf-8');
   console.log(`Created template configuration file at ${configPath}`);
-  console.log('Please update it with your actual Pub/Sub Subscription Name and Authorized Users.');
+  console.log(
+    'Please update it with your actual GCP Project ID, Pub/Sub Subscription Name, and Authorized Users.'
+  );
 }
 
 export function isAuthorized(userIdOrEmail: string, authorizedUsers: string[]): boolean {

@@ -82,9 +82,9 @@ describe('Google Chat Adapter Client', () => {
 
       startGoogleChatIngestion(
         {
-          pubsubSubscriptionName: 'test-sub',
+          projectId: 'test-project',
+          subscriptionName: 'test-sub',
           authorizedUsers: ['user@example.com'],
-          defaultChatId: 'default-chat',
         },
         trpcClient
       );
@@ -113,6 +113,7 @@ describe('Google Chat Adapter Client', () => {
         data: Buffer.from(
           JSON.stringify({
             type: 'MESSAGE',
+            space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
             message: { sender: { email: 'bad@example.com' }, text: 'Hello' },
           })
         ),
@@ -133,6 +134,7 @@ describe('Google Chat Adapter Client', () => {
         data: Buffer.from(
           JSON.stringify({
             type: 'MESSAGE',
+            space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
             message: {
               sender: { email: 'user@example.com' },
               text: 'Hello world',
@@ -168,6 +170,7 @@ describe('Google Chat Adapter Client', () => {
         data: Buffer.from(
           JSON.stringify({
             type: 'MESSAGE',
+            space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
             message: {
               sender: { email: 'user@example.com' },
               text: 'Here is a file',
@@ -211,7 +214,12 @@ describe('Google Chat Adapter Client', () => {
         (c: unknown[]) => c[0] === 'message'
       )![1] as (msg: unknown) => Promise<void>;
       const mockMsg = {
-        data: Buffer.from(JSON.stringify({ type: 'MESSAGE' })),
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'MESSAGE',
+            space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
+          })
+        ),
         ack: vi.fn(),
         nack: vi.fn(),
       };
@@ -224,6 +232,7 @@ describe('Google Chat Adapter Client', () => {
         data: Buffer.from(
           JSON.stringify({
             type: 'MESSAGE',
+            space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
             message: { sender: { email: 'user@example.com' }, text: 'Hello' },
           })
         ),
