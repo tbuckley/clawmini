@@ -153,14 +153,14 @@ async function runExtractionCommand(
 function formatEnvironmentPrefix(
   prefix: string,
   replacements: {
-    workspaceRoot: string;
+    targetPath: string;
     executionCwd: string;
     envDir: string;
     envArgs: string;
   }
 ): string {
   const map: Record<string, string> = {
-    '{WORKSPACE_DIR}': replacements.workspaceRoot,
+    '{WORKSPACE_DIR}': replacements.targetPath,
     '{AGENT_DIR}': replacements.executionCwd,
     '{ENV_DIR}': replacements.envDir,
     '{HOME_DIR}': process.env.HOME || '',
@@ -382,7 +382,7 @@ export async function executeDirectMessage(
               .join(' ');
 
             const prefixReplaced = formatEnvironmentPrefix(activeEnv.prefix, {
-              workspaceRoot,
+              targetPath: activeEnvInfo.targetPath,
               executionCwd,
               envDir: getEnvironmentPath(activeEnvName, cwd),
               envArgs,
