@@ -26,7 +26,7 @@
 ## Step 5: Refactor Queue to Support Predicates
 - **Description**: Update the `Queue` class in `src/daemon/queue.ts` to accept a predicate function `(payload: TPayload) => boolean` for its `extractPending`, `clear`, and `abortCurrent` methods. Ensure existing tests pass by treating undefined predicates as matching all tasks.
 - **Verification**: Run `npm run test -- queue.test.ts`. Add a unit test demonstrating `extractPending` only clears tasks matching the predicate.
-- **Status**: Not Started
+- **Status**: Complete
 
 ## Step 6: Session-Scope Enqueue and Interruptions
 - **Description**: In `src/daemon/message.ts`, change the `TPayload` object type passed to `queue.enqueue` to contain `{ text: string; sessionId: string }` instead of a raw string. Update the `/interrupt` handler to extract and abort *only* the tasks where the payload `sessionId` matches `state.sessionId`.

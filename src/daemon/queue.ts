@@ -44,11 +44,13 @@ export class Queue<TPayload = string> {
     }
   }
 
-  abortCurrent(): void {
+  abortCurrent(predicate?: (payload: TPayload) => boolean): void {
     if (this.currentController) {
-      const error = new Error('Task aborted');
-      error.name = 'AbortError';
-      this.currentController.abort(error);
+      if (!predicate || (this.currentPayload !== undefined && predicate(this.currentPayload))) {
+        const error = new Error('Task aborted');
+        error.name = 'AbortError';
+        this.currentController.abort(error);
+      }
     }
   }
 
@@ -56,9 +58,17 @@ export class Queue<TPayload = string> {
     return this.currentPayload;
   }
 
-  clear(reason: string = 'Task cleared'): void {
-    const tasksToClear = [...this.pending];
-    this.pending = [];
+  clear(reason: string = 'Task cleared', predicate?: (payload: TPayload) => boolean): void {
+    const tasksToClear = predicate
+      ? this.pending.filter((p) => p.payload !== undefined && predicate(p.payload))
+      : [...this.pending];
+
+    if (predicate) {
+      this.pending = this.pending.filter((p) => !(p.payload !== undefined && predicate(p.payload)));
+    } else {
+      this.pending = [];
+    }
+
     for (const { reject } of tasksToClear) {
       const error = new Error(reason);
       error.name = 'AbortError';
@@ -66,12 +76,12 @@ export class Queue<TPayload = string> {
     }
   }
 
-  extractPending(): TPayload[] {
+  extractPending(predicate?: (payload: TPayload) => boolean): TPayload[] {
     const extracted = this.pending
       .map((p) => p.payload)
-      .filter((p): p is TPayload => p !== undefined);
+      .filter((p): p is TPayload => p !== undefined && (!predicate || predicate(p)));
 
-    this.clear('Task extracted for batching');
+    this.clear('Task extracted for batching', predicate);
 
     return extracted;
   }

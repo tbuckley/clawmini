@@ -11,3 +11,9 @@
 ## Step 3: Update System Prompt for `gemini-claw-cladding`
 - Added instructions to `templates/gemini-claw-cladding/.gemini/system.md` regarding dynamically injected user messages being batched in `<message>` tags.
 - Verified that all automated formatting, linting, and tests successfully pass.
+
+## Step 5: Refactor Queue to Support Predicates
+- Updated `src/daemon/queue.ts`'s `Queue` class `abortCurrent`, `clear`, and `extractPending` methods to accept an optional predicate `(payload: TPayload) => boolean`.
+- Ensured existing functionality remains intact when no predicate is provided.
+- Added a unit test in `src/daemon/queue.test.ts` to verify `extractPending` only clears matching tasks and leaves non-matching tasks in the queue.
+- Tested successfully using `vitest run src/daemon/queue.test.ts`.

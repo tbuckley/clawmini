@@ -86,4 +86,32 @@ describe('Queue', () => {
     expect(mockTask2).not.toHaveBeenCalled();
     expect(mockTask3).not.toHaveBeenCalled();
   });
+
+  it('should extract pending tasks matching predicate', async () => {
+    const queue = new Queue<{ sessionId: string; text: string }>();
+    const mockTask1 = vi.fn().mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    const mockTask2 = vi.fn().mockResolvedValue(undefined);
+    const mockTask3 = vi.fn().mockResolvedValue(undefined);
+
+    const task1 = queue.enqueue(mockTask1, { sessionId: 's1', text: 'payload1' });
+    const task2 = queue.enqueue(mockTask2, { sessionId: 's1', text: 'payload2' });
+    const task3 = queue.enqueue(mockTask3, { sessionId: 's2', text: 'payload3' });
+    task2.catch(() => {});
+    task3.catch(() => {});
+
+    const pendingPayloads = queue.extractPending((p) => p.sessionId === 's1');
+
+    await task1;
+    await expect(task2).rejects.toThrow('Task extracted for batching');
+
+    expect(pendingPayloads).toEqual([{ sessionId: 's1', text: 'payload2' }]);
+    expect(mockTask1).toHaveBeenCalled();
+    expect(mockTask2).not.toHaveBeenCalled();
+
+    // task3 should still be executed because it wasn't extracted
+    await task3;
+    expect(mockTask3).toHaveBeenCalled();
+  });
 });
