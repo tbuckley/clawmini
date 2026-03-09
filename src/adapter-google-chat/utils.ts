@@ -1,7 +1,5 @@
 import { google } from 'googleapis';
 
-export const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25 MB
-
 let authClient: Awaited<ReturnType<typeof google.auth.getClient>> | null = null;
 
 export function resetAuthClient(): void {
@@ -11,9 +9,13 @@ export function resetAuthClient(): void {
 /**
  * Downloads a file attachment securely using Application Default Credentials (ADC).
  * @param downloadUri The URI of the attachment to download.
+ * @param maxAttachmentSizeMB The maximum allowed attachment size in MB (defaults to 25).
  * @returns A Buffer containing the file data.
  */
-export async function downloadAttachment(downloadUri: string): Promise<Buffer> {
+export async function downloadAttachment(
+  downloadUri: string,
+  maxAttachmentSizeMB: number = 25
+): Promise<Buffer> {
   // Use ADC to authenticate
   if (!authClient) {
     authClient = await google.auth.getClient({
@@ -30,9 +32,10 @@ export async function downloadAttachment(downloadUri: string): Promise<Buffer> {
 
   const buffer = Buffer.from(response.data);
 
-  if (buffer.length > MAX_ATTACHMENT_SIZE) {
+  const maxSizeBytes = maxAttachmentSizeMB * 1024 * 1024;
+  if (buffer.length > maxSizeBytes) {
     throw new Error(
-      `Attachment exceeds maximum size of ${MAX_ATTACHMENT_SIZE} bytes: ${buffer.length} bytes`
+      `Attachment exceeds maximum size of ${maxSizeBytes} bytes: ${buffer.length} bytes`
     );
   }
 

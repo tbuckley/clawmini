@@ -98,7 +98,7 @@ export function startGoogleChatIngestion(
           const downloadUri = att.attachmentDataRef?.downloadUri;
           if (downloadUri) {
             try {
-              const buffer = await downloadAttachment(downloadUri);
+              const buffer = await downloadAttachment(downloadUri, config.maxAttachmentSizeMB);
               const uniqueName = `${crypto.randomUUID()}-${att.contentName || 'attachment'}`;
               const filePath = path.join(tmpDir, uniqueName);
               await fsPromises.writeFile(filePath, buffer);

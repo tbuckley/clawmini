@@ -85,3 +85,14 @@
 **Priority**: Low
 **Description**: Update `client.ts` to use `crypto.randomUUID()` instead of `Date.now()` for downloaded attachment filenames to prevent collision if multiple attachments arrive in the same millisecond.
 **Status**: completed
+
+## Ticket 10: Use configured maxAttachmentSizeMB when downloading attachments
+**Priority**: High
+**Description**: The `downloadAttachment` function hardcodes a 25MB limit. It should accept the `maxAttachmentSizeMB` property from the Google Chat configuration and enforce it.
+**Status**: completed
+
+## Ticket 11: Cleanup fs module imports in config tests
+**Priority**: Low
+**Description**: Fix the inconsistent mocking and dynamic imports of the `node:fs` module in `config.test.ts` to improve test readability.
+**Status**: completed
+

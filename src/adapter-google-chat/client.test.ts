@@ -85,6 +85,7 @@ describe('Google Chat Adapter Client', () => {
           projectId: 'test-project',
           subscriptionName: 'test-sub',
           authorizedUsers: ['user@example.com'],
+          maxAttachmentSizeMB: 25,
         },
         trpcClient
       );
@@ -189,7 +190,7 @@ describe('Google Chat Adapter Client', () => {
       };
       await onMessage(mockMsg);
 
-      expect(utils.downloadAttachment).toHaveBeenCalledWith('http://example.com/test.png');
+      expect(utils.downloadAttachment).toHaveBeenCalledWith('http://example.com/test.png', 25);
       expect(fsPromises.mkdir).toHaveBeenCalledWith('/mock/dir/tmp/google-chat', {
         recursive: true,
       });

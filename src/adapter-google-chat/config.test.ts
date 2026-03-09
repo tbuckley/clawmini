@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fsPromises from 'node:fs/promises';
+import fs from 'node:fs';
 import {
   GoogleChatConfigSchema,
   isAuthorized,
@@ -78,16 +79,9 @@ describe('Google Chat Adapter Configuration', () => {
   });
 
   describe('initGoogleChatConfig', () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let fsMock: any;
-
     beforeEach(async () => {
       vi.clearAllMocks();
-      fsMock = await import('node:fs');
-      vi.mocked(fsMock.existsSync).mockReturnValue(false);
-      if (fsMock.default) {
-        vi.mocked(fsMock.default.existsSync).mockReturnValue(false);
-      }
+      vi.mocked(fs.existsSync).mockReturnValue(false);
     });
 
     it('should create directory and template config file if they do not exist', async () => {
@@ -108,10 +102,7 @@ describe('Google Chat Adapter Configuration', () => {
     });
 
     it('should not overwrite existing config file', async () => {
-      vi.mocked(fsMock.existsSync).mockReturnValue(true);
-      if (fsMock.default) {
-        vi.mocked(fsMock.default.existsSync).mockReturnValue(true);
-      }
+      vi.mocked(fs.existsSync).mockReturnValue(true);
       const { initGoogleChatConfig } = await import('./config.js');
       await initGoogleChatConfig();
 
