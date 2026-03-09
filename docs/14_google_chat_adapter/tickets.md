@@ -96,3 +96,8 @@
 **Description**: Fix the inconsistent mocking and dynamic imports of the `node:fs` module in `config.test.ts` to improve test readability.
 **Status**: completed
 
+## Ticket 12: Add noWait flag when forwarding messages
+**Priority**: High
+**Description**: When the client forwards an incoming message to the daemon, it should pass the `noWait: true` flag in the `sendMessage` mutation payload to prevent blocking on message generation.
+**Status**: completed
+

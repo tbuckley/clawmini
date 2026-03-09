@@ -157,6 +157,7 @@ describe('Google Chat Adapter Client', () => {
           chatId: 'thread-123',
           adapter: 'google-chat',
           files: undefined,
+          noWait: true,
         },
       });
     });
@@ -205,6 +206,7 @@ describe('Google Chat Adapter Client', () => {
             chatId: 'thread-123',
             files: expect.any(Array),
             adapter: 'google-chat',
+            noWait: true,
           }),
         })
       );

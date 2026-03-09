@@ -118,6 +118,7 @@ export function startGoogleChatIngestion(
           chatId: threadName,
           files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
           adapter: 'google-chat',
+          noWait: true,
         },
       });
 
