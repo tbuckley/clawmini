@@ -22,25 +22,24 @@ An automated script inside the sandbox coordinates a multi-step process. It make
 The following scenario illustrates an end-to-end interaction using this feature:
 
 1. **Discovery:** The user tells the LLM about a new capability. The LLM calls `clawmini requests list` to see what is available, along with descriptions.
-2. **Schema Generation:** The LLM then calls `clawmini request send-email --help` to read the policy's configured `usage` instructions to learn about the expected arguments.
+2. **Schema Generation:** The LLM then calls `clawmini request send-email --help` to execute the underlying command with `--help` and read its output to learn about the expected arguments.
 3. **Execution Request:** On a user's request, the LLM initiates the action. It explicitly tags a file for snapshotting and passes the rest of the arguments opaquely:
    `clawmini request send-email --file body_txt=./body.txt -- --to foo@bar.com --subject hi --body "{{body_txt}}"`
 4. **Agent Acknowledgment:** The CLI command returns immediately, outputting: *"Submitted request (ID: 32). You will get a message in the chat if the user approves or rejects."* The daemon stores the request on disk to survive restarts.
-5. **User Preview & Decision:** The user sees a message in their chat interface: *"Request #32: Agent wants to run `send-email` with args: `--to foo@bar.com --subject hi --body /tmp/snapshot/.../body.txt`... use `/approve 32` or `/reject 32`..."*
+5. **User Preview & Decision:** The user sees a message in their chat interface: *"Request #32: Agent wants to run `send-email` with args: `--to foo@bar.com --subject hi --body /tmp/snapshot/.../body.txt`... use `/approve 32` or `/reject 32`..."* The preview also includes the contents of the file, abbreviated to ~500 characters (or up to ~2000 characters total across multiple files), providing the user with immediate context for what is being sent.
 6. **Resolution:** The user responds with `/reject 32 make it more formal`. (The system verifies this command originated from the user, not the agent).
 7. **Agent Feedback Loop:** The daemon automatically injects a message into the active chat session: `[Request 32] User rejected with message: make it more formal`. The agent can then adjust its inputs and try again.
 
 ## Proposed Experience & CLI Design
 
 ### Registration (JSON Configuration)
-Users will register new commands in a concise JSON configuration file (e.g., `policies.json`). The framework adopts a **"Dumb Pipes, Smart Endpoints"** philosophy. The configuration avoids complex argument parsing. Instead, it provides a `usage` string to guide the LLM, and points to an executable wrapper script. If users want to restrict the flags an agent can use, they enforce those restrictions within their wrapper script.
+Users will register new commands in a concise JSON configuration file (e.g., `policies.json`). The framework adopts a **"Dumb Pipes, Smart Endpoints"** philosophy. The configuration avoids complex argument parsing. Instead, it merely provides a description and points to an executable wrapper script. If users want to restrict the flags an agent can use, they enforce those restrictions within their wrapper script. When the agent requests help for a command, the framework executes the wrapper script with `--help` and returns the output to the agent.
 
 ```json
 {
   "actions": {
     "promote-file": {
       "description": "Move a file to the network-enabled read-only area.",
-      "usage": "Provide the source file via --file src=<path> and pass destination as the first positional argument. Example: --file src=./my-script.sh -- {{src}} final-name.sh",
       "execute": {
         "environment": "host",
         "command": "./scripts/promote-file.sh"
@@ -48,7 +47,6 @@ Users will register new commands in a concise JSON configuration file (e.g., `po
     },
     "send-email": {
       "description": "Send an email.",
-      "usage": "Use --to, --subject, and --body.",
       "execute": {
         "environment": "sandbox",
         "command": "./scripts/send-email-wrapper.py"
@@ -72,7 +70,7 @@ The agent interacts with the `clawmini` CLI using the POSIX standard `--` separa
 
 **1. Discovery**
 - `clawmini requests list`: Outputs all registered policies and their descriptions.
-- `clawmini request <cmd> --help`: Outputs the `usage` string defined in the JSON configuration.
+- `clawmini request <cmd> --help`: Executes the underlying command defined in the JSON configuration with the `--help` flag and outputs the result.
 
 **2. Making a Request (Named Variable Mapping)**
 ```bash
@@ -98,7 +96,9 @@ When the agent makes a request, the CLI immediately returns the Request ID and e
 
 All requests are routed to the user's primary chat UI for review. To prevent unauthorized execution, the system relies on specific slash commands that must originate directly from the user.
 
-When a request is made, the daemon presents the user with a preview message (e.g., "Request #32: Agent wants to run `send-email` with args..."). Users can respond with:
+When a request is made, the daemon presents the user with a preview message (e.g., "Request #32: Agent wants to run `send-email` with args..."). The preview displays the snapshot paths and includes abbreviated file contents (~500 chars per file, up to ~2000 chars total) so the user can see exactly what data is being requested.
+
+Users can respond with:
 - `/approve <id>`: Approve and execute the request.
 - `/reject <id> [reason]`: Reject the request, optionally providing a natural language reason (e.g., `/reject 32 tone needs to be more formal`) so the agent can learn and retry.
 - `/pending`: View a summarized list of all active pending requests.
@@ -107,9 +107,9 @@ When a request is made, the daemon presents the user with a preview message (e.g
 
 ### Core Requirements
 1. **CLI Extensibility:** Agents must have access to a `clawmini` CLI binary inside their environment.
-2. **Configuration:** Users define permissible actions via a centralized JSON configuration providing a `command`, `description`, and `usage` string. The framework acts as a "dumb pipe" for arguments.
+2. **Configuration:** Users define permissible actions via a centralized JSON configuration providing a `command` and `description` string. The framework acts as a "dumb pipe" for arguments.
 3. **Explicit File Templating & Snapshotting:** Agents declare files using `--file name=path` prior to the `--` argument separator. The daemon strictly bounds the path to the sandbox, creates a secure snapshot, and replaces `{{name}}` in the opaque arguments with the snapshot's absolute path. Enforce strict file size limits on snapshots (e.g., max 5MB).
-4. **Chat Integration & Previews:** Requests must be routed to the user's Chat UI, showing the requested command, the snapshot paths, and the exact opaque arguments.
+4. **Chat Integration & Previews:** Requests must be routed to the user's Chat UI, showing the requested command, the snapshot paths, the exact opaque arguments, and abbreviated file contents to aid review.
 5. **Execution Engine:** Approved actions must execute safely using direct OS exec arrays (`spawn`), not shell execution.
 6. **Automatic Callbacks:** The daemon must automatically inject a message into the active chat session when a request is approved (along with command output) or rejected (along with user feedback).
 7. **State Management:** Request state should be saved locally as `.json` files (e.g., in `.gemini/tmp/requests/`) to gracefully handle daemon restarts and persist pending requests.
@@ -139,7 +139,7 @@ To ensure the sandbox policies feature works correctly and securely, perform the
 
 2. **File Templating & Snapshotting:**
    - Request a policy using `--file test_file=./local.txt -- --input "{{test_file}}"`.
-   - Verify the UI preview shows the path pointing to a secure snapshot in `/tmp/` (not `./local.txt`).
+   - Verify the UI preview shows the path pointing to a secure snapshot in `/tmp/` (not `./local.txt`) and shows a preview of its contents.
    - Approve the request and verify the target script received the snapshot path.
 
 3. **Rejection & Feedback Loop:**
@@ -160,4 +160,4 @@ To ensure the sandbox policies feature works correctly and securely, perform the
 
 6. **Discovery Commands:**
    - Run `clawmini requests list` and verify all configured policies are listed.
-   - Run `clawmini request <cmd> --help` and verify the expected `usage` string is accurately displayed.
+   - Run `clawmini request <cmd> --help` and verify the output matches the `--help` output of the underlying wrapped command.
