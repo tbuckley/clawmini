@@ -139,7 +139,7 @@ This document breaks down the implementation of the Sandbox Policies feature int
   **Verification:**
 - Run integration tests simulating the new router behavior, verifying the agent message generation and that the pipeline does not stop.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-  **Status:** not started
+  **Status:** completed
 
 ## Ticket 11: CLI Commands Relocation
 

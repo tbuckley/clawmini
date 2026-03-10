@@ -71,3 +71,15 @@ Starting implementation of Ticket 1.
 - Handled mock tests properly in `policy-request-service.test.ts`, `router-policy-request.test.ts`, and `request-store.test.ts` adapting to the new metadata fields.
 - Successfully executed formatting, linting, unit tests, and integration tests (`npm run format`, `npm run lint:fix`, `npm run check`, `npm run test`).
 - Ticket 9 is complete.
+
+## Ticket 10: Router State & Configuration Fixes
+**Notes:**
+- Updated `src/daemon/routers.ts` to execute `slash-policies` dynamically as part of the router pipeline loop, removing hardcoded top-level logic.
+- Extended `RouterState` interface in `src/daemon/routers/types.ts` to explicitly include `messageId` tracking the user's incoming message ID.
+- Passed `messageId` properly down to the state configuration within `src/daemon/message.ts` via `getInitialRouterState` and `handleUserMessage`.
+- Modified `src/daemon/routers/slash-policies.ts` so that `/approve`, `/reject`, and error flows no longer force an abrupt `action: 'stop'`. 
+- Ensured errors update `state.reply` with `state.message` cleared, while correct executions update `state.message` safely.
+- Validated `req.chatId` matches the incoming request context to prevent unauthorized cross-chat executions.
+- Updated all unit tests across the test suite to include mock `messageId` and adapted the modified assertions for success and error behaviors.
+- All code checks format, lint, tests compiled correctly and successfully passed without exceptions.
+- Ticket 10 is complete.

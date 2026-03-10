@@ -42,7 +42,7 @@ describe('Router Pipeline Execution', () => {
 
     vi.mocked(executeRouterPipeline).mockResolvedValueOnce({
       message: 'hello new message',
-      chatId: 'chat-router',
+      messageId: "mock-msg-id", chatId: 'chat-router',
       agentId: 'new-agent',
       sessionId: 'new-session',
       env: { ROUTER_VAR: 'router-val' },

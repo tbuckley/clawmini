@@ -1,4 +1,5 @@
 export interface RouterState {
+  messageId: string;
   message: string;
   chatId: string;
   agentId?: string;

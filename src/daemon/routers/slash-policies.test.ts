@@ -53,7 +53,7 @@ describe('slashPolicies', () => {
   });
 
   it('should ignore non-matching messages', async () => {
-    const state = { message: 'hello world', chatId: 'chat-1' };
+    const state = { message: 'hello world', messageId: "mock-msg-id", chatId: 'chat-1' };
     const result = await slashPolicies(state);
     expect(result).toEqual(state);
   });
@@ -72,7 +72,7 @@ describe('slashPolicies', () => {
     const approvedReq: PolicyRequest = { ...pendingReq, id: 'req-2', state: 'Approved' };
     mockStore.list.mockResolvedValue([pendingReq, approvedReq]);
 
-    const state = { message: '/pending', chatId: 'chat-1' };
+    const state = { message: '/pending', messageId: "mock-msg-id", chatId: 'chat-1' };
     const result = await slashPolicies(state);
 
     expect(result.action).toBe('stop');
@@ -94,7 +94,7 @@ describe('slashPolicies', () => {
     };
     mockStore.load.mockResolvedValue(pendingReq);
 
-    const state = { message: '/approve req-1', chatId: 'chat-1' };
+    const state = { message: '/approve req-1', messageId: "mock-msg-id", chatId: 'chat-1' };
     const result = await slashPolicies(state);
 
     expect(mockStore.save).toHaveBeenCalledWith({ ...pendingReq, state: 'Approved' });
@@ -109,8 +109,9 @@ describe('slashPolicies', () => {
         exitCode: 0,
       })
     );
-    expect(result.action).toBe('stop');
-    expect(result.reply).toBe('Request req-1 approved.');
+    expect(result.action).toBeUndefined();
+    expect(result.message).toContain('Request req-1 approved.');
+    expect(result.message).toContain('STDOUT:\nhello world');
   });
 
   it('should reject a pending request on /reject with reason and inject feedback', async () => {
@@ -126,7 +127,7 @@ describe('slashPolicies', () => {
     };
     mockStore.load.mockResolvedValue(pendingReq);
 
-    const state = { message: '/reject req-1 Not allowed', chatId: 'chat-1' };
+    const state = { message: '/reject req-1 Not allowed', messageId: "mock-msg-id", chatId: 'chat-1' };
     const result = await slashPolicies(state);
 
     expect(mockStore.save).toHaveBeenCalledWith({
@@ -143,19 +144,20 @@ describe('slashPolicies', () => {
         exitCode: 1,
       })
     );
-    expect(result.action).toBe('stop');
-    expect(result.reply).toBe('Request req-1 rejected. Reason: Not allowed');
+    expect(result.action).toBeUndefined();
+    expect(result.message).toBe('Request req-1 rejected. Reason: Not allowed');
   });
 
   it('should not act if request is not found', async () => {
     mockStore.load.mockResolvedValue(null);
 
-    const state = { message: '/approve req-1', chatId: 'chat-1' };
+    const state = { message: '/approve req-1', messageId: "mock-msg-id", chatId: 'chat-1' };
     const result = await slashPolicies(state);
 
     expect(mockStore.save).not.toHaveBeenCalled();
     expect(appendMessage).not.toHaveBeenCalled();
-    expect(result.action).toBe('stop');
+    expect(result.action).toBeUndefined();
+    expect(result.message).toBe('');
     expect(result.reply).toBe('Request not found: req-1');
   });
 });

@@ -178,11 +178,11 @@ export async function executeDirectMessage(
   settings: Settings | undefined,
   cwd: string,
   runCommand: RunCommandFn,
-  noWait: boolean = true,
+  noWait: boolean = false,
   userMessageContent?: string
-): Promise<void> {
+) {
   const userMsg: UserMessage = {
-    id: crypto.randomUUID(),
+    id: state.messageId ?? crypto.randomUUID(),
     role: 'user',
     content: userMessageContent ?? state.message,
     timestamp: new Date().toISOString(),
@@ -503,13 +503,16 @@ export async function getInitialRouterState(
   message: string,
   cwd: string = process.cwd(),
   overrideAgentId?: string,
-  overrideSessionId?: string
+  overrideSessionId?: string,
+  overrideMessageId?: string
 ): Promise<RouterState> {
   const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
   const agentId = overrideAgentId ?? chatSettings.defaultAgent ?? 'default';
   const sessionId = overrideSessionId ?? chatSettings.sessions?.[agentId] ?? 'default';
+  const messageId = overrideMessageId ?? crypto.randomUUID();
 
   return {
+    messageId,
     message,
     chatId,
     agentId,
@@ -572,6 +575,7 @@ export async function handleUserMessage(
   }
 
   const directState: RouterState = {
+    messageId: finalState.messageId,
     message: finalMessage,
     chatId,
     env: routerEnv,

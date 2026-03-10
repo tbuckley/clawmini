@@ -49,6 +49,7 @@ describe('executeDirectMessage - Typing Indicator', () => {
     const state = {
       message: 'hello typing',
       chatId,
+      messageId: 'mock-id',
     };
     const settings = {
       defaultAgent: {

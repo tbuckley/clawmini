@@ -10,13 +10,13 @@ export async function executeRouterPipeline(
   initialState: RouterState,
   routers: string[]
 ): Promise<RouterState> {
-  let state = await slashPolicies({ ...initialState });
-
-  if (state.action === 'stop') {
-    return state;
-  }
+  let state = { ...initialState };
 
   for (const router of routers) {
+    if (state.action === 'stop') {
+      break;
+    }
+
     if (router === '@clawmini/slash-new') {
       state = slashNew(state);
     } else if (router === '@clawmini/slash-command') {
@@ -25,6 +25,8 @@ export async function executeRouterPipeline(
       state = slashStop(state);
     } else if (router === '@clawmini/slash-interrupt') {
       state = slashInterrupt(state);
+    } else if (router === '@clawmini/slash-policies') {
+      state = await slashPolicies(state);
     } else {
       // Execute as custom shell command
       try {

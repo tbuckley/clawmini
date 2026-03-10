@@ -7,7 +7,7 @@ describe('slashNew router', () => {
   it('should remove /new from the beginning and set a new sessionId', () => {
     const initialState = {
       message: '/new hello world',
-      chatId: 'test-chat',
+      messageId: "mock-msg-id", chatId: 'test-chat',
       sessionId: 'old-session',
     };
 
@@ -20,7 +20,7 @@ describe('slashNew router', () => {
   it('should handle /new by itself', () => {
     const initialState = {
       message: '/new',
-      chatId: 'test-chat',
+      messageId: "mock-msg-id", chatId: 'test-chat',
       sessionId: 'old-session',
     };
 
@@ -32,7 +32,7 @@ describe('slashNew router', () => {
   it('should do nothing if /new is not at the start', () => {
     const initialState = {
       message: 'hello /new world',
-      chatId: 'test-chat',
+      messageId: "mock-msg-id", chatId: 'test-chat',
       sessionId: 'old-session',
     };
 
@@ -44,7 +44,7 @@ describe('slashNew router', () => {
   it('should do nothing if the message just starts with /newly', () => {
     const initialState = {
       message: '/newly minted',
-      chatId: 'test-chat',
+      messageId: "mock-msg-id", chatId: 'test-chat',
       sessionId: 'old-session',
     };
 

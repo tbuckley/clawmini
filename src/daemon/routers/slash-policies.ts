@@ -32,14 +32,16 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     if (!id) return state;
     const store = new RequestStore(process.cwd());
     const req = await store.load(id);
-    if (!req) return { ...state, reply: `Request not found: ${id}`, action: 'stop' };
+    if (!req) return { ...state, message: '', reply: `Request not found: ${id}` };
+    if (req.chatId && req.chatId !== state.chatId)
+      return { ...state, message: '', reply: `Request belongs to a different chat: ${req.chatId}` };
     if (req.state !== 'Pending')
-      return { ...state, reply: `Request is not pending: ${id}`, action: 'stop' };
+      return { ...state, message: '', reply: `Request is not pending: ${id}` };
 
     const config = await readPolicies();
     const policy = config?.policies?.[req.commandName];
     if (!policy) {
-      return { ...state, reply: `Policy not found: ${req.commandName}`, action: 'stop' };
+      return { ...state, message: '', reply: `Policy not found: ${req.commandName}` };
     }
 
     req.state = 'Approved';
@@ -55,7 +57,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     const commandStr = `${policy.command} ${interpolatedArgs.join(' ')}`;
     const logMsg: CommandLogMessage = {
       id: randomUUID(),
-      messageId: randomUUID(),
+      messageId: state.messageId,
       role: 'log',
       source: 'router',
       content: `Request ${id} approved and executed.`,
@@ -69,7 +71,8 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
 
     await appendMessage(state.chatId, logMsg);
 
-    return { ...state, reply: `Request ${id} approved.`, action: 'stop' };
+    const agentMessage = `Request ${id} approved.\n\nSTDOUT:\n${stdout}\n\nSTDERR:\n${stderr}\n\nExit Code: ${exitCode}`;
+    return { ...state, message: agentMessage };
   }
 
   const rejectMatch = message.match(/^\/reject\s+([^\s]+)(?:\s+(.*))?/);
@@ -79,9 +82,11 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     const reason = rejectMatch[2] || 'No reason provided';
     const store = new RequestStore(process.cwd());
     const req = await store.load(id);
-    if (!req) return { ...state, reply: `Request not found: ${id}`, action: 'stop' };
+    if (!req) return { ...state, message: '', reply: `Request not found: ${id}` };
+    if (req.chatId && req.chatId !== state.chatId)
+      return { ...state, message: '', reply: `Request belongs to a different chat: ${req.chatId}` };
     if (req.state !== 'Pending')
-      return { ...state, reply: `Request is not pending: ${id}`, action: 'stop' };
+      return { ...state, message: '', reply: `Request is not pending: ${id}` };
 
     req.state = 'Rejected';
     req.rejectionReason = reason;
@@ -89,7 +94,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
 
     const logMsg: CommandLogMessage = {
       id: randomUUID(),
-      messageId: randomUUID(),
+      messageId: state.messageId,
       role: 'log',
       source: 'router',
       content: `Request ${id} rejected. Reason: ${reason}`,
@@ -102,7 +107,8 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
 
     await appendMessage(state.chatId, logMsg);
 
-    return { ...state, reply: `Request ${id} rejected. Reason: ${reason}`, action: 'stop' };
+    const agentMessage = `Request ${id} rejected. Reason: ${reason}`;
+    return { ...state, message: agentMessage };
   }
 
   return state;
