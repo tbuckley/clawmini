@@ -12,7 +12,7 @@ import { createUnixSocketEventSource } from '../shared/event-source.js';
 import type { GoogleChatConfig } from './config.js';
 import { isAuthorized } from './config.js';
 import { downloadAttachment } from './utils.js';
-import { setActiveThread } from './active-thread.js';
+import { setActiveSpace } from './active-thread.js';
 
 export function getTRPCClient(options: { socketPath?: string } = {}) {
   const socketPath = options.socketPath ?? getSocketPath();
@@ -70,16 +70,14 @@ export function startGoogleChatIngestion(
 
       const text = event.message?.text || '';
       const spaceName = event.space?.name || event.message?.space?.name;
-      const threadName =
-        event.message?.thread?.name || spaceName;
 
-      if (!threadName || !spaceName) {
-        console.log('Ignoring message: Could not determine thread or space name.');
+      if (!spaceName) {
+        console.log('Ignoring message: Could not determine space name.');
         message.ack();
         return;
       }
 
-      setActiveThread(spaceName, threadName);
+      setActiveSpace(spaceName);
 
       const downloadedFiles: string[] = [];
       const attachments = event.message?.attachment || [];

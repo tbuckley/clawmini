@@ -33,6 +33,7 @@ describe('Google Chat Adapter Configuration', () => {
         expect(result.data).toEqual({
           ...config,
           maxAttachmentSizeMB: 25,
+          chatId: 'default',
         });
       }
     });
@@ -98,6 +99,7 @@ describe('Google Chat Adapter Configuration', () => {
         projectId: 'YOUR_PROJECT_ID',
         subscriptionName: 'YOUR_SUBSCRIPTION_NAME',
         authorizedUsers: ['user@example.com'],
+        chatId: 'default',
       });
     });
 
@@ -124,7 +126,7 @@ describe('Google Chat Adapter Configuration', () => {
       vi.mocked(fsPromises.readFile).mockResolvedValue(JSON.stringify(mockConfig));
 
       const config = await readGoogleChatConfig();
-      expect(config).toEqual({ ...mockConfig, maxAttachmentSizeMB: 25 });
+      expect(config).toEqual({ ...mockConfig, maxAttachmentSizeMB: 25, chatId: 'default' });
       expect(fsPromises.readFile).toHaveBeenCalledWith(getGoogleChatConfigPath(), 'utf-8');
     });
 

@@ -28,3 +28,13 @@
 - Wrote robust tests using `vi.hoisted` to correctly mock `@google-cloud/pubsub`.
 - Addressed linting and formatting issues and ran full tests against the workspace.
 - Ticket 4 completed.
+
+## Tickets 5, 6, 13: Google Chat Forwarder, Entry Point, and Top-Level Messages
+- Updated `active-thread.ts` to only track `activeSpaceName` instead of `activeThreadName` as requested by Ticket 13.
+- Modified `client.ts` to no longer rely on or extract `threadName`, routing all replies back to the top-level space.
+- Modified `forwarder.ts` to remove thread logic and `messageReplyOption`, creating messages directly in `activeSpaceName`.
+- Wrote `forwarder.test.ts` to mock `googleapis` and `trpc.waitForMessages.subscribe` to ensure messages are correctly dispatched to Google Chat.
+- Wrote `index.test.ts` to serve as an integration-like test, properly mocking dependencies to avoid environment leaks.
+- Fixed unhandled rejections during test execution by explicitly skipping `main()` execution in `index.ts` during testing.
+- Ensured formatting, linting, and type checking all pass flawlessly. Tests verified for tickets 5, 6, and 13.
+

@@ -8,14 +8,14 @@ Currently, Clawmini supports interacting via Discord (`adapter-discord`) and CLI
 
 ## Use Cases
 1. **Direct Messaging:** A user sends a direct message to the Clawmini bot in Google Chat. The bot receives the message via Pub/Sub, forwards it to the daemon, and replies using the Google Chat API.
-2. **Space Mentions:** A user @mentions the Clawmini bot in a Google Chat space. The bot replies in the same thread.
+2. **Space Mentions:** A user @mentions the Clawmini bot in a Google Chat space. The bot replies as a top-level message in the space rather than threading its response.
 3. **Continuous Operation:** The adapter can be started in the background (similar to the Discord adapter) and maintain a long-running Pub/Sub subscription and a daemon connection.
 
 ## Requirements
 ### Functional
 - **Message Ingestion:** The adapter must listen to a specified Google Cloud Pub/Sub subscription for incoming Google Chat events (`MESSAGE` events).
 - **Message Dispatch:** The adapter must forward incoming messages to the Clawmini daemon using the tRPC client (`trpc.sendMessage.mutate`), translating the Google Chat payload to the Clawmini message format.
-- **Message Reply:** The adapter must subscribe to daemon messages (`trpc.waitForMessages.subscribe`) and forward them to the originating Google Chat space/thread via the Google Chat REST API (`spaces.messages.create`).
+- **Message Reply:** The adapter must subscribe to daemon messages (`trpc.waitForMessages.subscribe`) and forward them to the originating Google Chat space as a top-level message via the Google Chat REST API (`spaces.messages.create`).
 - **File Attachments:** The adapter must support downloading file attachments from Google Chat and forwarding them to the daemon. The maximum file size limit should be 25MB (unless Google Chat imposes a different hard limit).
 - **State Management:** The adapter must track the `lastSyncedMessageId` locally (e.g., in `state.json`) to prevent duplicate message dispatches on restart, matching the behavior of the Discord adapter.
 - **Configuration:** The adapter must read configuration from a `config.json` file, similar to `adapter-discord`. Configuration should include:

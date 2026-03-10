@@ -154,7 +154,7 @@ describe('Google Chat Adapter Client', () => {
         client: 'cli',
         data: {
           message: 'Hello world',
-          chatId: 'thread-123',
+          chatId: 'default',
           adapter: 'google-chat',
           files: undefined,
           noWait: true,
@@ -203,7 +203,7 @@ describe('Google Chat Adapter Client', () => {
           type: 'send-message',
           data: expect.objectContaining({
             message: 'Here is a file',
-            chatId: 'thread-123',
+            chatId: 'default',
             files: expect.any(Array),
             adapter: 'google-chat',
             noWait: true,
