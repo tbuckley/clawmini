@@ -37,7 +37,8 @@ describe('Router Pipeline Execution', () => {
   it('should pass state unchanged when no routers are provided', async () => {
     const initialState: RouterState = {
       message: 'hello',
-      messageId: "mock-msg-id", chatId: 'chat-1',
+      messageId: 'mock-msg-id',
+      chatId: 'chat-1',
     };
     const finalState = await executeRouterPipeline(initialState, []);
     expect(finalState).toEqual(initialState);
@@ -46,7 +47,8 @@ describe('Router Pipeline Execution', () => {
   it('should call built-in @clawmini/slash-new router', async () => {
     const initialState: RouterState = {
       message: 'hello',
-      messageId: "mock-msg-id", chatId: 'chat-1',
+      messageId: 'mock-msg-id',
+      chatId: 'chat-1',
     };
     const finalState = await executeRouterPipeline(initialState, ['@clawmini/slash-new']);
     expect(finalState.message).toBe('slash-new-called');
@@ -56,7 +58,8 @@ describe('Router Pipeline Execution', () => {
   it('should call built-in @clawmini/slash-command router', async () => {
     const initialState: RouterState = {
       message: 'hello',
-      messageId: "mock-msg-id", chatId: 'chat-1',
+      messageId: 'mock-msg-id',
+      chatId: 'chat-1',
     };
     const finalState = await executeRouterPipeline(initialState, ['@clawmini/slash-command']);
     expect(finalState.message).toBe('slash-command-called');
@@ -65,7 +68,8 @@ describe('Router Pipeline Execution', () => {
   it('should call built-in @clawmini/slash-stop router', async () => {
     const initialState: RouterState = {
       message: 'hello',
-      messageId: "mock-msg-id", chatId: 'chat-1',
+      messageId: 'mock-msg-id',
+      chatId: 'chat-1',
     };
     const finalState = await executeRouterPipeline(initialState, ['@clawmini/slash-stop']);
     expect(finalState.action).toBe('stop');
@@ -74,7 +78,8 @@ describe('Router Pipeline Execution', () => {
   it('should call built-in @clawmini/slash-interrupt router', async () => {
     const initialState: RouterState = {
       message: 'hello',
-      messageId: "mock-msg-id", chatId: 'chat-1',
+      messageId: 'mock-msg-id',
+      chatId: 'chat-1',
     };
     const finalState = await executeRouterPipeline(initialState, ['@clawmini/slash-interrupt']);
     expect(finalState.action).toBe('interrupt');
@@ -83,7 +88,8 @@ describe('Router Pipeline Execution', () => {
   it('should execute custom shell command router and merge state correctly', async () => {
     const initialState: RouterState = {
       message: 'hello',
-      messageId: "mock-msg-id", chatId: 'chat-1',
+      messageId: 'mock-msg-id',
+      chatId: 'chat-1',
       env: { FOO: 'bar' },
     };
 
@@ -117,7 +123,8 @@ describe('Router Pipeline Execution', () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const initialState: RouterState = {
       message: 'hello',
-      messageId: "mock-msg-id", chatId: 'chat-1',
+      messageId: 'mock-msg-id',
+      chatId: 'chat-1',
     };
 
     // Command that intentionally fails with a non-zero exit code

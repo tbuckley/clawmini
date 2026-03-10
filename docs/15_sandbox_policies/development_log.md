@@ -83,3 +83,13 @@ Starting implementation of Ticket 1.
 - Updated all unit tests across the test suite to include mock `messageId` and adapted the modified assertions for success and error behaviors.
 - All code checks format, lint, tests compiled correctly and successfully passed without exceptions.
 - Ticket 10 is complete.
+
+## Ticket 11: CLI Commands Relocation
+**Notes:**
+- Relocated `request` and `requests` commands from `src/cli/index.ts` to `src/cli/lite.ts`.
+- Deleted `src/cli/commands/request.ts`.
+- Updated `request` and `requests` logic to use `createTRPCClient` configured in `clawmini-lite` via `CLAW_API_URL` and `CLAW_API_TOKEN` instead of using the local Unix Socket daemon client.
+- Updated `src/cli/e2e/requests.test.ts` to test against the exported `clawmini-lite` client by starting the daemon with an API server enabled and obtaining an API token via a mock `env-dumper` agent.
+- Resolved a path validation security error in `requests.test.ts` by ensuring `dummy.txt` test files correctly live inside the mock agent's directory, conforming to `policy-utils.ts` security limits from Ticket 8.
+- Ran formatting, lint checks, type checks, and tests successfully (`npm run format && npm run lint:fix && npm run check && npm run test`).
+- Ticket 11 is complete.

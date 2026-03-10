@@ -10,7 +10,6 @@ import { webCmd } from './commands/web.js';
 import { jobsCmd } from './commands/jobs.js';
 import { exportLiteCmd } from './commands/export-lite.js';
 import { environmentsCmd } from './commands/environments.js';
-import { requestCmd, requestsCmd } from './commands/request.js';
 
 const program = new Command();
 
@@ -26,7 +25,5 @@ program.addCommand(upCmd);
 program.addCommand(webCmd);
 program.addCommand(jobsCmd);
 program.addCommand(exportLiteCmd);
-program.addCommand(requestCmd);
-program.addCommand(requestsCmd);
 
 program.parse();

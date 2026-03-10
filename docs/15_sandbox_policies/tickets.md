@@ -150,4 +150,4 @@ This document breaks down the implementation of the Sandbox Policies feature int
   **Verification:**
 - Manually run `clawmini-lite --help` to verify the `request` commands are present.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-  **Status:** not started
+  **Status:** completed

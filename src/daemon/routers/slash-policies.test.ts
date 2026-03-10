@@ -53,7 +53,7 @@ describe('slashPolicies', () => {
   });
 
   it('should ignore non-matching messages', async () => {
-    const state = { message: 'hello world', messageId: "mock-msg-id", chatId: 'chat-1' };
+    const state = { message: 'hello world', messageId: 'mock-msg-id', chatId: 'chat-1' };
     const result = await slashPolicies(state);
     expect(result).toEqual(state);
   });
@@ -72,7 +72,7 @@ describe('slashPolicies', () => {
     const approvedReq: PolicyRequest = { ...pendingReq, id: 'req-2', state: 'Approved' };
     mockStore.list.mockResolvedValue([pendingReq, approvedReq]);
 
-    const state = { message: '/pending', messageId: "mock-msg-id", chatId: 'chat-1' };
+    const state = { message: '/pending', messageId: 'mock-msg-id', chatId: 'chat-1' };
     const result = await slashPolicies(state);
 
     expect(result.action).toBe('stop');
@@ -94,7 +94,7 @@ describe('slashPolicies', () => {
     };
     mockStore.load.mockResolvedValue(pendingReq);
 
-    const state = { message: '/approve req-1', messageId: "mock-msg-id", chatId: 'chat-1' };
+    const state = { message: '/approve req-1', messageId: 'mock-msg-id', chatId: 'chat-1' };
     const result = await slashPolicies(state);
 
     expect(mockStore.save).toHaveBeenCalledWith({ ...pendingReq, state: 'Approved' });
@@ -127,7 +127,11 @@ describe('slashPolicies', () => {
     };
     mockStore.load.mockResolvedValue(pendingReq);
 
-    const state = { message: '/reject req-1 Not allowed', messageId: "mock-msg-id", chatId: 'chat-1' };
+    const state = {
+      message: '/reject req-1 Not allowed',
+      messageId: 'mock-msg-id',
+      chatId: 'chat-1',
+    };
     const result = await slashPolicies(state);
 
     expect(mockStore.save).toHaveBeenCalledWith({
@@ -151,7 +155,7 @@ describe('slashPolicies', () => {
   it('should not act if request is not found', async () => {
     mockStore.load.mockResolvedValue(null);
 
-    const state = { message: '/approve req-1', messageId: "mock-msg-id", chatId: 'chat-1' };
+    const state = { message: '/approve req-1', messageId: 'mock-msg-id', chatId: 'chat-1' };
     const result = await slashPolicies(state);
 
     expect(mockStore.save).not.toHaveBeenCalled();

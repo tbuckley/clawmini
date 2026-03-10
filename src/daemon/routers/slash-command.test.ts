@@ -20,7 +20,8 @@ describe('slashCommand router', () => {
 
     const initialState = {
       message: 'Please run /test for me',
-      messageId: "mock-msg-id", chatId: 'test-chat',
+      messageId: 'mock-msg-id',
+      chatId: 'test-chat',
     };
 
     const newState = await slashCommand(initialState);
@@ -43,7 +44,8 @@ describe('slashCommand router', () => {
 
     const initialState = {
       message: 'Please run /test for me',
-      messageId: "mock-msg-id", chatId: 'test-chat',
+      messageId: 'mock-msg-id',
+      chatId: 'test-chat',
     };
 
     const newState = await slashCommand(initialState);
@@ -63,7 +65,8 @@ describe('slashCommand router', () => {
 
     const initialState = {
       message: '/cmd1 and /cmd2',
-      messageId: "mock-msg-id", chatId: 'test-chat',
+      messageId: 'mock-msg-id',
+      chatId: 'test-chat',
     };
 
     const newState = await slashCommand(initialState);
@@ -76,7 +79,8 @@ describe('slashCommand router', () => {
 
     const initialState = {
       message: 'Run /missing please',
-      messageId: "mock-msg-id", chatId: 'test-chat',
+      messageId: 'mock-msg-id',
+      chatId: 'test-chat',
     };
 
     const newState = await slashCommand(initialState);
@@ -88,7 +92,8 @@ describe('slashCommand router', () => {
 
     const initialState = {
       message: 'Run /.. please',
-      messageId: "mock-msg-id", chatId: 'test-chat',
+      messageId: 'mock-msg-id',
+      chatId: 'test-chat',
     };
 
     const newState = await slashCommand(initialState);
@@ -107,7 +112,8 @@ describe('slashCommand router', () => {
 
     const initialState = {
       message: '/foo:bar is cool',
-      messageId: "mock-msg-id", chatId: 'test-chat',
+      messageId: 'mock-msg-id',
+      chatId: 'test-chat',
     };
 
     const newState = await slashCommand(initialState);
@@ -122,7 +128,8 @@ describe('slashCommand router', () => {
   it('should not match commands embedded in words', async () => {
     const initialState = {
       message: 'https://example.com/foo /bar',
-      messageId: "mock-msg-id", chatId: 'test-chat',
+      messageId: 'mock-msg-id',
+      chatId: 'test-chat',
     };
 
     vi.mocked(fsUtils.pathIsInsideDir).mockReturnValue(true);
