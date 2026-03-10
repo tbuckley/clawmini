@@ -6,12 +6,12 @@ import type { PolicyRequest } from '../shared/policies.js';
 export class PolicyRequestService {
   private store: RequestStore;
   private maxPending: number;
-  private workspaceRoot: string;
+  private agentDir: string;
   private snapshotDir: string;
 
-  constructor(store: RequestStore, workspaceRoot: string, snapshotDir: string, maxPending = 100) {
+  constructor(store: RequestStore, agentDir: string, snapshotDir: string, maxPending = 100) {
     this.store = store;
-    this.workspaceRoot = workspaceRoot;
+    this.agentDir = agentDir;
     this.snapshotDir = snapshotDir;
     this.maxPending = maxPending;
   }
@@ -31,11 +31,7 @@ export class PolicyRequestService {
     const snapshotMappings: Record<string, string> = {};
 
     for (const [key, requestedPath] of Object.entries(fileMappings)) {
-      snapshotMappings[key] = await createSnapshot(
-        requestedPath,
-        this.workspaceRoot,
-        this.snapshotDir
-      );
+      snapshotMappings[key] = await createSnapshot(requestedPath, this.agentDir, this.snapshotDir);
     }
 
     const request: PolicyRequest = {

@@ -53,3 +53,13 @@ Starting implementation of Ticket 1.
 - Added complete coverage unit tests for the `/approve` and `/reject` flows within `src/daemon/routers/slash-policies.test.ts`.
 - All checks (`npm run format:check && npm run lint && npm run check && npm run test`) pass. Ticket 6 is complete.
 
+## Ticket 8: Policy Utils Improvements
+**Notes:**
+- Exported `MAX_SNAPSHOT_SIZE` constant (5MB) in `src/daemon/policy-utils.ts` and enforced its usage.
+- Refactored `createSnapshot` to receive `agentDir` instead of `workspaceRoot`.
+- Enforced strict symlink rejection by replacing `fs.realpath` with `fs.lstat` during snapshot creation, rejecting any symlinks to avoid TOCTOU attacks.
+- Modified the snapshot logic to guarantee unique filenames by leveraging `fs.constants.COPYFILE_EXCL` within a retry loop to prevent silent overwrites.
+- Updated `PolicyRequestService` and the `createPolicyRequest` router TRPC procedure to retrieve and pass `agentDir`.
+- Fully updated and expanded `policy-utils.test.ts` to assert against symlink rejection and new size limit constants.
+- Successfully ran all tests, including formatting, linting, type checks, and full unit test suites. Ticket 8 is complete.
+

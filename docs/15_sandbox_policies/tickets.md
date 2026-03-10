@@ -110,7 +110,7 @@ This document breaks down the implementation of the Sandbox Policies feature int
   **Verification:**
 - Update and run unit tests for `policy-utils.ts` to assert symlinks are rejected and the agent directory is respected.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-  **Status:** not started
+  **Status:** completed
 
 ## Ticket 9: Policy Request Metadata & Validation Enhancements
 

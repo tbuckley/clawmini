@@ -445,7 +445,8 @@ const AppRouter = router({
       const workspaceRoot = getWorkspaceRoot(process.cwd());
       const snapshotDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'snapshots');
       const store = new RequestStore(process.cwd());
-      const service = new PolicyRequestService(store, workspaceRoot, snapshotDir);
+      const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
+      const service = new PolicyRequestService(store, agentDir, snapshotDir);
 
       const request = await service.createRequest(
         input.commandName,

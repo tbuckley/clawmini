@@ -2,18 +2,18 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { createSnapshot, interpolateArgs, executeSafe } from './policy-utils.js';
+import { createSnapshot, interpolateArgs, executeSafe, MAX_SNAPSHOT_SIZE } from './policy-utils.js';
 
 describe('policy-utils', () => {
   let tempDir: string;
-  let workspaceDir: string;
+  let agentDir: string;
   let snapshotDir: string;
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'clawmini-test-policies-'));
-    workspaceDir = path.join(tempDir, 'workspace');
+    agentDir = path.join(tempDir, 'agent');
     snapshotDir = path.join(tempDir, 'snapshots');
-    await fs.mkdir(workspaceDir, { recursive: true });
+    await fs.mkdir(agentDir, { recursive: true });
     await fs.mkdir(snapshotDir, { recursive: true });
   });
 
@@ -22,11 +22,11 @@ describe('policy-utils', () => {
   });
 
   describe('createSnapshot', () => {
-    it('creates a snapshot for a valid file in the workspace', async () => {
-      const testFile = path.join(workspaceDir, 'test.txt');
+    it('creates a snapshot for a valid file in the agent directory', async () => {
+      const testFile = path.join(agentDir, 'test.txt');
       await fs.writeFile(testFile, 'hello world');
 
-      const snapshotPath = await createSnapshot('test.txt', workspaceDir, snapshotDir);
+      const snapshotPath = await createSnapshot('test.txt', agentDir, snapshotDir);
 
       expect(snapshotPath).toMatch(/test_[a-f0-9]{16}\.txt$/);
       expect(snapshotPath.startsWith(snapshotDir)).toBe(true);
@@ -39,52 +39,39 @@ describe('policy-utils', () => {
       const outsideFile = path.join(tempDir, 'outside.txt');
       await fs.writeFile(outsideFile, 'secret');
 
-      await expect(createSnapshot('../outside.txt', workspaceDir, snapshotDir)).rejects.toThrow(
+      await expect(createSnapshot('../outside.txt', agentDir, snapshotDir)).rejects.toThrow(
         /Security Error: Path resolves outside/
       );
     });
 
-    it('resolves symlinks and rejects if target is outside workspace', async () => {
-      const outsideFile = path.join(tempDir, 'outside.txt');
-      await fs.writeFile(outsideFile, 'secret');
-
-      const symlinkPath = path.join(workspaceDir, 'link.txt');
-      await fs.symlink(outsideFile, symlinkPath);
-
-      await expect(createSnapshot('link.txt', workspaceDir, snapshotDir)).rejects.toThrow(
-        /Security Error: Path resolves outside/
-      );
-    });
-
-    it('resolves symlinks and allows if target is inside workspace', async () => {
-      const targetFile = path.join(workspaceDir, 'target.txt');
+    it('rejects symlinks completely', async () => {
+      const targetFile = path.join(agentDir, 'target.txt');
       await fs.writeFile(targetFile, 'target content');
 
-      const symlinkPath = path.join(workspaceDir, 'link.txt');
+      const symlinkPath = path.join(agentDir, 'link.txt');
       await fs.symlink(targetFile, symlinkPath);
 
-      const snapshotPath = await createSnapshot('link.txt', workspaceDir, snapshotDir);
-      const content = await fs.readFile(snapshotPath, 'utf8');
-      expect(content).toBe('target content');
+      await expect(createSnapshot('link.txt', agentDir, snapshotDir)).rejects.toThrow(
+        /Security Error: Symlinks are not allowed/
+      );
     });
 
-    it('rejects files over 5MB', async () => {
-      const largeFile = path.join(workspaceDir, 'large.txt');
-      // Create a dummy large file using truncate
+    it('rejects files over MAX_SNAPSHOT_SIZE', async () => {
+      const largeFile = path.join(agentDir, 'large.txt');
       const fd = await fs.open(largeFile, 'w');
-      await fd.truncate(5 * 1024 * 1024 + 100); // slightly over 5MB
+      await fd.truncate(MAX_SNAPSHOT_SIZE + 100);
       await fd.close();
 
-      await expect(createSnapshot('large.txt', workspaceDir, snapshotDir)).rejects.toThrow(
+      await expect(createSnapshot('large.txt', agentDir, snapshotDir)).rejects.toThrow(
         /exceeds maximum snapshot size of 5MB/
       );
     });
 
     it('rejects non-files (directories)', async () => {
-      const dirPath = path.join(workspaceDir, 'subdir');
+      const dirPath = path.join(agentDir, 'subdir');
       await fs.mkdir(dirPath);
 
-      await expect(createSnapshot('subdir', workspaceDir, snapshotDir)).rejects.toThrow(
+      await expect(createSnapshot('subdir', agentDir, snapshotDir)).rejects.toThrow(
         /Requested path is not a file/
       );
     });

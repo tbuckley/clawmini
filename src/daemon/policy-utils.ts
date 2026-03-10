@@ -1,50 +1,74 @@
 import fs from 'node:fs/promises';
+import { constants } from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { pathIsInsideDir } from '../shared/utils/fs.js';
 
+export const MAX_SNAPSHOT_SIZE = 5 * 1024 * 1024;
+
 export async function createSnapshot(
   requestedPath: string,
-  workspaceRoot: string,
+  agentDir: string,
   snapshotDir: string
 ): Promise<string> {
-  const absoluteRequestedPath = path.resolve(workspaceRoot, requestedPath);
-
-  // Realpath prevents symlink attacks (TOCTOU) by resolving actual location
-  let realPath: string;
-  let realWorkspaceRoot: string;
+  let realAgentDir: string;
   try {
-    realPath = await fs.realpath(absoluteRequestedPath);
-    realWorkspaceRoot = await fs.realpath(workspaceRoot);
+    realAgentDir = await fs.realpath(agentDir);
   } catch (err) {
-    throw new Error(`File not found or cannot be resolved: ${requestedPath}`, { cause: err });
+    throw new Error(`Agent directory not found or cannot be resolved: ${agentDir}`, { cause: err });
   }
 
-  // Verify it is inside the allowed workspace
-  if (!pathIsInsideDir(realPath, realWorkspaceRoot, { allowSameDir: true })) {
-    throw new Error(`Security Error: Path resolves outside the allowed workspace: ${realPath}`);
+  const resolvedRequestedPath = path.resolve(realAgentDir, requestedPath);
+
+  // Verify it is inside the allowed agent directory
+  if (!pathIsInsideDir(resolvedRequestedPath, realAgentDir, { allowSameDir: true })) {
+    throw new Error(
+      `Security Error: Path resolves outside the allowed agent directory: ${resolvedRequestedPath}`
+    );
   }
 
-  const stat = await fs.stat(realPath);
+  // Lstat prevents TOCTOU attacks by not following symlinks
+  let stat;
+  try {
+    stat = await fs.lstat(resolvedRequestedPath);
+  } catch (err) {
+    throw new Error(`File not found or cannot be accessed: ${requestedPath}`, { cause: err });
+  }
+
+  if (stat.isSymbolicLink()) {
+    throw new Error(`Security Error: Symlinks are not allowed: ${requestedPath}`);
+  }
+
   if (!stat.isFile()) {
-    throw new Error(`Requested path is not a file: ${realPath}`);
+    throw new Error(`Requested path is not a file: ${requestedPath}`);
   }
-  if (stat.size > 5 * 1024 * 1024) {
-    // 5MB limit
-    throw new Error(`File exceeds maximum snapshot size of 5MB: ${realPath}`);
+  if (stat.size > MAX_SNAPSHOT_SIZE) {
+    throw new Error(`File exceeds maximum snapshot size of 5MB: ${requestedPath}`);
   }
 
   // Generate unique filename for the snapshot
-  const ext = path.extname(realPath);
-  const base = path.basename(realPath, ext);
-  const uniqueId = randomBytes(8).toString('hex');
-  const snapshotFileName = `${base}_${uniqueId}${ext}`;
-  const snapshotPath = path.join(snapshotDir, snapshotFileName);
+  const ext = path.extname(resolvedRequestedPath);
+  const base = path.basename(resolvedRequestedPath, ext);
 
-  // Copy to secure temporary directory
   await fs.mkdir(snapshotDir, { recursive: true });
-  await fs.copyFile(realPath, snapshotPath);
+
+  let snapshotPath: string;
+  while (true) {
+    const uniqueId = randomBytes(8).toString('hex');
+    const snapshotFileName = `${base}_${uniqueId}${ext}`;
+    snapshotPath = path.join(snapshotDir, snapshotFileName);
+
+    try {
+      await fs.copyFile(resolvedRequestedPath, snapshotPath, constants.COPYFILE_EXCL);
+      break;
+    } catch (err: unknown) {
+      if (err instanceof Error && 'code' in err && (err as Error & { code?: string }).code === 'EEXIST') {
+        continue;
+      }
+      throw err;
+    }
+  }
 
   return snapshotPath;
 }

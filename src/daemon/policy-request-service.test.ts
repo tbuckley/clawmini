@@ -7,20 +7,20 @@ import { PolicyRequestService } from './policy-request-service.js';
 
 describe('PolicyRequestService', () => {
   let tmpDir: string;
-  let workspaceRoot: string;
+  let agentDir: string;
   let snapshotDir: string;
   let store: RequestStore;
   let service: PolicyRequestService;
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'policy-request-service-test-'));
-    workspaceRoot = path.join(tmpDir, 'workspace');
+    agentDir = path.join(tmpDir, 'agent');
     snapshotDir = path.join(tmpDir, 'snapshots');
 
-    await fs.mkdir(workspaceRoot, { recursive: true });
+    await fs.mkdir(agentDir, { recursive: true });
 
     store = new RequestStore(tmpDir);
-    service = new PolicyRequestService(store, workspaceRoot, snapshotDir, 2);
+    service = new PolicyRequestService(store, agentDir, snapshotDir, 2);
   });
 
   afterEach(async () => {
@@ -28,7 +28,7 @@ describe('PolicyRequestService', () => {
   });
 
   it('should create a request, snapshotting files and storing it', async () => {
-    const testFile = path.join(workspaceRoot, 'test.txt');
+    const testFile = path.join(agentDir, 'test.txt');
     await fs.writeFile(testFile, 'hello world');
 
     const request = await service.createRequest('testCmd', ['--file', '{{myFile}}'], {
@@ -62,7 +62,7 @@ describe('PolicyRequestService', () => {
   });
 
   it('should correctly interpolate arguments', async () => {
-    const testFile = path.join(workspaceRoot, 'test.txt');
+    const testFile = path.join(agentDir, 'test.txt');
     await fs.writeFile(testFile, 'hello world');
 
     const request = await service.createRequest('testCmd', ['--input', '{{inputFile}}'], {
