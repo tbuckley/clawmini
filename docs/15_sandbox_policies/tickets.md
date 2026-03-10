@@ -123,7 +123,7 @@ This document breaks down the implementation of the Sandbox Policies feature int
   **Verification:**
 - Update unit tests for `policy-request-service.ts` and `request-store.ts` to assert ID format, metadata presence, and Zod validation.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
-  **Status:** not started
+  **Status:** completed
 
 ## Ticket 10: Router State & Configuration Fixes
 

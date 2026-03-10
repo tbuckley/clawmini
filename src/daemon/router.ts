@@ -448,12 +448,16 @@ const AppRouter = router({
       const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
       const service = new PolicyRequestService(store, agentDir, snapshotDir);
 
+      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
+      const agentId = ctx.tokenPayload?.agentId ?? 'unknown';
+
       const request = await service.createRequest(
         input.commandName,
         input.args,
-        input.fileMappings
+        input.fileMappings,
+        chatId,
+        agentId
       );
-      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
 
       let previewContent = `Sandbox Policy Request: ${request.commandName}\n`;
       previewContent += `ID: ${request.id}\n`;

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { RequestStore } from './request-store.js';
 import { createSnapshot, interpolateArgs } from './policy-utils.js';
 import type { PolicyRequest } from '../shared/policies.js';
@@ -19,7 +19,9 @@ export class PolicyRequestService {
   async createRequest(
     commandName: string,
     args: string[],
-    fileMappings: Record<string, string>
+    fileMappings: Record<string, string>,
+    chatId: string,
+    agentId: string
   ): Promise<PolicyRequest> {
     const allRequests = await this.store.list();
     const pendingCount = allRequests.filter((r) => r.state === 'Pending').length;
@@ -35,12 +37,14 @@ export class PolicyRequestService {
     }
 
     const request: PolicyRequest = {
-      id: randomUUID(),
+      id: randomBytes(2).toString('hex').slice(0, 3),
       commandName,
       args,
       fileMappings: snapshotMappings,
       state: 'Pending',
       createdAt: Date.now(),
+      chatId,
+      agentId,
     };
 
     await this.store.save(request);

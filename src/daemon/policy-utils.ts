@@ -63,7 +63,11 @@ export async function createSnapshot(
       await fs.copyFile(resolvedRequestedPath, snapshotPath, constants.COPYFILE_EXCL);
       break;
     } catch (err: unknown) {
-      if (err instanceof Error && 'code' in err && (err as Error & { code?: string }).code === 'EEXIST') {
+      if (
+        err instanceof Error &&
+        'code' in err &&
+        (err as Error & { code?: string }).code === 'EEXIST'
+      ) {
         continue;
       }
       throw err;

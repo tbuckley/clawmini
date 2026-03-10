@@ -27,6 +27,8 @@ vi.mock('./policy-request-service.js', () => {
           },
           state: 'Pending',
           createdAt: Date.now(),
+          chatId: 'chat-1',
+          agentId: 'agent-1',
         };
       }
     },

@@ -1,7 +1,20 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { z } from 'zod';
 import { getClawminiDir } from '../shared/workspace.js';
 import type { PolicyRequest } from '../shared/policies.js';
+
+const PolicyRequestSchema = z.object({
+  id: z.string(),
+  commandName: z.string(),
+  args: z.array(z.string()),
+  fileMappings: z.record(z.string(), z.string()),
+  state: z.enum(['Pending', 'Approved', 'Rejected']),
+  createdAt: z.number(),
+  rejectionReason: z.string().optional(),
+  chatId: z.string(),
+  agentId: z.string(),
+});
 
 function isENOENT(err: unknown): boolean {
   return Boolean(
@@ -34,7 +47,7 @@ export class RequestStore {
     const filePath = this.getFilePath(id);
     try {
       const data = await fs.readFile(filePath, 'utf8');
-      return JSON.parse(data) as PolicyRequest;
+      return PolicyRequestSchema.parse(JSON.parse(data)) as PolicyRequest;
     } catch (err: unknown) {
       if (isENOENT(err)) {
         return null;

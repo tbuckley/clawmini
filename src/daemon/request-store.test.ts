@@ -33,6 +33,8 @@ describe('RequestStore', () => {
       fileMappings: {},
       state: 'Pending',
       createdAt: Date.now(),
+      chatId: 'chat-1',
+      agentId: 'agent-1',
     };
 
     await store.save(req);
@@ -53,6 +55,8 @@ describe('RequestStore', () => {
       fileMappings: {},
       state: 'Pending',
       createdAt: 1000,
+      chatId: 'chat-1',
+      agentId: 'agent-1',
     };
     const req2: PolicyRequest = {
       id: 'req-2',
@@ -61,6 +65,8 @@ describe('RequestStore', () => {
       fileMappings: {},
       state: 'Pending',
       createdAt: 2000,
+      chatId: 'chat-2',
+      agentId: 'agent-2',
     };
 
     await store.save(req1);
@@ -80,6 +86,8 @@ describe('RequestStore', () => {
       fileMappings: {},
       state: 'Pending',
       createdAt: 1000,
+      chatId: 'chat-1',
+      agentId: 'agent-1',
     };
     await store.save(req);
 

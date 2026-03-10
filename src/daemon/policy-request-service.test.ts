@@ -31,9 +31,15 @@ describe('PolicyRequestService', () => {
     const testFile = path.join(agentDir, 'test.txt');
     await fs.writeFile(testFile, 'hello world');
 
-    const request = await service.createRequest('testCmd', ['--file', '{{myFile}}'], {
-      myFile: 'test.txt',
-    });
+    const request = await service.createRequest(
+      'testCmd',
+      ['--file', '{{myFile}}'],
+      {
+        myFile: 'test.txt',
+      },
+      'chat-123',
+      'agent-abc'
+    );
 
     expect(request.id).toBeDefined();
     expect(request.commandName).toBe('testCmd');
@@ -53,10 +59,10 @@ describe('PolicyRequestService', () => {
   });
 
   it('should reject when pending limit is reached', async () => {
-    await service.createRequest('cmd1', [], {});
-    await service.createRequest('cmd2', [], {});
+    await service.createRequest('cmd1', [], {}, 'chat-1', 'agent-1');
+    await service.createRequest('cmd2', [], {}, 'chat-2', 'agent-2');
 
-    await expect(service.createRequest('cmd3', [], {})).rejects.toThrow(
+    await expect(service.createRequest('cmd3', [], {}, 'chat-3', 'agent-3')).rejects.toThrow(
       'Maximum number of pending requests (2) reached.'
     );
   });
@@ -65,9 +71,15 @@ describe('PolicyRequestService', () => {
     const testFile = path.join(agentDir, 'test.txt');
     await fs.writeFile(testFile, 'hello world');
 
-    const request = await service.createRequest('testCmd', ['--input', '{{inputFile}}'], {
-      inputFile: 'test.txt',
-    });
+    const request = await service.createRequest(
+      'testCmd',
+      ['--input', '{{inputFile}}'],
+      {
+        inputFile: 'test.txt',
+      },
+      'chat-4',
+      'agent-4'
+    );
 
     const interpolatedArgs = service.getInterpolatedArgs(request);
     expect(interpolatedArgs).toEqual(['--input', request.fileMappings['inputFile']]);

@@ -66,6 +66,8 @@ describe('slashPolicies', () => {
       fileMappings: {},
       state: 'Pending',
       createdAt: Date.now(),
+      chatId: 'chat-1',
+      agentId: 'agent-1',
     };
     const approvedReq: PolicyRequest = { ...pendingReq, id: 'req-2', state: 'Approved' };
     mockStore.list.mockResolvedValue([pendingReq, approvedReq]);
@@ -87,6 +89,8 @@ describe('slashPolicies', () => {
       fileMappings: {},
       state: 'Pending',
       createdAt: Date.now(),
+      chatId: 'chat-1',
+      agentId: 'agent-1',
     };
     mockStore.load.mockResolvedValue(pendingReq);
 
@@ -117,6 +121,8 @@ describe('slashPolicies', () => {
       fileMappings: {},
       state: 'Pending',
       createdAt: Date.now(),
+      chatId: 'chat-1',
+      agentId: 'agent-1',
     };
     mockStore.load.mockResolvedValue(pendingReq);
 

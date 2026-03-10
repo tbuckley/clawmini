@@ -63,3 +63,11 @@ Starting implementation of Ticket 1.
 - Fully updated and expanded `policy-utils.test.ts` to assert against symlink rejection and new size limit constants.
 - Successfully ran all tests, including formatting, linting, type checks, and full unit test suites. Ticket 8 is complete.
 
+## Ticket 9: Policy Request Metadata & Validation Enhancements
+**Notes:**
+- Updated request ID generation to use a 3-character random alphanumeric string using `crypto.randomBytes`.
+- Added `chatId` and `agentId` to `PolicyRequest` and properly populated them inside `createRequest` via `src/daemon/router.ts`.
+- Implemented `PolicyRequestSchema` utilizing Zod within `request-store.ts` to validate disk reads dynamically.
+- Handled mock tests properly in `policy-request-service.test.ts`, `router-policy-request.test.ts`, and `request-store.test.ts` adapting to the new metadata fields.
+- Successfully executed formatting, linting, unit tests, and integration tests (`npm run format`, `npm run lint:fix`, `npm run check`, `npm run test`).
+- Ticket 9 is complete.

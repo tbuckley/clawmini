@@ -18,4 +18,6 @@ export interface PolicyRequest {
   state: RequestState;
   createdAt: number;
   rejectionReason?: string;
+  chatId: string;
+  agentId: string;
 }
