@@ -1,6 +1,6 @@
 import { google } from 'googleapis';
 import type { getTRPCClient } from './client.js';
-import { activeSpaceName, activeThreadName } from './active-thread.js';
+import { activeSpaceName } from './active-thread.js';
 import type { ChatMessage, CommandLogMessage } from '../shared/chats.js';
 import path from 'node:path';
 
@@ -97,18 +97,14 @@ export async function startDaemonToGoogleChatForwarder(
                     // Format message (Google Chat doesn't support file upload directly via API easily unless we use Drive or specific attachments endpoint, so we just mention the files for now, or use basic text)
                     let text = logMessage.content || '';
                     if (hasFiles) {
-                      const fileNames = logMessage.files?.map(f => path.basename(f)).join(', ');
+                      const fileNames = logMessage.files?.map((f) => path.basename(f)).join(', ');
                       text += `\n\n*(Files generated: ${fileNames})*`;
                     }
 
-                    const requestBody: { text: string; thread?: { name: string } } = { text };
-                    if (activeThreadName) {
-                      requestBody.thread = { name: activeThreadName };
-                    }
+                    const requestBody = { text };
 
                     await chatApi.spaces.messages.create({
                       parent: activeSpaceName,
-                      messageReplyOption: 'REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD',
                       requestBody,
                     });
                   } catch (error) {

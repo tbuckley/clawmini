@@ -57,7 +57,7 @@
 **Verification**:
 - Run `npm run test -- src/adapter-google-chat/forwarder.test.ts`.
 - Run checks from `CHECKS.md`: `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status**: not started
+**Status**: completed
 
 ## Ticket 6: Main Entry Point
 **Description**: Create the main executable entry point that ties together configuration parsing, state management, the Pub/Sub client, and the forwarder.
@@ -69,7 +69,7 @@
 **Verification**:
 - Run `npm run test -- src/adapter-google-chat/index.test.ts`.
 - Run checks from `CHECKS.md`: `npm run format:check && npm run lint && npm run check && npm run test`.
-**Status**: not started
+**Status**: completed
 
 ## Ticket 7: Remove unused state management (YAGNI)
 **Priority**: High
@@ -99,5 +99,19 @@
 ## Ticket 12: Add noWait flag when forwarding messages
 **Priority**: High
 **Description**: When the client forwards an incoming message to the daemon, it should pass the `noWait: true` flag in the `sendMessage` mutation payload to prevent blocking on message generation.
+**Status**: completed
+
+## Ticket 13: Make AI replies top-level messages
+**Priority**: High
+**Description**: Update the forwarder logic to post replies as top-level messages instead of replying within threads. This involves removing the `thread` field and the `messageReplyOption` when creating messages via the Google Chat API in `forwarder.ts`. Additionally, the tracking of `activeThreadName` in `client.ts` and `active-thread.ts` may be removed or updated accordingly if no longer needed.
+**Steps**:
+1. Remove `activeThreadName` usage from `src/adapter-google-chat/forwarder.ts`.
+2. Ensure `spaces.messages.create` does not include `requestBody.thread` or `messageReplyOption` related to threads.
+3. Remove or simplify `src/adapter-google-chat/active-thread.ts` if no longer used.
+4. Update `src/adapter-google-chat/client.ts` to no longer set `activeThreadName`.
+5. Update tests (`forwarder.test.ts`, `client.test.ts`) to match the new behavior.
+**Verification**:
+- Run `npm run test -- src/adapter-google-chat/forwarder.test.ts src/adapter-google-chat/client.test.ts`.
+- Run checks from `CHECKS.md`: `npm run format:check && npm run lint && npm run check && npm run test`.
 **Status**: completed
 

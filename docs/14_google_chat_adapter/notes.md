@@ -18,3 +18,11 @@
 - `index.ts`: Initializes the Pub/Sub listener, maps incoming events to `sendMessage.mutate`.
 - `forwarder.ts`: Subscribes to daemon messages, uses Google Chat API to reply to the correct space/thread.
 - Package dependencies: `@google-cloud/pubsub`, `google-auth-library` or `googleapis`.
+
+## Top-level replies instead of threaded replies
+- The user requested that AI replies should be top-level messages, not threaded responses to the user's message.
+- Currently, `src/adapter-google-chat/active-thread.ts` stores the `activeThreadName` and `src/adapter-google-chat/forwarder.ts` uses it to set the `thread` field and `messageReplyOption` when creating the message via the Google Chat API.
+- Also, `src/adapter-google-chat/client.ts` sets the `activeThread` when an event is received.
+- To implement top-level messages, we should stop setting the `thread` property on outgoing messages in `forwarder.ts`. The message should just be sent to the `spaceName`.
+- `messageReplyOption: 'REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD'` should be removed as it only matters if a thread is specified.
+- The `activeThreadName` state tracking in `active-thread.ts` might become redundant if we never reply in threads. We should remove it or ignore it for replies.

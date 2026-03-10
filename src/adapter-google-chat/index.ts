@@ -34,7 +34,9 @@ export async function main() {
   });
 }
 
-main().catch((error) => {
-  console.error('Unhandled error in Google Chat Adapter:', error);
-  process.exit(1);
-});
+if (process.env.NODE_ENV !== 'test') {
+  main().catch((error) => {
+    console.error('Unhandled error in Google Chat Adapter:', error);
+    process.exit(1);
+  });
+}
