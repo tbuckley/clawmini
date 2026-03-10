@@ -4,6 +4,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { pathIsInsideDir } from '../shared/utils/fs.js';
+import type { PolicyRequest } from '../shared/policies.js';
 
 export const MAX_SNAPSHOT_SIZE = 5 * 1024 * 1024;
 
@@ -82,7 +83,7 @@ export function interpolateArgs(args: string[], snapshots: Record<string, string
     let interpolated = arg;
     for (const [key, snapshotPath] of Object.entries(snapshots)) {
       const variable = `{{${key}}}`;
-      interpolated = interpolated.split(variable).join(snapshotPath);
+      interpolated = interpolated.replaceAll(variable, snapshotPath);
     }
     return interpolated;
   });
@@ -124,4 +125,28 @@ export function executeSafe(
       resolve({ stdout: '', stderr: err.toString(), exitCode: 1 });
     });
   });
+}
+
+export async function generateRequestPreview(request: PolicyRequest): Promise<string> {
+  let previewContent = `Sandbox Policy Request: ${request.commandName}\n`;
+  previewContent += `ID: ${request.id}\n`;
+  if (request.args.length > 0) {
+    previewContent += `Args: ${request.args.join(' ')}\n`;
+  }
+
+  for (const [name, snapPath] of Object.entries(request.fileMappings)) {
+    previewContent += `\nFile [${name}]:\n`;
+    try {
+      let content = await fs.readFile(snapPath, 'utf8');
+      if (content.length > 500) {
+        content = content.substring(0, 500) + '\n... (truncated)';
+      }
+      previewContent += content;
+    } catch (e: unknown) {
+      previewContent += `<Error reading file: ${(e as Error).message}>`;
+    }
+  }
+
+  previewContent += `\n\nUse /approve ${request.id} or /reject ${request.id} [reason]`;
+  return previewContent;
 }

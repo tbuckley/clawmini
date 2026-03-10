@@ -36,8 +36,13 @@ export class PolicyRequestService {
       snapshotMappings[key] = await createSnapshot(requestedPath, this.agentDir, this.snapshotDir);
     }
 
+    let id = '';
+    do {
+      id = randomBytes(3).toString('hex');
+    } while (allRequests.some((r) => r.id === id));
+
     const request: PolicyRequest = {
-      id: randomBytes(2).toString('hex').slice(0, 3),
+      id,
       commandName,
       args,
       fileMappings: snapshotMappings,

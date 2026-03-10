@@ -151,3 +151,46 @@ This document breaks down the implementation of the Sandbox Policies feature int
 - Manually run `clawmini-lite --help` to verify the `request` commands are present.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
   **Status:** completed
+
+## Ticket 12: Router Slash Policies DRY Refactoring
+
+**Priority:** High
+**Description:** Address DRY violation in `src/daemon/routers/slash-policies.ts`.
+**Tasks:**
+- Extract the common request loading and validation logic shared between the `/approve` and `/reject` branches into a helper function (e.g., `loadAndValidateRequest`).
+**Verification:**
+- Run `npm run format:check && npm run lint && npm run check && npm run test`.
+**Status:** completed
+
+## Ticket 13: Secure and Collision-Resistant Request ID Generation
+
+**Priority:** High
+**Description:** Improve the Request ID generation to be more secure and resistant to collisions in `src/daemon/policy-request-service.ts`.
+**Tasks:**
+- Replace `randomBytes(2).toString('hex').slice(0, 3)` with a slightly longer secure string (e.g., 6 characters) or check against existing IDs in the `RequestStore` to ensure uniqueness before assigning the ID.
+**Verification:**
+- Update tests for `policy-request-service.ts`.
+- Run `npm run format:check && npm run lint && npm run check && npm run test`.
+**Status:** completed
+
+## Ticket 14: Extract Preview Message Formatting
+
+**Priority:** Medium
+**Description:** Improve Separation of Concerns in `src/daemon/router.ts` by extracting the `previewContent` generation logic.
+**Tasks:**
+- Move the inline string formatting and dynamic file reading used to generate the preview message in `createPolicyRequest` to a new helper function `generateRequestPreview` in `src/daemon/policy-utils.ts`.
+- Import `node:fs/promises` properly rather than dynamically inside the loop if moving to a utility file.
+**Verification:**
+- Run `npm run format:check && npm run lint && npm run check && npm run test`.
+**Status:** completed
+
+## Ticket 15: Modernize String Replacement
+
+**Priority:** Low
+**Description:** Modernize the argument interpolation string replacement in `src/daemon/policy-utils.ts`.
+**Tasks:**
+- Refactor `interpolateArgs` to use `replaceAll(variable, snapshotPath)` instead of `.split(variable).join(snapshotPath)`.
+**Verification:**
+- Ensure tests still pass.
+- Run `npm run format:check && npm run lint && npm run check && npm run test`.
+**Status:** completed

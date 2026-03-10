@@ -459,27 +459,8 @@ const AppRouter = router({
         agentId
       );
 
-      let previewContent = `Sandbox Policy Request: ${request.commandName}\n`;
-      previewContent += `ID: ${request.id}\n`;
-      if (request.args.length > 0) {
-        previewContent += `Args: ${request.args.join(' ')}\n`;
-      }
-
-      for (const [name, snapPath] of Object.entries(request.fileMappings)) {
-        previewContent += `\nFile [${name}]:\n`;
-        try {
-          const fs = await import('node:fs/promises');
-          let content = await fs.readFile(snapPath, 'utf8');
-          if (content.length > 500) {
-            content = content.substring(0, 500) + '\n... (truncated)';
-          }
-          previewContent += content;
-        } catch (e: unknown) {
-          previewContent += `<Error reading file: ${(e as Error).message}>`;
-        }
-      }
-
-      previewContent += `\n\nUse /approve ${request.id} or /reject ${request.id} [reason]`;
+      const { generateRequestPreview } = await import('./policy-utils.js');
+      const previewContent = await generateRequestPreview(request);
 
       const logMsg = {
         id: (await import('node:crypto')).randomUUID(),
