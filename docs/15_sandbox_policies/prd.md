@@ -66,24 +66,24 @@ To ensure robust security against command injection, path traversal, and race co
 
 ### Clawmini CLI (Agent View)
 
-The agent interacts with the `clawmini` CLI using the POSIX standard `--` separator. Everything before `--` is processed by the daemon for security routing and snapshotting. Everything after `--` is passed opaquely to the target script.
+The agent interacts with the `clawmini-lite` CLI using the POSIX standard `--` separator. Everything before `--` is processed by the daemon for security routing and snapshotting. Everything after `--` is passed opaquely to the target script.
 
 **1. Discovery**
-- `clawmini requests list`: Outputs all registered policies and their descriptions.
-- `clawmini request <cmd> --help`: Executes the underlying command defined in the JSON configuration with the `--help` flag and outputs the result.
+- `clawmini-lite requests list`: Outputs all registered policies and their descriptions.
+- `clawmini-lite request <cmd> --help`: Executes the underlying command defined in the JSON configuration with the `--help` flag and outputs the result.
 
 **2. Making a Request (Named Variable Mapping)**
 ```bash
 # Agent explicitly maps body_txt to a sandbox file, then uses it in the opaque args
-clawmini request send-email \
+clawmini-lite request send-email \
   --file body_txt=./report.txt \
   -- \
   --to admin@example.com --subject "Daily Report" --body "{{body_txt}}"
 ```
 
 Behind the scenes:
-1. `clawmini` parses `--file body_txt=./report.txt`.
-2. The daemon resolves the real path, strictly verifies it is inside the sandbox, and snapshots it to a secure location (e.g., `/tmp/snapshots/123_report.txt`).
+1. `clawmini-lite` parses `--file body_txt=./report.txt`.
+2. The daemon verifies the path is inside the agent's directory, rejects it if it's a symlink, and snapshots it to a secure location (e.g., `/tmp/snapshots/123_report.txt`).
 3. The daemon takes the opaque arguments `["--to", "admin@example.com", "--subject", "Daily Report", "--body", "{{body_txt}}"]` and performs a precise string replacement on array elements to swap `{{body_txt}}` with the safe snapshot path.
 4. The CLI returns immediately with the pending Request ID and exits.
 5. The daemon persists the request and routes the preview to the user's chat UI.
@@ -108,7 +108,7 @@ Users can respond with:
 ### Core Requirements
 1. **CLI Extensibility:** Agents must have access to a `clawmini` CLI binary inside their environment.
 2. **Configuration:** Users define permissible actions via a centralized JSON configuration providing a `command` and `description` string. The framework acts as a "dumb pipe" for arguments.
-3. **Explicit File Templating & Snapshotting:** Agents declare files using `--file name=path` prior to the `--` argument separator. The daemon strictly bounds the path to the sandbox, creates a secure snapshot, and replaces `{{name}}` in the opaque arguments with the snapshot's absolute path. Enforce strict file size limits on snapshots (e.g., max 5MB).
+3. **Explicit File Templating & Snapshotting:** Agents declare files using `--file name=path` prior to the `--` argument separator. The daemon strictly bounds the path to the agent's directory, creates a secure snapshot (rejecting symlinks entirely to prevent TOCTOU), and replaces `{{name}}` in the opaque arguments with the snapshot's absolute path. Enforce strict file size limits on snapshots (e.g., max 5MB).
 4. **Chat Integration & Previews:** Requests must be routed to the user's Chat UI, showing the requested command, the snapshot paths, the exact opaque arguments, and abbreviated file contents to aid review.
 5. **Execution Engine:** Approved actions must execute safely using direct OS exec arrays (`spawn`), not shell execution.
 6. **Automatic Callbacks:** The daemon must automatically inject a message into the active chat session when a request is approved (along with command output) or rejected (along with user feedback).
@@ -117,7 +117,7 @@ Users can respond with:
 ### Non-Functional Requirements
 - **Security:** 
   - **Input Sanitization (Command Injection):** The framework must strictly use direct exec arrays to completely mitigate shell command injection risks.
-  - **Path Bounding & Symlinks (TOCTOU):** The daemon must snapshot files immediately upon request creation, resolving `realpath` and avoiding symlinks, to prevent an agent from escaping the sandbox via background malicious symlink swapping during the approval window.
+  - **Path Bounding & Symlinks (TOCTOU):** The daemon must snapshot files immediately upon request creation. It must verify the file lies within the agent's directory and reject any symlinks entirely to prevent an agent from escaping the sandbox via background malicious symlink swapping during the approval window.
   - **Denial of Service (DoS) Prevention:** The system must cap the number of pending requests (e.g., a maximum of 100 open requests) to prevent an agent from spamming requests and exhausting system resources (disk space, inodes, or memory).
   - **Spoofing & Self-Approval Prevention:** The system must strictly verify the origin of `/approve` and `/reject` commands to ensure they come from direct user input (e.g., validating the `role: user` tag on the message), not from agent outputs or background jobs.
 

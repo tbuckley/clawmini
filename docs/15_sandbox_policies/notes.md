@@ -22,3 +22,12 @@
 - How are actions configured? (YAML, TS, JSON?)
 - Where do callbacks execute? (Inside sandbox or outside on host?)
 - How does the snapshot mechanism identify which files to capture? (Does the action definition specify file arguments?)
+
+## PR #71 Feedback Notes
+- **Constants:** Move max snapshot size limit to a constant.
+- **Security:** Ensure snapshots resolve to the *agent's directory*, not just the workspace root. Do not follow symlinks (reject them immediately with lstat). Ensure the generated snapshot filename does not already exist.
+- **Router Configuration:** The `slash-policies` router must be an optional router in `init.ts` and loaded dynamically via the pipeline like other routers, not hardcoded.
+- **Router State Handling:** Do not use `action: 'stop'` on `/approve` or `/reject` or error cases, as that kills running processes. Instead, use `{ message: '...' }` to update the message the agent sees, and empty message with `reply` for user errors. Include `messageId` for replies.
+- **Request Metadata & Validation:** Use shorter, typing-friendly IDs for requests instead of UUIDs. Save `chatId` and `agentId` with the request. Validate the chat ID matches when approving/rejecting. Add Zod validation to `request-store.ts` when loading from disk.
+- **Code Cleanup:** Remove inline `await import(...)` in `src/daemon/router.ts` and move them to top-level imports.
+- **CLI Commands:** The `request` and `requests` commands should be moved to `src/cli/lite.ts` so they are accessible by the agent.
