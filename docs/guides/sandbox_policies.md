@@ -1,10 +1,10 @@
-# Sandbox Policies Guide
+# Configuring Permission Requests
 
 The Sandbox Policies feature provides a secure framework for AI agents operating within restricted sandbox environments to request and execute sensitive or network-dependent operations. Using a formal "request-and-approve" workflow, users retain full control via their chat interface while agents gain the ability to perform complex, privileged tasks like sending emails or promoting files to external systems.
 
 ## Registering a Policy
 
-Policies are configured centrally in a JSON file located at `.clawmini/policies.json`. This configuration maps an easy-to-use policy command name to the actual script or binary you want to run when the request is approved. 
+Policies are configured centrally in a JSON file located at `.clawmini/policies.json`. This configuration maps an easy-to-use policy command name to the actual script or binary you want to run when the request is approved.
 
 The framework treats the command execution as a "dumb pipe". It executes the specified script using a secure execution wrapper (bypassing the shell to prevent injection attacks) and interpolates safe, verified file paths.
 
@@ -33,15 +33,18 @@ Agents running within their environment can interact with the Policies feature u
 
 1. **Discovery:**
    Agents can view available policies and their descriptions:
+
    ```bash
    clawmini-lite requests list
    ```
 
 2. **Help Documentation:**
    If a policy is configured with `"allowHelp": true`, agents can query it for help. This securely passes the `--help` flag to the underlying wrapper command and returns the output to the agent:
+
    ```bash
    clawmini-lite request send-email --help
    ```
+
    If `"allowHelp"` is missing or set to `false`, the agent will receive an error stating that `--help` is not supported.
 
 3. **Submitting a Request:**
@@ -58,19 +61,23 @@ When an agent creates a request, the daemon intercepts it and sends a preview me
 You can then review and interact with the pending request using the following slash commands in your chat:
 
 - **List Pending Requests:**
+
   ```text
   /pending
   ```
-  *Lists all active pending requests that need review.*
+
+  _Lists all active pending requests that need review._
 
 - **Approve a Request:**
+
   ```text
   /approve <request_id>
   ```
-  *Approves the request. The configured script executes securely, and the STDOUT/STDERR results are automatically sent back to the agent in the chat.*
+
+  _Approves the request. The configured script executes securely, and the STDOUT/STDERR results are automatically sent back to the agent in the chat._
 
 - **Reject a Request:**
   ```text
   /reject <request_id> [reason]
   ```
-  *Rejects the request. You can provide an optional natural language reason (e.g., `/reject 123 Tone needs to be more formal`) to help the agent correct its output and try again.*
+  _Rejects the request. You can provide an optional natural language reason (e.g., `/reject 123 Tone needs to be more formal`) to help the agent correct its output and try again._
