@@ -5,6 +5,10 @@
   "workspaces": [
     "web"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tbuckley/clawmini.git"
+  },
   "bin": {
     "clawmini": "./dist/cli/index.mjs",
     "clawmini-adapter-discord": "./dist/adapter-discord/index.mjs"
