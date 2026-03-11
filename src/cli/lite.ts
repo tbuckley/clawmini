@@ -178,8 +178,6 @@ requests
         if (policy.description) {
           console.log(`  Description: ${policy.description}`);
         }
-        const cmdString = `${policy.command} ${policy.args ? policy.args.join(' ') : ''}`.trim();
-        console.log(`  Command: ${cmdString}`);
       }
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
