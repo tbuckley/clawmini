@@ -135,18 +135,18 @@ export async function generateRequestPreview(request: PolicyRequest): Promise<st
   }
 
   for (const [name, snapPath] of Object.entries(request.fileMappings)) {
-    previewContent += `\nFile [${name}]:\n`;
+    previewContent += `File [${name}]:\n`;
     try {
       let content = await fs.readFile(snapPath, 'utf8');
       if (content.length > 500) {
-        content = content.substring(0, 500) + '\n... (truncated)';
+        content = content.substring(0, 500) + '\n... (truncated)\n';
       }
       previewContent += content;
     } catch (e: unknown) {
-      previewContent += `<Error reading file: ${(e as Error).message}>`;
+      previewContent += `<Error reading file: ${(e as Error).message}>\n`;
     }
   }
 
-  previewContent += `\n\nUse /approve ${request.id} or /reject ${request.id} [reason]`;
+  previewContent += `\nUse /approve ${request.id} or /reject ${request.id} [reason]`;
   return previewContent;
 }

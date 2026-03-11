@@ -41,6 +41,7 @@ export const initCmd = new Command('init')
         '@clawmini/slash-new',
         '@clawmini/slash-stop',
         '@clawmini/slash-interrupt',
+        '@clawmini/slash-policies',
         '@clawmini/slash-command',
       ],
     };

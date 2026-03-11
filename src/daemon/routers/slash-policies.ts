@@ -80,8 +80,12 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
 
     await appendMessage(state.chatId, logMsg);
 
-    const agentMessage = `Request ${id} approved.\n\nSTDOUT:\n${stdout}\n\nSTDERR:\n${stderr}\n\nExit Code: ${exitCode}`;
-    return { ...state, message: agentMessage };
+    const agentMessage = `Request ${id} approved.\n\n${wrapInHtml('stdout', stdout)}\n\n${wrapInHtml('stderr', stderr)}\n\nExit Code: ${exitCode}`;
+    return {
+      ...state,
+      message: agentMessage,
+      reply: `Approved request, running ${req.commandName}`,
+    };
   }
 
   const rejectMatch = message.match(/^\/reject\s+([^\s]+)(?:\s+(.*))?/);
@@ -117,4 +121,11 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
   }
 
   return state;
+}
+
+function wrapInHtml(tag: string, text: string): string {
+  if (text.trim().length === 0) {
+    return `<${tag}></${tag}>`;
+  }
+  return `<${tag}>\n${text.trim()}\n</${tag}>`;
 }

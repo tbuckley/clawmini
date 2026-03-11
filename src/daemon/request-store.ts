@@ -3,6 +3,7 @@ import path from 'path';
 import { z } from 'zod';
 import { getClawminiDir } from '../shared/workspace.js';
 import type { PolicyRequest } from '../shared/policies.js';
+import { randomInt } from 'crypto';
 
 const PolicyRequestSchema = z.object({
   id: z.string(),
@@ -44,7 +45,8 @@ export class RequestStore {
   }
 
   async load(id: string): Promise<PolicyRequest | null> {
-    const filePath = this.getFilePath(id);
+    const normalizedId = normalizePolicyId(id);
+    const filePath = this.getFilePath(normalizedId);
     try {
       const data = await fs.readFile(filePath, 'utf8');
       return PolicyRequestSchema.parse(JSON.parse(data)) as PolicyRequest;
@@ -78,4 +80,17 @@ export class RequestStore {
     }
     return requests.sort((a, b) => b.createdAt - a.createdAt);
   }
+}
+
+export function generateRandomAlphaNumericString(length: number): string {
+  const characters = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += characters[Math.floor(randomInt(characters.length))];
+  }
+  return result;
+}
+
+function normalizePolicyId(id: string): string {
+  return id.toLocaleUpperCase().trim();
 }

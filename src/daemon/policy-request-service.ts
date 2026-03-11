@@ -1,5 +1,4 @@
-import { randomBytes } from 'node:crypto';
-import { RequestStore } from './request-store.js';
+import { RequestStore, generateRandomAlphaNumericString } from './request-store.js';
 import { createSnapshot, interpolateArgs } from './policy-utils.js';
 import type { PolicyRequest } from '../shared/policies.js';
 
@@ -38,7 +37,7 @@ export class PolicyRequestService {
 
     let id = '';
     do {
-      id = randomBytes(3).toString('hex');
+      id = generateRandomAlphaNumericString(3);
     } while (allRequests.some((r) => r.id === id));
 
     const request: PolicyRequest = {
