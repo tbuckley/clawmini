@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { RouterState } from './types.js';
 import { RequestStore } from '../request-store.js';
-import { readPolicies } from '../../shared/workspace.js';
+import { readPolicies, getWorkspaceRoot } from '../../shared/workspace.js';
 import { executeSafe, interpolateArgs } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
 import type { CommandLogMessage } from '../../shared/chats.js';
 
 async function loadAndValidateRequest(id: string, state: RouterState) {
-  const store = new RequestStore(process.cwd());
+  const store = new RequestStore(getWorkspaceRoot());
   const req = await store.load(id);
   if (!req) return { error: { ...state, message: '', reply: `Request not found: ${id}` } };
   if (req.chatId && req.chatId !== state.chatId)
@@ -23,7 +23,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
   const message = state.message.trim();
 
   if (message === '/pending') {
-    const store = new RequestStore(process.cwd());
+    const store = new RequestStore(getWorkspaceRoot());
     const requests = await store.list();
     const pending = requests.filter((r) => r.state === 'Pending');
 
@@ -60,7 +60,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     const interpolatedArgs = interpolateArgs(fullArgs, req.fileMappings);
 
     const { stdout, stderr, exitCode } = await executeSafe(policy.command, interpolatedArgs, {
-      cwd: process.cwd(),
+      cwd: getWorkspaceRoot(),
     });
 
     const commandStr = `${policy.command} ${interpolatedArgs.join(' ')}`;
@@ -74,7 +74,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       stdout,
       timestamp: new Date().toISOString(),
       command: commandStr,
-      cwd: process.cwd(),
+      cwd: getWorkspaceRoot(),
       exitCode,
     };
 
@@ -110,7 +110,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       stderr: '',
       timestamp: new Date().toISOString(),
       command: `policy-request-reject ${id}`,
-      cwd: process.cwd(),
+      cwd: getWorkspaceRoot(),
       exitCode: 1,
     };
 
