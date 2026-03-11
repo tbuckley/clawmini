@@ -18,13 +18,14 @@ Create or update `.clawmini/policies.json` in your workspace root:
     "send-email": {
       "description": "Sends an email using the specified body file.",
       "command": "./.clawmini/policy-scripts/send-email.sh",
-      "args": ["--agent-email"]
+      "args": ["--agent-email"],
+      "allowHelp": true
     }
   }
 }
 ```
 
-In this example, the `send-email` policy uses a wrapper script located at `./.clawmini/policy-scripts/send-email.sh`. Any arguments defined in `args` will be prepended to the arguments the agent passes.
+In this example, the `send-email` policy uses a wrapper script located at `./.clawmini/policy-scripts/send-email.sh`. Any arguments defined in `args` will be prepended to the arguments the agent passes. The `allowHelp` flag must be set to `true` to enable the `--help` discovery feature for this policy.
 
 ## Agent Access via clawmini-lite
 
@@ -37,10 +38,11 @@ Agents running within their environment can interact with the Policies feature u
    ```
 
 2. **Help Documentation:**
-   Agents can query a policy for help, which passes the `--help` flag to the underlying wrapper command:
+   If a policy is configured with `"allowHelp": true`, agents can query it for help. This securely passes the `--help` flag to the underlying wrapper command and returns the output to the agent:
    ```bash
    clawmini-lite request send-email --help
    ```
+   If `"allowHelp"` is missing or set to `false`, the agent will receive an error stating that `--help` is not supported.
 
 3. **Submitting a Request:**
    Agents can submit a request to run a policy. The `--file` flag maps a file within the agent's sandbox to a variable name, which can be interpolated into the opaque arguments using `{{variable_name}}`. This ensures files are securely snapshotted to prevent TOCTOU (Time-of-Check to Time-of-Use) attacks.

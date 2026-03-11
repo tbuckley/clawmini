@@ -111,7 +111,7 @@ describe('slashPolicies', () => {
     );
     expect(result.action).toBeUndefined();
     expect(result.message).toContain('Request req-1 approved.');
-    expect(result.message).toContain('STDOUT:\nhello world');
+    expect(result.message).toContain('<stdout>\nhello world\n</stdout>');
   });
 
   it('should reject a pending request on /reject with reason and inject feedback', async () => {

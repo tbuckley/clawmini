@@ -432,6 +432,31 @@ const AppRouter = router({
   listPolicies: apiProcedure.query(async () => {
     return await readPolicies();
   }),
+  executePolicyHelp: apiProcedure
+    .input(z.object({ commandName: z.string() }))
+    .query(async ({ input }) => {
+      const config = await readPolicies();
+      const policy = config?.policies?.[input.commandName];
+
+      if (!policy) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Policy not found: ${input.commandName}`,
+        });
+      }
+
+      if (!policy.allowHelp) {
+        return { stdout: '', stderr: 'This command does not support --help\n', exitCode: 1 };
+      }
+
+      const { executeSafe } = await import('./policy-utils.js');
+      const fullArgs = [...(policy.args || []), '--help'];
+      const { stdout, stderr, exitCode } = await executeSafe(policy.command, fullArgs, {
+        cwd: getWorkspaceRoot(),
+      });
+
+      return { stdout, stderr, exitCode };
+    }),
   createPolicyRequest: apiProcedure
     .input(
       z.object({
@@ -464,6 +489,7 @@ const AppRouter = router({
 
       const logMsg = {
         id: (await import('node:crypto')).randomUUID(),
+        // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
         messageId: (await import('node:crypto')).randomUUID(),
         role: 'log' as const,
         source: 'router' as const,

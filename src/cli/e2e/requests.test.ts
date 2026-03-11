@@ -26,6 +26,12 @@ describe('E2E Requests Tests (Lite)', () => {
             description: 'A test policy',
             command: 'echo',
             args: ['hello'],
+            allowHelp: true,
+          },
+          'no-help-cmd': {
+            description: 'A no help policy',
+            command: 'echo',
+            args: ['nohelp'],
           },
         },
       })
@@ -111,6 +117,12 @@ describe('E2E Requests Tests (Lite)', () => {
     const { stdout, code } = await runLite(['request', 'test-cmd', '--help']);
     expect(code).toBe(0);
     expect(stdout).toBeTruthy();
+  });
+
+  it('should block --help if allowHelp is not true', async () => {
+    const { stderr, code } = await runLite(['request', 'no-help-cmd', '--help']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('This command does not support --help');
   });
 
   it('should create a request and return an ID', async () => {

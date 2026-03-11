@@ -4,7 +4,6 @@ import { Command } from 'commander';
 import { createTRPCClient, httpLink } from '@trpc/client';
 import type { AppRouter } from '../daemon/router.js';
 import type { CronJob } from '../shared/config.js';
-import { spawn } from 'node:child_process';
 
 /**
  * clawmini-lite - A standalone client
@@ -204,10 +203,15 @@ program
       }
 
       if (options.help) {
-        // Execute underlying command with --help
-        const p = spawn(policy.command, [...(policy.args || []), '--help'], { stdio: 'inherit' });
-        await new Promise((resolve) => p.on('close', resolve));
-        return;
+        // Execute underlying command with --help via the daemon
+        const helpOutput = await client.executePolicyHelp.query({ commandName: cmdName });
+        if (helpOutput.stdout) {
+          process.stdout.write(helpOutput.stdout);
+        }
+        if (helpOutput.stderr) {
+          process.stderr.write(helpOutput.stderr);
+        }
+        process.exit(helpOutput.exitCode);
       }
 
       const dashDashIndex = process.argv.indexOf('--');
