@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import { execSync } from 'node:child_process';
+import type { PolicyConfig } from './policies.js';
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
@@ -68,7 +69,7 @@ export function getClawminiDir(startDir = process.cwd()): string {
 }
 
 export function getSocketPath(startDir = process.cwd()): string {
-  return path.join(getClawminiDir(startDir), 'server.sock');
+  return path.join(getClawminiDir(startDir), 's.sock');
 }
 
 export function getSettingsPath(startDir = process.cwd()): string {
@@ -402,14 +403,12 @@ export async function writeSettings(data: Settings, startDir = process.cwd()): P
   await writeJsonFile(getSettingsPath(startDir), data as Record<string, unknown>);
 }
 
-export async function readPolicies(
-  startDir = process.cwd()
-): Promise<import('./policies.js').PolicyConfig | null> {
+export async function readPolicies(startDir = process.cwd()): Promise<PolicyConfig | null> {
   const data = await readJsonFile(getPoliciesPath(startDir));
   if (!data) return null;
   // Basic validation, assuming PolicyConfig structure
   if (data.policies && typeof data.policies === 'object') {
-    return data as unknown as import('./policies.js').PolicyConfig;
+    return data as unknown as PolicyConfig;
   }
   return null;
 }

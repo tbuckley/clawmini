@@ -4,6 +4,7 @@ import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import { readDiscordConfig, isAuthorized, initDiscordConfig } from './config.js';
 import { getTRPCClient } from './client.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
+import { getClawminiDir } from '../shared/workspace.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -62,7 +63,6 @@ export async function main() {
 
     const downloadedFiles: string[] = [];
     if (message.attachments.size > 0) {
-      const { getClawminiDir } = await import('../shared/workspace.js');
       const tmpDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'discord');
       await fs.mkdir(tmpDir, { recursive: true });
       const maxSizeMB = config.maxAttachmentSizeMB ?? 25;
@@ -141,7 +141,24 @@ export async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('Unhandled error in Discord Adapter:', error);
-  process.exit(1);
-});
+import { fileURLToPath } from 'node:url';
+
+const isMainModule = (() => {
+  try {
+    if (typeof process === 'undefined' || !process.argv || process.argv.length < 2) return false;
+    const argv1 = process.argv[1];
+    if (!argv1) return false;
+    const p1 = path.resolve(argv1);
+    const p2 = path.resolve(fileURLToPath(import.meta.url));
+    return p1 === p2;
+  } catch {
+    return false;
+  }
+})();
+
+if (isMainModule) {
+  main().catch((error) => {
+    console.error('Unhandled error in Discord Adapter:', error);
+    process.exit(1);
+  });
+}

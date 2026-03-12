@@ -2,6 +2,11 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import fs from 'node:fs/promises';
+import { pathIsInsideDir } from '../shared/utils/fs.js';
+import { on } from 'node:events';
+import { appendMessage, type CommandLogMessage } from './chats.js';
+import { executeSafe, generateRequestPreview } from './policy-utils.js';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, DAEMON_EVENT_TYPING } from './events.js';
 import {
@@ -128,8 +133,6 @@ async function getAgentFilesDir(
 }
 
 async function validateAttachments(files: string[]): Promise<void> {
-  const { pathIsInsideDir } = await import('../shared/utils/fs.js');
-  const { getClawminiDir } = await import('../shared/workspace.js');
   const tmpDir = path.join(getClawminiDir(process.cwd()), 'tmp');
 
   for (const file of files) {
@@ -156,7 +159,6 @@ async function validateLogFile(
   agentDir: string,
   workspaceRoot: string
 ): Promise<string> {
-  const { pathIsInsideDir } = await import('../shared/utils/fs.js');
   // The agent sends paths relative to its working directory.
   // We resolve to an absolute path to verify it is within the agent's directory.
   const resolvedPath = path.resolve(agentDir, file);
@@ -225,8 +227,6 @@ const AppRouter = router({
 
         const adapterNamespace = input.data.adapter || 'cli';
         const targetDir = path.join(absoluteFilesDir, adapterNamespace);
-
-        const { pathIsInsideDir } = await import('../shared/utils/fs.js');
 
         if (!pathIsInsideDir(targetDir, workspaceRoot, { allowSameDir: true })) {
           throw new TRPCError({
@@ -297,7 +297,6 @@ const AppRouter = router({
       }
 
       // 2. Listen for new messages
-      const { on } = await import('node:events');
       try {
         for await (const [event] of on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, { signal })) {
           if (event.chatId === chatId) {
@@ -320,7 +319,6 @@ const AppRouter = router({
     .subscription(async function* ({ input, ctx, signal }) {
       const chatId = await resolveAndCheckChatId(ctx, input.chatId);
 
-      const { on } = await import('node:events');
       try {
         for await (const [event] of on(daemonEvents, DAEMON_EVENT_TYPING, { signal })) {
           if (event.chatId === chatId) {
@@ -371,7 +369,7 @@ const AppRouter = router({
 
       const filesArgStr = filePaths.map((p) => ` --file ${p}`).join('');
       const messageStr = input.message || '';
-      const logMsg: import('./chats.js').CommandLogMessage = {
+      const logMsg: CommandLogMessage = {
         id,
         messageId: id,
         role: 'log',
@@ -385,7 +383,7 @@ const AppRouter = router({
         ...(filePaths.length > 0 ? { files: filePaths } : {}),
       };
 
-      await import('./chats.js').then((m) => m.appendMessage(chatId, logMsg));
+      await appendMessage(chatId, logMsg);
       return { success: true };
     }),
   listCronJobs: apiProcedure
@@ -449,7 +447,6 @@ const AppRouter = router({
         return { stdout: '', stderr: 'This command does not support --help\n', exitCode: 1 };
       }
 
-      const { executeSafe } = await import('./policy-utils.js');
       const fullArgs = [...(policy.args || []), '--help'];
       const { stdout, stderr, exitCode } = await executeSafe(policy.command, fullArgs, {
         cwd: getWorkspaceRoot(),
@@ -484,13 +481,12 @@ const AppRouter = router({
         agentId
       );
 
-      const { generateRequestPreview } = await import('./policy-utils.js');
       const previewContent = await generateRequestPreview(request);
 
       const logMsg = {
-        id: (await import('node:crypto')).randomUUID(),
+        id: randomUUID(),
         // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
-        messageId: (await import('node:crypto')).randomUUID(),
+        messageId: randomUUID(),
         role: 'log' as const,
         source: 'router' as const,
         content: previewContent,
@@ -501,7 +497,7 @@ const AppRouter = router({
         exitCode: 0,
       };
 
-      await import('./chats.js').then((m) => m.appendMessage(chatId, logMsg));
+      await appendMessage(chatId, logMsg);
       return request;
     }),
 });
