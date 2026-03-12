@@ -72,7 +72,7 @@ jobs
   .action(async () => {
     try {
       const client = getClient();
-      const jobsList = await client.listCronJobs.query({});
+      const jobsList = await client.listCronJobs.query();
       console.log(JSON.stringify(jobsList, null, 2));
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
@@ -129,7 +129,7 @@ jobs
       }
 
       const client = getClient();
-      await client.addCronJob.mutate({ chatId: options.chat, job });
+      await client.addCronJob.mutate({ job });
       console.log(`Job '${name}' created successfully.`);
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
@@ -140,11 +140,10 @@ jobs
 jobs
   .command('delete <name>')
   .description('Delete a cron job')
-  .option('-c, --chat <chatId>', 'Chat ID')
-  .action(async (name, options) => {
+  .action(async (name) => {
     try {
       const client = getClient();
-      const result = await client.deleteCronJob.mutate({ chatId: options.chat, id: name });
+      const result = await client.deleteCronJob.mutate({ id: name });
       if (result && result.deleted) {
         console.log(`Job '${name}' deleted successfully.`);
       } else {

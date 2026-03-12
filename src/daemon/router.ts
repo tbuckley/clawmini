@@ -89,7 +89,6 @@ async function resolveAgentDir(
   return workspaceRoot;
 }
 
-
 async function getAgentFilesDir(
   agentId: string | undefined,
   chatId: string,
@@ -187,9 +186,9 @@ export const sendMessage = apiProcedure
       }),
     })
   )
-  .mutation(async ({ input, ctx }) => {
+  .mutation(async ({ input }) => {
     let message = input.data.message;
-    const chatId = input.data.chatId ?? await getDefaultChatId();
+    const chatId = input.data.chatId ?? (await getDefaultChatId());
     const noWait = input.data.noWait ?? false;
     const sessionId = input.data.sessionId;
     const agentId = input.data.agentId;
@@ -260,8 +259,8 @@ export const sendMessage = apiProcedure
 
 export const getMessages = apiProcedure
   .input(z.object({ chatId: z.string().optional(), limit: z.number().optional() }))
-  .query(async ({ input, ctx }) => {
-    const chatId = input.chatId ?? await getDefaultChatId();
+  .query(async ({ input }) => {
+    const chatId = input.chatId ?? (await getDefaultChatId());
     return fetchMessages(chatId, input.limit);
   });
 
@@ -272,8 +271,8 @@ export const waitForMessages = apiProcedure
       lastMessageId: z.string().optional(),
     })
   )
-  .subscription(async function* ({ input, ctx, signal }) {
-    const chatId = input.chatId ?? await getDefaultChatId();
+  .subscription(async function* ({ input, signal }) {
+    const chatId = input.chatId ?? (await getDefaultChatId());
 
     // 1. Check if there are already new messages
     if (input.lastMessageId) {
@@ -305,8 +304,8 @@ export const waitForTyping = apiProcedure
       chatId: z.string().optional(),
     })
   )
-  .subscription(async function* ({ input, ctx, signal }) {
-    const chatId = input.chatId ?? await getDefaultChatId();
+  .subscription(async function* ({ input, signal }) {
+    const chatId = input.chatId ?? (await getDefaultChatId());
 
     try {
       for await (const [event] of on(daemonEvents, DAEMON_EVENT_TYPING, { signal })) {
@@ -416,31 +415,30 @@ async function deleteCronJobShared(chatId: string, id: string) {
 
 export const userListCronJobs = apiProcedure
   .input(z.object({ chatId: z.string().optional() }))
-  .query(async ({ input, ctx }) => {
-    const chatId = input.chatId ?? await getDefaultChatId();
+  .query(async ({ input }) => {
+    const chatId = input.chatId ?? (await getDefaultChatId());
     return listCronJobsShared(chatId);
   });
 
 export const userAddCronJob = apiProcedure
   .input(z.object({ chatId: z.string().optional(), job: CronJobSchema }))
-  .mutation(async ({ input, ctx }) => {
-    const chatId = input.chatId ?? await getDefaultChatId();
+  .mutation(async ({ input }) => {
+    const chatId = input.chatId ?? (await getDefaultChatId());
     return addCronJobShared(chatId, input.job);
   });
 
 export const userDeleteCronJob = apiProcedure
   .input(z.object({ chatId: z.string().optional(), id: z.string() }))
-  .mutation(async ({ input, ctx }) => {
-    const chatId = input.chatId ?? await getDefaultChatId();
+  .mutation(async ({ input }) => {
+    const chatId = input.chatId ?? (await getDefaultChatId());
     return deleteCronJobShared(chatId, input.id);
   });
 
-export const agentListCronJobs = apiProcedure
-  .query(async ({ ctx }) => {
-    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
-    const chatId = ctx.tokenPayload.chatId;
-    return listCronJobsShared(chatId);
-  });
+export const agentListCronJobs = apiProcedure.query(async ({ ctx }) => {
+  if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
+  const chatId = ctx.tokenPayload.chatId;
+  return listCronJobsShared(chatId);
+});
 
 export const agentAddCronJob = apiProcedure
   .input(z.object({ job: CronJobSchema }))

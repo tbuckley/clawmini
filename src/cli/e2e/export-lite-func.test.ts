@@ -105,18 +105,7 @@ describe('E2E Export Lite Functionality Tests', () => {
     // 2. Test jobs add
     const addProcess = spawn(
       'node',
-      [
-        litePath,
-        'jobs',
-        'add',
-        'lite-job',
-        '--cron',
-        '* * * * *',
-        '--message',
-        'lite message',
-        '--chat',
-        'lite-chat',
-      ],
+      [litePath, 'jobs', 'add', 'lite-job', '--cron', '* * * * *', '--message', 'lite message'],
       {
         env: { ...process.env, CLAW_API_URL: envUrl, CLAW_API_TOKEN: envToken },
       }
@@ -139,7 +128,7 @@ describe('E2E Export Lite Functionality Tests', () => {
     expect(listStdout).toContain('* * * * *');
 
     // 4. Test jobs delete
-    const delProcess = spawn('node', [litePath, 'jobs', 'delete', 'lite-job', '-c', 'lite-chat'], {
+    const delProcess = spawn('node', [litePath, 'jobs', 'delete', 'lite-job'], {
       env: { ...process.env, CLAW_API_URL: envUrl, CLAW_API_TOKEN: envToken },
     });
     let delStdout = '';

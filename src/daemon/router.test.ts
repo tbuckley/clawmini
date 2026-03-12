@@ -1,8 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { userRouter, agentRouter } from './router.js';
-import { initTRPC } from '@trpc/server';
-const t = initTRPC.context<any>().create();
 // No merged router to avoid duplicate key errors.
 import * as workspace from '../shared/workspace.js';
 import * as chats from '../shared/chats.js';
@@ -49,7 +47,7 @@ vi.mock('../shared/workspace.js', async (importOriginal) => {
     getAgent: vi.fn(),
     getWorkspaceRoot: vi.fn().mockReturnValue(process.cwd()),
     getActiveEnvironmentName: vi.fn().mockResolvedValue(null),
-  getActiveEnvironmentInfo: vi.fn().mockResolvedValue(null),
+    getActiveEnvironmentInfo: vi.fn().mockResolvedValue(null),
     getEnvironmentPath: vi.fn().mockReturnValue(''),
     readEnvironment: vi.fn().mockResolvedValue(null),
   };
@@ -285,9 +283,11 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
       vi.mocked(chats.appendMessage).mockResolvedValue(undefined);
 
-      const caller = agentRouter.createCaller({ isApiServer: true, tokenPayload: { agentId: 'default', chatId: 'default-chat' } } as any);
+      const caller = agentRouter.createCaller({
+        isApiServer: true,
+        tokenPayload: { agentId: 'default', chatId: 'default-chat' },
+      } as any);
       const result = await caller.logMessage({
-        chatId: 'default-chat',
         message: 'Test log',
       });
 
@@ -307,9 +307,11 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(chats.appendMessage).mockResolvedValue(undefined);
       vi.mocked((fs as any).default.access).mockResolvedValue(undefined);
 
-      const caller = agentRouter.createCaller({ isApiServer: true, tokenPayload: { agentId: 'default', chatId: 'default-chat' } } as any);
+      const caller = agentRouter.createCaller({
+        isApiServer: true,
+        tokenPayload: { agentId: 'default', chatId: 'default-chat' },
+      } as any);
       const result = await caller.logMessage({
-        chatId: 'default-chat',
         message: 'Test log with file',
         files: ['attachments/discord/image.png'],
       });
@@ -328,10 +330,12 @@ describe('Daemon TRPC Router', () => {
     it('should reject file path with directory traversal (..)', async () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
 
-      const caller = agentRouter.createCaller({ isApiServer: true, tokenPayload: { agentId: 'default', chatId: 'default-chat' } } as any);
+      const caller = agentRouter.createCaller({
+        isApiServer: true,
+        tokenPayload: { agentId: 'default', chatId: 'default-chat' },
+      } as any);
       await expect(
         caller.logMessage({
-          chatId: 'default-chat',
           message: 'Malicious log',
           files: ['../secret.txt'],
         })
@@ -341,10 +345,12 @@ describe('Daemon TRPC Router', () => {
     it('should reject file path with absolute path', async () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
 
-      const caller = agentRouter.createCaller({ isApiServer: true, tokenPayload: { agentId: 'default', chatId: 'default-chat' } } as any);
+      const caller = agentRouter.createCaller({
+        isApiServer: true,
+        tokenPayload: { agentId: 'default', chatId: 'default-chat' },
+      } as any);
       await expect(
         caller.logMessage({
-          chatId: 'default-chat',
           message: 'Malicious log',
           files: ['/etc/passwd'],
         })

@@ -52,7 +52,10 @@ describe('createPolicyRequest preview message', () => {
   });
 
   it('should create a request and append a preview message truncating long files', async () => {
-    const caller = appRouter.createCaller({ isApiServer: true, tokenPayload: { agentId: 'default', chatId: 'default-chat' } } as any);
+    const caller = appRouter.createCaller({
+      isApiServer: true,
+      tokenPayload: { agentId: 'default', chatId: 'default-chat' },
+    } as any);
 
     // file1 is short, file2 is long
     const shortContent = 'Hello world!';
