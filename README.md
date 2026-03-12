@@ -29,9 +29,9 @@ Let's set up a secure, sandboxed agent named Jeeves using the Gemini CLI templat
 npm install -g clawmini
 
 # 2. Initialize a workspace and create your first sandboxed agent
-# For a more OpenClaw-like experience, try the gemini-claw template
+# Note: For a more basic experience, you can use the 'gemini' template instead
 mkdir my-workspace && cd my-workspace
-clawmini init --agent jeeves --agent-template gemini --environment macos
+clawmini init --agent jeeves --agent-template gemini-claw --environment macos
 
 # 3. Start the background daemon
 clawmini up
@@ -41,6 +41,8 @@ clawmini web
 ```
 
 **Try asking Jeeves:** _"Summarize the recent changes in my git repository."_ Jeeves will run securely in its sandbox, read the diffs, and report back.
+
+**What's going on?** When you send a message, Clawmini looks at the chat+message and then launches Gemini CLI with your message in the `jeeves/` directory. The `jeeves/` directory is set up with OpenClaw-like files and system prompt since you used the `gemini-claw` template. And since we chose the `macos` environment, Gemini CLI will run in a built-in Seatbelt sandbox that prevents it from editing anything outside your workspace folder. We additionally give Gemini CLI ways to schedule reminders and recurring tasks, send files, and request permissions to run sensitive commands (see Permission Requests).
 
 ### Common Slash Commands
 
