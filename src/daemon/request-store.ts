@@ -40,7 +40,9 @@ export class RequestStore {
 
   async save(request: PolicyRequest): Promise<void> {
     await this.init();
-    const filePath = this.getFilePath(request.id);
+    const normalizedId = normalizePolicyId(request.id);
+    request.id = normalizedId;
+    const filePath = this.getFilePath(normalizedId);
     await fs.writeFile(filePath, JSON.stringify(request, null, 2), 'utf8');
   }
 

@@ -74,8 +74,8 @@ describe('RequestStore', () => {
 
     const list = await store.list();
     expect(list).toHaveLength(2);
-    expect(list[0]?.id).toBe('req-2');
-    expect(list[1]?.id).toBe('req-1');
+    expect(list[0]?.id).toBe('REQ-2');
+    expect(list[1]?.id).toBe('REQ-1');
   });
 
   it('should gracefully handle corrupted files during load', async () => {
@@ -91,13 +91,13 @@ describe('RequestStore', () => {
     };
     await store.save(req);
 
-    await fs.writeFile(path.join(TEST_DIR, 'tmp', 'requests', 'req-corrupt.json'), 'invalid json');
+    await fs.writeFile(path.join(TEST_DIR, 'tmp', 'requests', 'REQ-CORRUPT.json'), 'invalid json');
 
     const loadedCorrupt = await store.load('req-corrupt');
     expect(loadedCorrupt).toBeNull();
 
     const list = await store.list();
     expect(list).toHaveLength(1);
-    expect(list[0]?.id).toBe('req-good');
+    expect(list[0]?.id).toBe('REQ-GOOD');
   });
 });
