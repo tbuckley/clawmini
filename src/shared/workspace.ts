@@ -69,7 +69,7 @@ export function getClawminiDir(startDir = process.cwd()): string {
 }
 
 export function getSocketPath(startDir = process.cwd()): string {
-  return path.join(getClawminiDir(startDir), 's.sock');
+  return path.join(getClawminiDir(startDir), 'daemon.sock');
 }
 
 export function getSettingsPath(startDir = process.cwd()): string {
