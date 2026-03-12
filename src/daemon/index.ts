@@ -3,7 +3,7 @@ import net from 'node:net';
 import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 import { createHTTPHandler } from '@trpc/server/adapters/standalone';
-import { appRouter } from './router.js';
+import { userRouter, agentRouter } from './router.js';
 import {
   getSocketPath,
   getClawminiDir,
@@ -114,7 +114,7 @@ export async function initDaemon() {
   });
 
   const handler = createHTTPHandler({
-    router: appRouter,
+    router: userRouter,
     createContext: ({ req, res }) => ({ req, res, isApiServer: false }),
   });
 
@@ -153,7 +153,7 @@ export async function initDaemon() {
   let apiServer: http.Server | undefined;
   if (apiCtx) {
     const apiHandler = createHTTPHandler({
-      router: appRouter,
+      router: agentRouter,
       createContext: ({ req, res }) => {
         let tokenPayload = null;
         const authHeader = req.headers.authorization;

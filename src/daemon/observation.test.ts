@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { appRouter } from './router.js';
+import { userRouter as appRouter } from './router.js';
 import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from './events.js';
 import * as daemonChats from './chats.js';
 

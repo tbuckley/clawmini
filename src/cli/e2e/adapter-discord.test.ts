@@ -17,7 +17,7 @@ describe('Discord Adapter Client E2E', () => {
   }, 30000);
 
   it('should successfully connect to the daemon and subscribe to messages', async () => {
-    const socketPath = path.join(e2eDir, '.clawmini', 'server.sock');
+    const socketPath = path.join(e2eDir, '.clawmini', 's.sock');
     const trpc = getTRPCClient({ socketPath });
 
     const pingResult = await trpc.ping.query();

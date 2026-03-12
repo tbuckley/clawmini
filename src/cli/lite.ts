@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { createTRPCClient, httpLink } from '@trpc/client';
-import type { AppRouter } from '../daemon/router.js';
+import type { AgentRouter as AppRouter } from '../daemon/router.js';
 import type { CronJob } from '../shared/config.js';
 
 /**

@@ -22,7 +22,7 @@ import { PolicyRequestService } from './policy-request-service.js';
 import { RequestStore } from './request-store.js';
 import { CronJobSchema } from '../shared/config.js';
 import { handleUserMessage } from './message.js';
-import { getDefaultChatId, getMessages } from './chats.js';
+import { getDefaultChatId, getMessages as fetchMessages } from './chats.js';
 import { runCommand } from './utils/spawn.js';
 import { cronManager } from './cron.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -89,19 +89,6 @@ async function resolveAgentDir(
   return workspaceRoot;
 }
 
-async function resolveAndCheckChatId(ctx: Context, inputChatId?: string): Promise<string> {
-  const chatId =
-    inputChatId ??
-    (ctx.isApiServer && ctx.tokenPayload ? ctx.tokenPayload.chatId : await getDefaultChatId());
-
-  if (ctx.isApiServer && ctx.tokenPayload) {
-    if (ctx.tokenPayload.chatId !== chatId) {
-      throw new TRPCError({ code: 'FORBIDDEN', message: 'Token not authorized for this chat' });
-    }
-  }
-
-  return chatId;
-}
 
 async function getAgentFilesDir(
   agentId: string | undefined,
@@ -184,323 +171,392 @@ async function validateLogFile(
   return path.relative(workspaceRoot, resolvedPath);
 }
 
-const AppRouter = router({
-  sendMessage: apiProcedure
-    .input(
-      z.object({
-        type: z.literal('send-message'),
-        client: z.literal('cli'),
-        data: z.object({
-          message: z.string(),
-          chatId: z.string().optional(),
-          sessionId: z.string().optional(),
-          agentId: z.string().optional(),
-          noWait: z.boolean().optional(),
-          files: z.array(z.string()).optional(),
-          adapter: z.string().optional(),
-        }),
-      })
-    )
-    .mutation(async ({ input, ctx }) => {
-      let message = input.data.message;
-      const chatId = await resolveAndCheckChatId(ctx, input.data.chatId);
-      const noWait = input.data.noWait ?? false;
-      const sessionId = input.data.sessionId;
-      const agentId = input.data.agentId;
-      const settingsPath = getSettingsPath();
-
-      let settings;
-      try {
-        const settingsStr = await fs.readFile(settingsPath, 'utf8');
-        settings = JSON.parse(settingsStr);
-      } catch (err) {
-        throw new Error(`Failed to read settings from ${settingsPath}: ${err}`, { cause: err });
-      }
-
-      const files = input.data.files;
-      if (files && files.length > 0) {
-        const workspaceRoot = getWorkspaceRoot(process.cwd());
-        const chatSettings = (await readChatSettings(chatId)) ?? {};
-        const targetAgentId = agentId ?? chatSettings.defaultAgent ?? 'default';
-        const agentDir = await resolveAgentDir(targetAgentId, workspaceRoot);
-        const absoluteFilesDir = await getAgentFilesDir(agentId, chatId, settings, workspaceRoot);
-
-        const adapterNamespace = input.data.adapter || 'cli';
-        const targetDir = path.join(absoluteFilesDir, adapterNamespace);
-
-        if (!pathIsInsideDir(targetDir, workspaceRoot, { allowSameDir: true })) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Target directory must be within the workspace.',
-          });
-        }
-
-        await validateAttachments(files);
-
-        await fs.mkdir(targetDir, { recursive: true });
-
-        const finalPaths: string[] = [];
-        for (const file of files) {
-          const fileName = path.basename(file);
-          const targetPath = await getUniquePath(path.join(targetDir, fileName));
-
-          try {
-            await fs.rename(file, targetPath);
-          } catch {
-            await fs.copyFile(file, targetPath);
-            await fs.unlink(file);
-          }
-
-          finalPaths.push(path.relative(agentDir, targetPath));
-        }
-
-        const fileList = `Attached files:\n${finalPaths.map((p) => `- ${p}`).join('\n')}`;
-        message = message ? `${message}\n\n${fileList}` : fileList;
-      }
-
-      await handleUserMessage(
-        chatId,
-        message,
-        settings,
-        undefined,
-        noWait,
-        (args) => runCommand({ ...args, logToTerminal: true }),
-        sessionId,
-        agentId
-      );
-
-      return { success: true };
-    }),
-  getMessages: apiProcedure
-    .input(z.object({ chatId: z.string().optional(), limit: z.number().optional() }))
-    .query(async ({ input, ctx }) => {
-      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
-      return getMessages(chatId, input.limit);
-    }),
-  waitForMessages: apiProcedure
-    .input(
-      z.object({
+export const sendMessage = apiProcedure
+  .input(
+    z.object({
+      type: z.literal('send-message'),
+      client: z.literal('cli'),
+      data: z.object({
+        message: z.string(),
         chatId: z.string().optional(),
-        lastMessageId: z.string().optional(),
-      })
-    )
-    .subscription(async function* ({ input, ctx, signal }) {
-      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
-
-      // 1. Check if there are already new messages
-      if (input.lastMessageId) {
-        const messages = await getMessages(chatId);
-        const lastIndex = messages.findIndex((m) => m.id === input.lastMessageId);
-        if (lastIndex !== -1 && lastIndex < messages.length - 1) {
-          yield messages.slice(lastIndex + 1);
-        }
-      }
-
-      // 2. Listen for new messages
-      try {
-        for await (const [event] of on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, { signal })) {
-          if (event.chatId === chatId) {
-            yield [event.message];
-          }
-        }
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') {
-          return;
-        }
-        throw err;
-      }
-    }),
-  waitForTyping: apiProcedure
-    .input(
-      z.object({
-        chatId: z.string().optional(),
-      })
-    )
-    .subscription(async function* ({ input, ctx, signal }) {
-      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
-
-      try {
-        for await (const [event] of on(daemonEvents, DAEMON_EVENT_TYPING, { signal })) {
-          if (event.chatId === chatId) {
-            yield event;
-          }
-        }
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') {
-          return;
-        }
-        throw err;
-      }
-    }),
-  ping: publicProcedure.query(() => {
-    return { status: 'ok' };
-  }),
-  shutdown: publicProcedure.mutation(() => {
-    // Schedule a shutdown shortly after the response is sent
-    setTimeout(() => {
-      console.log('Shutting down daemon...');
-      process.kill(process.pid, 'SIGTERM');
-    }, 100);
-    return { success: true };
-  }),
-  logMessage: apiProcedure
-    .input(
-      z.object({
-        chatId: z.string().optional(),
-        message: z.string().optional(),
+        sessionId: z.string().optional(),
+        agentId: z.string().optional(),
+        noWait: z.boolean().optional(),
         files: z.array(z.string()).optional(),
-      })
-    )
-    .mutation(async ({ input, ctx }) => {
-      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
-      const timestamp = new Date().toISOString();
-      const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
+        adapter: z.string().optional(),
+      }),
+    })
+  )
+  .mutation(async ({ input, ctx }) => {
+    let message = input.data.message;
+    const chatId = input.data.chatId ?? await getDefaultChatId();
+    const noWait = input.data.noWait ?? false;
+    const sessionId = input.data.sessionId;
+    const agentId = input.data.agentId;
+    const settingsPath = getSettingsPath();
 
-      const filePaths: string[] = [];
-      if (input.files && input.files.length > 0) {
-        const workspaceRoot = getWorkspaceRoot(process.cwd());
-        const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
+    let settings;
+    try {
+      const settingsStr = await fs.readFile(settingsPath, 'utf8');
+      settings = JSON.parse(settingsStr);
+    } catch (err) {
+      throw new Error(`Failed to read settings from ${settingsPath}: ${err}`, { cause: err });
+    }
 
-        for (const file of input.files) {
-          const validPath = await validateLogFile(file, agentDir, workspaceRoot);
-          filePaths.push(validPath);
-        }
-      }
+    const files = input.data.files;
+    if (files && files.length > 0) {
+      const workspaceRoot = getWorkspaceRoot(process.cwd());
+      const chatSettings = (await readChatSettings(chatId)) ?? {};
+      const targetAgentId = agentId ?? chatSettings.defaultAgent ?? 'default';
+      const agentDir = await resolveAgentDir(targetAgentId, workspaceRoot);
+      const absoluteFilesDir = await getAgentFilesDir(agentId, chatId, settings, workspaceRoot);
 
-      const filesArgStr = filePaths.map((p) => ` --file ${p}`).join('');
-      const messageStr = input.message || '';
-      const logMsg: CommandLogMessage = {
-        id,
-        messageId: id,
-        role: 'log',
-        source: 'router',
-        content: messageStr,
-        stderr: '',
-        timestamp,
-        command: `clawmini-lite log${filesArgStr}`,
-        cwd: process.cwd(),
-        exitCode: 0,
-        ...(filePaths.length > 0 ? { files: filePaths } : {}),
-      };
+      const adapterNamespace = input.data.adapter || 'cli';
+      const targetDir = path.join(absoluteFilesDir, adapterNamespace);
 
-      await appendMessage(chatId, logMsg);
-      return { success: true };
-    }),
-  listCronJobs: apiProcedure
-    .input(z.object({ chatId: z.string().optional() }))
-    .query(async ({ input, ctx }) => {
-      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
-      const settings = await readChatSettings(chatId);
-      return settings?.jobs ?? [];
-    }),
-  addCronJob: apiProcedure
-    .input(z.object({ chatId: z.string().optional(), job: CronJobSchema }))
-    .mutation(async ({ input, ctx }) => {
-      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
-      const settings = (await readChatSettings(chatId)) || {};
-      const cronJobs = settings.jobs ?? [];
-      const existingIndex = cronJobs.findIndex((j) => j.id === input.job.id);
-      if (existingIndex >= 0) {
-        cronJobs[existingIndex] = input.job;
-      } else {
-        cronJobs.push(input.job);
-      }
-      settings.jobs = cronJobs;
-      await writeChatSettings(chatId, settings);
-      cronManager.scheduleJob(chatId, input.job);
-      return { success: true };
-    }),
-  deleteCronJob: apiProcedure
-    .input(z.object({ chatId: z.string().optional(), id: z.string() }))
-    .mutation(async ({ input, ctx }) => {
-      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
-      const settings = await readChatSettings(chatId);
-      if (!settings || !settings.jobs) {
-        return { success: true, deleted: false };
-      }
-      const initialLength = settings.jobs.length;
-      settings.jobs = settings.jobs.filter((j) => j.id !== input.id);
-      if (settings.jobs.length !== initialLength) {
-        await writeChatSettings(chatId, settings);
-        cronManager.unscheduleJob(chatId, input.id);
-        return { success: true, deleted: true };
-      }
-      return { success: true, deleted: false };
-    }),
-  listPolicies: apiProcedure.query(async () => {
-    return await readPolicies();
-  }),
-  executePolicyHelp: apiProcedure
-    .input(z.object({ commandName: z.string() }))
-    .query(async ({ input }) => {
-      const config = await readPolicies();
-      const policy = config?.policies?.[input.commandName];
-
-      if (!policy) {
+      if (!pathIsInsideDir(targetDir, workspaceRoot, { allowSameDir: true })) {
         throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: `Policy not found: ${input.commandName}`,
+          code: 'BAD_REQUEST',
+          message: 'Target directory must be within the workspace.',
         });
       }
 
-      if (!policy.allowHelp) {
-        return { stdout: '', stderr: 'This command does not support --help\n', exitCode: 1 };
+      await validateAttachments(files);
+
+      await fs.mkdir(targetDir, { recursive: true });
+
+      const finalPaths: string[] = [];
+      for (const file of files) {
+        const fileName = path.basename(file);
+        const targetPath = await getUniquePath(path.join(targetDir, fileName));
+
+        try {
+          await fs.rename(file, targetPath);
+        } catch {
+          await fs.copyFile(file, targetPath);
+          await fs.unlink(file);
+        }
+
+        finalPaths.push(path.relative(agentDir, targetPath));
       }
 
-      const fullArgs = [...(policy.args || []), '--help'];
-      const { stdout, stderr, exitCode } = await executeSafe(policy.command, fullArgs, {
-        cwd: getWorkspaceRoot(),
-      });
+      const fileList = `Attached files:\n${finalPaths.map((p) => `- ${p}`).join('\n')}`;
+      message = message ? `${message}\n\n${fileList}` : fileList;
+    }
 
-      return { stdout, stderr, exitCode };
-    }),
-  createPolicyRequest: apiProcedure
-    .input(
-      z.object({
-        commandName: z.string(),
-        args: z.array(z.string()),
-        fileMappings: z.record(z.string(), z.string()),
-        chatId: z.string().optional(),
-      })
-    )
-    .mutation(async ({ input, ctx }) => {
-      const workspaceRoot = getWorkspaceRoot(process.cwd());
-      const snapshotDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'snapshots');
-      const store = new RequestStore(process.cwd());
-      const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
-      const service = new PolicyRequestService(store, agentDir, snapshotDir);
+    await handleUserMessage(
+      chatId,
+      message,
+      settings,
+      undefined,
+      noWait,
+      (args) => runCommand({ ...args, logToTerminal: true }),
+      sessionId,
+      agentId
+    );
 
-      const chatId = await resolveAndCheckChatId(ctx, input.chatId);
-      const agentId = ctx.tokenPayload?.agentId ?? 'unknown';
+    return { success: true };
+  });
 
-      const request = await service.createRequest(
-        input.commandName,
-        input.args,
-        input.fileMappings,
-        chatId,
-        agentId
-      );
+export const getMessages = apiProcedure
+  .input(z.object({ chatId: z.string().optional(), limit: z.number().optional() }))
+  .query(async ({ input, ctx }) => {
+    const chatId = input.chatId ?? await getDefaultChatId();
+    return fetchMessages(chatId, input.limit);
+  });
 
-      const previewContent = await generateRequestPreview(request);
+export const waitForMessages = apiProcedure
+  .input(
+    z.object({
+      chatId: z.string().optional(),
+      lastMessageId: z.string().optional(),
+    })
+  )
+  .subscription(async function* ({ input, ctx, signal }) {
+    const chatId = input.chatId ?? await getDefaultChatId();
 
-      const logMsg = {
-        id: randomUUID(),
-        // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
-        messageId: randomUUID(),
-        role: 'log' as const,
-        source: 'router' as const,
-        content: previewContent,
-        stderr: '',
-        timestamp: new Date().toISOString(),
-        command: 'policy-request',
-        cwd: process.cwd(),
-        exitCode: 0,
-      };
+    // 1. Check if there are already new messages
+    if (input.lastMessageId) {
+      const messages = await fetchMessages(chatId);
+      const lastIndex = messages.findIndex((m) => m.id === input.lastMessageId);
+      if (lastIndex !== -1 && lastIndex < messages.length - 1) {
+        yield messages.slice(lastIndex + 1);
+      }
+    }
 
-      await appendMessage(chatId, logMsg);
-      return request;
-    }),
+    // 2. Listen for new messages
+    try {
+      for await (const [event] of on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, { signal })) {
+        if (event.chatId === chatId) {
+          yield [event.message];
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+      throw err;
+    }
+  });
+
+export const waitForTyping = apiProcedure
+  .input(
+    z.object({
+      chatId: z.string().optional(),
+    })
+  )
+  .subscription(async function* ({ input, ctx, signal }) {
+    const chatId = input.chatId ?? await getDefaultChatId();
+
+    try {
+      for await (const [event] of on(daemonEvents, DAEMON_EVENT_TYPING, { signal })) {
+        if (event.chatId === chatId) {
+          yield event;
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+      throw err;
+    }
+  });
+
+export const ping = publicProcedure.query(() => {
+  return { status: 'ok' };
 });
 
-export type AppRouter = typeof AppRouter;
-export const appRouter = AppRouter;
+export const shutdown = publicProcedure.mutation(() => {
+  // Schedule a shutdown shortly after the response is sent
+  setTimeout(() => {
+    console.log('Shutting down daemon...');
+    process.kill(process.pid, 'SIGTERM');
+  }, 100);
+  return { success: true };
+});
+
+export const logMessage = apiProcedure
+  .input(
+    z.object({
+      message: z.string().optional(),
+      files: z.array(z.string()).optional(),
+    })
+  )
+  .mutation(async ({ input, ctx }) => {
+    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
+    const chatId = ctx.tokenPayload.chatId;
+    const timestamp = new Date().toISOString();
+    const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
+
+    const filePaths: string[] = [];
+    if (input.files && input.files.length > 0) {
+      const workspaceRoot = getWorkspaceRoot(process.cwd());
+      const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
+
+      for (const file of input.files) {
+        const validPath = await validateLogFile(file, agentDir, workspaceRoot);
+        filePaths.push(validPath);
+      }
+    }
+
+    const filesArgStr = filePaths.map((p) => ` --file ${p}`).join('');
+    const messageStr = input.message || '';
+    const logMsg: CommandLogMessage = {
+      id,
+      messageId: id,
+      role: 'log',
+      source: 'router',
+      content: messageStr,
+      stderr: '',
+      timestamp,
+      command: `clawmini-lite log${filesArgStr}`,
+      cwd: process.cwd(),
+      exitCode: 0,
+      ...(filePaths.length > 0 ? { files: filePaths } : {}),
+    };
+
+    await appendMessage(chatId, logMsg);
+    return { success: true };
+  });
+
+async function listCronJobsShared(chatId: string) {
+  const settings = await readChatSettings(chatId);
+  return settings?.jobs ?? [];
+}
+
+async function addCronJobShared(chatId: string, job: z.infer<typeof CronJobSchema>) {
+  const settings = (await readChatSettings(chatId)) || {};
+  const cronJobs = settings.jobs ?? [];
+  const existingIndex = cronJobs.findIndex((j) => j.id === job.id);
+  if (existingIndex >= 0) {
+    cronJobs[existingIndex] = job;
+  } else {
+    cronJobs.push(job);
+  }
+  settings.jobs = cronJobs;
+  await writeChatSettings(chatId, settings);
+  cronManager.scheduleJob(chatId, job);
+  return { success: true };
+}
+
+async function deleteCronJobShared(chatId: string, id: string) {
+  const settings = await readChatSettings(chatId);
+  if (!settings || !settings.jobs) {
+    return { success: true, deleted: false };
+  }
+  const initialLength = settings.jobs.length;
+  settings.jobs = settings.jobs.filter((j) => j.id !== id);
+  if (settings.jobs.length !== initialLength) {
+    await writeChatSettings(chatId, settings);
+    cronManager.unscheduleJob(chatId, id);
+    return { success: true, deleted: true };
+  }
+  return { success: true, deleted: false };
+}
+
+export const userListCronJobs = apiProcedure
+  .input(z.object({ chatId: z.string().optional() }))
+  .query(async ({ input, ctx }) => {
+    const chatId = input.chatId ?? await getDefaultChatId();
+    return listCronJobsShared(chatId);
+  });
+
+export const userAddCronJob = apiProcedure
+  .input(z.object({ chatId: z.string().optional(), job: CronJobSchema }))
+  .mutation(async ({ input, ctx }) => {
+    const chatId = input.chatId ?? await getDefaultChatId();
+    return addCronJobShared(chatId, input.job);
+  });
+
+export const userDeleteCronJob = apiProcedure
+  .input(z.object({ chatId: z.string().optional(), id: z.string() }))
+  .mutation(async ({ input, ctx }) => {
+    const chatId = input.chatId ?? await getDefaultChatId();
+    return deleteCronJobShared(chatId, input.id);
+  });
+
+export const agentListCronJobs = apiProcedure
+  .query(async ({ ctx }) => {
+    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
+    const chatId = ctx.tokenPayload.chatId;
+    return listCronJobsShared(chatId);
+  });
+
+export const agentAddCronJob = apiProcedure
+  .input(z.object({ job: CronJobSchema }))
+  .mutation(async ({ input, ctx }) => {
+    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
+    const chatId = ctx.tokenPayload.chatId;
+    const job = { ...input.job, agentId: ctx.tokenPayload.agentId };
+    return addCronJobShared(chatId, job);
+  });
+
+export const agentDeleteCronJob = apiProcedure
+  .input(z.object({ id: z.string() }))
+  .mutation(async ({ input, ctx }) => {
+    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
+    const chatId = ctx.tokenPayload.chatId;
+    return deleteCronJobShared(chatId, input.id);
+  });
+
+export const listPolicies = apiProcedure.query(async () => {
+  return await readPolicies();
+});
+
+export const executePolicyHelp = apiProcedure
+  .input(z.object({ commandName: z.string() }))
+  .query(async ({ input }) => {
+    const config = await readPolicies();
+    const policy = config?.policies?.[input.commandName];
+
+    if (!policy) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: `Policy not found: ${input.commandName}`,
+      });
+    }
+
+    if (!policy.allowHelp) {
+      return { stdout: '', stderr: 'This command does not support --help\n', exitCode: 1 };
+    }
+
+    const fullArgs = [...(policy.args || []), '--help'];
+    const { stdout, stderr, exitCode } = await executeSafe(policy.command, fullArgs, {
+      cwd: getWorkspaceRoot(),
+    });
+
+    return { stdout, stderr, exitCode };
+  });
+
+export const createPolicyRequest = apiProcedure
+  .input(
+    z.object({
+      commandName: z.string(),
+      args: z.array(z.string()),
+      fileMappings: z.record(z.string(), z.string()),
+    })
+  )
+  .mutation(async ({ input, ctx }) => {
+    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
+    const workspaceRoot = getWorkspaceRoot(process.cwd());
+    const snapshotDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'snapshots');
+    const store = new RequestStore(process.cwd());
+    const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
+    const service = new PolicyRequestService(store, agentDir, snapshotDir);
+
+    const chatId = ctx.tokenPayload.chatId;
+    const agentId = ctx.tokenPayload.agentId;
+
+    const request = await service.createRequest(
+      input.commandName,
+      input.args,
+      input.fileMappings,
+      chatId,
+      agentId
+    );
+
+    const previewContent = await generateRequestPreview(request);
+
+    const logMsg = {
+      id: randomUUID(),
+      // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
+      messageId: randomUUID(),
+      role: 'log' as const,
+      source: 'router' as const,
+      content: previewContent,
+      stderr: '',
+      timestamp: new Date().toISOString(),
+      command: 'policy-request',
+      cwd: process.cwd(),
+      exitCode: 0,
+    };
+
+    await appendMessage(chatId, logMsg);
+    return request;
+  });
+
+export const userRouter = router({
+  sendMessage,
+  getMessages,
+  waitForMessages,
+  waitForTyping,
+  ping,
+  shutdown,
+  listCronJobs: userListCronJobs,
+  addCronJob: userAddCronJob,
+  deleteCronJob: userDeleteCronJob,
+});
+
+export const agentRouter = router({
+  logMessage,
+  listCronJobs: agentListCronJobs,
+  addCronJob: agentAddCronJob,
+  deleteCronJob: agentDeleteCronJob,
+  listPolicies,
+  executePolicyHelp,
+  createPolicyRequest,
+  ping,
+});
+
+export type UserRouter = typeof userRouter;
+export type AgentRouter = typeof agentRouter;

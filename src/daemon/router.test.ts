@@ -1,6 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { appRouter } from './router.js';
+import { userRouter, agentRouter } from './router.js';
+import { initTRPC } from '@trpc/server';
+const t = initTRPC.context<any>().create();
+// No merged router to avoid duplicate key errors.
 import * as workspace from '../shared/workspace.js';
 import * as chats from '../shared/chats.js';
 import type { CronJob } from '../shared/config.js';
@@ -77,7 +80,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
       vi.mocked(workspace.readChatSettings).mockResolvedValue({});
 
-      const caller = appRouter.createCaller({});
+      const caller = userRouter.createCaller({});
       const jobs = await caller.listCronJobs({});
       expect(jobs).toEqual([]);
       expect(workspace.readChatSettings).toHaveBeenCalledWith('default-chat');
@@ -87,7 +90,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
       vi.mocked(workspace.readChatSettings).mockResolvedValue({ jobs: [mockJob] });
 
-      const caller = appRouter.createCaller({});
+      const caller = userRouter.createCaller({});
       const jobs = await caller.listCronJobs({ chatId: 'custom-chat' });
       expect(jobs).toEqual([mockJob]);
       expect(workspace.readChatSettings).toHaveBeenCalledWith('custom-chat');
@@ -97,7 +100,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
       vi.mocked(workspace.readChatSettings).mockResolvedValue({});
 
-      const caller = appRouter.createCaller({});
+      const caller = userRouter.createCaller({});
       const result = await caller.addCronJob({ job: mockJob });
 
       expect(result.success).toBe(true);
@@ -110,7 +113,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
       vi.mocked(workspace.readChatSettings).mockResolvedValue({ jobs: [mockJob] });
 
-      const caller = appRouter.createCaller({});
+      const caller = userRouter.createCaller({});
       const updatedJob = { ...mockJob, message: 'updated' };
       const result = await caller.addCronJob({ job: updatedJob });
 
@@ -124,7 +127,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
       vi.mocked(workspace.readChatSettings).mockResolvedValue({ jobs: [mockJob] });
 
-      const caller = appRouter.createCaller({});
+      const caller = userRouter.createCaller({});
       const result = await caller.deleteCronJob({ id: 'job-1' });
 
       expect(result.success).toBe(true);
@@ -136,7 +139,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
       vi.mocked(workspace.readChatSettings).mockResolvedValue({ jobs: [mockJob] });
 
-      const caller = appRouter.createCaller({});
+      const caller = userRouter.createCaller({});
       const result = await caller.deleteCronJob({ id: 'non-existent' });
 
       expect(result.success).toBe(true);
@@ -150,7 +153,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
       vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
 
-      const caller = appRouter.createCaller({});
+      const caller = userRouter.createCaller({});
       await caller.sendMessage({
         type: 'send-message',
         client: 'cli',
@@ -178,7 +181,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked((fs as any).default.rename).mockResolvedValue(undefined);
       vi.mocked((fs as any).default.access).mockResolvedValue(undefined);
 
-      const caller = appRouter.createCaller({});
+      const caller = userRouter.createCaller({});
       await caller.sendMessage({
         type: 'send-message',
         client: 'cli',
@@ -216,7 +219,7 @@ describe('Daemon TRPC Router', () => {
         .mockRejectedValue(new Error('not found'));
       vi.mocked((fs as any).default.rename).mockResolvedValue(undefined);
 
-      const caller = appRouter.createCaller({});
+      const caller = userRouter.createCaller({});
       await caller.sendMessage({
         type: 'send-message',
         client: 'cli',
@@ -243,7 +246,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
       vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
 
-      const caller = appRouter.createCaller({});
+      const caller = userRouter.createCaller({});
       await expect(
         caller.sendMessage({
           type: 'send-message',
@@ -262,7 +265,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked((fs as any).default.readFile).mockResolvedValue('{}');
       vi.mocked((fs as any).default.access).mockRejectedValue(new Error('ENOENT'));
 
-      const caller = appRouter.createCaller({});
+      const caller = userRouter.createCaller({});
       await expect(
         caller.sendMessage({
           type: 'send-message',
@@ -282,7 +285,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
       vi.mocked(chats.appendMessage).mockResolvedValue(undefined);
 
-      const caller = appRouter.createCaller({});
+      const caller = agentRouter.createCaller({ isApiServer: true, tokenPayload: { agentId: 'default', chatId: 'default-chat' } } as any);
       const result = await caller.logMessage({
         chatId: 'default-chat',
         message: 'Test log',
@@ -304,7 +307,7 @@ describe('Daemon TRPC Router', () => {
       vi.mocked(chats.appendMessage).mockResolvedValue(undefined);
       vi.mocked((fs as any).default.access).mockResolvedValue(undefined);
 
-      const caller = appRouter.createCaller({});
+      const caller = agentRouter.createCaller({ isApiServer: true, tokenPayload: { agentId: 'default', chatId: 'default-chat' } } as any);
       const result = await caller.logMessage({
         chatId: 'default-chat',
         message: 'Test log with file',
@@ -325,7 +328,7 @@ describe('Daemon TRPC Router', () => {
     it('should reject file path with directory traversal (..)', async () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
 
-      const caller = appRouter.createCaller({});
+      const caller = agentRouter.createCaller({ isApiServer: true, tokenPayload: { agentId: 'default', chatId: 'default-chat' } } as any);
       await expect(
         caller.logMessage({
           chatId: 'default-chat',
@@ -338,7 +341,7 @@ describe('Daemon TRPC Router', () => {
     it('should reject file path with absolute path', async () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
 
-      const caller = appRouter.createCaller({});
+      const caller = agentRouter.createCaller({ isApiServer: true, tokenPayload: { agentId: 'default', chatId: 'default-chat' } } as any);
       await expect(
         caller.logMessage({
           chatId: 'default-chat',
@@ -353,7 +356,7 @@ describe('Daemon TRPC Router', () => {
     it('waitForTyping should yield typing events for the correct chatId', async () => {
       vi.mocked(chats.getDefaultChatId).mockResolvedValue('default-chat');
 
-      const caller = appRouter.createCaller({});
+      const caller = userRouter.createCaller({});
       const iterable = await caller.waitForTyping({ chatId: 'default-chat' });
       const iterator = iterable[Symbol.asyncIterator]();
 
