@@ -1,0 +1,5 @@
+{
+    "commands": {
+        "new": "echo \"[DEBUG] $CLAW_CLI_MESSAGE:\" && eval \"$CLAW_CLI_MESSAGE\""
+    }
+}
