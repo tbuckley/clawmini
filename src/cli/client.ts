@@ -27,8 +27,13 @@ export async function getDaemonClient(options: { autoStart?: boolean } = {}) {
     });
     child.unref();
 
-    // Wait a moment for the daemon to start and create the socket
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // Wait up to 5 seconds for the daemon to start and create the socket
+    for (let i = 0; i < 50; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (fs.existsSync(socketPath)) {
+        break;
+      }
+    }
 
     if (!fs.existsSync(socketPath)) {
       throw new Error('Failed to start daemon.');
