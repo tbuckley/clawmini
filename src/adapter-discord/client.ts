@@ -1,5 +1,5 @@
 import { createTRPCClient, httpLink, splitLink, httpSubscriptionLink } from '@trpc/client';
-import type { UserRouter as AppRouter } from '../daemon/router.js';
+import type { UserRouter as AppRouter } from '../daemon/api/index.js';
 import { getSocketPath } from '../shared/workspace.js';
 import { createUnixSocketFetch } from '../shared/fetch.js';
 import { createUnixSocketEventSource } from '../shared/event-source.js';

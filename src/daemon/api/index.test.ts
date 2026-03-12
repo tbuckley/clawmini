@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { userRouter, agentRouter } from './router.js';
+import { userRouter, agentRouter } from './index.js';
 // No merged router to avoid duplicate key errors.
-import * as workspace from '../shared/workspace.js';
-import * as chats from '../shared/chats.js';
-import type { CronJob } from '../shared/config.js';
-import * as message from './message.js';
+import * as workspace from '../../shared/workspace.js';
+import * as chats from '../../shared/chats.js';
+import type { CronJob } from '../../shared/config.js';
+import * as message from '../message.js';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -33,12 +33,12 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   };
 });
 
-vi.mock('./message.js', () => ({
+vi.mock('../message.js', () => ({
   handleUserMessage: vi.fn(),
 }));
 
-vi.mock('../shared/workspace.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../shared/workspace.js')>();
+vi.mock('../../shared/workspace.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../shared/workspace.js')>();
   return {
     ...actual,
     readChatSettings: vi.fn(),
@@ -53,8 +53,8 @@ vi.mock('../shared/workspace.js', async (importOriginal) => {
   };
 });
 
-vi.mock('../shared/chats.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../shared/chats.js')>();
+vi.mock('../../shared/chats.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../shared/chats.js')>();
   return {
     ...actual,
     getDefaultChatId: vi.fn(),
@@ -374,7 +374,7 @@ describe('Daemon TRPC Router', () => {
         if (e2.value) events.push(e2.value);
       })();
 
-      const { daemonEvents, DAEMON_EVENT_TYPING } = await import('./events.js');
+      const { daemonEvents, DAEMON_EVENT_TYPING } = await import('../events.js');
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       daemonEvents.emit(DAEMON_EVENT_TYPING, { chatId: 'default-chat' });

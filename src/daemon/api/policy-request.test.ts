@@ -1,19 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { agentRouter as appRouter } from './router.js';
-import * as chats from '../shared/chats.js';
+import { agentRouter as appRouter } from './index.js';
+import * as chats from '../../shared/chats.js';
 
-vi.mock('../shared/chats.js', () => ({
+vi.mock('../../shared/chats.js', () => ({
   getDefaultChatId: vi.fn().mockResolvedValue('default-chat'),
   appendMessage: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../shared/workspace.js', () => ({
+vi.mock('../../shared/workspace.js', () => ({
   getWorkspaceRoot: vi.fn().mockReturnValue('/mock/workspace'),
   getClawminiDir: vi.fn().mockReturnValue('/mock/.clawmini'),
 }));
 
-vi.mock('./policy-request-service.js', () => {
+vi.mock('../policy-request-service.js', () => {
   return {
     PolicyRequestService: class {
       async createRequest() {
@@ -39,12 +39,23 @@ const { mockReadFile } = vi.hoisted(() => {
   return { mockReadFile: vi.fn() };
 });
 
-vi.mock('node:fs/promises', () => ({
-  default: {
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      readFile: mockReadFile,
+      mkdir: vi.fn(),
+      readdir: vi.fn().mockResolvedValue([]),
+      realpath: vi.fn().mockImplementation((p) => Promise.resolve(p)),
+    },
     readFile: mockReadFile,
-  },
-  readFile: mockReadFile,
-}));
+    mkdir: vi.fn(),
+    readdir: vi.fn().mockResolvedValue([]),
+    realpath: vi.fn().mockImplementation((p) => Promise.resolve(p)),
+  };
+});
 
 describe('createPolicyRequest preview message', () => {
   beforeEach(() => {
@@ -71,8 +82,8 @@ describe('createPolicyRequest preview message', () => {
       commandName: 'test-cmd',
       args: ['arg1', 'arg2'],
       fileMappings: {
-        file1: '/some/path1',
-        file2: '/some/path2',
+        file1: '/mock/workspace/file1',
+        file2: '/mock/workspace/file2',
       },
     });
 

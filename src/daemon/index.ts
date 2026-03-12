@@ -3,7 +3,7 @@ import net from 'node:net';
 import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 import { createHTTPHandler } from '@trpc/server/adapters/standalone';
-import { userRouter, agentRouter } from './router.js';
+import { userRouter, agentRouter } from './api/index.js';
 import {
   getSocketPath,
   getClawminiDir,
