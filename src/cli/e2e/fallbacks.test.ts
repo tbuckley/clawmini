@@ -40,6 +40,7 @@ describe('E2E Fallbacks Tests', () => {
     const lines = chatLog
       .trim()
       .split('\n')
+      .filter((l) => l.trim().length > 0)
       .map((l) => JSON.parse(l));
 
     // Lines: USER, LOG (retry-delay), LOG (success)
@@ -80,6 +81,7 @@ describe('E2E Fallbacks Tests', () => {
     const lines = chatLog
       .trim()
       .split('\n')
+      .filter((l) => l.trim().length > 0)
       .map((l) => JSON.parse(l));
 
     const lastLog = lines[lines.length - 1];
@@ -125,6 +127,7 @@ describe('E2E Fallbacks Tests', () => {
     const lines = chatLog
       .trim()
       .split('\n')
+      .filter((l) => l.trim().length > 0)
       .map((l) => JSON.parse(l));
 
     expect(
@@ -160,6 +163,7 @@ describe('E2E Fallbacks Tests', () => {
     const lines = chatLog
       .trim()
       .split('\n')
+      .filter((l) => l.trim().length > 0)
       .map((l) => JSON.parse(l));
 
     const lastLog = lines[lines.length - 1];

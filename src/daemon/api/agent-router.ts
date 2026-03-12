@@ -9,6 +9,8 @@ import { PolicyRequestService } from '../policy-request-service.js';
 import { RequestStore } from '../request-store.js';
 import { CronJobSchema } from '../../shared/config.js';
 import { apiProcedure, router } from './trpc.js';
+import { getMessageQueue } from '../queue.js';
+import { formatPendingMessages } from '../message.js';
 import {
   resolveAgentDir,
   validateLogFile,
@@ -162,6 +164,18 @@ export const createPolicyRequest = apiProcedure
 
 import { ping } from './user-router.js';
 
+export const fetchPendingMessages = apiProcedure.mutation(async ({ ctx }) => {
+  const cwd = process.cwd();
+  const queue = getMessageQueue(cwd);
+  const targetSessionId = ctx.tokenPayload?.sessionId || 'default';
+
+  const extracted = queue.extractPending((p) => p.sessionId === targetSessionId);
+  if (extracted.length === 0) {
+    return { messages: '' };
+  }
+  return { messages: formatPendingMessages(extracted.map((p) => p.text)) };
+});
+
 export const agentRouter = router({
   logMessage,
   listCronJobs: agentListCronJobs,
@@ -170,6 +184,7 @@ export const agentRouter = router({
   listPolicies,
   executePolicyHelp,
   createPolicyRequest,
+  fetchPendingMessages,
   ping,
 });
 

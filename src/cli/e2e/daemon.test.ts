@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { ChatMessage } from '../../shared/chats.js';
+import { getSocketPath } from '../../shared/workspace.js';
 import { createE2EContext } from './utils.js';
 
 const { runCli, e2eDir, binPath, setupE2E, teardownE2E } = createE2EContext('e2e-tmp-daemon');
@@ -31,7 +32,7 @@ describe('E2E Daemon and Web Tests', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 500));
 
-    const socketPath = path.resolve(e2eDir, '.clawmini/daemon.sock');
+    const socketPath = getSocketPath(e2eDir);
     expect(fs.existsSync(socketPath)).toBe(false);
 
     const { stdout: stdoutAgain, code: codeAgain } = await runCli(['down']);
