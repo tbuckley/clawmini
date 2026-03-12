@@ -7,7 +7,7 @@
         ]
     },
     "hooks": {
-        "AfterTool": [
+        "BeforeTool": [
             {
                 "matcher": "*",
                 "hooks": [
@@ -15,6 +15,19 @@
                         "name": "clawmini-logging",
                         "type": "command",
                         "command": "$GEMINI_PROJECT_DIR/.gemini/hooks/clawmini-logging.sh",
+                        "timeout": 5000
+                    }
+                ]
+            }
+        ],
+        "AfterTool": [
+            {
+                "matcher": "*",
+                "hooks": [
+                    {
+                        "name": "insert-pending",
+                        "type": "command",
+                        "command": "$GEMINI_PROJECT_DIR/.gemini/hooks/insert-pending.sh",
                         "timeout": 5000
                     }
                 ]
