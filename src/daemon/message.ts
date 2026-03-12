@@ -228,9 +228,8 @@ export async function executeDirectMessage(
     const currentPayload = queue.getCurrentPayload();
     const currentMatches = currentPayload ? isMatchingSession(currentPayload) : false;
 
-    queue.abortCurrent(isMatchingSession);
-
     const extracted = queue.extractPending(isMatchingSession);
+    queue.abortCurrent(isMatchingSession);
     const payloads = currentMatches && currentPayload ? [currentPayload, ...extracted] : extracted;
 
     if (payloads.length > 0) {
