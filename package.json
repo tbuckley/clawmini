@@ -24,6 +24,8 @@
     "format": "prettier --write \"src/**/*.ts\" \"web/src/**/*.ts\"",
     "check": "tsc --noEmit && npm run check -w web",
     "test": "vitest run && npm run test -w web",
+    "test:unit": "vitest run -t '!e2e' && npm run test:unit -w web --if-present",
+    "test:e2e": "vitest run src/cli/e2e",
     "build:web": "npm run build -w web",
     "validate": "npm run format:check && npm run lint && npm run check && npm run test"
   },
