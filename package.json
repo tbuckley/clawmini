@@ -24,7 +24,8 @@
     "format": "prettier --write \"src/**/*.ts\" \"web/src/**/*.ts\"",
     "check": "tsc --noEmit && npm run check -w web",
     "test": "vitest run && npm run test -w web",
-    "build:web": "npm run build -w web"
+    "build:web": "npm run build -w web",
+    "validate": "npm run format:check && npm run lint && npm run check && npm run test"
   },
   "dependencies": {
     "@trpc/client": "^11.12.0",

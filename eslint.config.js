@@ -34,6 +34,17 @@ export default defineConfig([
     rules: {
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression',
+          message: 'Dynamic imports are not allowed. Please use top-level imports.',
+        },
+        {
+          selector: 'TSImportType',
+          message: 'Inline type imports are not allowed. Please use top-level imports.',
+        },
+      ],
       'max-lines': ['error', { max: 300, skipBlankLines: true, skipComments: true }],
     },
   },
@@ -41,6 +52,7 @@ export default defineConfig([
     files: ['**/*.test.ts', '**/*.spec.ts'],
     rules: {
       'max-lines': 'off',
+      'no-restricted-syntax': 'off',
     },
   },
   eslintConfigPrettier,
