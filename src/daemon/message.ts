@@ -233,6 +233,8 @@ export async function executeDirectMessage(
     const payloads = currentMatches && currentPayload ? [currentPayload, ...extracted] : extracted;
 
     if (payloads.length > 0) {
+      // TODO: Figure out how to handle merging payloads when they have different env settings or other config.
+      // Currently, we only preserve the text content and drop any specific configuration attached to individual messages.
       const pendingText = formatPendingMessages(payloads.map((p) => p.text));
       state.message = `${pendingText}\n\n<message>\n${state.message}\n</message>`.trim();
     }
