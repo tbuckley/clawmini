@@ -111,47 +111,102 @@ graph TB
 
 ---
 
-## Concurrency & Conversation Model
+## Harness & Conversation Threading Model
+
+### Single-Threaded Serial Queue Architecture
+
+**Clawmini does NOT use multi-threaded or concurrent conversations.** The conversation harness is built around a strictly **serial, single-worker queue per workspace directory**.
+
+The `Queue` class (`src/daemon/queue.ts`) enforces this:
+- An `isRunning` boolean gate ensures **exactly one task executes at a time**
+- New messages are pushed to a `pending[]` FIFO array
+- When the running task completes, `processNext()` automatically dequeues the next
+- Each task receives an `AbortController` signal for cancellation support
+
+The queue instances are stored in a `Map<string, Queue>` keyed by the workspace directory (`cwd`), created lazily via `getMessageQueue(dir)`. This means:
+- **Within a workspace**: All messages (from all chats, all adapters) are serialized through **one queue**
+- **Across workspaces**: Different workspace directories get independent queues and can run concurrently
 
 ```mermaid
 graph TB
-    subgraph ConcurrencyModel["Concurrency Model"]
+    subgraph ConcurrencyModel["Conversation Threading Model"]
         direction TB
 
-        subgraph Dir1["Directory /workspace-A"]
-            Q1["Queue (sequential)"]
-            Q1_M1["msg1 → processing"]
-            Q1_M2["msg2 → pending"]
-            Q1_M3["msg3 → pending"]
-            Q1 --> Q1_M1
-            Q1_M1 -.->|waits| Q1_M2
-            Q1_M2 -.->|waits| Q1_M3
+        subgraph SingleWorkspace["Single Workspace (typical setup)"]
+            direction TB
+            Q["Serial Queue<br/>(ONE per workspace directory)"]
+
+            subgraph Running["Currently Executing"]
+                T1["Chat A, msg 1<br/>Agent process running..."]
+            end
+
+            subgraph Pending["Waiting in FIFO Order"]
+                T2["Chat A, msg 2"]
+                T3["Chat B, msg 1"]
+                T4["Discord, msg 1"]
+                T5["Cron job trigger"]
+            end
+
+            Q --> Running
+            Running -.->|"completes → dequeue next"| Pending
         end
 
-        subgraph Dir2["Directory /workspace-B"]
-            Q2["Queue (sequential)"]
-            Q2_M1["msg1 → processing"]
-            Q2_M2["msg2 → pending"]
-            Q2 --> Q2_M1
-            Q2_M1 -.->|waits| Q2_M2
+        subgraph MultiWorkspace["Multiple Workspaces (rare)"]
+            direction TB
+            QA["Queue for /workspace-A"]
+            QB["Queue for /workspace-B"]
+            QA_T["msg processing..."]
+            QB_T["msg processing..."]
+            QA --> QA_T
+            QB --> QB_T
+
+            NOTE2["These run concurrently<br/>(separate Map entries)"]
         end
     end
 
-    NOTE["Queues are keyed by directory (cwd).<br/>Messages within a queue run sequentially.<br/>Different directories run concurrently."]
-
-    style NOTE fill:#ffffcc,stroke:#cccc00
+    style NOTE2 fill:#ffffcc,stroke:#cccc00
 ```
 
-**Key findings on the conversation threading model:**
+### Why This Matters
 
-- **Not multi-threaded** in the OS sense. The daemon is a single Node.js process.
-- **Per-directory sequential queues**: A `Map<string, Queue>` keyed by the working directory (`cwd`). Messages targeting the same directory are processed one at a time, in order.
-- **Cross-directory concurrency**: Messages targeting *different* directories execute concurrently since they use separate queue instances.
-- **Per-chat sessions**: Each `(chatId, agentId)` pair maps to a single session. The session ID is reused across messages to maintain conversation context.
-- **`/new` creates a fresh session** — generates a new `sessionId` via `crypto.randomUUID()`.
-- **`/interrupt` batches pending messages** — extracts queued messages for the current session and merges them into a single XML-wrapped message.
+The serial queue has important implications:
 
-This design **prioritizes conversation consistency** over parallelism. A single agent process runs at a time per workspace, preventing race conditions on session files and ensuring ordered context.
+1. **No parallel conversations**: If Chat A's agent takes 60 seconds, Chat B's message waits the full 60 seconds even though it's a completely different conversation
+2. **All adapters share one queue**: A message from Discord, CLI, and Web UI all enter the same queue
+3. **Cron jobs also queue**: Scheduled tasks from `CronManager` call `executeDirectMessage()` which enqueues into the same queue
+4. **Session state safety**: The serial design prevents race conditions on session files (`agents/:id/sessions/:sid/settings.json`) since only one agent process touches them at a time
+
+### Interrupt as a Concurrency Workaround
+
+The `/interrupt` command is the harness's mechanism for dealing with the serial bottleneck:
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant Q as Serial Queue
+    participant A as Agent Process
+
+    U->>Q: "Hello" (enqueued, starts running)
+    Q->>A: spawn agent
+    Note over A: Agent is thinking...
+
+    U->>Q: "Also check X" (queued, waiting)
+    U->>Q: "And Y too" (queued, waiting)
+
+    U->>Q: "/interrupt Summarize everything"
+    Note over Q: 1. Abort running agent (SIGTERM)<br/>2. Extract pending ["Also check X", "And Y too"]<br/>3. Merge into single XML payload
+
+    Q->>A: spawn agent with merged message
+    Note over A: Receives:<br/>&lt;message&gt;Also check X&lt;/message&gt;<br/>&lt;message&gt;And Y too&lt;/message&gt;<br/>&lt;message&gt;Summarize everything&lt;/message&gt;
+```
+
+### Session Management Within the Harness
+
+Each conversation thread is tracked by a `(chatId, agentId) -> sessionId` mapping stored in `chats/:id/settings.json`. The harness uses this to decide which agent command to run:
+
+- **New session** (`commands.new`): First message or after `/new` - starts a fresh agent conversation
+- **Append to session** (`commands.append`): Subsequent messages - continues existing context using a stored `SESSION_ID` environment variable
+- The `SESSION_ID` is extracted from the agent's first stdout via `commands.getSessionId`
 
 ---
 
@@ -191,7 +246,7 @@ sequenceDiagram
 
     Note over Q: Sequential per-directory
 
-    Q->>E: dequeue → executeDirectMessage()
+    Q->>E: dequeue -> executeDirectMessage()
     E->>E: resolveSessionState(chatId, agentId)
     E->>E: Build command + env vars
     E->>E: Set CLAW_CLI_MESSAGE, CLAW_API_URL, CLAW_API_TOKEN
