@@ -10,4 +10,11 @@
 - Scheduled and unscheduled jobs via `cronManager`.
 - Updated active session when `nextSessionId` is present.
 - Added tests in `src/daemon/message-jobs.test.ts` to verify functionality.
-- Resolved TypeScript typings for `cron` schedule logic and successfully ran validation suite.
+## Step 3: Implement `@clawmini/session-timeout` Router
+- Created `src/daemon/routers/session-timeout.ts` export `createSessionTimeoutRouter`.
+- Configured to run on schedule (cron 'every Xm') matching `config.timeoutMinutes`.
+- Removed timeout job when handling the triggered timeout message.
+- Re-scheduled the job on standard user messages.
+- Handled rotation of `nextSessionId` correctly upon timeout.
+- Added corresponding tests inside `src/daemon/routers/session-timeout.test.ts`.
+- Validated with `npm run validate`.
