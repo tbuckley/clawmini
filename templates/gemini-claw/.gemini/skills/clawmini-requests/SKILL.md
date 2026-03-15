@@ -1,6 +1,6 @@
 ---
 name: clawmini-requests
-description: Use this skill to submit requests to execute sensitive or network-dependent operations that require user approval, and to discover available policies.
+description: You are in a sandbox. Use this skill to submit requests to execute sensitive or network-dependent operations, and to discover available policies.
 ---
 
 # Clawmini Requests
@@ -60,6 +60,26 @@ The request is sent to the user's chat interface for review.
 
 - **If Approved:** The policy executes securely, and the STDOUT/STDERR results will be automatically sent back to you in the chat.
 - **If Rejected:** The user may provide a reason for the rejection, allowing you to correct your request and try again.
+
+## Proposing New Policies
+
+If you need to perform an action that isn't covered by an existing policy, you can propose a new one using the default `propose-policy` policy. This allows you to request the creation of a new permission wrapper.
+
+You must provide a `--name` and `--description`, and either a shell `--command` or a `--script-file`.
+
+**Examples:**
+
+1. **Propose a simple command wrapper:**
+
+   ```bash
+   clawmini-lite request propose-policy -- --name npm-install --description "Run npm install globally" --command "npm install -g"
+   ```
+
+2. **Propose a custom script wrapper:**
+   First, write your complex logic to a file (e.g., `script.sh`).
+   ```bash
+   clawmini-lite request propose-policy --file script=./script.sh -- --name custom-action --description "Run a custom deployment script" --script-file "{{script}}"
+   ```
 
 ## Creating New Skills for Policies
 

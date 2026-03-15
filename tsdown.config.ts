@@ -8,7 +8,7 @@ export default defineConfig([
     clean: true,
   },
   {
-    entry: ['src/cli/lite.ts'],
+    entry: ['src/cli/lite.ts', 'src/cli/propose-policy.ts'],
     format: 'esm',
     dts: true,
     clean: false,
