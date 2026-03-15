@@ -1,5 +1,5 @@
 import type { RouterState } from './types.js';
-import crypto from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 export interface SessionTimeoutConfig {
   timeoutMinutes?: number;
@@ -11,22 +11,24 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
   const prompt = config.prompt ?? 'Session expired due to inactivity.';
 
   return function (state: RouterState): RouterState {
+    const jobs = {
+      ...state.jobs,
+      remove: [...(state.jobs?.remove || []), '__session_timeout__'],
+    };
+
     if (state.env?.__SESSION_TIMEOUT__ === 'true') {
       return {
         ...state,
-        nextSessionId: crypto.randomUUID(),
+        nextSessionId: randomUUID(),
         reply: prompt,
-        jobs: {
-          ...state.jobs,
-          remove: [...(state.jobs?.remove || []), '__session_timeout__'],
-        },
+        jobs,
       };
     }
 
     return {
       ...state,
       jobs: {
-        ...state.jobs,
+        ...jobs,
         add: [
           ...(state.jobs?.add || []),
           {
@@ -36,7 +38,6 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
             env: { __SESSION_TIMEOUT__: 'true' },
           },
         ],
-        remove: [...(state.jobs?.remove || []), '__session_timeout__'],
       },
     };
   };

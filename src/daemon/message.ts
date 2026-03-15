@@ -612,21 +612,23 @@ export async function handleUserMessage(
   if (finalState.jobs) {
     chatSettings.jobs = chatSettings.jobs || [];
 
-    if (finalState.jobs.remove) {
+    if (finalState.jobs.remove?.length) {
+      const removeSet = new Set(finalState.jobs.remove);
       for (const jobId of finalState.jobs.remove) {
         cronManager.unscheduleJob(chatId, jobId);
-        chatSettings.jobs = chatSettings.jobs.filter((j) => j.id !== jobId);
-        settingsChanged = true;
       }
+      chatSettings.jobs = chatSettings.jobs.filter((j) => !removeSet.has(j.id));
+      settingsChanged = true;
     }
 
-    if (finalState.jobs.add) {
+    if (finalState.jobs.add?.length) {
+      const addMap = new Map(finalState.jobs.add.map((job) => [job.id, job]));
       for (const job of finalState.jobs.add) {
         cronManager.scheduleJob(chatId, job);
-        chatSettings.jobs = chatSettings.jobs.filter((j) => j.id !== job.id);
-        chatSettings.jobs.push(job);
-        settingsChanged = true;
       }
+      chatSettings.jobs = chatSettings.jobs.filter((j) => !addMap.has(j.id));
+      chatSettings.jobs.push(...finalState.jobs.add);
+      settingsChanged = true;
     }
   }
 

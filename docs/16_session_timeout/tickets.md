@@ -48,3 +48,17 @@
 - Run `npm run validate`.
 
 **Status:** complete
+
+---
+
+## Step 4: Code Review & Refactoring
+**Objective:** Address code quality issues identified during diff review (DRY, YAGNI, naming/comments, performance).
+**Tasks:**
+- **[Medium] DRY Violation in session-timeout.ts:** Extract the duplicated job removal logic in `createSessionTimeoutRouter` so it is not repeated in both branches of the if statement.
+- **[Medium] Inconsistent crypto imports:** Update `session-timeout.ts` to use `import { randomUUID } from 'node:crypto'` and update `session-timeout.test.ts` to mock `randomUUID` directly (matching other files in the codebase) instead of mocking the `default` export.
+- **[Low] Array filtering in message.ts:** Clean up the nested `filter` calls in the job add/remove loops in `handleUserMessage` to be more efficient and declarative.
+
+**Verification:**
+- Run `npm run validate` to ensure tests and type checks pass.
+
+**Status:** complete

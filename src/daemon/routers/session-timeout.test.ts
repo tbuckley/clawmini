@@ -4,9 +4,7 @@ import type { RouterState } from './types.js';
 
 // Mock crypto.randomUUID to return a predictable value
 vi.mock('node:crypto', () => ({
-  default: {
-    randomUUID: () => 'mock-uuid',
-  },
+  randomUUID: () => 'mock-uuid',
 }));
 
 describe('sessionTimeoutRouter', () => {
