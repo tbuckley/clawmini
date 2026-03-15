@@ -51,12 +51,23 @@ if (!commandStr && !scriptFile) {
 const cwd = process.cwd();
 const policiesPath = path.join(cwd, '.clawmini', 'policies.json');
 
-let policies: { policies: Record<string, unknown> } = { policies: {} };
+interface PolicyConfig {
+  description: string;
+  allowHelp: boolean;
+  command?: string;
+  args?: string[];
+}
+
+interface PoliciesFile {
+  policies: Record<string, PolicyConfig>;
+}
+
+let policies: PoliciesFile = { policies: {} };
 if (fs.existsSync(policiesPath)) {
   policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
 }
 
-const policyConfig: Record<string, unknown> = {
+const policyConfig: PolicyConfig = {
   description,
   allowHelp: true,
 };
@@ -75,7 +86,9 @@ if (scriptFile) {
   policyConfig.command = `./.clawmini/policy-scripts/${path.basename(destScript)}`;
 } else if (commandStr) {
   const parts = commandStr.split(' ');
-  policyConfig.command = parts[0];
+  if (parts[0]) {
+    policyConfig.command = parts[0];
+  }
   if (parts.length > 1) {
     policyConfig.args = parts.slice(1);
   }

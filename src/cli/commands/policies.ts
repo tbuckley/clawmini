@@ -1,8 +1,21 @@
 import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { handleError } from '../utils.js';
+import { resolveCompiledScript } from '../../shared/lite.js';
+
+interface PolicyConfig {
+  description: string;
+  allowHelp: boolean;
+  command?: string;
+  args?: string[];
+}
+
+interface PoliciesFile {
+  policies: Record<string, PolicyConfig>;
+}
+
+const SUPPORTED_POLICIES = ['propose-policy'];
 
 export const policiesCmd = new Command('policies').description('Manage sandbox policies');
 
@@ -10,8 +23,13 @@ policiesCmd
   .command('add <name>')
   .description('Add a new policy')
   .action(async (name: string) => {
-    if (name !== 'propose-policy') {
-      handleError('add policy', new Error('Currently only "propose-policy" is supported.'));
+    if (!SUPPORTED_POLICIES.includes(name)) {
+      handleError(
+        'add policy',
+        new Error(
+          `Unsupported policy: "${name}". Supported policies: ${SUPPORTED_POLICIES.join(', ')}`
+        )
+      );
     }
 
     const cwd = process.cwd();
@@ -31,58 +49,31 @@ policiesCmd
     }
 
     // Update or create policies.json
-    let policies: { policies: Record<string, unknown> } = { policies: {} };
+    let policies: PoliciesFile = { policies: {} };
     if (fs.existsSync(policiesPath)) {
       policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
     }
 
-    policies.policies['propose-policy'] = {
+    policies.policies[name] = {
       description: 'Propose a new policy to create',
-      command: './.clawmini/policy-scripts/propose-policy.mjs',
+      command: `./.clawmini/policy-scripts/${name}.mjs`,
       allowHelp: true,
     };
 
     fs.writeFileSync(policiesPath, JSON.stringify(policies, null, 2));
-    console.log('Registered propose-policy in .clawmini/policies.json');
-
-    // Load and write propose-policy.mjs
-    const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    let scriptContent;
-
-    // Search for the compiled script in similar locations as lite.mjs
-    const searchPaths = [
-      path.resolve(__dirname, 'propose-policy.mjs'), // If compiled next to this file
-      path.resolve(__dirname, '../propose-policy.mjs'), // If compiled one level up
-      path.resolve(__dirname, '../../propose-policy.mjs'), // If compiled two levels up
-      path.resolve(__dirname, '../../dist/cli/propose-policy.mjs'), // Source execution fallback
-    ];
-
-    let foundPath = '';
-    for (const p of searchPaths) {
-      if (fs.existsSync(p)) {
-        foundPath = p;
-        break;
-      }
-    }
-
-    if (!foundPath) {
-      handleError(
-        'add policy',
-        new Error(
-          'Could not find compiled propose-policy script. Ensure you have run "npm run build".'
-        )
-      );
-    }
+    console.log(`Registered ${name} in .clawmini/policies.json`);
 
     try {
-      scriptContent = fs.readFileSync(foundPath, 'utf8');
+      const foundPath = await resolveCompiledScript(name, import.meta.url);
+      let scriptContent = fs.readFileSync(foundPath, 'utf8');
+
       if (!scriptContent.startsWith('#!')) {
         scriptContent = '#!/usr/bin/env node\n' + scriptContent;
       }
 
-      const destPath = path.join(policyScriptsDir, 'propose-policy.mjs');
+      const destPath = path.join(policyScriptsDir, `${name}.mjs`);
       fs.writeFileSync(destPath, scriptContent, { mode: 0o755 });
-      console.log(`Copied propose-policy script to ${destPath}`);
+      console.log(`Copied ${name} script to ${destPath}`);
     } catch (err) {
       handleError('add policy', err);
     }
