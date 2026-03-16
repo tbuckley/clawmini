@@ -3,17 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { handleError } from '../utils.js';
 import { resolveCompiledScript } from '../../shared/lite.js';
-
-interface PolicyConfig {
-  description: string;
-  allowHelp: boolean;
-  command?: string;
-  args?: string[];
-}
-
-interface PoliciesFile {
-  policies: Record<string, PolicyConfig>;
-}
+import type { PolicyConfig } from '../../shared/policies.js';
+import { getClawminiDir } from '../../shared/workspace.js';
 
 const SUPPORTED_POLICIES = ['propose-policy'];
 
@@ -32,8 +23,7 @@ policiesCmd
       );
     }
 
-    const cwd = process.cwd();
-    const dirPath = path.join(cwd, '.clawmini');
+    const dirPath = getClawminiDir();
     const policyScriptsDir = path.join(dirPath, 'policy-scripts');
     const policiesPath = path.join(dirPath, 'policies.json');
 
@@ -49,14 +39,14 @@ policiesCmd
     }
 
     // Update or create policies.json
-    let policies: PoliciesFile = { policies: {} };
+    let policies: PolicyConfig = { policies: {} };
     if (fs.existsSync(policiesPath)) {
       policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
     }
 
     policies.policies[name] = {
       description: 'Propose a new policy to create',
-      command: `./.clawmini/policy-scripts/${name}.mjs`,
+      command: `./.clawmini/policy-scripts/${name}.js`,
       allowHelp: true,
     };
 
@@ -71,7 +61,7 @@ policiesCmd
         scriptContent = '#!/usr/bin/env node\n' + scriptContent;
       }
 
-      const destPath = path.join(policyScriptsDir, `${name}.mjs`);
+      const destPath = path.join(policyScriptsDir, `${name}.js`);
       fs.writeFileSync(destPath, scriptContent, { mode: 0o755 });
       console.log(`Copied ${name} script to ${destPath}`);
     } catch (err) {
