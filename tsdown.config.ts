@@ -8,12 +8,19 @@ export default defineConfig([
     clean: true,
   },
   {
-    entry: ['src/cli/lite.ts', 'src/cli/propose-policy.ts'],
+    entry: ['src/cli/lite.ts'],
     format: 'esm',
     dts: true,
     clean: false,
     outDir: 'dist/cli',
     noExternal: [/(.*)/],
-    inlineOnly: false,
+  },
+  {
+    entry: ['src/cli/propose-policy.ts'],
+    format: 'esm',
+    dts: true,
+    clean: false,
+    outDir: 'dist/cli',
+    noExternal: [/(.*)/],
   },
 ]);
