@@ -48,6 +48,11 @@ if (!commandStr && !scriptFile) {
 const dirPath = getClawminiDir();
 const policiesPath = path.join(dirPath, 'policies.json');
 
+if (!fs.existsSync(dirPath)) {
+  console.error('Error: .clawmini directory not found. Please run "clawmini init" first.');
+  process.exit(1);
+}
+
 let policies: PolicyConfig = { policies: {} };
 if (fs.existsSync(policiesPath)) {
   policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
