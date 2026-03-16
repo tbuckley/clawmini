@@ -76,6 +76,25 @@ The daemon securely authenticates with the Agent API using dynamically generated
 
 Process user messages before they reach an agent. Dynamically alter content, target specific agents, or expand slash commands (e.g., `/new` to clear context, `/foo` to expand a command script).
 
+**Configuring Routers:**
+You can configure the active routers in your workspace's `.clawmini/settings.json` file or on a per-chat basis in `.clawmini/chats/<id>/settings.json`.
+
+```json
+{
+  "routers": [
+    "@clawmini/slash-new",
+    "@clawmini/slash-command",
+    {
+      "use": "@clawmini/session-timeout",
+      "with": {
+        "timeoutMinutes": 15,
+        "prompt": "This chat session has ended. Save any important details from it to your memory."
+      }
+    }
+  ]
+}
+```
+
 ## Next Steps: Build Autonomous Workflows
 
 Once you're comfortable, Clawmini offers powerful tools for advanced users:

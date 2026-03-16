@@ -48,10 +48,20 @@ export const CronJobSchema = z.looseObject({
 
 export type CronJob = z.infer<typeof CronJobSchema>;
 
+export const RouterConfigSchema = z.union([
+  z.string(),
+  z.looseObject({
+    use: z.string(),
+    with: z.record(z.string(), z.any()).optional(),
+  }),
+]);
+
+export type RouterConfig = z.infer<typeof RouterConfigSchema>;
+
 export const ChatSettingsSchema = z.looseObject({
   defaultAgent: z.string().optional(),
   sessions: z.record(z.string(), z.string()).optional(),
-  routers: z.array(z.string()).optional(),
+  routers: z.array(RouterConfigSchema).optional(),
   jobs: z.array(CronJobSchema).optional(),
 });
 
@@ -83,7 +93,7 @@ export const SettingsSchema = z.looseObject({
     .optional(),
   defaultAgent: AgentSchema.optional(),
   environments: z.record(z.string(), z.string()).optional(),
-  routers: z.array(z.string()).optional(),
+  routers: z.array(RouterConfigSchema).optional(),
   files: z.string().default('./attachments').optional(),
   api: z
     .union([

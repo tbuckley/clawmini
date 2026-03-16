@@ -8,7 +8,7 @@ export interface SessionTimeoutConfig {
 
 export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
   const timeoutMinutes = config.timeoutMinutes ?? 15;
-  const prompt = config.prompt ?? 'Session expired due to inactivity.';
+  const prompt = config.prompt ?? 'This chat session has ended. Save any important details from it to your memory.';
 
   return function (state: RouterState): RouterState {
     const jobs = {
