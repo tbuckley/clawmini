@@ -131,6 +131,9 @@ export class CronManager {
         applyEnvOverrides(routerState.env, job.env);
       }
       if (job.reply !== undefined) routerState.reply = job.reply;
+      if (job.nextSessionId !== undefined) routerState.nextSessionId = job.nextSessionId;
+      if (job.action !== undefined) routerState.action = job.action;
+      if (job.jobs !== undefined) routerState.jobs = job.jobs;
 
       await executeDirectMessage(
         chatId,

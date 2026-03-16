@@ -6,6 +6,24 @@ export interface SessionTimeoutConfig {
   prompt?: string;
 }
 
+/**
+ * Router that automatically starts a new session after a period of inactivity.
+ *
+ * To register this router, add it to your `~/.gemini/settings.json`:
+ * ```json
+ * {
+ *   "routers": [
+ *     {
+ *       "use": "session-timeout",
+ *       "with": {
+ *         "timeoutMinutes": 15,
+ *         "prompt": "This chat session has ended. Save any important details from it to your memory."
+ *       }
+ *     }
+ *   ]
+ * }
+ * ```
+ */
 export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
   const timeoutMinutes = config.timeoutMinutes ?? 15;
   const prompt =
@@ -22,7 +40,8 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
       return {
         ...state,
         nextSessionId: randomUUID(),
-        reply: prompt,
+        message: prompt,
+        reply: '[clawmini/session-timeout] Session timed out',
         jobs,
       };
     }
@@ -35,9 +54,10 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
           ...(state.jobs?.add || []),
           {
             id: '__session_timeout__',
-            message: '',
-            schedule: { every: `${timeoutMinutes}m` },
-            env: { __SESSION_TIMEOUT__: 'true' },
+            schedule: { at: `${timeoutMinutes}m` },
+            message: prompt,
+            reply: '[clawmini/session-timeout] Session timed out',
+            nextSessionId: randomUUID(),
           },
         ],
       },

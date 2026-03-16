@@ -20,9 +20,10 @@ describe('sessionTimeoutRouter', () => {
     const nextState = router(initialState);
 
     expect(nextState.nextSessionId).toBe('mock-uuid');
-    expect(nextState.reply).toBe(
+    expect(nextState.message).toBe(
       'This chat session has ended. Save any important details from it to your memory.'
     );
+    expect(nextState.reply).toBe('[clawmini/session-timeout] Session timed out');
     expect(nextState.jobs?.remove).toContain('__session_timeout__');
     expect(nextState.jobs?.add).toBeUndefined();
   });
@@ -44,9 +45,10 @@ describe('sessionTimeoutRouter', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: '__session_timeout__',
-          schedule: { every: '30m' },
-          env: { __SESSION_TIMEOUT__: 'true' },
-          message: '',
+          schedule: { at: '30m' },
+          message: 'This chat session has ended. Save any important details from it to your memory.',
+          reply: '[clawmini/session-timeout] Session timed out',
+          nextSessionId: 'mock-uuid',
         }),
       ])
     );
