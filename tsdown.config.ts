@@ -14,6 +14,7 @@ export default defineConfig([
     clean: false,
     outDir: 'dist/cli',
     noExternal: [/(.*)/],
+    inlineOnly: false,
   },
   {
     entry: ['src/cli/propose-policy.ts'],
@@ -22,5 +23,6 @@ export default defineConfig([
     clean: false,
     outDir: 'dist/cli',
     noExternal: [/(.*)/],
+    inlineOnly: false,
   },
 ]);
