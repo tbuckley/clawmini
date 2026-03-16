@@ -20,7 +20,9 @@ describe('sessionTimeoutRouter', () => {
     const nextState = router(initialState);
 
     expect(nextState.nextSessionId).toBe('mock-uuid');
-    expect(nextState.reply).toBe('This chat session has ended. Save any important details from it to your memory.');
+    expect(nextState.reply).toBe(
+      'This chat session has ended. Save any important details from it to your memory.'
+    );
     expect(nextState.jobs?.remove).toContain('__session_timeout__');
     expect(nextState.jobs?.add).toBeUndefined();
   });
