@@ -36,28 +36,23 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
       remove: [...(state.jobs?.remove || []), '__session_timeout__'],
     };
 
-    if (state.env?.__SESSION_TIMEOUT__ === 'true') {
-      return {
-        ...state,
-        nextSessionId: randomUUID(),
-        message: prompt,
-        reply: '[clawmini/session-timeout] Session timed out',
-        jobs,
-      };
-    }
-
     return {
       ...state,
       jobs: {
         ...jobs,
         add: [
-          ...(state.jobs?.add || []),
+          ...(jobs?.add || []),
+          // Add a job after the timeout that will send the prompt, reply to the user,
+          // start a fresh session, and delete the job
           {
             id: '__session_timeout__',
             schedule: { at: `${timeoutMinutes}m` },
             message: prompt,
-            reply: '[clawmini/session-timeout] Session timed out',
+            reply: '[@clawmini/session-timeout] Starting a fresh session...',
             nextSessionId: randomUUID(),
+            jobs: {
+              remove: ['__session_timeout__'],
+            },
           },
         ],
       },

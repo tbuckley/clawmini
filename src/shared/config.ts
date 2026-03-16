@@ -38,6 +38,7 @@ export type CronJob = {
   reply?: string;
   agentId?: string;
   env?: Record<string, string | boolean>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   session?: { type: string; [key: string]: any };
   schedule: { cron: string } | { every: string } | { at: string };
   nextSessionId?: string;
@@ -48,6 +49,7 @@ export type CronJob = {
   };
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const CronJobSchema: z.ZodType<any> = z.lazy(() =>
   z.looseObject({
     id: z.string().min(1),
