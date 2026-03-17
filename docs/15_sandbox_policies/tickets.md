@@ -194,3 +194,36 @@ This document breaks down the implementation of the Sandbox Policies feature int
 - Ensure tests still pass.
 - Run `npm run format:check && npm run lint && npm run check && npm run test`.
 **Status:** completed
+
+## Ticket 16: DRY Violation in Script Resolution
+
+**Priority:** High
+**Description:** Refactor duplicated script path resolution logic in `src/cli/commands/policies.ts` to use a shared utility function. The `searchPaths` logic is highly similar to the `liteScriptPath` resolution in `src/shared/lite.ts`.
+**Tasks:**
+- Extract the script resolution logic into a reusable utility in `src/shared/lite.ts` (e.g., `resolveCompiledScript(scriptName: string)`).
+- Update both `src/cli/commands/policies.ts` and `src/shared/lite.ts` to use this new utility.
+**Verification:**
+- Run `npm run format:check && npm run lint && npm run check && npm run test`.
+**Status:** completed
+
+## Ticket 17: Type Safety Improvements in `propose-policy`
+
+**Priority:** Medium
+**Description:** Replace the use of `Record<string, unknown>` in `src/cli/propose-policy.ts` and `src/cli/commands/policies.ts` with explicit, strict TypeScript interfaces for policy configuration.
+**Tasks:**
+- Define `PolicyConfig` and `PoliciesFile` interfaces locally in `src/cli/propose-policy.ts` and `src/cli/commands/policies.ts` (or use existing types if available in `src/shared/config.ts`).
+- Update variables to use these strict types instead of generic `Record`s.
+**Verification:**
+- Run `npm run format:check && npm run lint && npm run check && npm run test`.
+**Status:** completed
+
+## Ticket 18: Remove Hardcoded Policy Name Check
+
+**Priority:** Low
+**Description:** Avoid explicitly hardcoding `'propose-policy'` in the action handler of `src/cli/commands/policies.ts` to make adding future built-in policies easier without modifying the core logic.
+**Tasks:**
+- Introduce an array or set of `SUPPORTED_POLICIES` (containing `'propose-policy'`).
+- Validate the `name` argument against this set.
+**Verification:**
+- Run `npm run format:check && npm run lint && npm run check && npm run test`.
+**Status:** completed

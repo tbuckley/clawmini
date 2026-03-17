@@ -4,30 +4,34 @@ import { fileURLToPath } from 'node:url';
 import { readSettings, readEnvironment, getWorkspaceRoot } from './workspace.js';
 import type { Environment } from './config.js';
 
-export async function getLiteScriptContent(): Promise<string> {
-  let liteScriptContent: string;
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+export async function resolveCompiledScript(scriptName: string, metaUrl: string): Promise<string> {
+  const __dirname = path.dirname(fileURLToPath(metaUrl));
+  const filename = scriptName.endsWith('.mjs') ? scriptName : `${scriptName}.mjs`;
 
-  let liteScriptPath = path.resolve(__dirname, 'cli/lite.mjs'); // if bundled in a shared chunk at dist/
+  const searchPaths = [
+    path.resolve(__dirname, `cli/${filename}`), // If bundled in a shared chunk at dist/
+    path.resolve(__dirname, filename), // If bundled in dist/cli or dist/daemon and lite is next to it
+    path.resolve(__dirname, `../cli/${filename}`), // If bundled in dist/daemon, it might be in ../cli/
+    path.resolve(__dirname, `../../dist/cli/${filename}`), // Fallback for development/testing when running from src/shared
+    path.resolve(__dirname, `../${filename}`), // Used from src/cli/commands (1 level deep) -> dist/cli
+    path.resolve(__dirname, `../../${filename}`), // Used from src/cli/commands -> dist/cli (2 levels deep)
+  ];
 
-  try {
-    await fs.access(liteScriptPath);
-  } catch {
+  for (const scriptPath of searchPaths) {
     try {
-      // If bundled in dist/cli or dist/daemon and lite is next to it
-      liteScriptPath = path.resolve(__dirname, 'lite.mjs');
-      await fs.access(liteScriptPath);
+      await fs.access(scriptPath);
+      return scriptPath;
     } catch {
-      try {
-        // If bundled in dist/daemon, it might be in ../cli/lite.mjs
-        liteScriptPath = path.resolve(__dirname, '../cli/lite.mjs');
-        await fs.access(liteScriptPath);
-      } catch {
-        // Fallback for development/testing when running from src/shared
-        liteScriptPath = path.resolve(__dirname, '../../dist/cli/lite.mjs');
-      }
+      // Continue searching
     }
   }
+
+  throw new Error(`Could not find compiled script: ${filename}`);
+}
+
+export async function getLiteScriptContent(): Promise<string> {
+  let liteScriptContent: string;
+  const liteScriptPath = await resolveCompiledScript('lite', import.meta.url);
 
   liteScriptContent = await fs.readFile(liteScriptPath, 'utf8');
 

@@ -16,4 +16,13 @@ export default defineConfig([
     noExternal: [/(.*)/],
     inlineOnly: false,
   },
+  {
+    entry: ['src/cli/propose-policy.ts'],
+    format: 'esm',
+    dts: true,
+    clean: false,
+    outDir: 'dist/cli',
+    noExternal: [/(.*)/],
+    inlineOnly: false,
+  },
 ]);
