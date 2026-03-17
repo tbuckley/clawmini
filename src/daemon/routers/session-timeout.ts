@@ -2,6 +2,7 @@ import type { RouterState } from './types.js';
 import { randomUUID } from 'node:crypto';
 
 export interface SessionTimeoutConfig {
+  timeout?: string;
   timeoutMinutes?: number;
   prompt?: string;
 }
@@ -16,7 +17,7 @@ export interface SessionTimeoutConfig {
  *     {
  *       "use": "session-timeout",
  *       "with": {
- *         "timeoutMinutes": 60,
+ *         "timeout": "60m",
  *         "prompt": "This chat session has ended. Save any important details from it to your memory."
  *       }
  *     }
@@ -25,7 +26,7 @@ export interface SessionTimeoutConfig {
  * ```
  */
 export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
-  const timeoutMinutes = config.timeoutMinutes ?? 60;
+  const timeStr = config.timeout ?? (config.timeoutMinutes ? `${config.timeoutMinutes}m` : '60m');
   const prompt =
     config.prompt ??
     'This chat session has ended. Save any important details from it to your memory.';
@@ -46,7 +47,7 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
           // start a fresh session, and delete the job
           {
             id: '__session_timeout__',
-            schedule: { at: `${timeoutMinutes}m` },
+            schedule: { at: timeStr },
             message: prompt,
             reply: '[@clawmini/session-timeout] Starting a fresh session...',
             nextSessionId: randomUUID(),
