@@ -18,3 +18,12 @@
 - Encountered a testing bug where `store.save(request)` converts the request ID to uppercase (`REQ-123`), fixed the test assertions accordingly.
 - All checks (`npm run validate`) successfully passed.
 - Marked Ticket 2 as Complete.
+
+## Ticket 3: Update CLI for Synchronous Execution
+- Updated `src/cli/lite.ts` command `clawmini-lite request <cmd>` to handle `request.executionResult`.
+- If `executionResult` exists, the CLI will write the stdout/stderr to the standard process streams, and exit with the correct exit code.
+- If it does not exist (meaning standard manual approval flow is active), the CLI will output the request ID as before.
+- Edited `src/cli/e2e/requests.test.ts` to mock an `autoApprove: true` policy and test the output format and exit code.
+- Fixed code style issues with `npm run format`.
+- All checks (`npm run validate`) successfully passed.
+- Marked Ticket 3 as Complete.

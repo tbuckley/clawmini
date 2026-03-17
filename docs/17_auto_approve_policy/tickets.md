@@ -33,4 +33,4 @@
 **Verification:**
 - Add/update tests for the CLI `request` command to verify it handles synchronous responses and outputs them correctly.
 - Run `npm run validate` to ensure tests, linting, and type checks pass.
-**Status:** Not Started
+**Status:** Complete
