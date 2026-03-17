@@ -43,6 +43,7 @@ export const initCmd = new Command('init')
         '@clawmini/slash-interrupt',
         '@clawmini/slash-policies',
         '@clawmini/slash-command',
+        '@clawmini/session-timeout',
       ],
       api: true,
     };
