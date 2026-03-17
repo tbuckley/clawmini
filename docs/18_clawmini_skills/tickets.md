@@ -20,7 +20,7 @@
 - **Verification**: 
   - Write unit tests for the directory resolution logic covering custom `skillsDir`, missing `skillsDir`, and missing `settings.json`.
   - Run `npm run validate`.
-- **Status**: Not Started
+- **Status**: Completed
 
 ## Step 4: Implement `clawmini skills list` Command
 - **Description**: Add the `skills list` CLI command to output a list of available skills found in the internal `templates/skills` directory.

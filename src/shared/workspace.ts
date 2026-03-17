@@ -352,6 +352,38 @@ export async function copyTemplate(
   await copyTemplateBase(templatePath, targetDir, false);
 }
 
+export async function resolveTargetAgentSkillsDir(
+  agentId: string,
+  startDir = process.cwd()
+): Promise<string> {
+  const agentDir = getAgentDir(agentId, startDir);
+  try {
+    const stat = await fsPromises.stat(agentDir);
+    if (!stat.isDirectory()) {
+      throw new Error(`Agent not found: ${agentId}`);
+    }
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
+      throw new Error(`Agent not found: ${agentId}`, { cause: err });
+    }
+    throw err;
+  }
+
+  let agentData: Agent | null = null;
+  try {
+    agentData = await getAgent(agentId, startDir);
+  } catch {
+    // Ignore malformed settings.json
+  }
+
+  if (agentData) {
+    return resolveAgentSkillsDir(agentId, agentData, startDir);
+  }
+
+  const workDir = resolveAgentWorkDir(agentId, undefined, startDir);
+  return path.resolve(workDir, '.agents/skills');
+}
+
 export async function copyEnvironmentTemplate(
   templateName: string,
   targetDir: string,
@@ -362,12 +394,8 @@ export async function copyEnvironmentTemplate(
 }
 
 export async function copyAgentSkills(agentId: string, startDir = process.cwd()): Promise<void> {
-  const agentData = await getAgent(agentId, startDir);
-  if (!agentData) {
-    throw new Error(`Agent not found: ${agentId}`);
-  }
+  const targetDir = await resolveTargetAgentSkillsDir(agentId, startDir);
   const templatePath = await resolveSkillsTemplatePath(startDir);
-  const targetDir = resolveAgentSkillsDir(agentId, agentData, startDir);
   await copyTemplateBase(templatePath, targetDir, true);
 }
 

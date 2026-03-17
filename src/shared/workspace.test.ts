@@ -23,6 +23,7 @@ import {
   writeSettings,
   readEnvironment,
   getActiveEnvironmentName,
+  resolveTargetAgentSkillsDir,
 } from './workspace.js';
 import type { Agent, Settings, Environment } from './config.js';
 
@@ -177,6 +178,39 @@ describe('workspace utilities', () => {
 
       list = await listAgents(testDir);
       expect(list).not.toContain('agent-to-delete');
+    });
+  });
+
+  describe('resolveTargetAgentSkillsDir', () => {
+    it('should throw if agent directory does not exist', async () => {
+      await expect(resolveTargetAgentSkillsDir('non-existent', testDir)).rejects.toThrow(
+        'Agent not found: non-existent'
+      );
+    });
+
+    it('should resolve custom skillsDir if settings.json is valid', async () => {
+      const agentData: Agent = { skillsDir: 'custom-skills-dir' };
+      await writeAgentSettings('agent-custom-skills', agentData, testDir);
+
+      const resolved = await resolveTargetAgentSkillsDir('agent-custom-skills', testDir);
+      expect(resolved).toBe(path.join(testDir, 'agent-custom-skills', 'custom-skills-dir'));
+    });
+
+    it('should fall back to .agents/skills if skillsDir is missing from settings', async () => {
+      const agentData: Agent = { env: {} };
+      await writeAgentSettings('agent-no-skillsdir', agentData, testDir);
+
+      const resolved = await resolveTargetAgentSkillsDir('agent-no-skillsdir', testDir);
+      expect(resolved).toBe(path.join(testDir, 'agent-no-skillsdir', '.agents', 'skills'));
+    });
+
+    it('should fall back to .agents/skills if settings.json is missing or malformed', async () => {
+      const agentDir = path.join(clawminiDir, 'agents', 'agent-malformed');
+      await fsPromises.mkdir(agentDir, { recursive: true });
+      await fsPromises.writeFile(path.join(agentDir, 'settings.json'), '{ malformed json', 'utf-8');
+
+      const resolved = await resolveTargetAgentSkillsDir('agent-malformed', testDir);
+      expect(resolved).toBe(path.join(testDir, 'agent-malformed', '.agents', 'skills'));
     });
   });
 

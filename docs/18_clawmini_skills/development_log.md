@@ -16,3 +16,12 @@
 - Updated e2e tests in `src/cli/e2e/init.test.ts` to verify the `.agents/skills` directory is created and populated.
 - Ran formatting and `npm run validate` to ensure all tests passed.
 - Marked Step 2 as completed in `tickets.md`.
+
+## Started: Implement Target Directory Resolution Logic (Step 3)
+- Realized `resolveAgentSkillsDir` was already partially implemented in Step 2.
+- Added `resolveTargetAgentSkillsDir` to gracefully handle missing `settings.json` and fallback to `.agents/skills`.
+- Updated `copyAgentSkills` to use the new `resolveTargetAgentSkillsDir` function.
+- Added test coverage in `src/shared/workspace.test.ts` for directory resolution with valid settings, missing `skillsDir`, and malformed/missing `settings.json`.
+- Fixed test paths to correctly map against the `testDir`.
+- Ran `npm run validate` to ensure formatting, linting, and tests all passed.
+- Marked Step 3 as completed in `tickets.md`.
