@@ -50,6 +50,15 @@ export function resolveAgentWorkDir(
   return dirPath;
 }
 
+export function resolveAgentSkillsDir(
+  agentId: string,
+  agentData: Agent,
+  startDir = process.cwd()
+): string {
+  const workDir = resolveAgentWorkDir(agentId, agentData.directory, startDir);
+  return path.resolve(workDir, agentData.skillsDir || '.agents/skills');
+}
+
 export async function ensureAgentWorkDir(
   agentId: string,
   customDir?: string,
@@ -303,6 +312,10 @@ export async function resolveEnvironmentTemplatePath(
   return resolveTemplatePathBase(path.join('environments', templateName), startDir);
 }
 
+export async function resolveSkillsTemplatePath(startDir = process.cwd()): Promise<string> {
+  return resolveTemplatePathBase('skills', startDir);
+}
+
 export async function copyTemplateBase(
   templatePath: string,
   targetDir: string,
@@ -345,6 +358,16 @@ export async function copyEnvironmentTemplate(
   startDir = process.cwd()
 ): Promise<void> {
   const templatePath = await resolveEnvironmentTemplatePath(templateName, startDir);
+  await copyTemplateBase(templatePath, targetDir, true);
+}
+
+export async function copyAgentSkills(agentId: string, startDir = process.cwd()): Promise<void> {
+  const agentData = await getAgent(agentId, startDir);
+  if (!agentData) {
+    throw new Error(`Agent not found: ${agentId}`);
+  }
+  const templatePath = await resolveSkillsTemplatePath(startDir);
+  const targetDir = resolveAgentSkillsDir(agentId, agentData, startDir);
   await copyTemplateBase(templatePath, targetDir, true);
 }
 

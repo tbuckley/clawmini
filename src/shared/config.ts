@@ -25,6 +25,7 @@ export const AgentSchema = z.looseObject({
     .optional(),
   env: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   directory: z.string().optional(),
+  skillsDir: z.string().optional(),
   fallbacks: z.array(FallbackSchema).optional(),
   files: z.string().default('./attachments').optional(),
 });

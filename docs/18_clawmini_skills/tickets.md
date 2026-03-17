@@ -13,7 +13,7 @@
 - **Verification**: 
   - Write or update unit tests for the initialization logic to verify skills are copied from the new location.
   - Run `npm run validate`.
-- **Status**: Not Started
+- **Status**: Completed
 
 ## Step 3: Implement Target Directory Resolution Logic
 - **Description**: Create utility functions to resolve the destination folder for skills based on a target agent's `settings.json`. It should look for a `skillsDir` property in the agent-level `.clawmini/agents/<agentId>/settings.json` (or appropriate path), falling back to `.agents/skills` relative to the agent's root. Handle missing or malformed `settings.json` gracefully.
