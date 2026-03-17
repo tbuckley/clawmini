@@ -6,7 +6,7 @@
   - Ensure the `templates/skills/` directory contains the skills and `templates/gemini-claw/.gemini/skills/` is removed or empty.
   - Check that each skill contains a `SKILL.md` file.
   - Run `npm run validate` to ensure no build/lint errors are introduced.
-- **Status**: Not Started
+- **Status**: Completed
 
 ## Step 2: Update Agent Initialization Scaffolding
 - **Description**: Update the default agent scaffolding process (`clawmini init` or equivalent template processing) to copy skills from the centralized `templates/skills/` directory into the newly created agent's skills directory.
