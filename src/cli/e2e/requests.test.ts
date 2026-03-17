@@ -33,6 +33,12 @@ describe('E2E Requests Tests (Lite)', () => {
             command: 'echo',
             args: ['nohelp'],
           },
+          'auto-cmd': {
+            description: 'An auto approve policy',
+            command: 'echo',
+            args: ['autoresult'],
+            autoApprove: true,
+          },
         },
       })
     );
@@ -161,5 +167,14 @@ describe('E2E Requests Tests (Lite)', () => {
     const snapshotPath = req.fileMappings.target;
     const snapshotContent = await fsPromises.readFile(snapshotPath, 'utf8');
     expect(snapshotContent).toBe('dummy content');
+  });
+
+  it('should synchronously output execution result for auto-approved policy', async () => {
+    const { stdout, stderr, code } = await runLite(['request', 'auto-cmd', '--', 'extra-auto']);
+
+    expect(stderr).toBe('');
+    expect(code).toBe(0);
+    // Should output the result of `echo autoresult extra-auto`
+    expect(stdout.trim()).toBe('autoresult extra-auto');
   });
 });

@@ -3,6 +3,7 @@ export interface PolicyDefinition {
   command: string;
   args?: string[];
   allowHelp?: boolean;
+  autoApprove?: boolean;
 }
 
 export interface PolicyConfig {
@@ -21,4 +22,9 @@ export interface PolicyRequest {
   rejectionReason?: string;
   chatId: string;
   agentId: string;
+  executionResult?: {
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+  };
 }

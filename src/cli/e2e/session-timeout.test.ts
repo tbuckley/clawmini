@@ -3,7 +3,7 @@ import { createE2EContext } from './utils.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-session-timeout');
+const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-timeout');
 
 describe('Session Timeout E2E', () => {
   beforeAll(async () => {
@@ -15,7 +15,7 @@ describe('Session Timeout E2E', () => {
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
 
     // Replace the default string config with an object config
-    settings.routers = settings.routers.map((router: string | any) => {
+    settings.routers = settings.routers.map((router: unknown) => {
       if (router === '@clawmini/session-timeout') {
         return {
           use: '@clawmini/session-timeout',
@@ -34,7 +34,15 @@ describe('Session Timeout E2E', () => {
 
   it('should automatically trigger a timeout reply after the specified duration', async () => {
     // 2. Send an initial message to trigger the router pipeline
-    const { code } = await runCli(['messages', 'send', 'Hello daemon!']);
+    const { code, stdout, stderr } = await runCli(['messages', 'send', 'Hello daemon!']);
+    if (code !== 0) {
+      console.error('STDOUT:', stdout);
+      console.error('STDERR:', stderr);
+      const logPath = path.join(e2eDir, '.clawmini', 'daemon.log');
+      if (fs.existsSync(logPath)) {
+        console.error('DAEMON LOG:', fs.readFileSync(logPath, 'utf8'));
+      }
+    }
     expect(code).toBe(0);
 
     // 3. Verify the timeout job was scheduled

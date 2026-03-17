@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { slashPolicies } from './slash-policies.js';
 import { RequestStore } from '../request-store.js';
 import { readPolicies } from '../../shared/workspace.js';
-import { executeSafe, interpolateArgs } from '../policy-utils.js';
+import { executeRequest } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
 import type { PolicyRequest } from '../../shared/policies.js';
 
@@ -40,11 +40,11 @@ describe('slashPolicies', () => {
         },
       },
     });
-    vi.mocked(interpolateArgs).mockReturnValue(['hello', 'world']);
-    vi.mocked(executeSafe).mockResolvedValue({
+    vi.mocked(executeRequest).mockResolvedValue({
       stdout: 'hello world',
       stderr: '',
       exitCode: 0,
+      commandStr: 'echo hello world',
     });
   });
 
@@ -97,8 +97,12 @@ describe('slashPolicies', () => {
     const state = { message: '/approve req-1', messageId: 'mock-msg-id', chatId: 'chat-1' };
     const result = await slashPolicies(state);
 
-    expect(mockStore.save).toHaveBeenCalledWith({ ...pendingReq, state: 'Approved' });
-    expect(executeSafe).toHaveBeenCalledWith('echo', ['hello', 'world'], expect.any(Object));
+    expect(mockStore.save).toHaveBeenCalledWith({
+      ...pendingReq,
+      state: 'Approved',
+      executionResult: { stdout: 'hello world', stderr: '', exitCode: 0 },
+    });
+    expect(executeRequest).toHaveBeenCalledWith(pendingReq, expect.any(Object), undefined);
     expect(appendMessage).toHaveBeenCalledWith(
       'chat-1',
       expect.objectContaining({

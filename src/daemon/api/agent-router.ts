@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { TRPCError } from '@trpc/server';
 import { appendMessage, type CommandLogMessage } from '../chats.js';
-import { executeSafe, generateRequestPreview } from '../policy-utils.js';
+import { executeSafe, generateRequestPreview, executeRequest } from '../policy-utils.js';
 import { getWorkspaceRoot, readPolicies, getClawminiDir } from '../../shared/workspace.js';
 import { PolicyRequestService } from '../policy-request-service.js';
 import { RequestStore } from '../request-store.js';
@@ -134,13 +134,55 @@ export const createPolicyRequest = apiProcedure
     const chatId = ctx.tokenPayload.chatId;
     const agentId = ctx.tokenPayload.agentId;
 
+    const config = await readPolicies();
+    const policy = config?.policies?.[input.commandName];
+
+    if (!policy) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: `Policy not found: ${input.commandName}`,
+      });
+    }
+
+    const isAutoApprove = !!policy.autoApprove;
+
     const request = await service.createRequest(
       input.commandName,
       input.args,
       input.fileMappings,
       chatId,
-      agentId
+      agentId,
+      isAutoApprove
     );
+
+    if (isAutoApprove) {
+      const { stdout, stderr, exitCode, commandStr } = await executeRequest(
+        request,
+        policy,
+        getWorkspaceRoot()
+      );
+
+      request.executionResult = { stdout, stderr, exitCode };
+      await store.save(request);
+
+      const logMsg = {
+        id: randomUUID(),
+        // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
+        messageId: randomUUID(),
+        role: 'log' as const,
+        source: 'router' as const,
+        content: `[Auto-approved] Policy ${input.commandName} was executed.`,
+        stderr,
+        stdout, // Adding stdout and stderr for execution context
+        timestamp: new Date().toISOString(),
+        command: commandStr,
+        cwd: getWorkspaceRoot(),
+        exitCode,
+      };
+
+      await appendMessage(chatId, logMsg);
+      return request;
+    }
 
     const previewContent = await generateRequestPreview(request);
 

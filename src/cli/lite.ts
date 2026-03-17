@@ -254,8 +254,18 @@ program
         fileMappings,
       });
 
-      console.log(`Request created successfully.`);
-      console.log(`Request ID: ${request.id}`);
+      if (request.executionResult) {
+        if (request.executionResult.stdout) {
+          process.stdout.write(request.executionResult.stdout);
+        }
+        if (request.executionResult.stderr) {
+          process.stderr.write(request.executionResult.stderr);
+        }
+        process.exit(request.executionResult.exitCode);
+      } else {
+        console.log(`Request created successfully.`);
+        console.log(`Request ID: ${request.id}`);
+      }
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
       process.exit(1);

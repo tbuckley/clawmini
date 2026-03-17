@@ -4,7 +4,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { pathIsInsideDir } from '../shared/utils/fs.js';
-import type { PolicyRequest } from '../shared/policies.js';
+import type { PolicyRequest, PolicyDefinition } from '../shared/policies.js';
 
 export const MAX_SNAPSHOT_SIZE = 5 * 1024 * 1024;
 
@@ -125,6 +125,24 @@ export function executeSafe(
       resolve({ stdout: '', stderr: err.toString(), exitCode: 1 });
     });
   });
+}
+
+export async function executeRequest(
+  request: PolicyRequest,
+  policy: PolicyDefinition,
+  cwd?: string
+): Promise<{ stdout: string; stderr: string; exitCode: number; commandStr: string }> {
+  const fullArgs = [...(policy.args || []), ...request.args];
+  const interpolatedArgs = interpolateArgs(fullArgs, request.fileMappings);
+
+  const { stdout, stderr, exitCode } = await executeSafe(
+    policy.command,
+    interpolatedArgs,
+    cwd ? { cwd } : undefined
+  );
+
+  const commandStr = `${policy.command} ${interpolatedArgs.join(' ')}`;
+  return { stdout, stderr, exitCode, commandStr };
 }
 
 export async function generateRequestPreview(request: PolicyRequest): Promise<string> {
