@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 
 export interface SessionTimeoutConfig {
   timeout?: string;
-  timeoutMinutes?: number;
   prompt?: string;
 }
 
@@ -26,7 +25,7 @@ export interface SessionTimeoutConfig {
  * ```
  */
 export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
-  const timeStr = config.timeout ?? (config.timeoutMinutes ? `${config.timeoutMinutes}m` : '60m');
+  const timeStr = config.timeout ?? '60m';
   const prompt =
     config.prompt ??
     'This chat session has ended. Save any important details from it to your memory.';

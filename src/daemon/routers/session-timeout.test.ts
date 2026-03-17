@@ -37,9 +37,9 @@ describe('sessionTimeoutRouter', () => {
     );
   });
 
-  it('respects custom timeoutMinutes and prompt configuration', () => {
+  it('respects custom timeout and prompt configuration', () => {
     const router = createSessionTimeoutRouter({
-      timeoutMinutes: 30,
+      timeout: '30m',
       prompt: 'Custom prompt',
     });
     const initialState: RouterState = {
