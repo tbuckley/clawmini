@@ -5,6 +5,7 @@ import {
   type UserMessage,
   type CommandLogMessage,
   isSubagentChatId,
+  parseSubagentChatId,
   getChatsDir,
   getChatRelativePath,
 } from './chats.js';
@@ -523,10 +524,9 @@ export async function executeDirectMessage(
         await appendMessage(chatId, lastLogMsg);
       }
 
-      if (isSubagentChatId(chatId)) {
-        const parts = chatId.split(':');
-        const parentChatId = parts[0] as string;
-        const subagentUuid = parts[2] as string;
+      const parsedSubagent = parseSubagentChatId(chatId);
+      if (parsedSubagent) {
+        const { parentId: parentChatId, uuid: subagentUuid } = parsedSubagent;
         const statusStr = success ? 'completed' : 'encountered an error in';
 
         let originalMessageSnippet = state.message;

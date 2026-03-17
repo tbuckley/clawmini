@@ -44,12 +44,18 @@ export function isSubagentChatId(chatId: string): boolean {
   return /^[a-zA-Z0-9_-]+:subagents:[a-zA-Z0-9_-]+$/.test(chatId);
 }
 
+export function parseSubagentChatId(chatId: string): { parentId: string; uuid: string } | null {
+  if (!isSubagentChatId(chatId)) return null;
+  const parts = chatId.split(':');
+  return { parentId: parts[0] as string, uuid: parts[2] as string };
+}
+
 export function isValidChatId(chatId: string): boolean {
   if (!chatId || chatId.length === 0) return false;
   // Standard chat ID
   if (/^[a-zA-Z0-9_-]+$/.test(chatId)) return true;
   // Subagent chat ID: parentChatId:subagents:subagentUuid
-  if (/^[a-zA-Z0-9_-]+:subagents:[a-zA-Z0-9_-]+$/.test(chatId)) return true;
+  if (isSubagentChatId(chatId)) return true;
   return false;
 }
 
@@ -60,11 +66,9 @@ function assertValidChatId(id: string): void {
 }
 
 export function getChatRelativePath(id: string): string {
-  if (id.includes(':subagents:')) {
-    const parts = id.split(':');
-    if (parts.length === 3 && parts[1] === 'subagents') {
-      return path.join(parts[0] as string, 'subagents', parts[2] as string);
-    }
+  const parsed = parseSubagentChatId(id);
+  if (parsed) {
+    return path.join(parsed.parentId, 'subagents', parsed.uuid);
   }
   return id;
 }

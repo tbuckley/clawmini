@@ -80,15 +80,10 @@ export function getPoliciesPath(startDir = process.cwd()): string {
   return path.join(getClawminiDir(startDir), 'policies.json');
 }
 
+import { getChatRelativePath } from './chats.js';
+
 export function getChatSettingsPath(chatId: string, startDir = process.cwd()): string {
-  let relativePath = chatId;
-  if (chatId.includes(':subagents:')) {
-    const parts = chatId.split(':');
-    if (parts.length === 3 && parts[1] === 'subagents') {
-      relativePath = path.join(parts[0] as string, 'subagents', parts[2] as string);
-    }
-  }
-  return path.join(getClawminiDir(startDir), 'chats', relativePath, 'settings.json');
+  return path.join(getClawminiDir(startDir), 'chats', getChatRelativePath(chatId), 'settings.json');
 }
 
 export function isValidAgentId(agentId: string): boolean {

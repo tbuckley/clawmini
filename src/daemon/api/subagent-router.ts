@@ -14,7 +14,7 @@ import {
 } from '../chats.js';
 import { abortQueuesForDirPrefix } from '../queue.js';
 import { handleUserMessage } from '../message.js';
-import { getSettingsPath } from '../../shared/workspace.js';
+import { readSettings } from '../../shared/workspace.js';
 import { runCommand } from '../utils/spawn.js';
 
 export const subagentAdd = apiProcedure
@@ -30,14 +30,7 @@ export const subagentAdd = apiProcedure
     const subagentUuid = randomUUID();
     const subagentChatId = `${parentChatId}:subagents:${subagentUuid}`;
 
-    const settingsPath = getSettingsPath();
-    let settings: Record<string, unknown> = {};
-    try {
-      const settingsStr = await fs.readFile(settingsPath, 'utf8');
-      settings = JSON.parse(settingsStr);
-    } catch {
-      // Ignore
-    }
+    const settings = ((await readSettings()) as Record<string, unknown> | null) ?? {};
 
     // Asynchronously start execution using handleUserMessage with noWait=true
     await handleUserMessage(
@@ -97,14 +90,7 @@ export const subagentSend = apiProcedure
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid subagent ID' });
     }
 
-    const settingsPath = getSettingsPath();
-    let settings: Record<string, unknown> = {};
-    try {
-      const settingsStr = await fs.readFile(settingsPath, 'utf8');
-      settings = JSON.parse(settingsStr);
-    } catch {
-      // Ignore
-    }
+    const settings = ((await readSettings()) as Record<string, unknown> | null) ?? {};
 
     await handleUserMessage(
       input.subagentId,

@@ -57,3 +57,14 @@
 **Verification Steps:**
 - Add E2E tests for the new CLI subcommands to verify they correctly interact with the daemon's TRPC API.
 - Run `npm run validate` to ensure formatting, linting, and all tests pass.
+
+## Milestone 5: Code Quality & DRY Improvements (Identified in Review)
+**Status:** Complete
+
+**Tasks:**
+- High: Fix DRY violation in `src/daemon/api/subagent-router.ts` by using `readSettings()` from `src/shared/workspace.ts` instead of manually reading and parsing `settings.json`.
+- Medium: Fix DRY violation in `src/shared/workspace.ts` by reusing `getChatRelativePath` from `src/shared/chats.ts` instead of duplicating subagent ID parsing.
+- Medium: Extract subagent chat ID parsing into a new helper `parseSubagentChatId` in `src/shared/chats.ts` and use it in `getChatRelativePath` and `src/daemon/message.ts` to replace raw `.split(':')` operations.
+
+**Verification Steps:**
+- Run `npm run validate` to ensure tests and type checking pass after refactoring.

@@ -18,6 +18,7 @@ export {
   getChatRelativePath,
   isValidChatId,
   isSubagentChatId,
+  parseSubagentChatId,
   createChat,
   listChats,
   deleteChat,
