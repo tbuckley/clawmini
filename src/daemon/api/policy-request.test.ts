@@ -11,6 +11,18 @@ vi.mock('../../shared/chats.js', () => ({
 vi.mock('../../shared/workspace.js', () => ({
   getWorkspaceRoot: vi.fn().mockReturnValue('/mock/workspace'),
   getClawminiDir: vi.fn().mockReturnValue('/mock/.clawmini'),
+  readPolicies: vi.fn().mockResolvedValue({
+    policies: {
+      'test-cmd': {
+        command: 'echo',
+        autoApprove: false,
+      },
+      'auto-cmd': {
+        command: 'echo',
+        autoApprove: true,
+      },
+    },
+  }),
 }));
 
 vi.mock('../policy-request-service.js', () => {
@@ -46,11 +58,13 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     default: {
       ...actual,
       readFile: mockReadFile,
+      writeFile: vi.fn(),
       mkdir: vi.fn(),
       readdir: vi.fn().mockResolvedValue([]),
       realpath: vi.fn().mockImplementation((p) => Promise.resolve(p)),
     },
     readFile: mockReadFile,
+    writeFile: vi.fn(),
     mkdir: vi.fn(),
     readdir: vi.fn().mockResolvedValue([]),
     realpath: vi.fn().mockImplementation((p) => Promise.resolve(p)),
@@ -109,5 +123,28 @@ describe('createPolicyRequest preview message', () => {
     // The long file should be truncated to 500 chars + suffix
     expect(content).toContain('File [file2]:\n' + 'A'.repeat(500) + '\n... (truncated)');
     expect(content).toContain('Use /approve req-123 or /reject req-123 [reason]');
+  });
+
+  it('should create an auto-approved request and execute it immediately', async () => {
+    const caller = appRouter.createCaller({
+      isApiServer: true,
+      tokenPayload: { agentId: 'default', chatId: 'default-chat' },
+    } as any);
+
+    const result = await caller.createPolicyRequest({
+      commandName: 'auto-cmd',
+      args: ['hello'],
+      fileMappings: {},
+    });
+
+    expect(result.id).toBe('REQ-123');
+    expect(result.executionResult).toBeDefined();
+
+    expect(chats.appendMessage).toHaveBeenCalledTimes(1);
+    const callArgs = vi.mocked(chats.appendMessage).mock.calls[0]!;
+    const logMsg = callArgs[1] as any;
+
+    expect(logMsg.content).toContain('[Auto-approved] Policy auto-cmd was executed.');
+    expect(logMsg.exitCode).toBeDefined();
   });
 });

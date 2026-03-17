@@ -22,7 +22,7 @@
 **Verification:**
 - Add/update unit tests for `createPolicyRequest` to cover the auto-approve branch.
 - Run `npm run validate` to ensure tests, linting, and type checks pass.
-**Status:** Not Started
+**Status:** Complete
 
 ## Ticket 3: Update CLI for Synchronous Execution
 **Description:** Update the CLI command `clawmini-lite request <cmd>` to handle synchronous responses from auto-approved policies.

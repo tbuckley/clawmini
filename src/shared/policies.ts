@@ -22,4 +22,9 @@ export interface PolicyRequest {
   rejectionReason?: string;
   chatId: string;
   agentId: string;
+  executionResult?: {
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+  };
 }
