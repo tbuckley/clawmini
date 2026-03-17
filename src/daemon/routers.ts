@@ -5,17 +5,22 @@ import { slashCommand } from './routers/slash-command.js';
 import { slashStop } from './routers/slash-stop.js';
 import { slashInterrupt } from './routers/slash-interrupt.js';
 import { slashPolicies } from './routers/slash-policies.js';
+import { createSessionTimeoutRouter } from './routers/session-timeout.js';
+import type { RouterConfig } from '../shared/config.js';
 
 export async function executeRouterPipeline(
   initialState: RouterState,
-  routers: string[]
+  routers: RouterConfig[]
 ): Promise<RouterState> {
   let state = { ...initialState };
 
-  for (const router of routers) {
+  for (const routerDef of routers) {
     if (state.action === 'stop') {
       break;
     }
+
+    const router = typeof routerDef === 'string' ? routerDef : routerDef.use;
+    const config = typeof routerDef === 'string' ? {} : routerDef.with || {};
 
     if (router === '@clawmini/slash-new') {
       state = slashNew(state);
@@ -27,6 +32,8 @@ export async function executeRouterPipeline(
       state = slashInterrupt(state);
     } else if (router === '@clawmini/slash-policies') {
       state = await slashPolicies(state);
+    } else if (router === '@clawmini/session-timeout') {
+      state = createSessionTimeoutRouter(config)(state);
     } else {
       // Execute as custom shell command
       try {

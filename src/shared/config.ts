@@ -31,27 +31,64 @@ export const AgentSchema = z.looseObject({
 
 export type Agent = z.infer<typeof AgentSchema>;
 
-export const CronJobSchema = z.looseObject({
-  id: z.string().min(1),
-  createdAt: z.string().optional(),
-  message: z.string().default(''),
-  reply: z.string().optional(),
-  agentId: z.string().optional(),
-  env: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
-  session: z.looseObject({ type: z.string() }).optional(),
-  schedule: z.union([
-    z.looseObject({ cron: z.string() }),
-    z.looseObject({ every: z.string() }),
-    z.looseObject({ at: z.string() }),
-  ]),
-});
+export type CronJob = {
+  id: string;
+  createdAt?: string;
+  message: string;
+  reply?: string;
+  agentId?: string;
+  env?: Record<string, string | boolean>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  session?: { type: string; [key: string]: any };
+  schedule: { cron: string } | { every: string } | { at: string };
+  nextSessionId?: string;
+  action?: 'stop' | 'interrupt' | 'continue';
+  jobs?: {
+    add?: CronJob[];
+    remove?: string[];
+  };
+};
 
-export type CronJob = z.infer<typeof CronJobSchema>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const CronJobSchema: z.ZodType<any> = z.lazy(() =>
+  z.looseObject({
+    id: z.string().min(1),
+    createdAt: z.string().optional(),
+    message: z.string().default(''),
+    reply: z.string().optional(),
+    agentId: z.string().optional(),
+    env: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
+    session: z.looseObject({ type: z.string() }).optional(),
+    schedule: z.union([
+      z.looseObject({ cron: z.string() }),
+      z.looseObject({ every: z.string() }),
+      z.looseObject({ at: z.string() }),
+    ]),
+    nextSessionId: z.string().optional(),
+    action: z.enum(['stop', 'interrupt', 'continue']).optional(),
+    jobs: z
+      .looseObject({
+        add: z.array(z.lazy(() => CronJobSchema)).optional(),
+        remove: z.array(z.string()).optional(),
+      })
+      .optional(),
+  })
+);
+
+export const RouterConfigSchema = z.union([
+  z.string(),
+  z.looseObject({
+    use: z.string(),
+    with: z.record(z.string(), z.any()).optional(),
+  }),
+]);
+
+export type RouterConfig = z.infer<typeof RouterConfigSchema>;
 
 export const ChatSettingsSchema = z.looseObject({
   defaultAgent: z.string().optional(),
   sessions: z.record(z.string(), z.string()).optional(),
-  routers: z.array(z.string()).optional(),
+  routers: z.array(RouterConfigSchema).optional(),
   jobs: z.array(CronJobSchema).optional(),
 });
 
@@ -83,7 +120,7 @@ export const SettingsSchema = z.looseObject({
     .optional(),
   defaultAgent: AgentSchema.optional(),
   environments: z.record(z.string(), z.string()).optional(),
-  routers: z.array(z.string()).optional(),
+  routers: z.array(RouterConfigSchema).optional(),
   files: z.string().default('./attachments').optional(),
   api: z
     .union([

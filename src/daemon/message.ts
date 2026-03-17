@@ -21,6 +21,7 @@ import {
   getEnvironmentPath,
   readEnvironment,
 } from '../shared/workspace.js';
+import { cronManager } from './cron.js';
 import { getApiContext, generateToken } from './auth.js';
 import { emitTyping } from './events.js';
 import { applyEnvOverrides, getActiveEnvKeys } from '../shared/utils/env.js';
@@ -600,6 +601,35 @@ export async function handleUserMessage(
     chatSettings.sessions = chatSettings.sessions || {};
     chatSettings.sessions[currentAgentId] = finalSessionId;
     settingsChanged = true;
+  }
+
+  if (finalState.nextSessionId) {
+    chatSettings.sessions = chatSettings.sessions || {};
+    chatSettings.sessions[currentAgentId] = finalState.nextSessionId;
+    settingsChanged = true;
+  }
+
+  if (finalState.jobs) {
+    chatSettings.jobs = chatSettings.jobs || [];
+
+    if (finalState.jobs.remove?.length) {
+      const removeSet = new Set(finalState.jobs.remove);
+      for (const jobId of finalState.jobs.remove) {
+        cronManager.unscheduleJob(chatId, jobId);
+      }
+      chatSettings.jobs = chatSettings.jobs.filter((j) => !removeSet.has(j.id));
+      settingsChanged = true;
+    }
+
+    if (finalState.jobs.add?.length) {
+      const addMap = new Map(finalState.jobs.add.map((job) => [job.id, job]));
+      for (const job of finalState.jobs.add) {
+        cronManager.scheduleJob(chatId, job);
+      }
+      chatSettings.jobs = chatSettings.jobs.filter((j) => !addMap.has(j.id));
+      chatSettings.jobs.push(...finalState.jobs.add);
+      settingsChanged = true;
+    }
   }
 
   if (settingsChanged) {
