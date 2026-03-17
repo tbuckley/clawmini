@@ -16,7 +16,7 @@ export interface SessionTimeoutConfig {
  *     {
  *       "use": "session-timeout",
  *       "with": {
- *         "timeoutMinutes": 15,
+ *         "timeoutMinutes": 60,
  *         "prompt": "This chat session has ended. Save any important details from it to your memory."
  *       }
  *     }
@@ -25,7 +25,7 @@ export interface SessionTimeoutConfig {
  * ```
  */
 export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
-  const timeoutMinutes = config.timeoutMinutes ?? 15;
+  const timeoutMinutes = config.timeoutMinutes ?? 60;
   const prompt =
     config.prompt ??
     'This chat session has ended. Save any important details from it to your memory.';

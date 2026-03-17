@@ -24,7 +24,7 @@ describe('sessionTimeoutRouter', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: '__session_timeout__',
-          schedule: { at: '15m' },
+          schedule: { at: '60m' },
           message:
             'This chat session has ended. Save any important details from it to your memory.',
           reply: '[@clawmini/session-timeout] Starting a fresh session...',
