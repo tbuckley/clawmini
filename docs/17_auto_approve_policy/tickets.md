@@ -1,36 +1,11 @@
-# Auto Approve Policy Implementation Plan
+# Auto Approve Policy Issues
 
-## Ticket 1: Update Policy Schema
-**Description:** Update the `PolicyDefinition` interface to support the new `autoApprove` configuration flag.
-**Tasks:**
-- Modify the `PolicyDefinition` interface (likely in `src/shared/policies.ts` or similar) to include an optional `autoApprove?: boolean | string` field.
-- Ensure the configuration parser handles this new field properly, maintaining backwards compatibility (defaulting to false).
-**Verification:**
-- Run `npm run validate` to ensure type checks and linting pass.
-**Status:** Complete
+## High Priority
+- [x] **Extract duplicate policy execution logic**: `agent-router.ts` and `slash-policies.ts` both implement the same logic to interpolate args, execute `executeSafe`, save the result, and construct/append a log message. Extract this into a shared utility function.
+- [x] **Persist manual execution results**: In `slash-policies.ts`, `req.executionResult` is never populated or saved to the request store when a request is manually approved. This leaves the data incomplete compared to auto-approved requests.
 
-## Ticket 2: Implement Auto-Approval Logic in Daemon
-**Description:** Update the daemon's TRPC mutation (`createPolicyRequest`) to handle policies with the `autoApprove` flag enabled.
-**Tasks:**
-- In the `createPolicyRequest` logic (e.g., `src/daemon/api/agent-router.ts`), check if the requested policy has `autoApprove` set to a truthy value.
-- If true:
-  - Immediately execute the policy command using `executeSafe`.
-  - Save the request with the `Approved` state instead of `Pending`.
-  - Inject an audit message (debug level) into the chat history stating the policy was auto-approved and executed.
-  - Return the execution results (stdout/stderr/exit code) directly in the TRPC response so the CLI can receive it.
-- Ensure policies without `autoApprove` continue using the standard manual approval flow.
-**Verification:**
-- Add/update unit tests for `createPolicyRequest` to cover the auto-approve branch.
-- Run `npm run validate` to ensure tests, linting, and type checks pass.
-**Status:** Complete
+## Medium Priority
+- [x] **Avoid redundant disk writes**: When `autoApprove` is true, `createRequest` saves the request to the store, and immediately after `agent-router.ts` saves it again to attach `executionResult`. We should execute first or allow `createRequest` to accept `executionResult` and avoid saving twice.
 
-## Ticket 3: Update CLI for Synchronous Execution
-**Description:** Update the CLI command `clawmini-lite request <cmd>` to handle synchronous responses from auto-approved policies.
-**Tasks:**
-- Modify the CLI command logic so that if the TRPC response contains execution results (because it was auto-approved), the CLI blocks until the response is received.
-- Output the execution results (stdout/stderr) directly to the standard output streams of the CLI process.
-- Return the appropriate exit code based on the execution result.
-**Verification:**
-- Add/update tests for the CLI `request` command to verify it handles synchronous responses and outputs them correctly.
-- Run `npm run validate` to ensure tests, linting, and type checks pass.
-**Status:** Complete
+## Low Priority
+- [x] **Simplify `autoApprove` type (YAGNI)**: The `PolicyDefinition` interface defines `autoApprove` as `boolean | string`, but only its truthiness is checked. Simplify it to `boolean` to avoid confusion.

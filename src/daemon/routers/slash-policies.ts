@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { RouterState } from './types.js';
 import { RequestStore } from '../request-store.js';
 import { readPolicies, getWorkspaceRoot } from '../../shared/workspace.js';
-import { executeSafe, interpolateArgs } from '../policy-utils.js';
+import { executeRequest } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
 import type { CommandLogMessage } from '../../shared/chats.js';
 
@@ -54,16 +54,16 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     }
 
     req.state = 'Approved';
+
+    const { stdout, stderr, exitCode, commandStr } = await executeRequest(
+      req,
+      policy,
+      getWorkspaceRoot()
+    );
+
+    req.executionResult = { stdout, stderr, exitCode };
     await store.save(req);
 
-    const fullArgs = [...(policy.args || []), ...req.args];
-    const interpolatedArgs = interpolateArgs(fullArgs, req.fileMappings);
-
-    const { stdout, stderr, exitCode } = await executeSafe(policy.command, interpolatedArgs, {
-      cwd: getWorkspaceRoot(),
-    });
-
-    const commandStr = `${policy.command} ${interpolatedArgs.join(' ')}`;
     const logMsg: CommandLogMessage = {
       id: randomUUID(),
       messageId: state.messageId,

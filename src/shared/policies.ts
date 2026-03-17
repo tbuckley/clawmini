@@ -3,7 +3,7 @@ export interface PolicyDefinition {
   command: string;
   args?: string[];
   allowHelp?: boolean;
-  autoApprove?: boolean | string;
+  autoApprove?: boolean;
 }
 
 export interface PolicyConfig {

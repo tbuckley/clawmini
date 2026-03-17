@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { TRPCError } from '@trpc/server';
 import { appendMessage, type CommandLogMessage } from '../chats.js';
-import { executeSafe, generateRequestPreview, interpolateArgs } from '../policy-utils.js';
+import { executeSafe, generateRequestPreview, executeRequest } from '../policy-utils.js';
 import { getWorkspaceRoot, readPolicies, getClawminiDir } from '../../shared/workspace.js';
 import { PolicyRequestService } from '../policy-request-service.js';
 import { RequestStore } from '../request-store.js';
@@ -156,17 +156,15 @@ export const createPolicyRequest = apiProcedure
     );
 
     if (isAutoApprove) {
-      const fullArgs = [...(policy.args || []), ...request.args];
-      const interpolatedArgs = interpolateArgs(fullArgs, request.fileMappings);
-
-      const { stdout, stderr, exitCode } = await executeSafe(policy.command, interpolatedArgs, {
-        cwd: getWorkspaceRoot(),
-      });
+      const { stdout, stderr, exitCode, commandStr } = await executeRequest(
+        request,
+        policy,
+        getWorkspaceRoot()
+      );
 
       request.executionResult = { stdout, stderr, exitCode };
       await store.save(request);
 
-      const commandStr = `${policy.command} ${interpolatedArgs.join(' ')}`;
       const logMsg = {
         id: randomUUID(),
         // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
