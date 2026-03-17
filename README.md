@@ -87,7 +87,7 @@ You can configure the active routers in your workspace's `.clawmini/settings.jso
     {
       "use": "@clawmini/session-timeout",
       "with": {
-        "timeoutMinutes": 15,
+        "timeout": "60m",
         "prompt": "This chat session has ended. Save any important details from it to your memory."
       }
     }
