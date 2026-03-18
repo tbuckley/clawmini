@@ -105,7 +105,10 @@ describe('Subagent Router', () => {
       const caller = subagentRouter.createCaller(mockCtx as any);
       const result = await caller.list();
 
-      expect(result).toEqual([{ id: 'uuid-1' }, { id: 'uuid-2' }]);
+      expect(result).toEqual([
+        { id: 'uuid-1', agent: 'default', status: 'unknown', created: 'unknown', snippet: '' },
+        { id: 'uuid-2', agent: 'default', status: 'unknown', created: 'unknown', snippet: '' },
+      ]);
     });
   });
 

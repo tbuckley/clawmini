@@ -300,7 +300,23 @@ subagents
     try {
       const client = getClient();
       const list = await client.subagents.list.query();
-      console.log(JSON.stringify(list, null, 2));
+      if (list.length === 0) {
+        console.log('No subagents found.');
+        return;
+      }
+
+      const pad = (str: string, len: number) => str.padEnd(len, ' ');
+      console.log(
+        `${pad('ID', 40)} ${pad('AGENT', 15)} ${pad('STATUS', 12)} ${pad('CREATED', 22)} ${'SNIPPET'}`
+      );
+      console.log('-'.repeat(110));
+      for (const item of list) {
+        const created =
+          item.created !== 'unknown' ? new Date(item.created).toLocaleString() : 'unknown';
+        console.log(
+          `${pad(item.id, 40)} ${pad(item.agent, 15)} ${pad(item.status, 12)} ${pad(created, 22)} ${item.snippet}`
+        );
+      }
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
       process.exit(1);

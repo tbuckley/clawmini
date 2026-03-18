@@ -11,7 +11,7 @@ import {
   getMessages,
   isSubagentChatId,
 } from '../chats.js';
-import { abortQueuesForDirPrefix, abortQueuesForSessionId } from '../queue.js';
+import { abortQueuesForDirPrefix, abortQueuesForSessionId, isSessionIdActive } from '../queue.js';
 import { handleUserMessage } from '../message.js';
 import { readSettings, writeChatSettings, readChatSettings } from '../../shared/workspace.js';
 import { runCommand } from '../utils/spawn.js';
@@ -63,7 +63,48 @@ export const subagentList = apiProcedure.query(async ({ ctx }) => {
 
   try {
     const entries = await fs.readdir(subagentsDir, { withFileTypes: true });
-    return entries.filter((e) => e.isDirectory()).map((e) => ({ id: e.name }));
+    const subagents = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+
+    const details = await Promise.all(
+      subagents.map(async (id) => {
+        const fullSubagentId = `${parentChatId}:subagents:${id}`;
+        let agent = 'default';
+        let status = 'unknown';
+        let created = 'unknown';
+        let snippet = '';
+
+        try {
+          const settings = await readChatSettings(fullSubagentId);
+          if (settings?.defaultAgent) {
+            agent = settings.defaultAgent;
+            const sessionId = settings.sessions?.[agent];
+            if (sessionId) {
+              status = isSessionIdActive(sessionId) ? 'running' : 'completed';
+            }
+          }
+        } catch {
+          // Ignore settings errors
+        }
+
+        try {
+          const messages = await getMessages(fullSubagentId, 100); // Need to get at least the first one
+          if (messages.length > 0) {
+            const firstUserMessage = messages.find((m) => m.role === 'user');
+            if (firstUserMessage) {
+              created = firstUserMessage.timestamp;
+              snippet = firstUserMessage.content.slice(0, 50).replace(/\n/g, ' ');
+              if (firstUserMessage.content.length > 50) snippet += '...';
+            }
+          }
+        } catch {
+          // Ignore messages errors
+        }
+
+        return { id, agent, status, created, snippet };
+      })
+    );
+
+    return details;
   } catch {
     return [];
   }

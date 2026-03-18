@@ -103,6 +103,17 @@ export function getMessageQueue(dir: string): Queue<MessageQueuePayload> {
   return messageQueues.get(dir)!;
 }
 
+export function isSessionIdActive(sessionId: string): boolean {
+  for (const queue of messageQueues.values()) {
+    const isPending = queue['pending'].some((p) => p.payload?.sessionId === sessionId);
+    const isRunning = queue.getCurrentPayload()?.sessionId === sessionId;
+    if (isPending || isRunning) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function abortQueuesForSessionId(sessionId: string): void {
   for (const queue of messageQueues.values()) {
     queue.extractPending((p) => p.sessionId === sessionId);
