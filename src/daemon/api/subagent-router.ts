@@ -20,6 +20,7 @@ export const subagentAdd = apiProcedure
   .input(
     z.object({
       message: z.string(),
+      agent: z.string().optional(),
     })
   )
   .mutation(async ({ input, ctx }) => {
@@ -38,7 +39,7 @@ export const subagentAdd = apiProcedure
       true, // noWait
       (args) => runCommand({ ...args, logToTerminal: true }),
       undefined,
-      ctx.tokenPayload.agentId
+      input.agent || ctx.tokenPayload.agentId
     );
 
     return { subagentId: subagentUuid };

@@ -278,11 +278,13 @@ const subagents = program.command('subagents').description('Manage subagents');
 subagents
   .command('add <message>')
   .description('Add a subagent')
-  .action(async (message) => {
+  .option('-a, --agent <agent>', 'Agent to use for the subagent')
+  .action(async (message, options) => {
     try {
       const client = getClient();
       const result = await client.subagents.add.mutate({
         message,
+        agent: options.agent,
       });
       console.log(`Subagent created with ID: ${result.subagentId}`);
     } catch (err) {
