@@ -36,6 +36,7 @@ describe('chats utilities', () => {
     expect(isValidChatId('my-chat-123')).toBe(true);
     expect(isValidChatId('my_chat')).toBe(true);
     expect(isValidChatId('my-chat-123:subagents:some-uuid')).toBe(true);
+    expect(isValidChatId('my-chat-123:subagents:some-uuid:subagents:another-uuid')).toBe(true);
     expect(isValidChatId('my-chat/nested')).toBe(false);
     expect(isValidChatId('my-chat:subagents:')).toBe(false);
     expect(isValidChatId(':subagents:some-uuid')).toBe(false);
@@ -46,6 +47,9 @@ describe('chats utilities', () => {
     expect(getChatRelativePath('my-chat-123')).toBe('my-chat-123');
     expect(getChatRelativePath('my-chat-123:subagents:some-uuid')).toBe(
       path.join('my-chat-123', 'subagents', 'some-uuid')
+    );
+    expect(getChatRelativePath('my-chat-123:subagents:uuid1:subagents:uuid2')).toBe(
+      path.join('my-chat-123', 'subagents', 'uuid1', 'subagents', 'uuid2')
     );
     expect(getChatRelativePath('invalid:format:here')).toBe('invalid:format:here');
   });

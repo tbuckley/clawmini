@@ -41,20 +41,20 @@ export async function getChatsDir(startDir = process.cwd()): Promise<string> {
 
 export function isSubagentChatId(chatId: string): boolean {
   if (!chatId || chatId.length === 0) return false;
-  return /^[a-zA-Z0-9_-]+:subagents:[a-zA-Z0-9_-]+$/.test(chatId);
+  return /^[a-zA-Z0-9_-]+(:subagents:[a-zA-Z0-9_-]+)+$/.test(chatId);
 }
 
 export function parseSubagentChatId(chatId: string): { parentId: string; uuid: string } | null {
   if (!isSubagentChatId(chatId)) return null;
-  const parts = chatId.split(':');
-  return { parentId: parts[0] as string, uuid: parts[2] as string };
+  const lastIndex = chatId.lastIndexOf(':subagents:');
+  return { parentId: chatId.slice(0, lastIndex), uuid: chatId.slice(lastIndex + 11) };
 }
 
 export function isValidChatId(chatId: string): boolean {
   if (!chatId || chatId.length === 0) return false;
   // Standard chat ID
   if (/^[a-zA-Z0-9_-]+$/.test(chatId)) return true;
-  // Subagent chat ID: parentChatId:subagents:subagentUuid
+  // Subagent chat ID: parentChatId:subagents:subagentUuid:...
   if (isSubagentChatId(chatId)) return true;
   return false;
 }
@@ -66,9 +66,8 @@ function assertValidChatId(id: string): void {
 }
 
 export function getChatRelativePath(id: string): string {
-  const parsed = parseSubagentChatId(id);
-  if (parsed) {
-    return path.join(parsed.parentId, 'subagents', parsed.uuid);
+  if (isSubagentChatId(id)) {
+    return path.join(...id.split(':'));
   }
   return id;
 }
