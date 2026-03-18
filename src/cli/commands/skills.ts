@@ -4,7 +4,6 @@ import {
   resolveSkillsTemplatePath,
   copyAgentSkills,
   copyAgentSkill,
-  getActiveEnvironmentName,
 } from '../../shared/workspace.js';
 import { handleError } from '../utils.js';
 
@@ -54,11 +53,10 @@ skillsCmd
 skillsCmd
   .command('add [skill-name]')
   .description('Add a skill to an agent, overwriting the target skill directory if it exists')
-  .option('-a, --agent <agentId>', 'Agent ID (defaults to active environment or "default")')
+  .option('-a, --agent <agentId>', 'Agent ID (defaults to "default")')
   .action(async (skillName: string | undefined, options: { agent?: string }) => {
     try {
-      const activeEnv = await getActiveEnvironmentName(process.cwd());
-      const agentId = options.agent || activeEnv || 'default';
+      const agentId = options.agent || 'default';
 
       if (skillName) {
         await copyAgentSkill(agentId, skillName, process.cwd(), true);
