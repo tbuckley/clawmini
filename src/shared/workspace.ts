@@ -50,6 +50,15 @@ export function resolveAgentWorkDir(
   return dirPath;
 }
 
+export function resolveAgentSkillsDir(
+  agentId: string,
+  agentData: Agent,
+  startDir = process.cwd()
+): string {
+  const workDir = resolveAgentWorkDir(agentId, agentData.directory, startDir);
+  return path.resolve(workDir, agentData.skillsDir || '.agents/skills');
+}
+
 export async function ensureAgentWorkDir(
   agentId: string,
   customDir?: string,
@@ -303,15 +312,20 @@ export async function resolveEnvironmentTemplatePath(
   return resolveTemplatePathBase(path.join('environments', templateName), startDir);
 }
 
+export async function resolveSkillsTemplatePath(startDir = process.cwd()): Promise<string> {
+  return resolveTemplatePathBase('skills', startDir);
+}
+
 export async function copyTemplateBase(
   templatePath: string,
   targetDir: string,
-  allowMissingDir: boolean = false
+  allowMissingDir: boolean = false,
+  overwrite: boolean = false
 ): Promise<void> {
   // Check if target directory exists and is not empty
   try {
     const entries = await fsPromises.readdir(targetDir);
-    if (entries.length > 0) {
+    if (entries.length > 0 && !overwrite) {
       throw new Error(`Target directory is not empty: ${targetDir}`);
     }
   } catch (err: unknown) {
@@ -327,7 +341,7 @@ export async function copyTemplateBase(
   }
 
   // Recursively copy
-  await fsPromises.cp(templatePath, targetDir, { recursive: true });
+  await fsPromises.cp(templatePath, targetDir, { recursive: true, force: true });
 }
 
 export async function copyTemplate(
@@ -339,6 +353,38 @@ export async function copyTemplate(
   await copyTemplateBase(templatePath, targetDir, false);
 }
 
+export async function resolveTargetAgentSkillsDir(
+  agentId: string,
+  startDir = process.cwd()
+): Promise<string> {
+  const agentDir = getAgentDir(agentId, startDir);
+  try {
+    const stat = await fsPromises.stat(agentDir);
+    if (!stat.isDirectory()) {
+      throw new Error(`Agent not found: ${agentId}`);
+    }
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
+      throw new Error(`Agent not found: ${agentId}`, { cause: err });
+    }
+    throw err;
+  }
+
+  let agentData: Agent | null = null;
+  try {
+    agentData = await getAgent(agentId, startDir);
+  } catch {
+    // Ignore malformed settings.json
+  }
+
+  if (agentData) {
+    return resolveAgentSkillsDir(agentId, agentData, startDir);
+  }
+
+  const workDir = resolveAgentWorkDir(agentId, undefined, startDir);
+  return path.resolve(workDir, '.agents/skills');
+}
+
 export async function copyEnvironmentTemplate(
   templateName: string,
   targetDir: string,
@@ -346,6 +392,42 @@ export async function copyEnvironmentTemplate(
 ): Promise<void> {
   const templatePath = await resolveEnvironmentTemplatePath(templateName, startDir);
   await copyTemplateBase(templatePath, targetDir, true);
+}
+
+export async function copyAgentSkills(
+  agentId: string,
+  startDir = process.cwd(),
+  overwrite = false
+): Promise<void> {
+  const targetDir = await resolveTargetAgentSkillsDir(agentId, startDir);
+  const templatePath = await resolveSkillsTemplatePath(startDir);
+  await copyTemplateBase(templatePath, targetDir, true, overwrite);
+}
+
+export async function copyAgentSkill(
+  agentId: string,
+  skillName: string,
+  startDir = process.cwd(),
+  overwrite = false
+): Promise<void> {
+  const targetDir = await resolveTargetAgentSkillsDir(agentId, startDir);
+  const templatePath = await resolveSkillsTemplatePath(startDir);
+  const specificSkillPath = path.join(templatePath, skillName);
+
+  try {
+    const stat = await fsPromises.stat(specificSkillPath);
+    if (!stat.isDirectory()) {
+      throw new Error(`Skill not found: ${skillName}`);
+    }
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
+      throw new Error(`Skill not found: ${skillName}`, { cause: err });
+    }
+    throw err;
+  }
+
+  const skillTargetDir = path.join(targetDir, skillName);
+  await copyTemplateBase(specificSkillPath, skillTargetDir, true, overwrite);
 }
 
 export async function applyTemplateToAgent(

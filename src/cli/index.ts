@@ -11,6 +11,7 @@ import { jobsCmd } from './commands/jobs.js';
 import { exportLiteCmd } from './commands/export-lite.js';
 import { environmentsCmd } from './commands/environments.js';
 import { policiesCmd } from './commands/policies.js';
+import { skillsCmd } from './commands/skills.js';
 
 const program = new Command();
 
@@ -21,6 +22,7 @@ program.addCommand(messagesCmd);
 program.addCommand(chatsCmd);
 program.addCommand(agentsCmd);
 program.addCommand(environmentsCmd);
+program.addCommand(skillsCmd);
 program.addCommand(downCmd);
 program.addCommand(upCmd);
 program.addCommand(webCmd);
