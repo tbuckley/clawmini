@@ -207,6 +207,7 @@ program
   .description('Submit a sandbox policy request')
   .option('--help', 'Execute the underlying command with --help and print the output')
   .option('-f, --file <mappings...>', 'File mappings in the format name=path')
+  .option('--no-wait', 'Do not wait for the request to be approved or rejected')
   .allowUnknownOption()
   .allowExcessArguments(true)
   .helpOption('-h, --cli-help', 'display CLI help for command')
@@ -263,8 +264,45 @@ program
         }
         process.exit(request.executionResult.exitCode);
       } else {
-        console.log(`Request created successfully.`);
-        console.log(`Request ID: ${request.id}`);
+        if (options.wait === false) {
+          console.log(`Request created successfully.`);
+          console.log(`Request ID: ${request.id}`);
+          process.exit(0);
+        }
+
+        process.stdout.write(`Waiting for approval of request ${request.id}...`);
+        while (true) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          process.stdout.write('.');
+
+          const currentReq = await client.getPolicyRequest.query({ id: request.id });
+          if (!currentReq) {
+            process.stdout.write('\\n');
+            throw new Error(`Request ${request.id} not found.`);
+          }
+
+          if (currentReq.state === 'Approved') {
+            process.stdout.write('\\n');
+            if (currentReq.executionResult) {
+              if (currentReq.executionResult.stdout) {
+                process.stdout.write(currentReq.executionResult.stdout);
+              }
+              if (currentReq.executionResult.stderr) {
+                process.stderr.write(currentReq.executionResult.stderr);
+              }
+              process.exit(currentReq.executionResult.exitCode);
+            } else {
+              console.log('Request approved but no execution result available.');
+              process.exit(0);
+            }
+          } else if (currentReq.state === 'Rejected') {
+            process.stdout.write('\\n');
+            console.error(
+              `Request was rejected${currentReq.rejectionReason ? `: ${currentReq.rejectionReason}` : '.'}`
+            );
+            process.exit(1);
+          }
+        }
       }
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);

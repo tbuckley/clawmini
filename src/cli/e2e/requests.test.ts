@@ -140,6 +140,7 @@ describe('E2E Requests Tests (Lite)', () => {
       'test-cmd',
       '--file',
       `target=${dummyFilePath}`,
+      '--no-wait',
       '--',
       'extra1',
       'extra2',
@@ -176,5 +177,57 @@ describe('E2E Requests Tests (Lite)', () => {
     expect(code).toBe(0);
     // Should output the result of `echo autoresult extra-auto`
     expect(stdout.trim()).toBe('autoresult extra-auto');
+  });
+
+  it('should block and poll until approved and output result', async () => {
+    // Clear out requests directory first
+    const requestsDir = path.join(e2eDir, '.clawmini', 'tmp', 'requests');
+    if (fs.existsSync(requestsDir)) {
+      const files = await fsPromises.readdir(requestsDir);
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          await fsPromises.unlink(path.join(requestsDir, file));
+        }
+      }
+    }
+
+    const litePromise = runLite(['request', 'test-cmd', '--', 'block-me']);
+
+    // Wait enough time for lite to send the request and daemon to write the file
+    let foundReqFile: string | undefined;
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      if (fs.existsSync(requestsDir)) {
+        const files = await fsPromises.readdir(requestsDir);
+        const jsonFiles = files.filter((f) => f.endsWith('.json'));
+        if (jsonFiles.length > 0) {
+          foundReqFile = path.join(requestsDir, jsonFiles[0]!);
+          break;
+        }
+      }
+    }
+
+    expect(foundReqFile).toBeDefined();
+
+    const reqData = await fsPromises.readFile(foundReqFile!, 'utf8');
+    const req = JSON.parse(reqData);
+    expect(req.state).toBe('Pending');
+
+    // Manually approve it
+    req.state = 'Approved';
+    req.executionResult = {
+      stdout: 'blocked execution stdout\\n',
+      stderr: '',
+      exitCode: 42,
+    };
+    await fsPromises.writeFile(foundReqFile!, JSON.stringify(req, null, 2), 'utf8');
+
+    // Wait for lite to finish
+    const { stdout, stderr, code } = await litePromise;
+
+    expect(code).toBe(42);
+    expect(stderr).toBe('');
+    expect(stdout).toContain('Waiting for approval of request');
+    expect(stdout).toContain('blocked execution stdout');
   });
 });

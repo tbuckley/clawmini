@@ -9,7 +9,7 @@
 
 ## Ticket 2: Update CLI with `--no-wait` flag and Polling Loop
 **Description**: Update `src/cli/lite.ts` command `request <cmd>` to block by default. Add the `--no-wait` flag. Implement a polling loop (using `getPolicyRequest`) that checks the request state every 2 seconds if `--no-wait` is not provided and the request is not auto-approved. Print a waiting indicator. Exit when the request state becomes `Approved` or `Rejected`, printing the execution result/reason and corresponding exit code.
-**Status**: Not Started
+**Status**: Complete
 **Verification**:
 - Add or update e2e tests (e.g. `src/cli/e2e/...`) to verify the CLI blocks and exits properly on approval or rejection.
 - Test `--no-wait` flag to verify immediate exit behavior is preserved.
