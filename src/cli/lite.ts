@@ -2,6 +2,7 @@
 
 import { Command } from 'commander';
 import { createTRPCClient, httpLink } from '@trpc/client';
+import { setTimeout } from 'timers/promises';
 import type { AgentRouter as AppRouter } from '../daemon/api/index.js';
 import type { CronJob } from '../shared/config.js';
 
@@ -256,15 +257,9 @@ program
       });
 
       if (request.executionResult) {
-        if (request.executionResult.stdout) {
-          process.stdout.write(request.executionResult.stdout);
-        }
-        if (request.executionResult.stderr) {
-          process.stderr.write(request.executionResult.stderr);
-        }
-        process.exit(request.executionResult.exitCode);
+        handleExecutionResult(request.executionResult);
       } else {
-        if (options.wait === false) {
+        if (!options.wait) {
           console.log(`Request created successfully.`);
           console.log(`Request ID: ${request.id}`);
           process.exit(0);
@@ -272,7 +267,7 @@ program
 
         process.stdout.write(`Waiting for approval of request ${request.id}...`);
         while (true) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          await setTimeout(2000);
           process.stdout.write('.');
 
           const currentReq = await client.getPolicyRequest.query({ id: request.id });
@@ -283,18 +278,7 @@ program
 
           if (currentReq.state === 'Approved') {
             process.stdout.write('\\n');
-            if (currentReq.executionResult) {
-              if (currentReq.executionResult.stdout) {
-                process.stdout.write(currentReq.executionResult.stdout);
-              }
-              if (currentReq.executionResult.stderr) {
-                process.stderr.write(currentReq.executionResult.stderr);
-              }
-              process.exit(currentReq.executionResult.exitCode);
-            } else {
-              console.log('Request approved but no execution result available.');
-              process.exit(0);
-            }
+            handleExecutionResult(currentReq.executionResult);
           } else if (currentReq.state === 'Rejected') {
             process.stdout.write('\\n');
             console.error(
@@ -309,5 +293,24 @@ program
       process.exit(1);
     }
   });
+
+function handleExecutionResult(executionResult?: {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}) {
+  if (executionResult) {
+    if (executionResult.stdout) {
+      process.stdout.write(executionResult.stdout);
+    }
+    if (executionResult.stderr) {
+      process.stderr.write(executionResult.stderr);
+    }
+    process.exit(executionResult.exitCode);
+  } else {
+    console.log('Request approved but no execution result available.');
+    process.exit(0);
+  }
+}
 
 program.parse(process.argv);

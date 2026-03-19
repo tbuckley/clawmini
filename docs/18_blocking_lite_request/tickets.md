@@ -14,3 +14,18 @@
 - Add or update e2e tests (e.g. `src/cli/e2e/...`) to verify the CLI blocks and exits properly on approval or rejection.
 - Test `--no-wait` flag to verify immediate exit behavior is preserved.
 - Run `npm run validate` to ensure tests and type checks pass.
+
+## Ticket 3: Refactor CLI execution result handling (DRY)
+**Description**: In `src/cli/lite.ts`, the logic for printing `stdout`/`stderr` and exiting with `exitCode` from the `executionResult` is duplicated. Extract this logic into a helper function to avoid violating DRY principles.
+**Status**: Complete
+**Priority**: High
+
+## Ticket 4: Modernize setTimeout usage
+**Description**: In `src/cli/lite.ts`, replace `await new Promise((resolve) => setTimeout(resolve, 2000));` with `import { setTimeout } from 'timers/promises'` and `await setTimeout(2000);` for cleaner code.
+**Status**: Complete
+**Priority**: Low
+
+## Ticket 5: Simplify boolean check
+**Description**: In `src/cli/lite.ts`, change `if (options.wait === false)` to `if (!options.wait)` for clearer and more idiomatic boolean evaluation.
+**Status**: Complete
+**Priority**: Low
