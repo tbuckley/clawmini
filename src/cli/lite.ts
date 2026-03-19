@@ -2,6 +2,7 @@
 
 import { Command } from 'commander';
 import { createTRPCClient, httpLink } from '@trpc/client';
+import { setTimeout } from 'timers/promises';
 import type { AgentRouter as AppRouter } from '../daemon/api/index.js';
 import type { CronJob } from '../shared/config.js';
 
@@ -207,6 +208,7 @@ program
   .description('Submit a sandbox policy request')
   .option('--help', 'Execute the underlying command with --help and print the output')
   .option('-f, --file <mappings...>', 'File mappings in the format name=path')
+  .option('--no-wait', 'Do not wait for the request to be approved or rejected')
   .allowUnknownOption()
   .allowExcessArguments(true)
   .helpOption('-h, --cli-help', 'display CLI help for command')
@@ -255,21 +257,60 @@ program
       });
 
       if (request.executionResult) {
-        if (request.executionResult.stdout) {
-          process.stdout.write(request.executionResult.stdout);
-        }
-        if (request.executionResult.stderr) {
-          process.stderr.write(request.executionResult.stderr);
-        }
-        process.exit(request.executionResult.exitCode);
+        handleExecutionResult(request.executionResult);
       } else {
-        console.log(`Request created successfully.`);
-        console.log(`Request ID: ${request.id}`);
+        if (!options.wait) {
+          console.log(`Request created successfully.`);
+          console.log(`Request ID: ${request.id}`);
+          process.exit(0);
+        }
+
+        process.stdout.write(`Waiting for approval of request ${request.id}...`);
+        while (true) {
+          await setTimeout(2000);
+          process.stdout.write('.');
+
+          const currentReq = await client.getPolicyRequest.query({ id: request.id });
+          if (!currentReq) {
+            process.stdout.write('\\n');
+            throw new Error(`Request ${request.id} not found.`);
+          }
+
+          if (currentReq.state === 'Approved') {
+            process.stdout.write('\\n');
+            handleExecutionResult(currentReq.executionResult);
+          } else if (currentReq.state === 'Rejected') {
+            process.stdout.write('\\n');
+            console.error(
+              `Request was rejected${currentReq.rejectionReason ? `: ${currentReq.rejectionReason}` : '.'}`
+            );
+            process.exit(1);
+          }
+        }
       }
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
       process.exit(1);
     }
   });
+
+function handleExecutionResult(executionResult?: {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}) {
+  if (executionResult) {
+    if (executionResult.stdout) {
+      process.stdout.write(executionResult.stdout);
+    }
+    if (executionResult.stderr) {
+      process.stderr.write(executionResult.stderr);
+    }
+    process.exit(executionResult.exitCode);
+  } else {
+    console.log('Request approved but no execution result available.');
+    process.exit(0);
+  }
+}
 
 program.parse(process.argv);

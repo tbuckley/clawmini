@@ -47,6 +47,22 @@ vi.mock('../policy-request-service.js', () => {
   };
 });
 
+vi.mock('../request-store.js', () => {
+  return {
+    RequestStore: class {
+      async load(id: string) {
+        if (id === 'req-123') {
+          return { id: 'req-123', state: 'Pending' };
+        }
+        return null;
+      }
+      async save(_req: any) {
+        return undefined;
+      }
+    },
+  };
+});
+
 const { mockReadFile } = vi.hoisted(() => {
   return { mockReadFile: vi.fn() };
 });
@@ -137,7 +153,7 @@ describe('createPolicyRequest preview message', () => {
       fileMappings: {},
     });
 
-    expect(result.id).toBe('REQ-123');
+    expect(result.id).toBe('req-123');
     expect(result.executionResult).toBeDefined();
 
     expect(chats.appendMessage).toHaveBeenCalledTimes(1);
@@ -146,5 +162,29 @@ describe('createPolicyRequest preview message', () => {
 
     expect(logMsg.content).toContain('[Auto-approved] Policy auto-cmd was executed.');
     expect(logMsg.exitCode).toBeDefined();
+  });
+});
+
+describe('getPolicyRequest', () => {
+  it('should return a request by ID if it exists', async () => {
+    const caller = appRouter.createCaller({
+      isApiServer: true,
+      tokenPayload: { agentId: 'default', chatId: 'default-chat' },
+    } as any);
+
+    const result = await caller.getPolicyRequest({ id: 'req-123' });
+    expect(result).toBeDefined();
+    expect(result?.id).toBe('req-123');
+    expect(result?.state).toBe('Pending');
+  });
+
+  it('should return null if the request does not exist', async () => {
+    const caller = appRouter.createCaller({
+      isApiServer: true,
+      tokenPayload: { agentId: 'default', chatId: 'default-chat' },
+    } as any);
+
+    const result = await caller.getPolicyRequest({ id: 'non-existent' });
+    expect(result).toBeNull();
   });
 });
