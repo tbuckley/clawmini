@@ -206,6 +206,14 @@ export const createPolicyRequest = apiProcedure
 
 import { ping } from './user-router.js';
 
+export const getPolicyRequest = apiProcedure
+  .input(z.object({ id: z.string() }))
+  .query(async ({ input }) => {
+    const store = new RequestStore(process.cwd());
+    const request = await store.load(input.id);
+    return request;
+  });
+
 export const fetchPendingMessages = apiProcedure.mutation(async ({ ctx }) => {
   const cwd = process.cwd();
   const queue = getMessageQueue(cwd);
@@ -226,6 +234,7 @@ export const agentRouter = router({
   listPolicies,
   executePolicyHelp,
   createPolicyRequest,
+  getPolicyRequest,
   fetchPendingMessages,
   ping,
 });

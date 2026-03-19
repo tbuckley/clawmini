@@ -2,7 +2,7 @@
 
 ## Ticket 1: Add `getPolicyRequest` to AgentRouter
 **Description**: Add a new tRPC query procedure `getPolicyRequest` to `src/daemon/api/agent-router.ts`. The procedure should accept a request `id` (string) and return the current state of the request using `RequestStore.load(id)`.
-**Status**: Not Started
+**Status**: Complete
 **Verification**:
 - Add unit tests in `src/daemon/api/agent-router.test.ts` (if it exists) or `src/daemon/api/policy-request.test.ts` verifying that `getPolicyRequest` successfully retrieves an existing request and returns `null` for non-existent ones.
 - Run `npm run validate` and ensure no lint or type errors are introduced.
