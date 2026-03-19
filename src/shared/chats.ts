@@ -56,6 +56,11 @@ export function getSubagentDepth(chatId: string): number {
   return matches ? matches.length : 0;
 }
 
+export function getRootChatId(chatId: string): string {
+  if (!isSubagentChatId(chatId)) return chatId;
+  return chatId.split(':subagents:')[0] ?? chatId;
+}
+
 export function isValidChatId(chatId: string): boolean {
   if (!chatId || chatId.length === 0) return false;
   // Standard chat ID

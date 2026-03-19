@@ -198,20 +198,38 @@ export async function executeDirectMessage(
   cwd: string,
   runCommand: RunCommandFn,
   noWait: boolean = false,
-  userMessageContent?: string
+  userMessageContent?: string,
+  isSystemCompletion: boolean = false
 ) {
-  const userMsg: UserMessage = {
-    id: state.messageId ?? crypto.randomUUID(),
-    role: 'user',
-    content: userMessageContent ?? state.message,
-    timestamp: new Date().toISOString(),
-  };
-  await appendMessage(chatId, userMsg);
+  const userMsgId = state.messageId ?? crypto.randomUUID();
+  if (isSystemCompletion) {
+    const logMsg: CommandLogMessage = {
+      id: userMsgId,
+      messageId: userMsgId,
+      role: 'log',
+      source: 'router',
+      content: userMessageContent ?? state.message,
+      stderr: '',
+      timestamp: new Date().toISOString(),
+      command: 'subagent-completion',
+      cwd: cwd,
+      exitCode: 0,
+    };
+    await appendMessage(chatId, logMsg);
+  } else {
+    const userMsg: UserMessage = {
+      id: userMsgId,
+      role: 'user',
+      content: userMessageContent ?? state.message,
+      timestamp: new Date().toISOString(),
+    };
+    await appendMessage(chatId, userMsg);
+  }
 
   if (state.reply) {
     const routerLogMsg: CommandLogMessage = {
       id: crypto.randomUUID(),
-      messageId: userMsg.id,
+      messageId: userMsgId,
       role: 'log',
       source: 'router',
       content: state.reply,
@@ -313,7 +331,7 @@ export async function executeDirectMessage(
           if (delay > 0) {
             const retryLogMsg: CommandLogMessage = {
               id: crypto.randomUUID(),
-              messageId: userMsg.id,
+              messageId: userMsgId,
               role: 'log',
               content: `Error running agent, retrying in ${Math.round(delay / 1000)} seconds...`,
               stderr: '',
@@ -439,7 +457,7 @@ export async function executeDirectMessage(
 
           const logMsg: CommandLogMessage = {
             id: crypto.randomUUID(),
-            messageId: userMsg.id,
+            messageId: userMsgId,
             role: 'log',
             content: mainResult.stdout,
             stdout: mainResult.stdout,
@@ -537,19 +555,20 @@ export async function executeDirectMessage(
           originalMessageSnippet = originalMessageSnippet.substring(0, 200) + '...';
         }
 
-        const notificationMsg: CommandLogMessage = {
-          id: crypto.randomUUID(),
-          messageId: userMsg.id,
-          role: 'log',
-          source: 'router',
-          content: `[Automatic message] Sub-agent ${subagentUuid} (${agentId}) has ${statusStr} its task.\n\n### Original Request\n${originalMessageSnippet}\n\n### Final Output\n${lastLogMsg?.content || lastLogMsg?.stderr || ''}`,
-          stderr: '',
-          timestamp: new Date().toISOString(),
-          command: 'subagent-completion',
-          cwd: cwd,
-          exitCode: success ? 0 : 1,
-        };
-        await appendMessage(parentChatId, notificationMsg);
+        const content = `[Automatic message] Sub-agent ${subagentUuid} (${agentId}) has ${statusStr} its task.\n\n### Original Request\n${originalMessageSnippet}\n\n### Final Output\n${lastLogMsg?.content || lastLogMsg?.stderr || ''}`;
+
+        const nextState = await getInitialRouterState(parentChatId, content, cwd);
+
+        await executeDirectMessage(
+          parentChatId,
+          nextState,
+          settings,
+          cwd,
+          runCommand,
+          true, // noWait
+          content,
+          true // isSystemCompletion
+        );
       }
     },
     { text: state.message, sessionId: state.sessionId || 'default' }
@@ -637,6 +656,7 @@ export async function handleUserMessage(
 
   const finalState = await executeRouterPipeline(initialState, routers);
 
+  const finalChatId = finalState.chatId ?? chatId;
   const finalMessage = finalState.message;
   const finalAgentId = finalState.agentId;
   const finalSessionId = finalState.sessionId ?? crypto.randomUUID();
@@ -668,7 +688,7 @@ export async function handleUserMessage(
     if (finalState.jobs.remove?.length) {
       const removeSet = new Set(finalState.jobs.remove);
       for (const jobId of finalState.jobs.remove) {
-        cronManager.unscheduleJob(chatId, jobId);
+        cronManager.unscheduleJob(finalChatId, jobId);
       }
       chatSettings.jobs = chatSettings.jobs.filter((j) => !removeSet.has(j.id));
       settingsChanged = true;
@@ -677,7 +697,7 @@ export async function handleUserMessage(
     if (finalState.jobs.add?.length) {
       const addMap = new Map(finalState.jobs.add.map((job) => [job.id, job]));
       for (const job of finalState.jobs.add) {
-        cronManager.scheduleJob(chatId, job);
+        cronManager.scheduleJob(finalChatId, job);
       }
       chatSettings.jobs = chatSettings.jobs.filter((j) => !addMap.has(j.id));
       chatSettings.jobs.push(...finalState.jobs.add);
@@ -686,13 +706,13 @@ export async function handleUserMessage(
   }
 
   if (settingsChanged) {
-    await writeChatSettings(chatId, chatSettings, cwd);
+    await writeChatSettings(finalChatId, chatSettings, cwd);
   }
 
   const directState: RouterState = {
     messageId: finalState.messageId,
     message: finalMessage,
-    chatId,
+    chatId: finalChatId,
     env: routerEnv,
   };
   if (finalAgentId !== undefined) directState.agentId = finalAgentId;
@@ -700,5 +720,20 @@ export async function handleUserMessage(
   if (finalState.reply !== undefined) directState.reply = finalState.reply;
   if (finalState.action !== undefined) directState.action = finalState.action;
 
-  await executeDirectMessage(chatId, directState, settings, cwd, runCommand, noWait, message);
+  await executeDirectMessage(finalChatId, directState, settings, cwd, runCommand, noWait, message);
+
+  if (finalState.redirects) {
+    for (const redirect of finalState.redirects) {
+      const redirectState = await getInitialRouterState(redirect.chatId, redirect.message, cwd);
+      await executeDirectMessage(
+        redirect.chatId,
+        redirectState,
+        settings,
+        cwd,
+        runCommand,
+        true, // noWait
+        redirect.message
+      );
+    }
+  }
 }

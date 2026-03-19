@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { TRPCError } from '@trpc/server';
 import { appendMessage, type CommandLogMessage } from '../chats.js';
+import { getRootChatId } from '../../shared/chats.js';
 import { executeSafe, generateRequestPreview, executeRequest } from '../policy-utils.js';
 import { getWorkspaceRoot, readPolicies, getClawminiDir } from '../../shared/workspace.js';
 import { PolicyRequestService } from '../policy-request-service.js';
@@ -200,7 +201,8 @@ export const createPolicyRequest = apiProcedure
       exitCode: 0,
     };
 
-    await appendMessage(chatId, logMsg);
+    const rootChatId = getRootChatId(chatId);
+    await appendMessage(rootChatId, logMsg);
     return request;
   });
 

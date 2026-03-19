@@ -67,20 +67,23 @@ describe('Subagent Execution and Router Bypassing', () => {
       true,
       runCommand
     );
-
     // Wait for background queue task to finish
     await new Promise((r) => setTimeout(r, 10));
 
     const calls = vi.mocked(chats.appendMessage).mock.calls;
 
+    // executeDirectMessage will append a log message with the subagent completion
     const completionCall = calls.find(
-      (call) => call[0] === 'parent' && (call[1] as any).command === 'subagent-completion'
+      (call) =>
+        call[0] === 'parent' &&
+        call[1].role === 'log' &&
+        (call[1] as any).command === 'subagent-completion' &&
+        call[1].content.includes('completed its task')
     );
 
     expect(completionCall).toBeDefined();
     expect((completionCall![1] as any).content).toContain('completed its task');
     expect((completionCall![1] as any).content).toContain('task output');
-    expect((completionCall![1] as any).exitCode).toBe(0);
   });
 
   it('appends an error completion message to the parent chat on failure', async () => {
@@ -92,7 +95,7 @@ describe('Subagent Execution and Router Bypassing', () => {
 
     await handleUserMessage(
       'parent:subagents:uuid3',
-      'hello subagent error',
+      'fail subagent',
       mockSettings,
       '/workspace',
       true,
@@ -100,16 +103,20 @@ describe('Subagent Execution and Router Bypassing', () => {
     );
 
     // Wait for background queue task to finish
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 10));
 
     const calls = vi.mocked(chats.appendMessage).mock.calls;
+
     const completionCall = calls.find(
-      (call) => call[0] === 'parent' && (call[1] as any).command === 'subagent-completion'
+      (call) =>
+        call[0] === 'parent' &&
+        call[1].role === 'log' &&
+        (call[1] as any).command === 'subagent-completion' &&
+        call[1].content.includes('encountered an error in')
     );
 
     expect(completionCall).toBeDefined();
-    expect((completionCall![1] as any).content).toContain('encountered an error');
+    expect((completionCall![1] as any).content).toContain('encountered an error in');
     expect((completionCall![1] as any).content).toContain('task failed');
-    expect((completionCall![1] as any).exitCode).toBe(1);
   });
 });

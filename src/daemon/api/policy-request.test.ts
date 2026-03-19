@@ -3,10 +3,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { agentRouter as appRouter } from './index.js';
 import * as chats from '../../shared/chats.js';
 
-vi.mock('../../shared/chats.js', () => ({
-  getDefaultChatId: vi.fn().mockResolvedValue('default-chat'),
-  appendMessage: vi.fn().mockResolvedValue(undefined),
-}));
+vi.mock('../../shared/chats.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../shared/chats.js')>();
+  return {
+    ...actual,
+    getDefaultChatId: vi.fn().mockResolvedValue('default-chat'),
+    appendMessage: vi.fn().mockResolvedValue(undefined),
+  };
+});
 
 vi.mock('../../shared/workspace.js', () => ({
   getWorkspaceRoot: vi.fn().mockReturnValue('/mock/workspace'),

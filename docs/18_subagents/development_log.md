@@ -30,3 +30,18 @@
 - Modified `initDaemon` in `src/daemon/index.ts` to update `settings.json` with the assigned dynamic port when `apiCtx.port` is `0`, fixing `EADDRINUSE` failures in parallel e2e tests where multiple daemons allocate a random port.
 - Added E2E tests in `src/cli/e2e/subagents-lite.test.ts` to verify the functionality of `clawmini-lite subagents`.
 - Verified changes with `npm run validate`.
+
+## Bug Fixes: Policy Routing and Subagent Completion Messages
+
+### Hypotheses & Exploration:
+- **Policy Routing:** Policy requests were being sent to the subagent's chat, not the parent chat, making them invisible to the user. I hypothesized that `loadAndValidateRequest` and `createPolicyRequest` needed to resolve the parent/root chat ID of a subagent.
+- **Completion Messages:** Subagent completion messages were appended as `CommandLogMessage`s (`role: 'log'`), which only displays output but doesn't trigger the parent agent to process the result. I hypothesized that we needed to use `handleUserMessage` (with `noWait: true`) to inject a user message and trigger the parent agent so it acts on the subagent's result.
+
+### Implementation:
+- Implemented `getRootChatId` in `src/shared/chats.ts` to parse nested subagent chat IDs.
+- Updated `src/daemon/api/agent-router.ts`'s `createPolicyRequest` to use `getRootChatId(chatId)` when creating the `CommandLogMessage` preview in the parent chat.
+- Modified `src/daemon/routers/slash-policies.ts` to use `getRootChatId` in `loadAndValidateRequest` to correctly match the user's root chat to the subagent's request.
+- **Critical Architecture Update:** The `slashPolicies` router previously tried to hijack the entire execution pipeline by replacing `state.chatId` with the subagent's ID. This caused the user's `/approve` message to disappear from the root chat. I updated `RouterState` with a new `redirects` array property. The router now returns `redirects` with the subagent payload and `action: 'stop'` to correctly route the user's `/approve` message and system replies to the root chat, while safely passing the execution outcome to the subagent's queue loop in `handleUserMessage`.
+- Replaced the direct `appendMessage` of the `subagent-completion` `CommandLogMessage` with a call to `executeDirectMessage` (in `src/daemon/message.ts`). This safely queues a silent `isSystemCompletion` execution to the parent chat, natively triggering the parent agent asynchronously (`noWait: true`) to process the subagent output as an agent execution cycle without confusing the message timeline.
+- Fixed corresponding unit tests in `src/daemon/message-subagent.test.ts` and `src/daemon/api/policy-request.test.ts` to match the correct `role` and queue logic.
+- Ran validation tools (`npm run validate`) and fixed Prettier and TypeScript check errors. All checks pass perfectly.
