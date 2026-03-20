@@ -214,6 +214,31 @@ program
   .action(async (cmdName, options, command) => {
     try {
       const client = getClient();
+
+      if (cmdName === 'wait') {
+        const id = command.args[1];
+        if (!id) {
+          console.error('Error: missing required argument <id>');
+          process.exit(1);
+        }
+        const result = await client.tasks.wait.mutate({ id });
+        if (result.type === 'request') {
+          const reqResult = result.result as any;
+          if (reqResult.executionResult) {
+            if (reqResult.executionResult.stdout)
+              process.stdout.write(reqResult.executionResult.stdout);
+            if (reqResult.executionResult.stderr)
+              process.stderr.write(reqResult.executionResult.stderr);
+          } else if (reqResult.state === 'Rejected') {
+            console.error(`Request rejected: ${reqResult.rejectionReason}`);
+            process.exit(1);
+          }
+        } else {
+          console.log(`Task completed.`);
+        }
+        return;
+      }
+
       const config = await client.listPolicies.query();
       const policy = config?.policies?.[cmdName];
 
@@ -287,6 +312,20 @@ subagents
         agent: options.agent,
       });
       console.log(`Subagent created with ID: ${result.subagentId}`);
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+subagents
+  .command('wait <id>')
+  .description('Alias for tasks wait <id>')
+  .action(async (id) => {
+    try {
+      const client = getClient();
+      await client.tasks.wait.mutate({ id });
+      console.log(`Subagent completed.`);
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
       process.exit(1);
@@ -374,6 +413,60 @@ subagents
       const client = getClient();
       await client.subagents.delete.mutate({ subagentId: id });
       console.log('Subagent deleted.');
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+const tasks = program.command('tasks').description('Manage tasks');
+
+tasks
+  .command('pending')
+  .description('Fetch pending policy requests or subagents for the active subagent session')
+  .action(async () => {
+    try {
+      const client = getClient();
+      const result = await client.tasks.pending.query();
+
+      console.log('Pending Requests:');
+      if (result.requests.length === 0) console.log('  None');
+      for (const req of result.requests) {
+        console.log(`  - ${req.id} (${req.commandName})`);
+      }
+
+      console.log('\nPending Subagents:');
+      if (result.subagents.length === 0) console.log('  None');
+      for (const sub of result.subagents) {
+        console.log(`  - ${sub.id} (${sub.status})`);
+      }
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+tasks
+  .command('wait <id>')
+  .description('Block and wait on a previously created asynchronous subagent or policy request')
+  .action(async (id) => {
+    try {
+      const client = getClient();
+      const result = await client.tasks.wait.mutate({ id });
+      if (result.type === 'request') {
+        const reqResult = result.result as any;
+        if (reqResult.executionResult) {
+          if (reqResult.executionResult.stdout)
+            process.stdout.write(reqResult.executionResult.stdout);
+          if (reqResult.executionResult.stderr)
+            process.stderr.write(reqResult.executionResult.stderr);
+        } else if (reqResult.state === 'Rejected') {
+          console.error(`Request rejected: ${reqResult.rejectionReason}`);
+          process.exit(1);
+        }
+      } else {
+        console.log(`Subagent completed.`);
+      }
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
       process.exit(1);

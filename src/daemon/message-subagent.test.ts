@@ -23,8 +23,17 @@ vi.mock('../shared/workspace.js', () => ({
     commands: { new: 'echo hello' },
   }),
   getWorkspaceRoot: vi.fn().mockImplementation((cwd) => cwd),
+  getClawminiDir: vi.fn().mockReturnValue('/mock/clawmini/dir'),
   getActiveEnvironmentInfo: vi.fn().mockResolvedValue(null),
 }));
+
+vi.mock('./request-store.js', () => {
+  return {
+    RequestStore: class {
+      list = vi.fn().mockResolvedValue([]);
+    },
+  };
+});
 
 describe('Subagent Execution and Router Bypassing', () => {
   beforeEach(() => {

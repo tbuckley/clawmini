@@ -1,4 +1,5 @@
 /* eslint-disable max-lines */
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
   appendMessage,
@@ -7,8 +8,10 @@ import {
   isSubagentChatId,
   parseSubagentChatId,
   getSubagentDepth,
+  getChatsDir,
+  getChatRelativePath,
 } from './chats.js';
-import { getMessageQueue } from './queue.js';
+import { getMessageQueue, isSessionIdActive } from './queue.js';
 import { executeRouterPipeline } from './routers.js';
 import type { RouterState } from './routers/types.js';
 import {
@@ -31,8 +34,10 @@ import {
 import { cronManager } from './cron.js';
 import { getApiContext, generateToken } from './auth.js';
 import { emitTyping } from './events.js';
+import { runCommand } from './utils/spawn.js';
 import { applyEnvOverrides, getActiveEnvKeys } from '../shared/utils/env.js';
 import { z } from 'zod';
+import { RequestStore } from './request-store.js';
 
 type Fallback = z.infer<typeof FallbackSchema>;
 
@@ -189,6 +194,110 @@ function formatEnvironmentPrefix(
     /{(WORKSPACE_DIR|AGENT_DIR|ENV_DIR|HOME_DIR|ENV_ARGS)}/g,
     (match) => map[match] || match
   );
+}
+
+export async function cleanupDeadSubagents(cwd: string = process.cwd()): Promise<void> {
+  try {
+    const chatsDir = await getChatsDir();
+    const subagents: string[] = [];
+
+    // recursively find all subagents
+    async function scanDir(dir: string, currentChatId: string) {
+      try {
+        const subagentsDir = path.join(dir, 'subagents');
+        const entries = await fs.readdir(subagentsDir, { withFileTypes: true });
+        for (const e of entries) {
+          if (e.isDirectory()) {
+            const subagentId = `${currentChatId}:subagents:${e.name}`;
+            subagents.push(subagentId);
+            await scanDir(path.join(subagentsDir, e.name), subagentId);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const rootEntries = await fs.readdir(chatsDir, { withFileTypes: true });
+    for (const e of rootEntries) {
+      if (e.isDirectory()) {
+        await scanDir(path.join(chatsDir, e.name), e.name);
+      }
+    }
+
+    for (const fullSubagentId of subagents) {
+      const parsedSubagent = parseSubagentChatId(fullSubagentId);
+      if (!parsedSubagent) continue;
+
+      const { parentId: parentChatId, uuid: subagentUuid } = parsedSubagent;
+      const subagentDir = path.join(chatsDir, getChatRelativePath(fullSubagentId));
+      let isRunning = false;
+      let agentId = 'default';
+
+      try {
+        const settings = await readChatSettings(fullSubagentId);
+        if (settings?.defaultAgent) {
+          agentId = settings.defaultAgent;
+          const sessionId = settings.sessions?.[agentId];
+          if (sessionId && isSessionIdActive(sessionId)) {
+            isRunning = true;
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      if (isRunning) continue; // It is actively running in memory
+
+      const messagesFilePath = path.join(subagentDir, 'messages.jsonl');
+      try {
+        const stats = await fs.stat(messagesFilePath);
+        if (stats.size > 0) {
+          // Read the last line to check if it's the completion message
+          const content = await fs.readFile(messagesFilePath, 'utf8');
+          const lines = content.trim().split('\n');
+          const lastLine = lines[lines.length - 1]!;
+          const lastMessage = JSON.parse(lastLine);
+
+          if (lastMessage.command !== 'subagent-completion') {
+            const statusStr = 'was terminated unexpectedly (daemon restart)';
+            const contentMsg = `[Automatic message] Sub-agent ${subagentUuid} (${agentId}) ${statusStr}.`;
+
+            const logMsg: CommandLogMessage = {
+              id: crypto.randomUUID(),
+              messageId: crypto.randomUUID(),
+              role: 'log',
+              source: 'router',
+              content: contentMsg,
+              stderr: '',
+              timestamp: new Date().toISOString(),
+              command: 'subagent-completion',
+              cwd,
+              exitCode: 1,
+            };
+
+            await appendMessage(fullSubagentId, logMsg);
+
+            const nextState = await getInitialRouterState(parentChatId, contentMsg, cwd);
+            await executeDirectMessage(
+              parentChatId,
+              nextState,
+              undefined,
+              cwd,
+              (args) => runCommand({ ...args, logToTerminal: true }),
+              true,
+              contentMsg,
+              true
+            );
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  } catch {
+    // ignore
+  }
 }
 
 export async function executeDirectMessage(
@@ -547,6 +656,57 @@ export async function executeDirectMessage(
 
       const parsedSubagent = parseSubagentChatId(chatId);
       if (parsedSubagent) {
+        // check pending tasks
+        let hasPendingSubagents = false;
+        try {
+          const chatsDir = await getChatsDir();
+          const subagentsDir = path.join(chatsDir, getChatRelativePath(chatId), 'subagents');
+          const entries = await fs.readdir(subagentsDir, { withFileTypes: true });
+          for (const e of entries) {
+            if (e.isDirectory()) {
+              const sId = `${chatId}:subagents:${e.name}`;
+              const settings = await readChatSettings(sId);
+              if (settings?.defaultAgent) {
+                const session = settings.sessions?.[settings.defaultAgent];
+                if (session && isSessionIdActive(session)) {
+                  hasPendingSubagents = true;
+                  break;
+                }
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
+
+        const store = new RequestStore(process.cwd());
+        const pendingReqs = (await store.list()).filter(
+          (r) => r.chatId === chatId && r.state === 'Pending'
+        );
+
+        if (pendingReqs.length > 0 || hasPendingSubagents) {
+          const reason = `must await ongoing asynchronous tasks (use 'tasks pending' and 'tasks wait <id>')`;
+          const denyMsg = JSON.stringify({ decision: 'deny', reason });
+
+          const logMsg: CommandLogMessage = {
+            id: crypto.randomUUID(),
+            messageId: userMsgId,
+            role: 'log',
+            source: 'router',
+            content: `The system intercepted your execution completion because you have unawaited tasks.\n\n${denyMsg}`,
+            stderr: '',
+            timestamp: new Date().toISOString(),
+            command: 'system-hook',
+            cwd: executionCwd,
+            exitCode: 1,
+          };
+          await appendMessage(chatId, logMsg);
+
+          const nextState = await getInitialRouterState(chatId, denyMsg, cwd);
+          await executeDirectMessage(chatId, nextState, settings, cwd, runCommand, true, denyMsg);
+          return;
+        }
+
         const { parentId: parentChatId, uuid: subagentUuid } = parsedSubagent;
         const statusStr = success ? 'completed' : 'encountered an error in';
 

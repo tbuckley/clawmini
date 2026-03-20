@@ -45,3 +45,16 @@
 - Replaced the direct `appendMessage` of the `subagent-completion` `CommandLogMessage` with a call to `executeDirectMessage` (in `src/daemon/message.ts`). This safely queues a silent `isSystemCompletion` execution to the parent chat, natively triggering the parent agent asynchronously (`noWait: true`) to process the subagent output as an agent execution cycle without confusing the message timeline.
 - Fixed corresponding unit tests in `src/daemon/message-subagent.test.ts` and `src/daemon/api/policy-request.test.ts` to match the correct `role` and queue logic.
 - Ran validation tools (`npm run validate`) and fixed Prettier and TypeScript check errors. All checks pass perfectly.
+
+## Completed Task: Milestone 6 - Agent vs Subagent Execution Roles
+
+- Added validation checks in `agentListCronJobs`, `agentAddCronJob`, `agentDeleteCronJob`, and `logMessage` TRPC endpoints in `agent-router.ts` to reject subagent invocations.
+- Updated `subagentAdd` and `createPolicyRequest` to asynchronously return immediately for main agents, but block waiting for task completion for subagents, correctly adhering to the `--async` override parameter.
+- Implemented polling mechanism on `store.load` and `isSessionIdActive` to correctly block waiting on policies and subagents.
+- Added a new CLI `tasks pending` command, listing all unawaited asynchronous tasks for the active session.
+- Added a new CLI `tasks wait <id>` command, enabling a subagent to block and wait on pending tasks. Added alias `subagents wait` and CLI level routing from `request wait` to `tasks wait`.
+- Added the `tasks` TRPC router mapped into `agentRouter`.
+- Intercepted subagent termination (`subagent-completion` in `executeDirectMessage`) to automatically deny completion and append `decision: "deny"` if unawaited async tasks are detected.
+- Added `cleanupDeadSubagents()` execution to `initDaemon()` in `src/daemon/index.ts` on daemon boot. This identifies stranded subagents that were terminated abruptly (e.g. Daemon restart) and gracefully fails them with a completion message so the main agent isn't blocked forever.
+- Addressed Prettier and linting type errors.
+- Refactored `RequestStore` mock in `message-subagent.test.ts` to prevent test failures on `EPERM` or `ENOENT` directory path accesses. All tests pass with 100% success using `npm run validate`.

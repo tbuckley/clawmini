@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { TRPCError } from '@trpc/server';
 import { appendMessage, type CommandLogMessage } from '../chats.js';
-import { getRootChatId } from '../../shared/chats.js';
+import { getRootChatId, isSubagentChatId } from '../../shared/chats.js';
 import { executeSafe, generateRequestPreview, executeRequest } from '../policy-utils.js';
 import { getWorkspaceRoot, readPolicies, getClawminiDir } from '../../shared/workspace.js';
 import { PolicyRequestService } from '../policy-request-service.js';
@@ -30,6 +30,8 @@ export const logMessage = apiProcedure
   .mutation(async ({ input, ctx }) => {
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
+    if (isSubagentChatId(chatId))
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'Subagents cannot send direct logs' });
     const timestamp = new Date().toISOString();
     const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
 
@@ -67,6 +69,8 @@ export const logMessage = apiProcedure
 export const agentListCronJobs = apiProcedure.query(async ({ ctx }) => {
   if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
   const chatId = ctx.tokenPayload.chatId;
+  if (isSubagentChatId(chatId))
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Subagents cannot schedule jobs' });
   return listCronJobsShared(chatId);
 });
 
@@ -75,6 +79,8 @@ export const agentAddCronJob = apiProcedure
   .mutation(async ({ input, ctx }) => {
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
+    if (isSubagentChatId(chatId))
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'Subagents cannot schedule jobs' });
     const job = { ...input.job, agentId: ctx.tokenPayload.agentId };
     return addCronJobShared(chatId, job);
   });
@@ -84,6 +90,8 @@ export const agentDeleteCronJob = apiProcedure
   .mutation(async ({ input, ctx }) => {
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
+    if (isSubagentChatId(chatId))
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'Subagents cannot schedule jobs' });
     return deleteCronJobShared(chatId, input.id);
   });
 
@@ -122,6 +130,7 @@ export const createPolicyRequest = apiProcedure
       commandName: z.string(),
       args: z.array(z.string()),
       fileMappings: z.record(z.string(), z.string()),
+      async: z.boolean().optional(),
     })
   )
   .mutation(async ({ input, ctx }) => {
@@ -203,11 +212,25 @@ export const createPolicyRequest = apiProcedure
 
     const rootChatId = getRootChatId(chatId);
     await appendMessage(rootChatId, logMsg);
+
+    const isCallerSubagent = isSubagentChatId(chatId);
+    const shouldWait = isCallerSubagent && !input.async;
+
+    if (shouldWait) {
+      let currentRequest = await store.load(request.id);
+      while (currentRequest && currentRequest.state === 'Pending') {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        currentRequest = await store.load(request.id);
+      }
+      return currentRequest || request;
+    }
+
     return request;
   });
 
 import { ping } from './user-router.js';
 import { subagentRouter } from './subagent-router.js';
+import { tasksRouter } from './tasks-router.js';
 
 export const fetchPendingMessages = apiProcedure.mutation(async ({ ctx }) => {
   const workspaceRoot = getWorkspaceRoot(process.cwd());
@@ -233,6 +256,7 @@ export const agentRouter = router({
   fetchPendingMessages,
   ping,
   subagents: subagentRouter,
+  tasks: tasksRouter,
 });
 
 export type AgentRouter = typeof agentRouter;

@@ -22,6 +22,7 @@ export const subagentAdd = apiProcedure
     z.object({
       message: z.string(),
       agent: z.string().optional(),
+      async: z.boolean().optional(),
     })
   )
   .mutation(async ({ input, ctx }) => {
@@ -50,16 +51,23 @@ export const subagentAdd = apiProcedure
 
     const settings = ((await readSettings()) as Record<string, unknown> | null) ?? {};
 
-    await handleUserMessage(
+    const isCallerSubagent = isSubagentChatId(parentChatId);
+    const noWait = !(isCallerSubagent && !input.async);
+
+    const promise = handleUserMessage(
       subagentChatId,
       input.message,
       settings,
       undefined,
-      true, // noWait
+      noWait, // noWait
       (args) => runCommand({ ...args, logToTerminal: true }),
       sessionId,
       agentId
     );
+
+    if (!noWait) {
+      await promise;
+    }
 
     return { subagentId: subagentUuid };
   });

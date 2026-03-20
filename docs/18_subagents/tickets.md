@@ -70,7 +70,7 @@
 - Run `npm run validate` to ensure tests and type checking pass after refactoring.
 
 ## Milestone 6: Agent vs Subagent Execution Roles
-**Status:** Not started
+**Status:** Complete
 
 **Tasks:**
 - Add checks in the TRPC routers for `jobs` and `log` endpoints using `isSubagentChatId`. If the caller is a subagent, reject the request with a clear error indicating subagents cannot schedule jobs or send direct logs.

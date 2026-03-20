@@ -16,6 +16,7 @@ import {
 import { cronManager } from './cron.js';
 import { SettingsSchema } from '../shared/config.js';
 import { validateToken, getApiContext } from './auth.js';
+import { cleanupDeadSubagents } from './message.js';
 import path from 'node:path';
 import { exportLiteToEnvironment } from '../shared/lite.js';
 
@@ -148,6 +149,10 @@ export async function initDaemon() {
   // Initialize cron jobs
   cronManager.init().catch((err) => {
     console.error('Failed to initialize cron manager:', err);
+  });
+
+  cleanupDeadSubagents().catch((err) => {
+    console.error('Failed to cleanup dead subagents:', err);
   });
 
   let apiServer: http.Server | undefined;
