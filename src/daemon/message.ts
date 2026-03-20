@@ -1,7 +1,17 @@
 /* eslint-disable max-lines */
+import fs from 'node:fs/promises';
 import path from 'node:path';
-import { appendMessage, type UserMessage, type CommandLogMessage } from './chats.js';
-import { getMessageQueue } from './queue.js';
+import {
+  appendMessage,
+  type UserMessage,
+  type CommandLogMessage,
+  isSubagentChatId,
+  parseSubagentChatId,
+  getSubagentDepth,
+  getChatsDir,
+  getChatRelativePath,
+} from './chats.js';
+import { getMessageQueue, isSessionIdActive } from './queue.js';
 import { executeRouterPipeline } from './routers.js';
 import type { RouterState } from './routers/types.js';
 import {
@@ -24,8 +34,10 @@ import {
 import { cronManager } from './cron.js';
 import { getApiContext, generateToken } from './auth.js';
 import { emitTyping } from './events.js';
+import { runCommand } from './utils/spawn.js';
 import { applyEnvOverrides, getActiveEnvKeys } from '../shared/utils/env.js';
 import { z } from 'zod';
+import { RequestStore } from './request-store.js';
 
 type Fallback = z.infer<typeof FallbackSchema>;
 
@@ -84,6 +96,7 @@ async function resolveSessionState(
 }
 
 function prepareCommandAndEnv(
+  chatId: string,
   agent: Agent,
   message: string,
   isNewSession: boolean,
@@ -107,6 +120,12 @@ function prepareCommandAndEnv(
     ...process.env,
     CLAW_CLI_MESSAGE: message,
   } as Record<string, string>;
+
+  if (isSubagentChatId(chatId)) {
+    const depth = getSubagentDepth(chatId);
+    env['CLAW_IS_SUBAGENT'] = 'true';
+    env['CLAW_SUBAGENT_DEPTH'] = depth.toString();
+  }
 
   applyEnvOverrides(env, currentAgent.env);
 
@@ -177,6 +196,110 @@ function formatEnvironmentPrefix(
   );
 }
 
+export async function cleanupDeadSubagents(cwd: string = process.cwd()): Promise<void> {
+  try {
+    const chatsDir = await getChatsDir();
+    const subagents: string[] = [];
+
+    // recursively find all subagents
+    async function scanDir(dir: string, currentChatId: string) {
+      try {
+        const subagentsDir = path.join(dir, 'subagents');
+        const entries = await fs.readdir(subagentsDir, { withFileTypes: true });
+        for (const e of entries) {
+          if (e.isDirectory()) {
+            const subagentId = `${currentChatId}:subagents:${e.name}`;
+            subagents.push(subagentId);
+            await scanDir(path.join(subagentsDir, e.name), subagentId);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const rootEntries = await fs.readdir(chatsDir, { withFileTypes: true });
+    for (const e of rootEntries) {
+      if (e.isDirectory()) {
+        await scanDir(path.join(chatsDir, e.name), e.name);
+      }
+    }
+
+    for (const fullSubagentId of subagents) {
+      const parsedSubagent = parseSubagentChatId(fullSubagentId);
+      if (!parsedSubagent) continue;
+
+      const { parentId: parentChatId, uuid: subagentUuid } = parsedSubagent;
+      const subagentDir = path.join(chatsDir, getChatRelativePath(fullSubagentId));
+      let isRunning = false;
+      let agentId = 'default';
+
+      try {
+        const settings = await readChatSettings(fullSubagentId);
+        if (settings?.defaultAgent) {
+          agentId = settings.defaultAgent;
+          const sessionId = settings.sessions?.[agentId];
+          if (sessionId && isSessionIdActive(sessionId)) {
+            isRunning = true;
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      if (isRunning) continue; // It is actively running in memory
+
+      const messagesFilePath = path.join(subagentDir, 'messages.jsonl');
+      try {
+        const stats = await fs.stat(messagesFilePath);
+        if (stats.size > 0) {
+          // Read the last line to check if it's the completion message
+          const content = await fs.readFile(messagesFilePath, 'utf8');
+          const lines = content.trim().split('\n');
+          const lastLine = lines[lines.length - 1]!;
+          const lastMessage = JSON.parse(lastLine);
+
+          if (lastMessage.command !== 'subagent-completion') {
+            const statusStr = 'was terminated unexpectedly (daemon restart)';
+            const contentMsg = `[Automatic message] Sub-agent ${subagentUuid} (${agentId}) ${statusStr}.`;
+
+            const logMsg: CommandLogMessage = {
+              id: crypto.randomUUID(),
+              messageId: crypto.randomUUID(),
+              role: 'log',
+              source: 'router',
+              content: contentMsg,
+              stderr: '',
+              timestamp: new Date().toISOString(),
+              command: 'subagent-completion',
+              cwd,
+              exitCode: 1,
+            };
+
+            await appendMessage(fullSubagentId, logMsg);
+
+            const nextState = await getInitialRouterState(parentChatId, contentMsg, cwd);
+            await executeDirectMessage(
+              parentChatId,
+              nextState,
+              undefined,
+              cwd,
+              (args) => runCommand({ ...args, logToTerminal: true }),
+              true,
+              contentMsg,
+              true
+            );
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export async function executeDirectMessage(
   chatId: string,
   state: RouterState,
@@ -184,20 +307,38 @@ export async function executeDirectMessage(
   cwd: string,
   runCommand: RunCommandFn,
   noWait: boolean = false,
-  userMessageContent?: string
+  userMessageContent?: string,
+  isSystemCompletion: boolean = false
 ) {
-  const userMsg: UserMessage = {
-    id: state.messageId ?? crypto.randomUUID(),
-    role: 'user',
-    content: userMessageContent ?? state.message,
-    timestamp: new Date().toISOString(),
-  };
-  await appendMessage(chatId, userMsg);
+  const userMsgId = state.messageId ?? crypto.randomUUID();
+  if (isSystemCompletion) {
+    const logMsg: CommandLogMessage = {
+      id: userMsgId,
+      messageId: userMsgId,
+      role: 'log',
+      source: 'router',
+      content: userMessageContent ?? state.message,
+      stderr: '',
+      timestamp: new Date().toISOString(),
+      command: 'subagent-completion',
+      cwd: cwd,
+      exitCode: 0,
+    };
+    await appendMessage(chatId, logMsg);
+  } else {
+    const userMsg: UserMessage = {
+      id: userMsgId,
+      role: 'user',
+      content: userMessageContent ?? state.message,
+      timestamp: new Date().toISOString(),
+    };
+    await appendMessage(chatId, userMsg);
+  }
 
   if (state.reply) {
     const routerLogMsg: CommandLogMessage = {
       id: crypto.randomUUID(),
-      messageId: userMsg.id,
+      messageId: userMsgId,
       role: 'log',
       source: 'router',
       content: state.reply,
@@ -215,7 +356,46 @@ export async function executeDirectMessage(
     return;
   }
 
-  const queue = getMessageQueue(cwd);
+  const {
+    agentId,
+    agentSessionSettings,
+    isNewSession,
+    targetSessionId: finalSessionId,
+  } = await resolveSessionState(chatId, cwd, state.sessionId, state.agentId);
+
+  let mergedAgent: Agent = settings?.defaultAgent || {};
+  if (agentId !== 'default') {
+    try {
+      const customAgent = await getAgent(agentId, cwd);
+      if (customAgent) {
+        mergedAgent = {
+          ...mergedAgent,
+          ...customAgent,
+          commands: { ...mergedAgent.commands, ...customAgent.commands },
+          env: { ...mergedAgent.env, ...customAgent.env },
+        };
+      }
+    } catch {
+      // Fall back to default if agent not found
+    }
+  }
+
+  const fallbacks = mergedAgent.fallbacks || [];
+  const executionConfigs: { fallback?: Fallback; retries: number; delayMs: number }[] = [
+    { retries: 0, delayMs: 1000 },
+    ...fallbacks.map((f) => ({ fallback: f, retries: f.retries, delayMs: f.delayMs })),
+  ];
+
+  const workspaceRoot = getWorkspaceRoot(cwd);
+  let executionCwd = cwd;
+  if (mergedAgent.directory) {
+    executionCwd = path.resolve(workspaceRoot, mergedAgent.directory);
+  } else if (agentId !== 'default') {
+    executionCwd = path.resolve(workspaceRoot, agentId);
+  }
+
+  const queueDir = executionCwd;
+  const queue = getMessageQueue(queueDir);
 
   if (state.action === 'stop') {
     queue.abortCurrent();
@@ -249,44 +429,6 @@ export async function executeDirectMessage(
 
   const taskPromise = queue.enqueue(
     async (signal) => {
-      const {
-        agentId,
-        agentSessionSettings,
-        isNewSession,
-        targetSessionId: finalSessionId,
-      } = await resolveSessionState(chatId, cwd, state.sessionId, state.agentId);
-
-      let mergedAgent: Agent = settings?.defaultAgent || {};
-      if (agentId !== 'default') {
-        try {
-          const customAgent = await getAgent(agentId, cwd);
-          if (customAgent) {
-            mergedAgent = {
-              ...mergedAgent,
-              ...customAgent,
-              commands: { ...mergedAgent.commands, ...customAgent.commands },
-              env: { ...mergedAgent.env, ...customAgent.env },
-            };
-          }
-        } catch {
-          // Fall back to default if agent not found
-        }
-      }
-
-      const fallbacks = mergedAgent.fallbacks || [];
-      const executionConfigs: { fallback?: Fallback; retries: number; delayMs: number }[] = [
-        { retries: 0, delayMs: 1000 },
-        ...fallbacks.map((f) => ({ fallback: f, retries: f.retries, delayMs: f.delayMs })),
-      ];
-
-      const workspaceRoot = getWorkspaceRoot(cwd);
-      let executionCwd = cwd;
-      if (mergedAgent.directory) {
-        executionCwd = path.resolve(workspaceRoot, mergedAgent.directory);
-      } else if (agentId !== 'default') {
-        executionCwd = path.resolve(workspaceRoot, agentId);
-      }
-
       let lastLogMsg: CommandLogMessage | undefined;
       let success = false;
 
@@ -298,7 +440,7 @@ export async function executeDirectMessage(
           if (delay > 0) {
             const retryLogMsg: CommandLogMessage = {
               id: crypto.randomUUID(),
-              messageId: userMsg.id,
+              messageId: userMsgId,
               role: 'log',
               content: `Error running agent, retrying in ${Math.round(delay / 1000)} seconds...`,
               stderr: '',
@@ -316,6 +458,7 @@ export async function executeDirectMessage(
             currentAgent,
             command: initialCommand,
           } = prepareCommandAndEnv(
+            chatId,
             mergedAgent,
             state.message,
             isNewSession,
@@ -423,7 +566,7 @@ export async function executeDirectMessage(
 
           const logMsg: CommandLogMessage = {
             id: crypto.randomUUID(),
-            messageId: userMsg.id,
+            messageId: userMsgId,
             role: 'log',
             content: mainResult.stdout,
             stdout: mainResult.stdout,
@@ -510,6 +653,83 @@ export async function executeDirectMessage(
       if (lastLogMsg) {
         await appendMessage(chatId, lastLogMsg);
       }
+
+      const parsedSubagent = parseSubagentChatId(chatId);
+      if (parsedSubagent) {
+        // check pending tasks
+        let hasPendingSubagents = false;
+        try {
+          const chatsDir = await getChatsDir();
+          const subagentsDir = path.join(chatsDir, getChatRelativePath(chatId), 'subagents');
+          const entries = await fs.readdir(subagentsDir, { withFileTypes: true });
+          for (const e of entries) {
+            if (e.isDirectory()) {
+              const sId = `${chatId}:subagents:${e.name}`;
+              const settings = await readChatSettings(sId);
+              if (settings?.defaultAgent) {
+                const session = settings.sessions?.[settings.defaultAgent];
+                if (session && isSessionIdActive(session)) {
+                  hasPendingSubagents = true;
+                  break;
+                }
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
+
+        const store = new RequestStore(process.cwd());
+        const pendingReqs = (await store.list()).filter(
+          (r) => r.chatId === chatId && r.state === 'Pending'
+        );
+
+        if (pendingReqs.length > 0 || hasPendingSubagents) {
+          const reason = `must await ongoing asynchronous tasks (use 'tasks pending' and 'tasks wait <id>')`;
+          const denyMsg = JSON.stringify({ decision: 'deny', reason });
+
+          const logMsg: CommandLogMessage = {
+            id: crypto.randomUUID(),
+            messageId: userMsgId,
+            role: 'log',
+            source: 'router',
+            content: `The system intercepted your execution completion because you have unawaited tasks.\n\n${denyMsg}`,
+            stderr: '',
+            timestamp: new Date().toISOString(),
+            command: 'system-hook',
+            cwd: executionCwd,
+            exitCode: 1,
+          };
+          await appendMessage(chatId, logMsg);
+
+          const nextState = await getInitialRouterState(chatId, denyMsg, cwd);
+          await executeDirectMessage(chatId, nextState, settings, cwd, runCommand, true, denyMsg);
+          return;
+        }
+
+        const { parentId: parentChatId, uuid: subagentUuid } = parsedSubagent;
+        const statusStr = success ? 'completed' : 'encountered an error in';
+
+        let originalMessageSnippet = state.message;
+        if (originalMessageSnippet.length > 200) {
+          originalMessageSnippet = originalMessageSnippet.substring(0, 200) + '...';
+        }
+
+        const content = `[Automatic message] Sub-agent ${subagentUuid} (${agentId}) has ${statusStr} its task.\n\n### Original Request\n${originalMessageSnippet}\n\n### Final Output\n${lastLogMsg?.content || lastLogMsg?.stderr || ''}`;
+
+        const nextState = await getInitialRouterState(parentChatId, content, cwd);
+
+        await executeDirectMessage(
+          parentChatId,
+          nextState,
+          settings,
+          cwd,
+          runCommand,
+          true, // noWait
+          content,
+          true // isSystemCompletion
+        );
+      }
     },
     { text: state.message, sessionId: state.sessionId || 'default' }
   );
@@ -571,6 +791,18 @@ export async function handleUserMessage(
     await writeChatSettings(chatId, chatSettings, cwd);
   }
 
+  if (isSubagentChatId(chatId)) {
+    const initialState = await getInitialRouterState(
+      chatId,
+      message,
+      cwd,
+      overrideAgentId,
+      sessionId
+    );
+    await executeDirectMessage(chatId, initialState, settings, cwd, runCommand, noWait, message);
+    return;
+  }
+
   const initialState = await getInitialRouterState(
     chatId,
     message,
@@ -584,6 +816,7 @@ export async function handleUserMessage(
 
   const finalState = await executeRouterPipeline(initialState, routers);
 
+  const finalChatId = finalState.chatId ?? chatId;
   const finalMessage = finalState.message;
   const finalAgentId = finalState.agentId;
   const finalSessionId = finalState.sessionId ?? crypto.randomUUID();
@@ -615,7 +848,7 @@ export async function handleUserMessage(
     if (finalState.jobs.remove?.length) {
       const removeSet = new Set(finalState.jobs.remove);
       for (const jobId of finalState.jobs.remove) {
-        cronManager.unscheduleJob(chatId, jobId);
+        cronManager.unscheduleJob(finalChatId, jobId);
       }
       chatSettings.jobs = chatSettings.jobs.filter((j) => !removeSet.has(j.id));
       settingsChanged = true;
@@ -624,7 +857,7 @@ export async function handleUserMessage(
     if (finalState.jobs.add?.length) {
       const addMap = new Map(finalState.jobs.add.map((job) => [job.id, job]));
       for (const job of finalState.jobs.add) {
-        cronManager.scheduleJob(chatId, job);
+        cronManager.scheduleJob(finalChatId, job);
       }
       chatSettings.jobs = chatSettings.jobs.filter((j) => !addMap.has(j.id));
       chatSettings.jobs.push(...finalState.jobs.add);
@@ -633,13 +866,13 @@ export async function handleUserMessage(
   }
 
   if (settingsChanged) {
-    await writeChatSettings(chatId, chatSettings, cwd);
+    await writeChatSettings(finalChatId, chatSettings, cwd);
   }
 
   const directState: RouterState = {
     messageId: finalState.messageId,
     message: finalMessage,
-    chatId,
+    chatId: finalChatId,
     env: routerEnv,
   };
   if (finalAgentId !== undefined) directState.agentId = finalAgentId;
@@ -647,5 +880,20 @@ export async function handleUserMessage(
   if (finalState.reply !== undefined) directState.reply = finalState.reply;
   if (finalState.action !== undefined) directState.action = finalState.action;
 
-  await executeDirectMessage(chatId, directState, settings, cwd, runCommand, noWait, message);
+  await executeDirectMessage(finalChatId, directState, settings, cwd, runCommand, noWait, message);
+
+  if (finalState.redirects) {
+    for (const redirect of finalState.redirects) {
+      const redirectState = await getInitialRouterState(redirect.chatId, redirect.message, cwd);
+      await executeDirectMessage(
+        redirect.chatId,
+        redirectState,
+        settings,
+        cwd,
+        runCommand,
+        true, // noWait
+        redirect.message
+      );
+    }
+  }
 }

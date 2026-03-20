@@ -10,6 +10,8 @@ import {
   getMessages,
   getDefaultChatId,
   setDefaultChatId,
+  isValidChatId,
+  getChatRelativePath,
   type UserMessage,
   type CommandLogMessage,
 } from './chats.js';
@@ -30,6 +32,28 @@ describe('chats utilities', () => {
     }
   });
 
+  it('should validate standard and subagent chat IDs', () => {
+    expect(isValidChatId('my-chat-123')).toBe(true);
+    expect(isValidChatId('my_chat')).toBe(true);
+    expect(isValidChatId('my-chat-123:subagents:some-uuid')).toBe(true);
+    expect(isValidChatId('my-chat-123:subagents:some-uuid:subagents:another-uuid')).toBe(true);
+    expect(isValidChatId('my-chat/nested')).toBe(false);
+    expect(isValidChatId('my-chat:subagents:')).toBe(false);
+    expect(isValidChatId(':subagents:some-uuid')).toBe(false);
+    expect(isValidChatId('foo:subagents:bar:baz')).toBe(false);
+  });
+
+  it('should resolve relative path correctly', () => {
+    expect(getChatRelativePath('my-chat-123')).toBe('my-chat-123');
+    expect(getChatRelativePath('my-chat-123:subagents:some-uuid')).toBe(
+      path.join('my-chat-123', 'subagents', 'some-uuid')
+    );
+    expect(getChatRelativePath('my-chat-123:subagents:uuid1:subagents:uuid2')).toBe(
+      path.join('my-chat-123', 'subagents', 'uuid1', 'subagents', 'uuid2')
+    );
+    expect(getChatRelativePath('invalid:format:here')).toBe('invalid:format:here');
+  });
+
   it('should create and list chats', async () => {
     await createChat('chat1', TEST_DIR);
     await createChat('chat2', TEST_DIR);
@@ -38,6 +62,27 @@ describe('chats utilities', () => {
     expect(chats).toContain('chat1');
     expect(chats).toContain('chat2');
     expect(chats.length).toBe(2);
+  });
+
+  it('should delete a chat and cascade-delete subagents', async () => {
+    await createChat('parent', TEST_DIR);
+    await createChat('parent:subagents:uuid1', TEST_DIR);
+
+    // Check if both directories exist
+    const chatsDir = path.join(TEST_DIR, '.clawmini', 'chats');
+    expect(existsSync(path.join(chatsDir, 'parent'))).toBe(true);
+    expect(existsSync(path.join(chatsDir, 'parent', 'subagents', 'uuid1'))).toBe(true);
+
+    let chats = await listChats(TEST_DIR);
+    expect(chats).toContain('parent');
+
+    // Delete parent chat
+    await deleteChat('parent', TEST_DIR);
+    chats = await listChats(TEST_DIR);
+    expect(chats).not.toContain('parent');
+
+    // Check if subagent was cascade-deleted
+    expect(existsSync(path.join(chatsDir, 'parent'))).toBe(false);
   });
 
   it('should delete a chat', async () => {

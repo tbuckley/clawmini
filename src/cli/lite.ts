@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable max-lines */
 
 import { Command } from 'commander';
 import { createTRPCClient, httpLink } from '@trpc/client';
@@ -213,6 +214,31 @@ program
   .action(async (cmdName, options, command) => {
     try {
       const client = getClient();
+
+      if (cmdName === 'wait') {
+        const id = command.args[1];
+        if (!id) {
+          console.error('Error: missing required argument <id>');
+          process.exit(1);
+        }
+        const result = await client.tasks.wait.mutate({ id });
+        if (result.type === 'request') {
+          const reqResult = result.result as any;
+          if (reqResult.executionResult) {
+            if (reqResult.executionResult.stdout)
+              process.stdout.write(reqResult.executionResult.stdout);
+            if (reqResult.executionResult.stderr)
+              process.stderr.write(reqResult.executionResult.stderr);
+          } else if (reqResult.state === 'Rejected') {
+            console.error(`Request rejected: ${reqResult.rejectionReason}`);
+            process.exit(1);
+          }
+        } else {
+          console.log(`Task completed.`);
+        }
+        return;
+      }
+
       const config = await client.listPolicies.query();
       const policy = config?.policies?.[cmdName];
 
@@ -265,6 +291,181 @@ program
       } else {
         console.log(`Request created successfully.`);
         console.log(`Request ID: ${request.id}`);
+      }
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+const subagents = program.command('subagents').description('Manage subagents');
+
+subagents
+  .command('add <message>')
+  .description('Add a subagent')
+  .option('-a, --agent <agent>', 'Agent to use for the subagent')
+  .action(async (message, options) => {
+    try {
+      const client = getClient();
+      const result = await client.subagents.add.mutate({
+        message,
+        agent: options.agent,
+      });
+      console.log(`Subagent created with ID: ${result.subagentId}`);
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+subagents
+  .command('wait <id>')
+  .description('Alias for tasks wait <id>')
+  .action(async (id) => {
+    try {
+      const client = getClient();
+      await client.tasks.wait.mutate({ id });
+      console.log(`Subagent completed.`);
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+subagents
+  .command('list')
+  .description('List subagents')
+  .action(async () => {
+    try {
+      const client = getClient();
+      const list = await client.subagents.list.query();
+      if (list.length === 0) {
+        console.log('No subagents found.');
+        return;
+      }
+
+      const pad = (str: string, len: number) => str.padEnd(len, ' ');
+      console.log(
+        `${pad('ID', 40)} ${pad('AGENT', 15)} ${pad('STATUS', 12)} ${pad('CREATED', 22)} ${'SNIPPET'}`
+      );
+      console.log('-'.repeat(110));
+      for (const item of list) {
+        const created =
+          item.created !== 'unknown' ? new Date(item.created).toLocaleString() : 'unknown';
+        console.log(
+          `${pad(item.id, 40)} ${pad(item.agent, 15)} ${pad(item.status, 12)} ${pad(created, 22)} ${item.snippet}`
+        );
+      }
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+subagents
+  .command('tail <id>')
+  .description('Tail a subagent')
+  .option('-n, --lines <number>', 'Number of lines to tail', parseInt)
+  .action(async (id, options) => {
+    try {
+      const client = getClient();
+      const messages = await client.subagents.tail.query({ subagentId: id, limit: options.lines });
+      console.log(JSON.stringify(messages, null, 2));
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+subagents
+  .command('send <id> <message>')
+  .description('Send a follow-up message to a subagent')
+  .action(async (id, message) => {
+    try {
+      const client = getClient();
+      await client.subagents.send.mutate({ subagentId: id, message });
+      console.log('Message sent.');
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+subagents
+  .command('stop <id>')
+  .description('Stop a subagent')
+  .action(async (id) => {
+    try {
+      const client = getClient();
+      await client.subagents.stop.mutate({ subagentId: id });
+      console.log('Subagent stopped.');
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+subagents
+  .command('delete <id>')
+  .description('Delete a subagent')
+  .action(async (id) => {
+    try {
+      const client = getClient();
+      await client.subagents.delete.mutate({ subagentId: id });
+      console.log('Subagent deleted.');
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+const tasks = program.command('tasks').description('Manage tasks');
+
+tasks
+  .command('pending')
+  .description('Fetch pending policy requests or subagents for the active subagent session')
+  .action(async () => {
+    try {
+      const client = getClient();
+      const result = await client.tasks.pending.query();
+
+      console.log('Pending Requests:');
+      if (result.requests.length === 0) console.log('  None');
+      for (const req of result.requests) {
+        console.log(`  - ${req.id} (${req.commandName})`);
+      }
+
+      console.log('\nPending Subagents:');
+      if (result.subagents.length === 0) console.log('  None');
+      for (const sub of result.subagents) {
+        console.log(`  - ${sub.id} (${sub.status})`);
+      }
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+tasks
+  .command('wait <id>')
+  .description('Block and wait on a previously created asynchronous subagent or policy request')
+  .action(async (id) => {
+    try {
+      const client = getClient();
+      const result = await client.tasks.wait.mutate({ id });
+      if (result.type === 'request') {
+        const reqResult = result.result as any;
+        if (reqResult.executionResult) {
+          if (reqResult.executionResult.stdout)
+            process.stdout.write(reqResult.executionResult.stdout);
+          if (reqResult.executionResult.stderr)
+            process.stderr.write(reqResult.executionResult.stderr);
+        } else if (reqResult.state === 'Rejected') {
+          console.error(`Request rejected: ${reqResult.rejectionReason}`);
+          process.exit(1);
+        }
+      } else {
+        console.log(`Subagent completed.`);
       }
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);

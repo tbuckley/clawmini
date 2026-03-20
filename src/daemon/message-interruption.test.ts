@@ -1,9 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeDirectMessage } from './message.js';
 import { getMessageQueue } from './queue.js';
 import type { RouterState } from './routers/types.js';
 
-vi.mock('./chats.js', () => ({
+vi.mock('./chats.js', async (importOriginal) => ({
+  ...(await importOriginal<any>()),
   appendMessage: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../shared/workspace.js', () => ({

@@ -8,6 +8,7 @@ import {
   getChatsDir,
   createChat,
   isValidChatId,
+  getChatRelativePath,
 } from '../../../shared/chats.js';
 import { writeChatSettings } from '../../../shared/workspace.js';
 import { getDaemonClient } from '../../client.js';
@@ -80,7 +81,7 @@ export async function handleApiChats(
     res.flushHeaders();
 
     const chatsDir = await getChatsDir();
-    const chatFile = path.join(chatsDir, chatId, 'chat.jsonl');
+    const chatFile = path.join(chatsDir, getChatRelativePath(chatId), 'chat.jsonl');
 
     if (!fs.existsSync(chatFile)) {
       await createChat(chatId);

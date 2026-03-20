@@ -12,7 +12,8 @@ vi.mock('./events.js', async (importOriginal) => {
   };
 });
 
-vi.mock('../shared/chats.js', () => ({
+vi.mock('../shared/chats.js', async (importOriginal) => ({
+  ...(await importOriginal<any>()),
   appendMessage: vi.fn().mockResolvedValue(undefined),
 }));
 

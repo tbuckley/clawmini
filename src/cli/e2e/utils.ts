@@ -34,7 +34,8 @@ export function createE2EContext(dirName: string) {
           if (fs.existsSync(settingsPath)) {
             try {
               const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-              settings.api = { port: 0 }; // Use random available port to avoid EADDRINUSE during parallel e2e tests
+              const randomPort = Math.floor(Math.random() * 30000) + 30000;
+              settings.api = { port: randomPort }; // Use random available port to avoid EADDRINUSE during parallel e2e tests
               fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
             } catch {
               // ignore

@@ -4,13 +4,14 @@ import { RequestStore } from '../request-store.js';
 import { readPolicies, getWorkspaceRoot } from '../../shared/workspace.js';
 import { executeRequest } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
+import { getRootChatId } from '../../shared/chats.js';
 import type { CommandLogMessage } from '../../shared/chats.js';
 
 async function loadAndValidateRequest(id: string, state: RouterState) {
   const store = new RequestStore(getWorkspaceRoot());
   const req = await store.load(id);
   if (!req) return { error: { ...state, message: '', reply: `Request not found: ${id}` } };
-  if (req.chatId && req.chatId !== state.chatId)
+  if (req.chatId && getRootChatId(req.chatId) !== state.chatId)
     return {
       error: { ...state, message: '', reply: `Request belongs to a different chat: ${req.chatId}` },
     };
@@ -81,6 +82,17 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     await appendMessage(state.chatId, logMsg);
 
     const agentMessage = `Request ${id} approved.\n\n${wrapInHtml('stdout', stdout)}\n\n${wrapInHtml('stderr', stderr)}\n\nExit Code: ${exitCode}`;
+
+    if (req.chatId && getRootChatId(req.chatId) !== state.chatId) {
+      return {
+        ...state,
+        message: '',
+        action: 'stop',
+        reply: `Approved request, running ${req.commandName}`,
+        redirects: [{ chatId: req.chatId, message: agentMessage }],
+      };
+    }
+
     return {
       ...state,
       message: agentMessage,
@@ -117,6 +129,17 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     await appendMessage(state.chatId, logMsg);
 
     const agentMessage = `Request ${id} rejected. Reason: ${reason}`;
+
+    if (req.chatId && getRootChatId(req.chatId) !== state.chatId) {
+      return {
+        ...state,
+        message: '',
+        action: 'stop',
+        reply: `Rejected request ${id}`,
+        redirects: [{ chatId: req.chatId, message: agentMessage }],
+      };
+    }
+
     return { ...state, message: agentMessage };
   }
 

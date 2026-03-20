@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { Queue } from './queue.js';
+import { Queue, getMessageQueue, abortQueuesForDirPrefix } from './queue.js';
 
 describe('Queue', () => {
   it('should process tasks in order', async () => {
@@ -113,5 +113,67 @@ describe('Queue', () => {
     // task3 should still be executed because it wasn't extracted
     await task3;
     expect(mockTask3).toHaveBeenCalled();
+  });
+
+  it('should abort and clear queues matching a directory prefix', async () => {
+    const parentDir = '/tmp/chats/parentChat';
+    const subagentDir = '/tmp/chats/parentChat/subagents/uuid1';
+    const otherDir = '/tmp/chats/otherChat';
+
+    const queue1 = getMessageQueue(parentDir);
+    const queue2 = getMessageQueue(subagentDir);
+    const queue3 = getMessageQueue(otherDir);
+
+    let aborted1 = false;
+    let aborted2 = false;
+    let aborted3 = false;
+
+    const task1 = queue1.enqueue(async (signal) => {
+      return new Promise<void>((resolve, reject) => {
+        const onAbort = () => {
+          aborted1 = true;
+          reject(signal.reason);
+        };
+        signal.addEventListener('abort', onAbort);
+        setTimeout(resolve, 50);
+      });
+    });
+
+    const task2 = queue2.enqueue(async (signal) => {
+      return new Promise<void>((resolve, reject) => {
+        const onAbort = () => {
+          aborted2 = true;
+          reject(signal.reason);
+        };
+        signal.addEventListener('abort', onAbort);
+        setTimeout(resolve, 50);
+      });
+    });
+
+    const task3 = queue3.enqueue(async (signal) => {
+      return new Promise<void>((resolve, reject) => {
+        const onAbort = () => {
+          aborted3 = true;
+          reject(signal.reason);
+        };
+        signal.addEventListener('abort', onAbort);
+        setTimeout(resolve, 50);
+      });
+    });
+
+    await new Promise((r) => setTimeout(r, 10)); // let tasks start
+
+    abortQueuesForDirPrefix(parentDir);
+
+    await expect(task1).rejects.toThrow();
+    await expect(task2).rejects.toThrow();
+
+    expect(aborted1).toBe(true);
+    expect(aborted2).toBe(true);
+    expect(aborted3).toBe(false);
+
+    // clean up queue3
+    queue3.abortCurrent();
+    await task3.catch(() => {});
   });
 });

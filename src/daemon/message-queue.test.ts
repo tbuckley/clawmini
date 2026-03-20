@@ -6,7 +6,10 @@ import { spawn } from 'node:child_process';
 import { runCommandCallback, createMockSpawn } from './message-test-utils.js';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
-vi.mock('./chats.js', () => ({ appendMessage: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('./chats.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  appendMessage: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('./routers.js', () => ({
   executeRouterPipeline: vi.fn().mockImplementation((state) => Promise.resolve(state)),
 }));

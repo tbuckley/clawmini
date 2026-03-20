@@ -6,7 +6,10 @@ import { runCommandCallback } from './message-test-utils.js';
 import * as chats from '../shared/chats.js';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
-vi.mock('../shared/chats.js', () => ({ appendMessage: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../shared/chats.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  appendMessage: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('./routers.js', () => ({
   executeRouterPipeline: vi.fn().mockImplementation((state) => Promise.resolve(state)),
 }));

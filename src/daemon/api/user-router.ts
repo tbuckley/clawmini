@@ -8,9 +8,16 @@ import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, DAEMON_EVENT_TYPING } from
 import { getSettingsPath, readChatSettings, getWorkspaceRoot } from '../../shared/workspace.js';
 import { CronJobSchema } from '../../shared/config.js';
 import { handleUserMessage } from '../message.js';
-import { getDefaultChatId, getMessages as fetchMessages } from '../chats.js';
+import {
+  getDefaultChatId,
+  getMessages as fetchMessages,
+  deleteChat as sharedDeleteChat,
+  getChatsDir,
+  getChatRelativePath,
+} from '../chats.js';
 import { runCommand } from '../utils/spawn.js';
 import { apiProcedure, publicProcedure, router } from './trpc.js';
+import { abortQueuesForDirPrefix } from '../queue.js';
 import {
   getUniquePath,
   resolveAgentDir,
@@ -206,6 +213,18 @@ export const userDeleteCronJob = apiProcedure
     return deleteCronJobShared(chatId, input.id);
   });
 
+export const deleteChat = apiProcedure
+  .input(z.object({ chatId: z.string() }))
+  .mutation(async ({ input }) => {
+    const chatsDir = await getChatsDir();
+    const chatDir = path.join(chatsDir, getChatRelativePath(input.chatId));
+    abortQueuesForDirPrefix(chatDir);
+    await sharedDeleteChat(input.chatId);
+    return { success: true };
+  });
+
+import { userSubagentRouter } from './user-subagent-router.js';
+
 export const userRouter = router({
   sendMessage,
   getMessages,
@@ -216,6 +235,8 @@ export const userRouter = router({
   listCronJobs: userListCronJobs,
   addCronJob: userAddCronJob,
   deleteCronJob: userDeleteCronJob,
+  deleteChat,
+  subagents: userSubagentRouter,
 });
 
 export type UserRouter = typeof userRouter;

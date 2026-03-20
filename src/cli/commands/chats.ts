@@ -7,6 +7,7 @@ import {
   getDefaultChatId,
   DEFAULT_CHAT_ID,
 } from '../../shared/chats.js';
+import { getDaemonClient } from '../client.js';
 
 export const chatsCmd = new Command('chats').description('Manage chat sessions');
 
@@ -50,7 +51,15 @@ chatsCmd
   .action(async (id: string) => {
     try {
       const defaultId = await getDefaultChatId();
-      await deleteChat(id);
+
+      try {
+        const trpc = await getDaemonClient({ autoStart: false });
+        await trpc.deleteChat.mutate({ chatId: id });
+      } catch {
+        // Fallback to local deletion if daemon isn't running
+        await deleteChat(id);
+      }
+
       console.log(`Chat ${id} deleted successfully.`);
       if (id === defaultId) {
         await setDefaultChatId(DEFAULT_CHAT_ID);

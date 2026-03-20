@@ -14,4 +14,5 @@ export interface RouterState {
     add?: CronJob[];
     remove?: string[];
   };
+  redirects?: { chatId: string; message: string }[];
 }

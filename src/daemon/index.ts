@@ -16,6 +16,7 @@ import {
 import { cronManager } from './cron.js';
 import { SettingsSchema } from '../shared/config.js';
 import { validateToken, getApiContext } from './auth.js';
+import { cleanupDeadSubagents } from './message.js';
 import path from 'node:path';
 import { exportLiteToEnvironment } from '../shared/lite.js';
 
@@ -150,6 +151,10 @@ export async function initDaemon() {
     console.error('Failed to initialize cron manager:', err);
   });
 
+  cleanupDeadSubagents().catch((err) => {
+    console.error('Failed to cleanup dead subagents:', err);
+  });
+
   let apiServer: http.Server | undefined;
   if (apiCtx) {
     const apiHandler = createHTTPHandler({
@@ -172,7 +177,9 @@ export async function initDaemon() {
     const host = apiCtx.host;
     const port = apiCtx.port;
     apiServer.listen(port, host, () => {
-      console.log(`Daemon HTTP API initialized and listening on http://${host}:${port}`);
+      const address = apiServer?.address() as net.AddressInfo;
+      const actualPort = address.port;
+      console.log(`Daemon HTTP API initialized and listening on http://${host}:${actualPort}`);
     });
   }
 

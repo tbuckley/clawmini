@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleUserMessage } from './message.js';
 import * as chats from '../shared/chats.js';
 
-vi.mock('../shared/chats.js', () => ({
+vi.mock('../shared/chats.js', async (importOriginal) => ({
+  ...(await importOriginal<any>()),
   appendMessage: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('./routers.js', () => ({

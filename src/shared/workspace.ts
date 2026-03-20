@@ -80,8 +80,10 @@ export function getPoliciesPath(startDir = process.cwd()): string {
   return path.join(getClawminiDir(startDir), 'policies.json');
 }
 
+import { getChatRelativePath } from './chats.js';
+
 export function getChatSettingsPath(chatId: string, startDir = process.cwd()): string {
-  return path.join(getClawminiDir(startDir), 'chats', chatId, 'settings.json');
+  return path.join(getClawminiDir(startDir), 'chats', getChatRelativePath(chatId), 'settings.json');
 }
 
 export function isValidAgentId(agentId: string): boolean {

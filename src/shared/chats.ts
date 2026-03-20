@@ -39,9 +39,35 @@ export async function getChatsDir(startDir = process.cwd()): Promise<string> {
   return dir;
 }
 
+export function isSubagentChatId(chatId: string): boolean {
+  if (!chatId || chatId.length === 0) return false;
+  return /^[a-zA-Z0-9_-]+(:subagents:[a-zA-Z0-9_-]+)+$/.test(chatId);
+}
+
+export function parseSubagentChatId(chatId: string): { parentId: string; uuid: string } | null {
+  if (!isSubagentChatId(chatId)) return null;
+  const lastIndex = chatId.lastIndexOf(':subagents:');
+  return { parentId: chatId.slice(0, lastIndex), uuid: chatId.slice(lastIndex + 11) };
+}
+
+export function getSubagentDepth(chatId: string): number {
+  if (!isSubagentChatId(chatId)) return 0;
+  const matches = chatId.match(/:subagents:/g);
+  return matches ? matches.length : 0;
+}
+
+export function getRootChatId(chatId: string): string {
+  if (!isSubagentChatId(chatId)) return chatId;
+  return chatId.split(':subagents:')[0] ?? chatId;
+}
+
 export function isValidChatId(chatId: string): boolean {
   if (!chatId || chatId.length === 0) return false;
-  return /^[a-zA-Z0-9_-]+$/.test(chatId);
+  // Standard chat ID
+  if (/^[a-zA-Z0-9_-]+$/.test(chatId)) return true;
+  // Subagent chat ID: parentChatId:subagents:subagentUuid:...
+  if (isSubagentChatId(chatId)) return true;
+  return false;
 }
 
 function assertValidChatId(id: string): void {
@@ -50,10 +76,17 @@ function assertValidChatId(id: string): void {
   }
 }
 
+export function getChatRelativePath(id: string): string {
+  if (isSubagentChatId(id)) {
+    return path.join(...id.split(':'));
+  }
+  return id;
+}
+
 export async function createChat(id: string, startDir = process.cwd()): Promise<void> {
   assertValidChatId(id);
   const chatsDir = await getChatsDir(startDir);
-  const chatDir = path.join(chatsDir, id);
+  const chatDir = path.join(chatsDir, getChatRelativePath(id));
   if (!existsSync(chatDir)) {
     await fs.mkdir(chatDir, { recursive: true });
   }
@@ -76,7 +109,7 @@ export async function listChats(startDir = process.cwd()): Promise<string[]> {
 export async function deleteChat(id: string, startDir = process.cwd()): Promise<void> {
   assertValidChatId(id);
   const chatsDir = await getChatsDir(startDir);
-  const chatDir = path.join(chatsDir, id);
+  const chatDir = path.join(chatsDir, getChatRelativePath(id));
 
   if (!pathIsInsideDir(chatDir, chatsDir)) {
     throw new Error(`Security Error: Cannot delete chat directory outside of ${chatsDir}`);
@@ -94,7 +127,7 @@ export async function appendMessage(
 ): Promise<void> {
   assertValidChatId(id);
   const chatsDir = await getChatsDir(startDir);
-  const chatDir = path.join(chatsDir, id);
+  const chatDir = path.join(chatsDir, getChatRelativePath(id));
   if (!existsSync(chatDir)) {
     await createChat(id, startDir);
   }
@@ -109,7 +142,7 @@ export async function getMessages(
 ): Promise<ChatMessage[]> {
   assertValidChatId(id);
   const chatsDir = await getChatsDir(startDir);
-  const chatFile = path.join(chatsDir, id, 'chat.jsonl');
+  const chatFile = path.join(chatsDir, getChatRelativePath(id), 'chat.jsonl');
   if (!existsSync(chatFile)) {
     throw new Error(`Chat directory or file for '${id}' not found.`);
   }
