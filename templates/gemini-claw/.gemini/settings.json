@@ -32,6 +32,18 @@
                     }
                 ]
             }
+        ],
+        "AfterAgent": [
+            {
+                "hooks": [
+                    {
+                        "name": "subagent-pending-check",
+                        "type": "command",
+                        "command": "$GEMINI_PROJECT_DIR/.gemini/hooks/subagent-pending-check.sh",
+                        "timeout": 5000
+                    }
+                ]
+            }
         ]
     }
 }
