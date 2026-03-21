@@ -11,7 +11,7 @@ import {
   getChatsDir,
   getChatRelativePath,
 } from './chats.js';
-import { getMessageQueue, isSessionIdActive } from './queue.js';
+import { getMessageQueue, isSessionIdActive, subagentSemaphore } from './queue.js';
 import { executeRouterPipeline } from './routers.js';
 import type { RouterState } from './routers/types.js';
 import {
@@ -394,8 +394,7 @@ export async function executeDirectMessage(
     executionCwd = path.resolve(workspaceRoot, agentId);
   }
 
-  const queueDir = executionCwd;
-  const queue = getMessageQueue(queueDir);
+  const queue = getMessageQueue(chatId);
 
   if (state.action === 'stop') {
     queue.abortCurrent();
@@ -429,306 +428,320 @@ export async function executeDirectMessage(
 
   const taskPromise = queue.enqueue(
     async (signal) => {
-      let lastLogMsg: CommandLogMessage | undefined;
-      let success = false;
+      let acquiredSemaphore = false;
+      const isSubagent = isSubagentChatId(chatId);
 
-      for (let configIdx = 0; configIdx < executionConfigs.length; configIdx++) {
-        const config = executionConfigs[configIdx]!;
-        const isFallbackConfig = configIdx > 0;
-        for (let attempt = 0; attempt <= config.retries; attempt++) {
-          const delay = calculateDelay(attempt, config.delayMs, isFallbackConfig);
-          if (delay > 0) {
-            const retryLogMsg: CommandLogMessage = {
+      try {
+        if (isSubagent && !isSystemCompletion) {
+          await subagentSemaphore.acquire(signal);
+          acquiredSemaphore = true;
+        }
+
+        let lastLogMsg: CommandLogMessage | undefined;
+        let success = false;
+
+        for (let configIdx = 0; configIdx < executionConfigs.length; configIdx++) {
+          const config = executionConfigs[configIdx]!;
+          const isFallbackConfig = configIdx > 0;
+          for (let attempt = 0; attempt <= config.retries; attempt++) {
+            const delay = calculateDelay(attempt, config.delayMs, isFallbackConfig);
+            if (delay > 0) {
+              const retryLogMsg: CommandLogMessage = {
+                id: crypto.randomUUID(),
+                messageId: userMsgId,
+                role: 'log',
+                content: `Error running agent, retrying in ${Math.round(delay / 1000)} seconds...`,
+                stderr: '',
+                timestamp: new Date().toISOString(),
+                command: 'retry-delay',
+                cwd: executionCwd,
+                exitCode: 0,
+              };
+              await appendMessage(chatId, retryLogMsg);
+              await sleep(delay);
+            }
+
+            const {
+              env,
+              currentAgent,
+              command: initialCommand,
+            } = prepareCommandAndEnv(
+              chatId,
+              mergedAgent,
+              state.message,
+              isNewSession,
+              agentSessionSettings,
+              config.fallback
+            );
+            let command = initialCommand;
+
+            if (!command) {
+              continue;
+            }
+
+            const agentSpecificEnv = getActiveEnvKeys(
+              currentAgent.env,
+              !isNewSession ? agentSessionSettings?.env : undefined
+            );
+            agentSpecificEnv.add('CLAW_CLI_MESSAGE');
+
+            Object.assign(env, routerEnv);
+            Object.keys(routerEnv).forEach((k) => agentSpecificEnv.add(k));
+
+            const apiCtx = getApiContext(settings);
+            if (apiCtx) {
+              const proxyUrl = apiCtx.proxy_host
+                ? `${apiCtx.proxy_host}:${apiCtx.port}`
+                : `http://${apiCtx.host}:${apiCtx.port}`;
+              env['CLAW_API_URL'] = proxyUrl;
+              agentSpecificEnv.add('CLAW_API_URL');
+
+              const token = generateToken({
+                chatId,
+                agentId,
+                sessionId: finalSessionId,
+                timestamp: Date.now(),
+              });
+              env['CLAW_API_TOKEN'] = token;
+              agentSpecificEnv.add('CLAW_API_TOKEN');
+            }
+
+            const activeEnvInfo = await getActiveEnvironmentInfo(executionCwd, cwd);
+            if (activeEnvInfo) {
+              const activeEnvName = activeEnvInfo.name;
+              const activeEnv = await readEnvironment(activeEnvName, cwd);
+
+              if (activeEnv?.env) {
+                for (const [key, value] of Object.entries(activeEnv.env)) {
+                  if (value === false) {
+                    delete env[key];
+                    agentSpecificEnv.delete(key);
+                  } else {
+                    let interpolatedValue = String(value);
+                    interpolatedValue = interpolatedValue.replace(
+                      /\{PATH\}/g,
+                      process.env.PATH || ''
+                    );
+                    interpolatedValue = interpolatedValue.replace(
+                      /\{ENV_DIR\}/g,
+                      getEnvironmentPath(activeEnvName, cwd)
+                    );
+                    interpolatedValue = interpolatedValue.replace(
+                      /\{WORKSPACE_DIR\}/g,
+                      activeEnvInfo.targetPath
+                    );
+                    env[key] = interpolatedValue;
+                    agentSpecificEnv.add(key);
+                  }
+                }
+              }
+
+              if (activeEnv?.prefix) {
+                const envArgs = Array.from(agentSpecificEnv)
+                  .map((key) => {
+                    if (activeEnv.envFormat) {
+                      return activeEnv.envFormat.replace('{key}', key);
+                    }
+                    return key;
+                  })
+                  .join(' ');
+
+                const prefixReplaced = formatEnvironmentPrefix(activeEnv.prefix, {
+                  targetPath: activeEnvInfo.targetPath,
+                  executionCwd,
+                  envDir: getEnvironmentPath(activeEnvName, cwd),
+                  envArgs,
+                });
+
+                if (prefixReplaced.includes('{COMMAND}')) {
+                  command = prefixReplaced.replace('{COMMAND}', command);
+                } else {
+                  command = `${prefixReplaced} ${command}`;
+                }
+              }
+            }
+
+            console.log(`Executing command: ${command}`);
+            let mainResult;
+            const typingInterval = setInterval(() => {
+              emitTyping(chatId);
+            }, 5000);
+            try {
+              mainResult = await runCommand({ command, cwd: executionCwd, env, signal });
+            } finally {
+              clearInterval(typingInterval);
+            }
+
+            const logMsg: CommandLogMessage = {
               id: crypto.randomUUID(),
               messageId: userMsgId,
               role: 'log',
-              content: `Error running agent, retrying in ${Math.round(delay / 1000)} seconds...`,
+              content: mainResult.stdout,
+              stdout: mainResult.stdout,
               stderr: '',
               timestamp: new Date().toISOString(),
-              command: 'retry-delay',
+              command,
               cwd: executionCwd,
-              exitCode: 0,
+              exitCode: mainResult.exitCode,
+              ...(mainResult.stdout.includes('NO_REPLY_NECESSARY')
+                ? { level: 'verbose' as const }
+                : {}),
             };
-            await appendMessage(chatId, retryLogMsg);
-            await sleep(delay);
-          }
 
-          const {
-            env,
-            currentAgent,
-            command: initialCommand,
-          } = prepareCommandAndEnv(
-            chatId,
-            mergedAgent,
-            state.message,
-            isNewSession,
-            agentSessionSettings,
-            config.fallback
-          );
-          let command = initialCommand;
-
-          if (!command) {
-            continue;
-          }
-
-          const agentSpecificEnv = getActiveEnvKeys(
-            currentAgent.env,
-            !isNewSession ? agentSessionSettings?.env : undefined
-          );
-          agentSpecificEnv.add('CLAW_CLI_MESSAGE');
-
-          Object.assign(env, routerEnv);
-          Object.keys(routerEnv).forEach((k) => agentSpecificEnv.add(k));
-
-          const apiCtx = getApiContext(settings);
-          if (apiCtx) {
-            const proxyUrl = apiCtx.proxy_host
-              ? `${apiCtx.proxy_host}:${apiCtx.port}`
-              : `http://${apiCtx.host}:${apiCtx.port}`;
-            env['CLAW_API_URL'] = proxyUrl;
-            agentSpecificEnv.add('CLAW_API_URL');
-
-            const token = generateToken({
-              chatId,
-              agentId,
-              sessionId: finalSessionId,
-              timestamp: Date.now(),
-            });
-            env['CLAW_API_TOKEN'] = token;
-            agentSpecificEnv.add('CLAW_API_TOKEN');
-          }
-
-          const activeEnvInfo = await getActiveEnvironmentInfo(executionCwd, cwd);
-          if (activeEnvInfo) {
-            const activeEnvName = activeEnvInfo.name;
-            const activeEnv = await readEnvironment(activeEnvName, cwd);
-
-            if (activeEnv?.env) {
-              for (const [key, value] of Object.entries(activeEnv.env)) {
-                if (value === false) {
-                  delete env[key];
-                  agentSpecificEnv.delete(key);
-                } else {
-                  let interpolatedValue = String(value);
-                  interpolatedValue = interpolatedValue.replace(
-                    /\{PATH\}/g,
-                    process.env.PATH || ''
-                  );
-                  interpolatedValue = interpolatedValue.replace(
-                    /\{ENV_DIR\}/g,
-                    getEnvironmentPath(activeEnvName, cwd)
-                  );
-                  interpolatedValue = interpolatedValue.replace(
-                    /\{WORKSPACE_DIR\}/g,
-                    activeEnvInfo.targetPath
-                  );
-                  env[key] = interpolatedValue;
-                  agentSpecificEnv.add(key);
-                }
-              }
+            const errors: string[] = [];
+            if (mainResult.stderr) {
+              errors.push(mainResult.stderr);
             }
 
-            if (activeEnv?.prefix) {
-              const envArgs = Array.from(agentSpecificEnv)
-                .map((key) => {
-                  if (activeEnv.envFormat) {
-                    return activeEnv.envFormat.replace('{key}', key);
-                  }
-                  return key;
-                })
-                .join(' ');
+            let currentSuccess = mainResult.exitCode === 0;
 
-              const prefixReplaced = formatEnvironmentPrefix(activeEnv.prefix, {
-                targetPath: activeEnvInfo.targetPath,
-                executionCwd,
-                envDir: getEnvironmentPath(activeEnvName, cwd),
-                envArgs,
-              });
-
-              if (prefixReplaced.includes('{COMMAND}')) {
-                command = prefixReplaced.replace('{COMMAND}', command);
-              } else {
-                command = `${prefixReplaced} ${command}`;
-              }
-            }
-          }
-
-          console.log(`Executing command: ${command}`);
-          let mainResult;
-          const typingInterval = setInterval(() => {
-            emitTyping(chatId);
-          }, 5000);
-          try {
-            mainResult = await runCommand({ command, cwd: executionCwd, env, signal });
-          } finally {
-            clearInterval(typingInterval);
-          }
-
-          const logMsg: CommandLogMessage = {
-            id: crypto.randomUUID(),
-            messageId: userMsgId,
-            role: 'log',
-            content: mainResult.stdout,
-            stdout: mainResult.stdout,
-            stderr: '',
-            timestamp: new Date().toISOString(),
-            command,
-            cwd: executionCwd,
-            exitCode: mainResult.exitCode,
-            ...(mainResult.stdout.includes('NO_REPLY_NECESSARY')
-              ? { level: 'verbose' as const }
-              : {}),
-          };
-
-          const errors: string[] = [];
-          if (mainResult.stderr) {
-            errors.push(mainResult.stderr);
-          }
-
-          let currentSuccess = mainResult.exitCode === 0;
-
-          if (currentSuccess) {
-            if (currentAgent.commands?.getMessageContent) {
-              const { result, error } = await runExtractionCommand(
-                'getMessageContent',
-                currentAgent.commands.getMessageContent,
-                runCommand,
-                executionCwd,
-                env,
-                mainResult,
-                signal
-              );
-              if (result !== undefined) {
-                logMsg.content = result;
-                logMsg.stdout = mainResult.stdout;
-                if (result.includes('NO_REPLY_NECESSARY')) {
-                  logMsg.level = 'verbose';
-                } else {
-                  delete logMsg.level;
-                }
-                if (result.trim() === '') {
-                  currentSuccess = false;
-                }
-              }
-              if (error) {
-                errors.push(error);
-              }
-            }
-          }
-
-          logMsg.stderr = errors.join('\n\n');
-          lastLogMsg = logMsg;
-
-          if (currentSuccess) {
-            success = true;
-            if (isNewSession && currentAgent.commands?.getSessionId) {
-              const { result, error } = await runExtractionCommand(
-                'getSessionId',
-                currentAgent.commands.getSessionId,
-                runCommand,
-                executionCwd,
-                env,
-                mainResult,
-                signal
-              );
-              if (result) {
-                await writeAgentSessionSettings(
-                  agentId,
-                  finalSessionId,
-                  { env: { SESSION_ID: result } },
-                  cwd
+            if (currentSuccess) {
+              if (currentAgent.commands?.getMessageContent) {
+                const { result, error } = await runExtractionCommand(
+                  'getMessageContent',
+                  currentAgent.commands.getMessageContent,
+                  runCommand,
+                  executionCwd,
+                  env,
+                  mainResult,
+                  signal
                 );
-              }
-              if (error) {
-                // We don't fail the whole thing for getSessionId error, but we log it.
-                logMsg.stderr = [logMsg.stderr, error].filter(Boolean).join('\n\n');
-              }
-            }
-            break;
-          }
-        }
-        if (success) break;
-      }
-
-      if (lastLogMsg) {
-        await appendMessage(chatId, lastLogMsg);
-      }
-
-      const parsedSubagent = parseSubagentChatId(chatId);
-      if (parsedSubagent) {
-        // check pending tasks
-        let hasPendingSubagents = false;
-        try {
-          const chatsDir = await getChatsDir();
-          const subagentsDir = path.join(chatsDir, getChatRelativePath(chatId), 'subagents');
-          const entries = await fs.readdir(subagentsDir, { withFileTypes: true });
-          for (const e of entries) {
-            if (e.isDirectory()) {
-              const sId = `${chatId}:subagents:${e.name}`;
-              const settings = await readChatSettings(sId);
-              if (settings?.defaultAgent) {
-                const session = settings.sessions?.[settings.defaultAgent];
-                if (session && isSessionIdActive(session)) {
-                  hasPendingSubagents = true;
-                  break;
+                if (result !== undefined) {
+                  logMsg.content = result;
+                  logMsg.stdout = mainResult.stdout;
+                  if (result.includes('NO_REPLY_NECESSARY')) {
+                    logMsg.level = 'verbose';
+                  } else {
+                    delete logMsg.level;
+                  }
+                  if (result.trim() === '') {
+                    currentSuccess = false;
+                  }
+                }
+                if (error) {
+                  errors.push(error);
                 }
               }
             }
+
+            logMsg.stderr = errors.join('\n\n');
+            lastLogMsg = logMsg;
+
+            if (currentSuccess) {
+              success = true;
+              if (isNewSession && currentAgent.commands?.getSessionId) {
+                const { result, error } = await runExtractionCommand(
+                  'getSessionId',
+                  currentAgent.commands.getSessionId,
+                  runCommand,
+                  executionCwd,
+                  env,
+                  mainResult,
+                  signal
+                );
+                if (result) {
+                  await writeAgentSessionSettings(
+                    agentId,
+                    finalSessionId,
+                    { env: { SESSION_ID: result } },
+                    cwd
+                  );
+                }
+                if (error) {
+                  // We don't fail the whole thing for getSessionId error, but we log it.
+                  logMsg.stderr = [logMsg.stderr, error].filter(Boolean).join('\n\n');
+                }
+              }
+              break;
+            }
           }
-        } catch {
-          // ignore
+          if (success) break;
         }
 
-        const store = new RequestStore(process.cwd());
-        const pendingReqs = (await store.list()).filter(
-          (r) => r.chatId === chatId && r.state === 'Pending'
-        );
-
-        if (pendingReqs.length > 0 || hasPendingSubagents) {
-          const reason = `must await ongoing asynchronous tasks (use 'tasks pending' and 'tasks wait <id>')`;
-          const denyMsg = JSON.stringify({ decision: 'deny', reason });
-
-          const logMsg: CommandLogMessage = {
-            id: crypto.randomUUID(),
-            messageId: userMsgId,
-            role: 'log',
-            source: 'router',
-            content: `The system intercepted your execution completion because you have unawaited tasks.\n\n${denyMsg}`,
-            stderr: '',
-            timestamp: new Date().toISOString(),
-            command: 'system-hook',
-            cwd: executionCwd,
-            exitCode: 1,
-          };
-          await appendMessage(chatId, logMsg);
-
-          const nextState = await getInitialRouterState(chatId, denyMsg, cwd);
-          await executeDirectMessage(chatId, nextState, settings, cwd, runCommand, true, denyMsg);
-          return;
+        if (lastLogMsg) {
+          await appendMessage(chatId, lastLogMsg);
         }
 
-        const { parentId: parentChatId, uuid: subagentUuid } = parsedSubagent;
-        const statusStr = success ? 'completed' : 'encountered an error in';
+        const parsedSubagent = parseSubagentChatId(chatId);
+        if (parsedSubagent) {
+          // check pending tasks
+          let hasPendingSubagents = false;
+          try {
+            const chatsDir = await getChatsDir();
+            const subagentsDir = path.join(chatsDir, getChatRelativePath(chatId), 'subagents');
+            const entries = await fs.readdir(subagentsDir, { withFileTypes: true });
+            for (const e of entries) {
+              if (e.isDirectory()) {
+                const sId = `${chatId}:subagents:${e.name}`;
+                const settings = await readChatSettings(sId);
+                if (settings?.defaultAgent) {
+                  const session = settings.sessions?.[settings.defaultAgent];
+                  if (session && isSessionIdActive(session)) {
+                    hasPendingSubagents = true;
+                    break;
+                  }
+                }
+              }
+            }
+          } catch {
+            // ignore
+          }
 
-        let originalMessageSnippet = state.message;
-        if (originalMessageSnippet.length > 200) {
-          originalMessageSnippet = originalMessageSnippet.substring(0, 200) + '...';
+          const store = new RequestStore(process.cwd());
+          const pendingReqs = (await store.list()).filter(
+            (r) => r.chatId === chatId && r.state === 'Pending'
+          );
+
+          if (pendingReqs.length > 0 || hasPendingSubagents) {
+            const reason = `must await ongoing asynchronous tasks (use 'tasks pending' and 'tasks wait <id>')`;
+            const denyMsg = JSON.stringify({ decision: 'deny', reason });
+
+            const logMsg: CommandLogMessage = {
+              id: crypto.randomUUID(),
+              messageId: userMsgId,
+              role: 'log',
+              source: 'router',
+              content: `The system intercepted your execution completion because you have unawaited tasks.\n\n${denyMsg}`,
+              stderr: '',
+              timestamp: new Date().toISOString(),
+              command: 'system-hook',
+              cwd: executionCwd,
+              exitCode: 1,
+            };
+            await appendMessage(chatId, logMsg);
+
+            const nextState = await getInitialRouterState(chatId, denyMsg, cwd);
+            await executeDirectMessage(chatId, nextState, settings, cwd, runCommand, true, denyMsg);
+            return;
+          }
+
+          const { parentId: parentChatId, uuid: subagentUuid } = parsedSubagent;
+          const statusStr = success ? 'completed' : 'encountered an error in';
+
+          let originalMessageSnippet = state.message;
+          if (originalMessageSnippet.length > 200) {
+            originalMessageSnippet = originalMessageSnippet.substring(0, 200) + '...';
+          }
+
+          const content = `[Automatic message] Sub-agent ${subagentUuid} (${agentId}) has ${statusStr} its task.\n\n### Original Request\n${originalMessageSnippet}\n\n### Final Output\n${lastLogMsg?.content || lastLogMsg?.stderr || ''}`;
+
+          const nextState = await getInitialRouterState(parentChatId, content, cwd);
+
+          await executeDirectMessage(
+            parentChatId,
+            nextState,
+            settings,
+            cwd,
+            runCommand,
+            true, // noWait
+            content,
+            true // isSystemCompletion
+          );
         }
-
-        const content = `[Automatic message] Sub-agent ${subagentUuid} (${agentId}) has ${statusStr} its task.\n\n### Original Request\n${originalMessageSnippet}\n\n### Final Output\n${lastLogMsg?.content || lastLogMsg?.stderr || ''}`;
-
-        const nextState = await getInitialRouterState(parentChatId, content, cwd);
-
-        await executeDirectMessage(
-          parentChatId,
-          nextState,
-          settings,
-          cwd,
-          runCommand,
-          true, // noWait
-          content,
-          true // isSystemCompletion
-        );
+      } finally {
+        if (acquiredSemaphore) {
+          subagentSemaphore.release();
+        }
       }
     },
     { text: state.message, sessionId: state.sessionId || 'default' }

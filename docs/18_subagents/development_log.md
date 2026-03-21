@@ -58,3 +58,11 @@
 - Added `cleanupDeadSubagents()` execution to `initDaemon()` in `src/daemon/index.ts` on daemon boot. This identifies stranded subagents that were terminated abruptly (e.g. Daemon restart) and gracefully fails them with a completion message so the main agent isn't blocked forever.
 - Addressed Prettier and linting type errors.
 - Refactored `RequestStore` mock in `message-subagent.test.ts` to prevent test failures on `EPERM` or `ENOENT` directory path accesses. All tests pass with 100% success using `npm run validate`.
+
+## Bug Fix: Subagent Concurrency & Global Limits
+
+- **Issue:** Subagents and agents were blocking each other because `messageQueues` were keyed by the shared `executionCwd` (e.g. workspace directory).
+- **Fix:** Changed `getMessageQueue` to use `chatId` as the key instead of directory path, allowing agents and subagents within the same workspace to process tasks in parallel.
+- **Global Limit:** Added a `subagentSemaphore` (limit 3) in `src/daemon/queue.ts`. Acquired during subagent queue task execution to limit the total number of subagents actively running commands at once across the daemon.
+- **Cleanup:** Renamed `abortQueuesForDirPrefix` to `abortQueuesForChat` to properly clean up nested subagent queues by parsing their `chatId` when a parent chat is deleted.
+- **Validation:** Fixed tests assuming queue blocking by directory instead of `chatId`. Verified all tests pass with `npm run validate`.

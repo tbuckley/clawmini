@@ -1,6 +1,50 @@
-import { pathIsInsideDir } from '../shared/utils/fs.js';
-
 export type Task<T = void> = (signal: AbortSignal) => Promise<T>;
+
+export class Semaphore {
+  private count: number;
+  private pending: (() => void)[] = [];
+
+  constructor(count: number) {
+    this.count = count;
+  }
+
+  async acquire(signal?: AbortSignal): Promise<void> {
+    if (this.count > 0) {
+      this.count--;
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      let aborted = false;
+      const onAbort = () => {
+        aborted = true;
+        this.pending = this.pending.filter((p) => p !== resolveFn);
+        reject(signal?.reason || new Error('Aborted'));
+      };
+      const resolveFn = () => {
+        if (!aborted) {
+          if (signal) signal.removeEventListener('abort', onAbort);
+          resolve();
+        }
+      };
+      if (signal) {
+        if (signal.aborted) return reject(signal.reason);
+        signal.addEventListener('abort', onAbort);
+      }
+      this.pending.push(resolveFn);
+    });
+  }
+
+  release(): void {
+    if (this.pending.length > 0) {
+      const resolveFn = this.pending.shift()!;
+      resolveFn();
+    } else {
+      this.count++;
+    }
+  }
+}
+
+export const subagentSemaphore = new Semaphore(3);
 
 interface QueueEntry<TPayload = string> {
   task: Task;
@@ -96,11 +140,11 @@ export interface MessageQueuePayload {
 
 const messageQueues = new Map<string, Queue<MessageQueuePayload>>();
 
-export function getMessageQueue(dir: string): Queue<MessageQueuePayload> {
-  if (!messageQueues.has(dir)) {
-    messageQueues.set(dir, new Queue<MessageQueuePayload>());
+export function getMessageQueue(chatId: string): Queue<MessageQueuePayload> {
+  if (!messageQueues.has(chatId)) {
+    messageQueues.set(chatId, new Queue<MessageQueuePayload>());
   }
-  return messageQueues.get(dir)!;
+  return messageQueues.get(chatId)!;
 }
 
 export function isSessionIdActive(sessionId: string): boolean {
@@ -121,12 +165,12 @@ export function abortQueuesForSessionId(sessionId: string): void {
   }
 }
 
-export function abortQueuesForDirPrefix(parentDir: string): void {
-  for (const [dir, queue] of messageQueues.entries()) {
-    if (pathIsInsideDir(dir, parentDir, { allowSameDir: true })) {
+export function abortQueuesForChat(targetChatId: string): void {
+  for (const [chatId, queue] of messageQueues.entries()) {
+    if (chatId === targetChatId || chatId.startsWith(targetChatId + ':subagents:')) {
       queue.abortCurrent();
       queue.clear('Parent chat deleted');
-      messageQueues.delete(dir);
+      messageQueues.delete(chatId);
     }
   }
 }

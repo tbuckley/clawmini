@@ -11,8 +11,8 @@ import {
   getMessages,
   isSubagentChatId,
 } from '../chats.js';
-import { abortQueuesForDirPrefix } from '../queue.js';
 import { handleUserMessage } from '../message.js';
+import { abortQueuesForChat } from '../queue.js';
 import { readSettings } from '../../shared/workspace.js';
 import { runCommand } from '../utils/spawn.js';
 
@@ -80,9 +80,8 @@ export const userSubagentStop = apiProcedure
     if (!isSubagentChatId(input.subagentId)) {
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid subagent ID' });
     }
-    const chatsDir = await getChatsDir();
-    const subagentDir = path.join(chatsDir, getChatRelativePath(input.subagentId));
-    abortQueuesForDirPrefix(subagentDir);
+
+    abortQueuesForChat(input.subagentId);
     return { success: true };
   });
 
@@ -92,9 +91,8 @@ export const userSubagentDelete = apiProcedure
     if (!isSubagentChatId(input.subagentId)) {
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid subagent ID' });
     }
-    const chatsDir = await getChatsDir();
-    const subagentDir = path.join(chatsDir, getChatRelativePath(input.subagentId));
-    abortQueuesForDirPrefix(subagentDir);
+
+    abortQueuesForChat(input.subagentId);
     await deleteChat(input.subagentId);
     return { success: true };
   });

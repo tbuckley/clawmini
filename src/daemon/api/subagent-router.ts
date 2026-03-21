@@ -12,7 +12,7 @@ import {
   isSubagentChatId,
   getSubagentDepth,
 } from '../chats.js';
-import { abortQueuesForDirPrefix, abortQueuesForSessionId, isSessionIdActive } from '../queue.js';
+import { abortQueuesForChat, abortQueuesForSessionId, isSessionIdActive } from '../queue.js';
 import { handleUserMessage } from '../message.js';
 import { readSettings, writeChatSettings, readChatSettings } from '../../shared/workspace.js';
 import { runCommand } from '../utils/spawn.js';
@@ -221,7 +221,7 @@ export const subagentStop = apiProcedure
       }
     }
 
-    abortQueuesForDirPrefix(subagentDir);
+    abortQueuesForChat(fullSubagentId);
     return { success: true };
   });
 
@@ -252,7 +252,7 @@ export const subagentDelete = apiProcedure
       }
     }
 
-    abortQueuesForDirPrefix(subagentDir);
+    abortQueuesForChat(fullSubagentId);
     await deleteChat(fullSubagentId);
     return { success: true };
   });

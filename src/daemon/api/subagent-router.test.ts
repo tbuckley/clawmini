@@ -34,7 +34,7 @@ vi.mock('../queue.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../queue.js')>();
   return {
     ...actual,
-    abortQueuesForDirPrefix: vi.fn(),
+    abortQueuesForChat: vi.fn(),
   };
 });
 
@@ -164,7 +164,7 @@ describe('Subagent Router', () => {
       const caller = subagentRouter.createCaller(mockCtx as any);
       await caller.stop({ subagentId: 'uuid1' });
 
-      expect(queue.abortQueuesForDirPrefix).toHaveBeenCalled();
+      expect(queue.abortQueuesForChat).toHaveBeenCalled();
     });
   });
 
@@ -175,7 +175,7 @@ describe('Subagent Router', () => {
       const caller = subagentRouter.createCaller(mockCtx as any);
       await caller.delete({ subagentId: 'uuid1' });
 
-      expect(queue.abortQueuesForDirPrefix).toHaveBeenCalled();
+      expect(queue.abortQueuesForChat).toHaveBeenCalled();
       expect(chats.deleteChat).toHaveBeenCalledWith('parent-chat:subagents:uuid1');
     });
   });

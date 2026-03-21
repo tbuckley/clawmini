@@ -142,21 +142,21 @@ describe('E2E Export Lite Functionality Tests', () => {
       process.platform === 'win32' ? 'node -e "setTimeout(() => {}, 5000)"' : 'sleep 5';
     fs.writeFileSync(dumperSettings, JSON.stringify({ commands: { new: sleepCommand } }));
 
-    await runCli(['chats', 'add', 'sleep-chat']);
+    await runCli(['chats', 'add', 'lite-chat']);
     // Start the sleeper agent to block the queue
     await runCli([
       'messages',
       'send',
       'block queue',
       '--chat',
-      'sleep-chat',
+      'lite-chat',
       '--agent',
       'lite-env-dumper',
       '--no-wait',
     ]);
 
     // Send a pending message that will be queued
-    await runCli(['messages', 'send', 'my pending message', '--chat', 'sleep-chat', '--no-wait']);
+    await runCli(['messages', 'send', 'my pending message', '--chat', 'lite-chat', '--no-wait']);
 
     // Fetch the pending message
     const fetchProcess = spawn('node', [litePath, 'fetch-pending'], {

@@ -27,7 +27,7 @@ describe('Interruption flow in message handler', () => {
   });
 
   it('stops execution and clears queue when action is stop', async () => {
-    const queue = getMessageQueue('/test-interrupt-stop');
+    const queue = getMessageQueue('test-interrupt-stop');
     const abortSpy = vi.spyOn(queue, 'abortCurrent');
     const clearSpy = vi.spyOn(queue, 'clear');
 
@@ -39,7 +39,14 @@ describe('Interruption flow in message handler', () => {
     };
 
     const runCommand = vi.fn();
-    await executeDirectMessage('chat1', state, undefined, '/test-interrupt-stop', runCommand, true);
+    await executeDirectMessage(
+      'test-interrupt-stop',
+      state,
+      undefined,
+      '/test-cwd',
+      runCommand,
+      true
+    );
 
     expect(abortSpy).toHaveBeenCalled();
     expect(clearSpy).toHaveBeenCalled();
@@ -50,7 +57,7 @@ describe('Interruption flow in message handler', () => {
   });
 
   it('interrupts execution and batches pending tasks when action is interrupt', async () => {
-    const queue = getMessageQueue('/test-interrupt-batch');
+    const queue = getMessageQueue('test-interrupt-batch');
     const abortSpy = vi.spyOn(queue, 'abortCurrent');
 
     // Block the queue with a running task so subsequent ones stay pending
@@ -89,10 +96,10 @@ describe('Interruption flow in message handler', () => {
     const runCommand = vi.fn().mockResolvedValue({ stdout: 'done', stderr: '', exitCode: 0 });
 
     await executeDirectMessage(
-      'chat1',
+      'test-interrupt-batch',
       state,
       undefined,
-      '/test-interrupt-batch',
+      '/test-cwd',
       runCommand,
       true
     );
@@ -111,7 +118,7 @@ describe('Interruption flow in message handler', () => {
   });
 
   it('returns early when message is empty and no action is specified', async () => {
-    const queue = getMessageQueue('/test-interrupt-empty');
+    const queue = getMessageQueue('test-interrupt-empty');
     const state: RouterState = {
       message: '   ',
       messageId: 'mock-msg-id',
@@ -120,10 +127,10 @@ describe('Interruption flow in message handler', () => {
 
     const runCommand = vi.fn();
     await executeDirectMessage(
-      'chat1',
+      'test-interrupt-empty',
       state,
       undefined,
-      '/test-interrupt-empty',
+      '/test-cwd',
       runCommand,
       true
     );

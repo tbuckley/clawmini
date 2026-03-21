@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { Queue, getMessageQueue, abortQueuesForDirPrefix } from './queue.js';
+import { Queue, getMessageQueue, abortQueuesForChat } from './queue.js';
 
 describe('Queue', () => {
   it('should process tasks in order', async () => {
@@ -116,13 +116,9 @@ describe('Queue', () => {
   });
 
   it('should abort and clear queues matching a directory prefix', async () => {
-    const parentDir = '/tmp/chats/parentChat';
-    const subagentDir = '/tmp/chats/parentChat/subagents/uuid1';
-    const otherDir = '/tmp/chats/otherChat';
-
-    const queue1 = getMessageQueue(parentDir);
-    const queue2 = getMessageQueue(subagentDir);
-    const queue3 = getMessageQueue(otherDir);
+    const queue1 = getMessageQueue('parentChat');
+    const queue2 = getMessageQueue('parentChat:subagents:uuid1');
+    const queue3 = getMessageQueue('otherChat');
 
     let aborted1 = false;
     let aborted2 = false;
@@ -163,7 +159,7 @@ describe('Queue', () => {
 
     await new Promise((r) => setTimeout(r, 10)); // let tasks start
 
-    abortQueuesForDirPrefix(parentDir);
+    abortQueuesForChat('parentChat');
 
     await expect(task1).rejects.toThrow();
     await expect(task2).rejects.toThrow();

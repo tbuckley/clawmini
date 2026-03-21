@@ -81,20 +81,20 @@ describe('Daemon Execution Queue', () => {
     expect(chats.appendMessage).toHaveBeenCalled();
   });
 
-  it('runs concurrently for different directories', async () => {
+  it('runs concurrently for different chats', async () => {
     const mockSpawn = createMockSpawn();
     (spawn as any).mockImplementation(mockSpawn);
 
     const settings = { defaultAgent: { commands: { new: 'echo msg' } } };
 
-    handleUserMessage('chat1', 'msg1', settings as any, '/dir1', false, runCommandCallback);
+    handleUserMessage('chat2', 'msg1', settings as any, '/dir1', false, runCommandCallback);
     await new Promise((r) => setTimeout(r, 0));
     expect(mockSpawn).toHaveBeenCalledTimes(1);
 
-    handleUserMessage('chat1', 'msg2', settings as any, '/dir2', false, runCommandCallback);
+    handleUserMessage('chat3', 'msg2', settings as any, '/dir2', false, runCommandCallback);
     await new Promise((r) => setTimeout(r, 0));
 
-    // Since it's a different directory, it should spawn immediately
+    // Since it's a different chat, it should spawn immediately
     expect(mockSpawn).toHaveBeenCalledTimes(2);
   });
 
@@ -105,7 +105,7 @@ describe('Daemon Execution Queue', () => {
     const settings = { defaultAgent: { commands: { new: 'echo msg' } } };
 
     const p1 = handleUserMessage(
-      'chat1',
+      'chat4',
       'msg1',
       settings as any,
       '/dir-fail',
@@ -115,7 +115,7 @@ describe('Daemon Execution Queue', () => {
     await new Promise((r) => setTimeout(r, 0));
 
     const p2 = handleUserMessage(
-      'chat1',
+      'chat4',
       'msg2',
       settings as any,
       '/dir-fail',
@@ -128,7 +128,7 @@ describe('Daemon Execution Queue', () => {
     await p1;
 
     expect(chats.appendMessage).toHaveBeenCalledWith(
-      'chat1',
+      'chat4',
       expect.objectContaining({
         role: 'log',
         exitCode: 1,

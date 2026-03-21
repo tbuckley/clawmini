@@ -233,10 +233,9 @@ import { subagentRouter } from './subagent-router.js';
 import { tasksRouter } from './tasks-router.js';
 
 export const fetchPendingMessages = apiProcedure.mutation(async ({ ctx }) => {
-  const workspaceRoot = getWorkspaceRoot(process.cwd());
-  const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
-  const queue = getMessageQueue(agentDir);
-  const targetSessionId = ctx.tokenPayload?.sessionId || 'default';
+  if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
+  const queue = getMessageQueue(ctx.tokenPayload.chatId);
+  const targetSessionId = ctx.tokenPayload.sessionId || 'default';
 
   const extracted = queue.extractPending((p) => p.sessionId === targetSessionId);
   if (extracted.length === 0) {

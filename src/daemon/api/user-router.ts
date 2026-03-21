@@ -12,12 +12,10 @@ import {
   getDefaultChatId,
   getMessages as fetchMessages,
   deleteChat as sharedDeleteChat,
-  getChatsDir,
-  getChatRelativePath,
 } from '../chats.js';
 import { runCommand } from '../utils/spawn.js';
 import { apiProcedure, publicProcedure, router } from './trpc.js';
-import { abortQueuesForDirPrefix } from '../queue.js';
+import { abortQueuesForChat } from '../queue.js';
 import {
   getUniquePath,
   resolveAgentDir,
@@ -216,9 +214,7 @@ export const userDeleteCronJob = apiProcedure
 export const deleteChat = apiProcedure
   .input(z.object({ chatId: z.string() }))
   .mutation(async ({ input }) => {
-    const chatsDir = await getChatsDir();
-    const chatDir = path.join(chatsDir, getChatRelativePath(input.chatId));
-    abortQueuesForDirPrefix(chatDir);
+    abortQueuesForChat(input.chatId);
     await sharedDeleteChat(input.chatId);
     return { success: true };
   });
