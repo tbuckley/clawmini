@@ -9,7 +9,6 @@ import {
   getWorkspaceRoot,
   readAgentSessionSettings,
   writeAgentSessionSettings,
-  readChatSettings,
   readSettings,
   resolveAgentWorkDir,
 } from '../../shared/workspace.js';
@@ -124,54 +123,31 @@ export class AgentSession {
 
 export async function createAgentSession(options: {
   chatId: string;
-  agentId?: string | undefined;
-  sessionId?: string | undefined;
+  agentId: string;
+  sessionId: string;
   cwd: string;
   settings?: Settings | undefined;
 }) {
-  const {
-    agentId,
-    agentSessionSettings,
-    targetSessionId: finalSessionId,
-  } = await resolveSessionState(options.chatId, options.cwd, options.sessionId, options.agentId);
+  const agentSessionSettings = await readAgentSessionSettings(
+    options.agentId,
+    options.sessionId,
+    options.cwd
+  );
 
   // TODO: make it so that readSettings returns Settings|undefined
   const settings = options.settings ?? (await readSettings(options.cwd)) ?? undefined;
-  const mergedAgent = await resolveMergedAgent(agentId, settings, options.cwd);
+  const mergedAgent = await resolveMergedAgent(options.agentId, settings, options.cwd);
   const workspaceRoot = getWorkspaceRoot(options.cwd);
 
   return new AgentSession({
-    agentId,
-    sessionId: finalSessionId,
+    agentId: options.agentId,
+    sessionId: options.sessionId,
     chatId: options.chatId,
     settings: mergedAgent,
-    sessionSettings: agentSessionSettings,
+    sessionSettings: agentSessionSettings ?? null,
     workspaceRoot,
     globalSettings: settings,
   });
-}
-
-async function resolveSessionState(
-  chatId: string,
-  cwd: string,
-  sessionId?: string,
-  overrideAgentId?: string
-) {
-  const chatSettings = await readChatSettings(chatId, cwd);
-  const agentId =
-    overrideAgentId ??
-    (typeof chatSettings?.defaultAgent === 'string' ? chatSettings.defaultAgent : 'default');
-
-  let targetSessionId = sessionId;
-  if (!targetSessionId) {
-    const sessions = chatSettings?.sessions || {};
-    targetSessionId = sessions[agentId] || 'default';
-  }
-
-  const agentSessionSettings = await readAgentSessionSettings(agentId, targetSessionId, cwd);
-  const isNewSession = !agentSessionSettings;
-
-  return { chatSettings, agentId, targetSessionId, agentSessionSettings, isNewSession };
 }
 
 async function resolveMergedAgent(

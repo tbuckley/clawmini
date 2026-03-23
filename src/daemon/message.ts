@@ -30,8 +30,8 @@ export async function executeDirectMessage(
   // Load the agent
   const agentSession = await createAgentSession({
     chatId,
-    agentId: state.agentId,
-    sessionId: state.sessionId,
+    agentId: state.agentId || 'default',
+    sessionId: state.sessionId || 'default',
     cwd,
     settings,
   });
@@ -74,11 +74,10 @@ export async function executeDirectMessage(
 export async function getInitialRouterState(
   chatId: string,
   message: string,
-  cwd: string = process.cwd(),
+  chatSettings: Partial<ChatSettings>,
   overrideAgentId?: string,
   overrideSessionId?: string
 ): Promise<RouterState> {
-  const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
   const agentId = overrideAgentId ?? chatSettings.defaultAgent ?? 'default';
   const sessionId = overrideSessionId ?? chatSettings.sessions?.[agentId] ?? 'default';
   const messageId = crypto.randomUUID();
@@ -112,7 +111,7 @@ export async function handleUserMessage(
   const initialState = await getInitialRouterState(
     chatId,
     message,
-    cwd,
+    chatSettings,
     overrideAgentId,
     sessionId
   );
@@ -184,5 +183,8 @@ async function applyRouterStateUpdates(
   // Ensure finalSessionId is set on state so extractDirectState gets it.
   if (finalState.sessionId === undefined) {
     finalState.sessionId = finalSessionId;
+  }
+  if (finalState.agentId === undefined) {
+    finalState.agentId = currentAgentId;
   }
 }
