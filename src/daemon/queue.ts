@@ -88,15 +88,17 @@ export class Queue<TPayload = string> {
 
   interrupt(predicate?: (payload: TPayload) => boolean): TPayload[] {
     const payloads: TPayload[] = [];
-    
-    const currentMatches = !predicate || (this.currentPayload !== undefined && predicate(this.currentPayload));
+
+    const currentMatches =
+      !predicate || (this.currentPayload !== undefined && predicate(this.currentPayload));
     if (currentMatches && this.currentPayload !== undefined) {
       payloads.push(this.currentPayload);
-      this.abortCurrent(predicate);
     }
-    
+
+    this.abortCurrent(predicate);
+
     payloads.push(...this.extractPending(predicate));
-    
+
     return payloads;
   }
 }
