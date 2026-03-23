@@ -1,4 +1,4 @@
-import type { Agent, AgentSessionSettings, Settings } from '../../shared/config.js';
+import type { Agent, Settings } from '../../shared/config.js';
 import { getMessageQueue } from '../queue.js';
 import { AgentRunner } from './agent-runner.js';
 import type { Logger, Message } from './types.js';
@@ -11,7 +11,7 @@ import {
   readSettings,
   resolveAgentWorkDir,
 } from '../../shared/workspace.js';
-import { formatPendingMessages } from './utils.js';
+import { formatPendingMessages, isNewSession } from './utils.js';
 import { createChatLogger } from './chat-logger.js';
 import { sandboxExecutionContext, type Fallback } from './agent-context.js';
 import { applyEnvOverrides, getActiveEnvKeys } from '../../shared/utils/env.js';
@@ -22,7 +22,6 @@ export class AgentSession {
   public readonly sessionId: string;
   public readonly chatId: string;
   public readonly settings: Agent;
-  public sessionSettings: AgentSessionSettings | null;
   public readonly workspaceRoot: string;
   public readonly globalSettings: Settings | undefined;
   public readonly logger: Logger;
@@ -32,7 +31,6 @@ export class AgentSession {
     sessionId: string;
     chatId: string;
     settings: Agent;
-    sessionSettings: AgentSessionSettings | null;
     workspaceRoot: string;
     globalSettings: Settings | undefined;
     logger?: Logger;
@@ -41,15 +39,10 @@ export class AgentSession {
     this.sessionId = config.sessionId;
     this.chatId = config.chatId;
     this.settings = config.settings;
-    this.sessionSettings = config.sessionSettings;
     this.workspaceRoot = config.workspaceRoot;
     this.globalSettings = config.globalSettings;
 
     this.logger = config.logger ?? createChatLogger(this.chatId);
-  }
-
-  get isNewSession(): boolean {
-    return !this.sessionSettings;
   }
 
   async buildExecutionContext(
@@ -77,19 +70,15 @@ export class AgentSession {
 
     applyEnvOverrides(env, currentAgent.env);
 
-    if (!this.isNewSession && currentAgent.commands?.append) {
+    if (!isNewSession(routerEnv) && currentAgent.commands?.append) {
       initialCommand = currentAgent.commands.append;
-      applyEnvOverrides(env, this.sessionSettings?.env);
     }
 
     if (!initialCommand) {
       return null;
     }
 
-    const agentSpecificEnvKeys = getActiveEnvKeys(
-      currentAgent.env,
-      !this.isNewSession ? this.sessionSettings?.env : undefined
-    );
+    const agentSpecificEnvKeys = getActiveEnvKeys(currentAgent.env);
     agentSpecificEnvKeys.add('CLAW_CLI_MESSAGE');
 
     Object.assign(env, routerEnv);
@@ -171,9 +160,13 @@ export class AgentSession {
     await queue.enqueue(
       async (signal) => {
         // Refresh sessionSettings immediately before execution
-        this.sessionSettings =
-          (await readAgentSessionSettings(this.agentId, this.sessionId, this.workspaceRoot)) ??
-          null;
+        const sessionSettings = await readAgentSessionSettings(
+          this.agentId,
+          this.sessionId,
+          this.workspaceRoot
+        );
+        // TODO: create a copy of the message first
+        applyEnvOverrides(message.env, sessionSettings?.env);
 
         const runner = this.createRunner();
         const result = await runner.executeWithFallbacks(message, signal);
@@ -216,7 +209,6 @@ export async function createAgentSession(options: {
     sessionId: options.sessionId,
     chatId: options.chatId,
     settings: mergedAgent,
-    sessionSettings: null, // Resolves lazily at execution time
     workspaceRoot,
     globalSettings: settings,
     ...(options.logger ? { logger: options.logger } : {}),

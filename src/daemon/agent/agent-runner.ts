@@ -3,6 +3,7 @@ import type { ExecutionResponse, Message, RunCommandFn } from './types.js';
 import { type Fallback } from './agent-context.js';
 import { extractMessageContent, extractSessionId } from './agent-extractors.js';
 import type { AgentSession } from './agent-session.js';
+import { isNewSession } from './utils.js';
 
 export function calculateDelay(
   attempt: number,
@@ -22,10 +23,6 @@ export class AgentRunner {
     private readonly session: AgentSession,
     private readonly runCommand: RunCommandFn
   ) {}
-
-  get isNewSession(): boolean {
-    return !this.session.sessionSettings;
-  }
 
   private async withTypingIndicator<T>(fn: () => Promise<T>): Promise<T> {
     const interval = setInterval(() => emitTyping(this.session.chatId), 5000);
@@ -97,7 +94,7 @@ export class AgentRunner {
 
     let extractedSessionId: string | undefined;
 
-    if (success && this.isNewSession && context.currentAgent.commands?.getSessionId) {
+    if (success && isNewSession(message.env) && context.currentAgent.commands?.getSessionId) {
       const extraction = await extractSessionId(
         context,
         mainResult,
