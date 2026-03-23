@@ -1,21 +1,22 @@
 /* eslint-disable max-lines */
-import { type CommandLogMessage, type ChatMessage } from './chats.js';
+import { type CommandLogMessage } from '../chats.js';
 import {
   type Settings,
   type Agent,
   type AgentSessionSettings,
   type FallbackSchema,
-} from '../shared/config.js';
+} from '../../shared/config.js';
 import {
   getActiveEnvironmentInfo,
   getEnvironmentPath,
   readEnvironment,
   writeAgentSessionSettings,
-} from '../shared/workspace.js';
-import { getApiContext, generateToken } from './auth.js';
-import { emitTyping } from './events.js';
-import { applyEnvOverrides, getActiveEnvKeys } from '../shared/utils/env.js';
+} from '../../shared/workspace.js';
+import { getApiContext, generateToken } from '../auth.js';
+import { emitTyping } from '../events.js';
+import { applyEnvOverrides, getActiveEnvKeys } from '../../shared/utils/env.js';
 import { z } from 'zod';
+import type { Logger, Message } from './types.js';
 
 type Fallback = z.infer<typeof FallbackSchema>;
 
@@ -89,16 +90,6 @@ function formatEnvironmentPrefix(
     /{(WORKSPACE_DIR|AGENT_DIR|ENV_DIR|HOME_DIR|ENV_ARGS)}/g,
     (match) => map[match] || match
   );
-}
-
-export interface Logger {
-  log(msg: ChatMessage): Promise<void>;
-}
-
-export interface Message {
-  id: string;
-  content: string;
-  env: Record<string, string>;
 }
 
 export class AgentRunner {

@@ -16,7 +16,7 @@ import { RequestStore } from '../request-store.js';
 import { CronJobSchema } from '../../shared/config.js';
 import { apiProcedure, router } from './trpc.js';
 import { getMessageQueue } from '../queue.js';
-import { formatPendingMessages } from '../message.js';
+import { formatPendingMessages } from '../agent/utils.js';
 import {
   resolveAgentDir,
   validateLogFile,
