@@ -222,7 +222,7 @@ export async function executeDirectMessage(
   const taskPromise = queue.enqueue(
     async (signal) => {
       const runner = agentSession.createRunner(settings, runCommand);
-      const lastLogMsg = await runner.executeWithFallbacks(state, userMsg, signal);
+      const lastLogMsg = await runner.executeWithFallbacks(state, signal);
       if (lastLogMsg) {
         await logger.log(lastLogMsg);
       }
@@ -252,13 +252,12 @@ export async function getInitialRouterState(
   message: string,
   cwd: string = process.cwd(),
   overrideAgentId?: string,
-  overrideSessionId?: string,
-  overrideMessageId?: string
+  overrideSessionId?: string
 ): Promise<RouterState> {
   const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
   const agentId = overrideAgentId ?? chatSettings.defaultAgent ?? 'default';
   const sessionId = overrideSessionId ?? chatSettings.sessions?.[agentId] ?? 'default';
-  const messageId = overrideMessageId ?? crypto.randomUUID();
+  const messageId = crypto.randomUUID();
 
   return {
     messageId,
@@ -277,6 +276,7 @@ export async function handleUserMessage(
   cwd: string = process.cwd(),
   noWait: boolean = false,
   runCommand: RunCommandFn,
+
   sessionId?: string,
   overrideAgentId?: string
 ): Promise<void> {

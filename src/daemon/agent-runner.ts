@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { type UserMessage, type CommandLogMessage, type ChatMessage } from './chats.js';
+import { type CommandLogMessage, type ChatMessage } from './chats.js';
 import type { RouterState } from './routers/types.js';
 import {
   type Settings,
@@ -286,7 +286,7 @@ export class AgentRunner {
   }
 
   private buildLogMessage(
-    userMsg: UserMessage,
+    messageId: string,
     command: string,
     content: string,
     errors: string[],
@@ -295,7 +295,7 @@ export class AgentRunner {
     const isVerbose = content.includes('NO_REPLY_NECESSARY');
     return {
       id: crypto.randomUUID(),
-      messageId: userMsg.id,
+      messageId,
       role: 'log',
       content,
       stdout: mainResult.stdout,
@@ -330,7 +330,6 @@ export class AgentRunner {
 
   private async executeSingleAttempt(
     state: RouterState,
-    userMsg: UserMessage,
     fallback?: Fallback | undefined,
     signal?: AbortSignal | undefined
   ): Promise<{ success: boolean; logMsg?: CommandLogMessage }> {
@@ -372,13 +371,18 @@ export class AgentRunner {
 
     return {
       success,
-      logMsg: this.buildLogMessage(userMsg, context.command, finalContent, errors, mainResult),
+      logMsg: this.buildLogMessage(
+        state.messageId,
+        context.command,
+        finalContent,
+        errors,
+        mainResult
+      ),
     };
   }
 
   async executeWithFallbacks(
     state: RouterState,
-    userMsg: UserMessage,
     signal?: AbortSignal | undefined
   ): Promise<CommandLogMessage | undefined> {
     let lastLogMsg: CommandLogMessage | undefined;
@@ -387,7 +391,7 @@ export class AgentRunner {
       if (attempt.delay > 0) {
         const retryLogMsg: CommandLogMessage = {
           id: crypto.randomUUID(),
-          messageId: userMsg.id,
+          messageId: state.messageId,
           role: 'log',
           content: `Error running agent, retrying in ${Math.round(attempt.delay / 1000)} seconds...`,
           stderr: '',
@@ -400,12 +404,7 @@ export class AgentRunner {
         await sleep(attempt.delay);
       }
 
-      const attemptResult = await this.executeSingleAttempt(
-        state,
-        userMsg,
-        attempt.fallback,
-        signal
-      );
+      const attemptResult = await this.executeSingleAttempt(state, attempt.fallback, signal);
 
       lastLogMsg = attemptResult.logMsg || lastLogMsg;
       if (attemptResult.success) {
