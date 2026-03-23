@@ -1,4 +1,3 @@
-import type { MaybePromise } from '@trpc/server/unstable-core-do-not-import';
 import type { Agent, AgentSessionSettings, Settings } from '../../shared/config.js';
 import { getMessageQueue } from '../queue.js';
 import { AgentRunner } from './agent-runner.js';
@@ -145,7 +144,7 @@ export class AgentSession {
     queue.clear();
   }
 
-  interrupt(message: Message): MaybePromise<void> {
+  interrupt(message: Message): Message {
     const queue = this.getTaskQueue();
 
     const isMatchingSession = (p: { sessionId: string }) => p.sessionId === this.sessionId;
@@ -155,9 +154,12 @@ export class AgentSession {
       // TODO: Figure out how to handle merging payloads when they have different env settings or other config.
       // Currently, we only preserve the text content and drop any specific configuration attached to individual messages.
       const pendingText = formatPendingMessages(payloads.map((p) => p.text));
-      message.content = `${pendingText}\n\n<message>\n${message.content}\n</message>`.trim();
+      return {
+        ...message,
+        content: `${pendingText}\n\n<message>\n${message.content}\n</message>`.trim(),
+      };
     }
-    return this.handleMessage(message);
+    return message;
   }
 
   async handleMessage(message: Message): Promise<void> {

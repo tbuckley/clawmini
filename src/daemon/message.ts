@@ -36,7 +36,7 @@ export async function executeDirectMessage(
     settings,
     logger,
   });
-  const message: Message = {
+  let finalMessage: Message = {
     id: state.messageId,
     content: state.message,
     env: state.env ?? {},
@@ -48,12 +48,11 @@ export async function executeDirectMessage(
     return;
   }
   if (state.action === 'interrupt') {
-    agentSession.interrupt(message);
-    return;
+    finalMessage = agentSession.interrupt(finalMessage);
   }
 
   // Process message
-  const taskPromise = agentSession.handleMessage(message);
+  const taskPromise = agentSession.handleMessage(finalMessage);
 
   if (!noWait) {
     try {
