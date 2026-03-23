@@ -10,6 +10,7 @@
         "GEMINI_SYSTEM_MD": "true",
         "GEMINI_API_KEY": true
     },
+    "skillsDir": ".gemini/skills/",
     "fallbacks": [
         {
             "retries": 1

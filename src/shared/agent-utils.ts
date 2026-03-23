@@ -4,6 +4,7 @@ import {
   applyTemplateToAgent,
   readChatSettings,
   writeChatSettings,
+  copyAgentSkills,
 } from './workspace.js';
 import { createChat, listChats } from './chats.js';
 
@@ -17,6 +18,15 @@ export async function createAgentWithChat(
 
   if (template) {
     await applyTemplateToAgent(agentId, template, agentData, startDir);
+  }
+
+  try {
+    await copyAgentSkills(agentId, startDir);
+    console.log(`Copied skills to agent ${agentId}.`);
+  } catch (err) {
+    console.warn(
+      `Warning: Failed to copy skills to agent ${agentId}: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
 
   const existingChats = await listChats(startDir);

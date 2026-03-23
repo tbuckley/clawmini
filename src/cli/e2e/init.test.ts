@@ -42,6 +42,13 @@ describe('initCmd with flags', () => {
 
     const chatSettingsPath = path.join(clawminiDir, 'chats', 'test-agent', 'settings.json');
     expect(fs.existsSync(chatSettingsPath)).toBe(true);
+
+    // Verify skills were copied to the agent's default skills directory (.agents/skills)
+    const skillsDir = path.join(e2eDir, 'test-agent', '.agents', 'skills');
+    expect(fs.existsSync(skillsDir)).toBe(true);
+    // Check for at least one skill inside
+    const skillsList = fs.readdirSync(skillsDir);
+    expect(skillsList.length).toBeGreaterThan(0);
   });
 
   it.skip('should run init and enable an environment', async () => {
