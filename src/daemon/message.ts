@@ -1,4 +1,3 @@
-/* eslint-disable max-lines */
 import path from 'node:path';
 import {
   appendMessage,
@@ -9,61 +8,22 @@ import {
 import { getMessageQueue } from './queue.js';
 import { executeRouterPipeline } from './routers.js';
 import type { RouterState } from './routers/types.js';
-import {
-  type Settings,
-  type Agent,
-  type AgentSessionSettings,
-  type FallbackSchema,
-} from '../shared/config.js';
+import { type Settings, type Agent } from '../shared/config.js';
 import {
   readChatSettings,
   writeChatSettings,
   readAgentSessionSettings,
-  writeAgentSessionSettings,
   getAgent,
   getWorkspaceRoot,
-  getActiveEnvironmentInfo,
-  getEnvironmentPath,
-  readEnvironment,
 } from '../shared/workspace.js';
 import { cronManager } from './cron.js';
-import { getApiContext, generateToken } from './auth.js';
-import { emitTyping } from './events.js';
-import { applyEnvOverrides, getActiveEnvKeys } from '../shared/utils/env.js';
-import { z } from 'zod';
+import { AgentRunner, type RunCommandFn } from './agent-runner.js';
 
-type Fallback = z.infer<typeof FallbackSchema>;
-
-export function calculateDelay(
-  attempt: number,
-  baseDelayMs: number,
-  isFallback: boolean = false
-): number {
-  const effectiveAttempt = isFallback ? attempt + 1 : attempt;
-  if (effectiveAttempt <= 0) return 0;
-  const delay = baseDelayMs * Math.pow(2, effectiveAttempt - 1);
-  return Math.min(delay, 15000);
-}
+export { calculateDelay, type RunCommandResult, type RunCommandFn } from './agent-runner.js';
 
 export function formatPendingMessages(payloads: string[]): string {
   return payloads.map((text) => `<message>\n${text}\n</message>`).join('\n\n');
 }
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-export type RunCommandResult = {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-};
-
-export type RunCommandFn = (args: {
-  command: string;
-  cwd: string;
-  env: Record<string, string>;
-  stdin?: string | undefined;
-  signal?: AbortSignal | undefined;
-}) => Promise<RunCommandResult>;
 
 async function resolveSessionState(
   chatId: string,
@@ -88,110 +48,36 @@ async function resolveSessionState(
   return { chatSettings, agentId, targetSessionId, agentSessionSettings, isNewSession };
 }
 
-function prepareCommandAndEnv(
-  agent: Agent,
-  message: string,
-  isNewSession: boolean,
-  agentSessionSettings: AgentSessionSettings | null,
-  fallback?: Fallback
-): { command: string; env: Record<string, string>; currentAgent: Agent } {
-  const currentAgent: Agent = {
-    ...agent,
-    commands: {
-      ...agent.commands,
-      ...(fallback?.commands || {}),
-    },
-    env: {
-      ...agent.env,
-      ...(fallback?.env || {}),
-    },
-  };
-
-  let command = currentAgent.commands?.new ?? '';
-  const env = {
-    ...process.env,
-    CLAW_CLI_MESSAGE: message,
-  } as Record<string, string>;
-
-  applyEnvOverrides(env, currentAgent.env);
-
-  if (!isNewSession && currentAgent.commands?.append) {
-    command = currentAgent.commands.append;
-    applyEnvOverrides(env, agentSessionSettings?.env);
-  }
-
-  return { command, env, currentAgent };
-}
-
-async function runExtractionCommand(
-  name: string,
-  command: string,
-  runCommand: RunCommandFn,
-  cwd: string,
-  env: Record<string, string>,
-  mainResult: RunCommandResult,
-  signal?: AbortSignal
-): Promise<{ result?: string; error?: string }> {
-  try {
-    console.log(`Executing extraction command (${name}): ${command}`);
-    const res = await runCommand({
-      command,
-      cwd,
-      env,
-      stdin: mainResult.stdout,
-      signal,
-    });
-    if (res.exitCode === 0) {
-      return { result: res.stdout.trim() };
-    } else {
-      return { error: `${name} failed: ${res.stderr}` };
-    }
-  } catch (e) {
-    return { error: `${name} error: ${(e as Error).message}` };
-  }
-}
-
-/**
- * Formats the environment prefix string by replacing placeholders with actual values.
- * Available placeholders:
- * - {WORKSPACE_DIR}: The root directory of the workspace.
- * - {AGENT_DIR}: The directory where the agent is executing.
- * - {ENV_DIR}: The directory of the active environment.
- * - {HOME_DIR}: The home directory of the current user.
- * - {ENV_ARGS}: The formatted environment arguments based on envFormat.
- */
-function formatEnvironmentPrefix(
-  prefix: string,
-  replacements: {
-    targetPath: string;
-    executionCwd: string;
-    envDir: string;
-    envArgs: string;
-  }
-): string {
-  const map: Record<string, string> = {
-    '{WORKSPACE_DIR}': replacements.targetPath,
-    '{AGENT_DIR}': replacements.executionCwd,
-    '{ENV_DIR}': replacements.envDir,
-    '{HOME_DIR}': process.env.HOME || '',
-    '{ENV_ARGS}': replacements.envArgs,
-  };
-  return prefix.replace(
-    /{(WORKSPACE_DIR|AGENT_DIR|ENV_DIR|HOME_DIR|ENV_ARGS)}/g,
-    (match) => map[match] || match
-  );
-}
-
-interface Logger {
-  log(msg: ChatMessage): Promise<void>;
-}
-
-function createChatLogger(chatId: string): Logger {
+function createChatLogger(chatId: string) {
   return {
     log: async (msg: ChatMessage) => {
       await appendMessage(chatId, msg);
     },
   };
+}
+
+async function resolveMergedAgent(
+  agentId: string,
+  settings: Settings | undefined,
+  cwd: string
+): Promise<Agent> {
+  let mergedAgent: Agent = settings?.defaultAgent || {};
+  if (agentId !== 'default') {
+    try {
+      const customAgent = await getAgent(agentId, cwd);
+      if (customAgent) {
+        mergedAgent = {
+          ...mergedAgent,
+          ...customAgent,
+          commands: { ...mergedAgent.commands, ...customAgent.commands },
+          env: { ...mergedAgent.env, ...customAgent.env },
+        };
+      }
+    } catch {
+      // Fall back to default if agent not found
+    }
+  }
+  return mergedAgent;
 }
 
 export async function executeDirectMessage(
@@ -271,32 +157,10 @@ export async function executeDirectMessage(
       const {
         agentId,
         agentSessionSettings,
-        isNewSession,
         targetSessionId: finalSessionId,
       } = await resolveSessionState(chatId, cwd, state.sessionId, state.agentId);
 
-      let mergedAgent: Agent = settings?.defaultAgent || {};
-      if (agentId !== 'default') {
-        try {
-          const customAgent = await getAgent(agentId, cwd);
-          if (customAgent) {
-            mergedAgent = {
-              ...mergedAgent,
-              ...customAgent,
-              commands: { ...mergedAgent.commands, ...customAgent.commands },
-              env: { ...mergedAgent.env, ...customAgent.env },
-            };
-          }
-        } catch {
-          // Fall back to default if agent not found
-        }
-      }
-
-      const fallbacks = mergedAgent.fallbacks || [];
-      const executionConfigs: { fallback?: Fallback; retries: number; delayMs: number }[] = [
-        { retries: 0, delayMs: 1000 },
-        ...fallbacks.map((f) => ({ fallback: f, retries: f.retries, delayMs: f.delayMs })),
-      ];
+      const mergedAgent = await resolveMergedAgent(agentId, settings, cwd);
 
       const workspaceRoot = getWorkspaceRoot(cwd);
       let executionCwd = cwd;
@@ -306,225 +170,20 @@ export async function executeDirectMessage(
         executionCwd = path.resolve(workspaceRoot, agentId);
       }
 
-      let lastLogMsg: CommandLogMessage | undefined;
-      let success = false;
+      const runner = new AgentRunner(
+        chatId,
+        agentId,
+        finalSessionId,
+        mergedAgent,
+        agentSessionSettings,
+        executionCwd,
+        cwd,
+        settings,
+        logger,
+        runCommand
+      );
 
-      for (let configIdx = 0; configIdx < executionConfigs.length; configIdx++) {
-        const config = executionConfigs[configIdx]!;
-        const isFallbackConfig = configIdx > 0;
-        for (let attempt = 0; attempt <= config.retries; attempt++) {
-          const delay = calculateDelay(attempt, config.delayMs, isFallbackConfig);
-          if (delay > 0) {
-            const retryLogMsg: CommandLogMessage = {
-              id: crypto.randomUUID(),
-              messageId: userMsg.id,
-              role: 'log',
-              content: `Error running agent, retrying in ${Math.round(delay / 1000)} seconds...`,
-              stderr: '',
-              timestamp: new Date().toISOString(),
-              command: 'retry-delay',
-              cwd: executionCwd,
-              exitCode: 0,
-            };
-            await logger.log(retryLogMsg);
-            await sleep(delay);
-          }
-
-          const {
-            env,
-            currentAgent,
-            command: initialCommand,
-          } = prepareCommandAndEnv(
-            mergedAgent,
-            state.message,
-            isNewSession,
-            agentSessionSettings,
-            config.fallback
-          );
-          let command = initialCommand;
-
-          if (!command) {
-            continue;
-          }
-
-          const agentSpecificEnv = getActiveEnvKeys(
-            currentAgent.env,
-            !isNewSession ? agentSessionSettings?.env : undefined
-          );
-          agentSpecificEnv.add('CLAW_CLI_MESSAGE');
-
-          Object.assign(env, routerEnv);
-          Object.keys(routerEnv).forEach((k) => agentSpecificEnv.add(k));
-
-          const apiCtx = getApiContext(settings);
-          if (apiCtx) {
-            const proxyUrl = apiCtx.proxy_host
-              ? `${apiCtx.proxy_host}:${apiCtx.port}`
-              : `http://${apiCtx.host}:${apiCtx.port}`;
-            env['CLAW_API_URL'] = proxyUrl;
-            agentSpecificEnv.add('CLAW_API_URL');
-
-            const token = generateToken({
-              chatId,
-              agentId,
-              sessionId: finalSessionId,
-              timestamp: Date.now(),
-            });
-            env['CLAW_API_TOKEN'] = token;
-            agentSpecificEnv.add('CLAW_API_TOKEN');
-          }
-
-          const activeEnvInfo = await getActiveEnvironmentInfo(executionCwd, cwd);
-          if (activeEnvInfo) {
-            const activeEnvName = activeEnvInfo.name;
-            const activeEnv = await readEnvironment(activeEnvName, cwd);
-
-            if (activeEnv?.env) {
-              for (const [key, value] of Object.entries(activeEnv.env)) {
-                if (value === false) {
-                  delete env[key];
-                  agentSpecificEnv.delete(key);
-                } else {
-                  let interpolatedValue = String(value);
-                  interpolatedValue = interpolatedValue.replace(
-                    /\{PATH\}/g,
-                    process.env.PATH || ''
-                  );
-                  interpolatedValue = interpolatedValue.replace(
-                    /\{ENV_DIR\}/g,
-                    getEnvironmentPath(activeEnvName, cwd)
-                  );
-                  interpolatedValue = interpolatedValue.replace(
-                    /\{WORKSPACE_DIR\}/g,
-                    activeEnvInfo.targetPath
-                  );
-                  env[key] = interpolatedValue;
-                  agentSpecificEnv.add(key);
-                }
-              }
-            }
-
-            if (activeEnv?.prefix) {
-              const envArgs = Array.from(agentSpecificEnv)
-                .map((key) => {
-                  if (activeEnv.envFormat) {
-                    return activeEnv.envFormat.replace('{key}', key);
-                  }
-                  return key;
-                })
-                .join(' ');
-
-              const prefixReplaced = formatEnvironmentPrefix(activeEnv.prefix, {
-                targetPath: activeEnvInfo.targetPath,
-                executionCwd,
-                envDir: getEnvironmentPath(activeEnvName, cwd),
-                envArgs,
-              });
-
-              if (prefixReplaced.includes('{COMMAND}')) {
-                command = prefixReplaced.replace('{COMMAND}', command);
-              } else {
-                command = `${prefixReplaced} ${command}`;
-              }
-            }
-          }
-
-          console.log(`Executing command: ${command}`);
-          let mainResult;
-          const typingInterval = setInterval(() => {
-            emitTyping(chatId);
-          }, 5000);
-          try {
-            mainResult = await runCommand({ command, cwd: executionCwd, env, signal });
-          } finally {
-            clearInterval(typingInterval);
-          }
-
-          const logMsg: CommandLogMessage = {
-            id: crypto.randomUUID(),
-            messageId: userMsg.id,
-            role: 'log',
-            content: mainResult.stdout,
-            stdout: mainResult.stdout,
-            stderr: '',
-            timestamp: new Date().toISOString(),
-            command,
-            cwd: executionCwd,
-            exitCode: mainResult.exitCode,
-            ...(mainResult.stdout.includes('NO_REPLY_NECESSARY')
-              ? { level: 'verbose' as const }
-              : {}),
-          };
-
-          const errors: string[] = [];
-          if (mainResult.stderr) {
-            errors.push(mainResult.stderr);
-          }
-
-          let currentSuccess = mainResult.exitCode === 0;
-
-          if (currentSuccess) {
-            if (currentAgent.commands?.getMessageContent) {
-              const { result, error } = await runExtractionCommand(
-                'getMessageContent',
-                currentAgent.commands.getMessageContent,
-                runCommand,
-                executionCwd,
-                env,
-                mainResult,
-                signal
-              );
-              if (result !== undefined) {
-                logMsg.content = result;
-                logMsg.stdout = mainResult.stdout;
-                if (result.includes('NO_REPLY_NECESSARY')) {
-                  logMsg.level = 'verbose';
-                } else {
-                  delete logMsg.level;
-                }
-                if (result.trim() === '') {
-                  currentSuccess = false;
-                }
-              }
-              if (error) {
-                errors.push(error);
-              }
-            }
-          }
-
-          logMsg.stderr = errors.join('\n\n');
-          lastLogMsg = logMsg;
-
-          if (currentSuccess) {
-            success = true;
-            if (isNewSession && currentAgent.commands?.getSessionId) {
-              const { result, error } = await runExtractionCommand(
-                'getSessionId',
-                currentAgent.commands.getSessionId,
-                runCommand,
-                executionCwd,
-                env,
-                mainResult,
-                signal
-              );
-              if (result) {
-                await writeAgentSessionSettings(
-                  agentId,
-                  finalSessionId,
-                  { env: { SESSION_ID: result } },
-                  cwd
-                );
-              }
-              if (error) {
-                // We don't fail the whole thing for getSessionId error, but we log it.
-                logMsg.stderr = [logMsg.stderr, error].filter(Boolean).join('\n\n');
-              }
-            }
-            break;
-          }
-        }
-        if (success) break;
-      }
+      const lastLogMsg = await runner.executeWithFallbacks(state, routerEnv, userMsg, signal);
 
       if (lastLogMsg) {
         await appendMessage(chatId, lastLogMsg);
