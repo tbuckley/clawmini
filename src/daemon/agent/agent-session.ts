@@ -16,6 +16,7 @@ export class AgentSession {
   public readonly sessionSettings: AgentSessionSettings | null;
   public readonly workspaceRoot: string;
   public readonly globalSettings: Settings | undefined;
+  private logger: Logger;
 
   constructor(config: {
     agentId: string;
@@ -33,11 +34,10 @@ export class AgentSession {
     this.sessionSettings = config.sessionSettings;
     this.workspaceRoot = config.workspaceRoot;
     this.globalSettings = config.globalSettings;
+
+    this.logger = createChatLogger(this.chatId);
   }
 
-  createLogger(): Logger {
-    return createChatLogger(this.chatId);
-  }
   createRunner(): AgentRunner {
     return new AgentRunner(
       this.chatId,
@@ -48,7 +48,7 @@ export class AgentSession {
       this.workDirectory,
       this.workspaceRoot,
       this.globalSettings,
-      this.createLogger(),
+      this.logger,
       runCommand
     );
   }
@@ -94,13 +94,12 @@ export class AgentSession {
     }
 
     const queue = this.getTaskQueue();
-    const logger = this.createLogger();
     await queue.enqueue(
       async (signal) => {
         const runner = this.createRunner();
         const lastLogMsg = await runner.executeWithFallbacks(message, signal);
         if (lastLogMsg) {
-          await logger.log(lastLogMsg);
+          await this.logger.log(lastLogMsg);
         }
       },
       { text: message.content, sessionId: this.sessionId }
