@@ -34,6 +34,7 @@ export async function executeDirectMessage(
     sessionId: state.sessionId || 'default',
     cwd,
     settings,
+    logger,
   });
   const message: Message = {
     id: state.messageId,

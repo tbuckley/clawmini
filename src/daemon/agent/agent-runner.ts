@@ -1,8 +1,8 @@
-import { type Agent, type AgentSessionSettings, type Settings } from '../../shared/config.js';
 import { emitTyping } from '../events.js';
-import type { ExecutionResponse, Logger, Message, RunCommandFn } from './types.js';
+import type { ExecutionResponse, Message, RunCommandFn } from './types.js';
 import { type Fallback, buildAgentContext } from './agent-context.js';
 import { extractMessageContent, extractSessionId } from './agent-extractors.js';
+import type { AgentSession } from './agent-session.js';
 
 export function calculateDelay(
   attempt: number,
@@ -19,24 +19,16 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export class AgentRunner {
   constructor(
-    private readonly chatId: string,
-    private readonly agentId: string,
-    private readonly finalSessionId: string,
-    private readonly mergedAgent: Agent,
-    private readonly agentSessionSettings: AgentSessionSettings | null,
-    private readonly executionCwd: string,
-    private readonly cwd: string,
-    private readonly settings: Settings | undefined,
-    private readonly logger: Logger,
+    private readonly session: AgentSession,
     private readonly runCommand: RunCommandFn
   ) {}
 
   get isNewSession(): boolean {
-    return !this.agentSessionSettings;
+    return !this.session.sessionSettings;
   }
 
   private async withTypingIndicator<T>(fn: () => Promise<T>): Promise<T> {
-    const interval = setInterval(() => emitTyping(this.chatId), 5000);
+    const interval = setInterval(() => emitTyping(this.session.chatId), 5000);
     try {
       return await fn();
     } finally {
@@ -45,7 +37,7 @@ export class AgentRunner {
   }
 
   private *getExecutionAttempts() {
-    const fallbacks = this.mergedAgent.fallbacks || [];
+    const fallbacks = this.session.settings.fallbacks || [];
     const executionConfigs = [
       { fallback: undefined, retries: 0, delayMs: 1000 },
       ...fallbacks.map((f) => ({ fallback: f, retries: f.retries, delayMs: f.delayMs })),
@@ -73,15 +65,7 @@ export class AgentRunner {
       message: message.content,
       routerEnv: message.env,
       fallback,
-      mergedAgent: this.mergedAgent,
-      isNewSession: this.isNewSession,
-      agentSessionSettings: this.agentSessionSettings,
-      settings: this.settings,
-      chatId: this.chatId,
-      agentId: this.agentId,
-      finalSessionId: this.finalSessionId,
-      executionCwd: this.executionCwd,
-      cwd: this.cwd,
+      session: this.session,
     });
 
     if (!context) return { success: false };
@@ -89,7 +73,7 @@ export class AgentRunner {
     const mainResult = await this.withTypingIndicator(() =>
       this.runCommand({
         command: context.command,
-        cwd: this.executionCwd,
+        cwd: this.session.workDirectory,
         env: context.env,
         signal,
       })
@@ -104,7 +88,7 @@ export class AgentRunner {
         context,
         mainResult,
         this.runCommand,
-        this.executionCwd,
+        this.session.workDirectory,
         signal
       );
       if (extraction.error) additonalErrors.push(extraction.error);
@@ -119,7 +103,7 @@ export class AgentRunner {
         context,
         mainResult,
         this.runCommand,
-        this.executionCwd,
+        this.session.workDirectory,
         signal
       );
       if (extraction.error) additonalErrors.push(extraction.error);
@@ -134,7 +118,7 @@ export class AgentRunner {
         messageId: message.id,
         content: finalContent,
         command: context.command,
-        cwd: this.executionCwd,
+        cwd: this.session.workDirectory,
         extractedSessionId,
         result: {
           ...mainResult,
@@ -152,10 +136,10 @@ export class AgentRunner {
 
     for (const attempt of this.getExecutionAttempts()) {
       if (attempt.delay > 0) {
-        await this.logger.logCommandRetry({
+        await this.session.logger.logCommandRetry({
           messageId: message.id,
           content: `Error running agent, retrying in ${Math.round(attempt.delay / 1000)} seconds...`,
-          cwd: this.executionCwd,
+          cwd: this.session.workDirectory,
         });
         await sleep(attempt.delay);
       }

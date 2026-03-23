@@ -1,9 +1,4 @@
-import {
-  type Agent,
-  type AgentSessionSettings,
-  type FallbackSchema,
-  type Settings,
-} from '../../shared/config.js';
+import { type Agent, type FallbackSchema } from '../../shared/config.js';
 import {
   getActiveEnvironmentInfo,
   getEnvironmentPath,
@@ -95,35 +90,31 @@ export async function sandboxExecutionContext(
   return command;
 }
 
+import type { AgentSession } from './agent-session.js';
+
 export interface BuildContextOptions {
   message: string;
   routerEnv: Record<string, string>;
   fallback?: Fallback | undefined;
-  mergedAgent: Agent;
-  isNewSession: boolean;
-  agentSessionSettings: AgentSessionSettings | null;
-  settings: Settings | undefined;
-  chatId: string;
-  agentId: string;
-  finalSessionId: string;
-  executionCwd: string;
-  cwd: string;
+  session: AgentSession;
 }
 
 export async function buildAgentContext(
   options: BuildContextOptions
 ): Promise<{ command: string; env: Record<string, string>; currentAgent: Agent } | null> {
   const currentAgent: Agent = {
-    ...options.mergedAgent,
+    ...options.session.settings,
     commands: {
-      ...options.mergedAgent.commands,
+      ...options.session.settings.commands,
       ...(options.fallback?.commands || {}),
     },
     env: {
-      ...options.mergedAgent.env,
+      ...options.session.settings.env,
       ...(options.fallback?.env || {}),
     },
   };
+
+  const isNewSession = !options.session.sessionSettings;
 
   let initialCommand = currentAgent.commands?.new ?? '';
   const env = {
@@ -133,9 +124,9 @@ export async function buildAgentContext(
 
   applyEnvOverrides(env, currentAgent.env);
 
-  if (!options.isNewSession && currentAgent.commands?.append) {
+  if (!isNewSession && currentAgent.commands?.append) {
     initialCommand = currentAgent.commands.append;
-    applyEnvOverrides(env, options.agentSessionSettings?.env);
+    applyEnvOverrides(env, options.session.sessionSettings?.env);
   }
 
   if (!initialCommand) {
@@ -144,14 +135,14 @@ export async function buildAgentContext(
 
   const agentSpecificEnvKeys = getActiveEnvKeys(
     currentAgent.env,
-    !options.isNewSession ? options.agentSessionSettings?.env : undefined
+    !isNewSession ? options.session.sessionSettings?.env : undefined
   );
   agentSpecificEnvKeys.add('CLAW_CLI_MESSAGE');
 
   Object.assign(env, options.routerEnv);
   Object.keys(options.routerEnv).forEach((k) => agentSpecificEnvKeys.add(k));
 
-  const apiCtx = getApiContext(options.settings);
+  const apiCtx = getApiContext(options.session.globalSettings);
   if (apiCtx) {
     const proxyUrl = apiCtx.proxy_host
       ? `${apiCtx.proxy_host}:${apiCtx.port}`
@@ -160,9 +151,9 @@ export async function buildAgentContext(
     agentSpecificEnvKeys.add('CLAW_API_URL');
 
     const token = generateToken({
-      chatId: options.chatId,
-      agentId: options.agentId,
-      sessionId: options.finalSessionId,
+      chatId: options.session.chatId,
+      agentId: options.session.agentId,
+      sessionId: options.session.sessionId,
       timestamp: Date.now(),
     });
     env['CLAW_API_TOKEN'] = token;
@@ -174,8 +165,8 @@ export async function buildAgentContext(
     command,
     env,
     agentSpecificEnvKeys,
-    options.executionCwd,
-    options.cwd
+    options.session.workDirectory,
+    options.session.workspaceRoot
   );
 
   return { command, env, currentAgent };

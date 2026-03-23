@@ -23,7 +23,7 @@ export class AgentSession {
   public readonly sessionSettings: AgentSessionSettings | null;
   public readonly workspaceRoot: string;
   public readonly globalSettings: Settings | undefined;
-  private logger: Logger;
+  public readonly logger: Logger;
 
   constructor(config: {
     agentId: string;
@@ -33,6 +33,7 @@ export class AgentSession {
     sessionSettings: AgentSessionSettings | null;
     workspaceRoot: string;
     globalSettings: Settings | undefined;
+    logger?: Logger;
   }) {
     this.agentId = config.agentId;
     this.sessionId = config.sessionId;
@@ -42,22 +43,11 @@ export class AgentSession {
     this.workspaceRoot = config.workspaceRoot;
     this.globalSettings = config.globalSettings;
 
-    this.logger = createChatLogger(this.chatId);
+    this.logger = config.logger ?? createChatLogger(this.chatId);
   }
 
   createRunner(): AgentRunner {
-    return new AgentRunner(
-      this.chatId,
-      this.agentId,
-      this.sessionId,
-      this.settings,
-      this.sessionSettings,
-      this.workDirectory,
-      this.workspaceRoot,
-      this.globalSettings,
-      this.logger,
-      runCommand
-    );
+    return new AgentRunner(this, runCommand);
   }
 
   get workDirectory(): string {
@@ -127,6 +117,7 @@ export async function createAgentSession(options: {
   sessionId: string;
   cwd: string;
   settings?: Settings | undefined;
+  logger?: Logger;
 }) {
   const agentSessionSettings = await readAgentSessionSettings(
     options.agentId,
@@ -147,6 +138,7 @@ export async function createAgentSession(options: {
     sessionSettings: agentSessionSettings ?? null,
     workspaceRoot,
     globalSettings: settings,
+    ...(options.logger ? { logger: options.logger } : {}),
   });
 }
 
