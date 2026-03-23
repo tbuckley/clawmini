@@ -1,7 +1,15 @@
-import type { ChatMessage } from '../chats.js';
+import type { ChatMessage, CommandLogMessage, UserMessage } from '../chats.js';
 
 export interface Logger {
-  log(msg: ChatMessage): Promise<void>;
+  append<T extends ChatMessage>(msg: T): Promise<T>;
+  logUserMessage(msg: string): Promise<UserMessage>;
+  logAutomaticReply(options: { messageId: string; content: string }): Promise<CommandLogMessage>;
+  logCommandRetry(options: {
+    messageId: string;
+    content: string;
+    cwd: string;
+  }): Promise<CommandLogMessage>;
+  logCommandResult(options: ExecutionResponse): Promise<CommandLogMessage>;
 }
 
 export interface Message {
@@ -9,5 +17,27 @@ export interface Message {
   content: string;
   env: Record<string, string>;
 }
+
+export interface ExecutionResponse {
+  messageId: string;
+  content: string;
+  command: string;
+  cwd: string;
+  result: RunCommandResult;
+}
+
+export type RunCommandResult = {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+};
+
+export type RunCommandFn = (args: {
+  command: string;
+  cwd: string;
+  env: Record<string, string>;
+  stdin?: string | undefined;
+  signal?: AbortSignal | undefined;
+}) => Promise<RunCommandResult>;
 
 export type MaybePromise<T> = T | Promise<T>;

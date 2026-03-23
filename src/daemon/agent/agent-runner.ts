@@ -1,5 +1,4 @@
 /* eslint-disable max-lines */
-import { type CommandLogMessage } from '../chats.js';
 import {
   type Settings,
   type Agent,
@@ -16,7 +15,13 @@ import { getApiContext, generateToken } from '../auth.js';
 import { emitTyping } from '../events.js';
 import { applyEnvOverrides, getActiveEnvKeys } from '../../shared/utils/env.js';
 import { z } from 'zod';
-import type { Logger, Message } from './types.js';
+import type {
+  ExecutionResponse,
+  Logger,
+  Message,
+  RunCommandFn,
+  RunCommandResult,
+} from './types.js';
 
 type Fallback = z.infer<typeof FallbackSchema>;
 
@@ -32,20 +37,6 @@ export function calculateDelay(
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-export type RunCommandResult = {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-};
-
-export type RunCommandFn = (args: {
-  command: string;
-  cwd: string;
-  env: Record<string, string>;
-  stdin?: string | undefined;
-  signal?: AbortSignal | undefined;
-}) => Promise<RunCommandResult>;
 
 async function runExtractionCommand(
   name: string,
@@ -281,29 +272,6 @@ export class AgentRunner {
     );
   }
 
-  private buildLogMessage(
-    messageId: string,
-    command: string,
-    content: string,
-    errors: string[],
-    mainResult: RunCommandResult
-  ): CommandLogMessage {
-    const isVerbose = content.includes('NO_REPLY_NECESSARY');
-    return {
-      id: crypto.randomUUID(),
-      messageId,
-      role: 'log',
-      content,
-      stdout: mainResult.stdout,
-      stderr: errors.join('\n\n'),
-      timestamp: new Date().toISOString(),
-      command,
-      cwd: this.executionCwd,
-      exitCode: mainResult.exitCode,
-      ...(isVerbose ? { level: 'verbose' as const } : {}),
-    };
-  }
-
   private *getExecutionAttempts() {
     const fallbacks = this.mergedAgent.fallbacks || [];
     const executionConfigs = [
@@ -328,7 +296,7 @@ export class AgentRunner {
     message: Message,
     fallback?: Fallback | undefined,
     signal?: AbortSignal | undefined
-  ): Promise<{ success: boolean; logMsg?: CommandLogMessage }> {
+  ): Promise<{ success: boolean; response?: ExecutionResponse }> {
     const context = await this.buildExecutionContext(message.content, message.env, fallback);
     if (!context) return { success: false };
 
@@ -343,18 +311,18 @@ export class AgentRunner {
 
     let success = mainResult.exitCode === 0;
     let finalContent = mainResult.stdout;
-    const errors = mainResult.stderr ? [mainResult.stderr] : [];
+    const additonalErrors = [];
 
     if (success && context.currentAgent.commands?.getMessageContent) {
       const extraction = await this.extractMessageContent(context, mainResult, signal);
-      if (extraction.error) errors.push(extraction.error);
+      if (extraction.error) additonalErrors.push(extraction.error);
       if (extraction.result !== undefined) finalContent = extraction.result;
       if (!finalContent.trim()) success = false;
     }
 
     if (success && this.isNewSession && context.currentAgent.commands?.getSessionId) {
       const extraction = await this.extractSessionId(context, mainResult, signal);
-      if (extraction.error) errors.push(extraction.error);
+      if (extraction.error) additonalErrors.push(extraction.error);
       if (extraction.result) {
         await writeAgentSessionSettings(
           this.agentId,
@@ -367,41 +335,43 @@ export class AgentRunner {
 
     return {
       success,
-      logMsg: this.buildLogMessage(message.id, context.command, finalContent, errors, mainResult),
+      response: {
+        messageId: message.id,
+        content: finalContent,
+        command: context.command,
+        cwd: this.executionCwd,
+        result: {
+          ...mainResult,
+          stderr: [mainResult.stderr, ...additonalErrors].join('\n\n'),
+        },
+      },
     };
   }
 
   async executeWithFallbacks(
     message: Message,
     signal?: AbortSignal | undefined
-  ): Promise<CommandLogMessage | undefined> {
-    let lastLogMsg: CommandLogMessage | undefined;
+  ): Promise<ExecutionResponse | undefined> {
+    let lastResponse: ExecutionResponse | undefined;
 
     for (const attempt of this.getExecutionAttempts()) {
       if (attempt.delay > 0) {
-        const retryLogMsg: CommandLogMessage = {
-          id: crypto.randomUUID(),
+        await this.logger.logCommandRetry({
           messageId: message.id,
-          role: 'log',
           content: `Error running agent, retrying in ${Math.round(attempt.delay / 1000)} seconds...`,
-          stderr: '',
-          timestamp: new Date().toISOString(),
-          command: 'retry-delay',
           cwd: this.executionCwd,
-          exitCode: 0,
-        };
-        await this.logger.log(retryLogMsg);
+        });
         await sleep(attempt.delay);
       }
 
       const attemptResult = await this.executeSingleAttempt(message, attempt.fallback, signal);
 
-      lastLogMsg = attemptResult.logMsg || lastLogMsg;
+      lastResponse = attemptResult.response || lastResponse;
       if (attemptResult.success) {
-        return lastLogMsg;
+        return lastResponse;
       }
     }
 
-    return lastLogMsg;
+    return lastResponse;
   }
 }

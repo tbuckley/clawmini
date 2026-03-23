@@ -6,27 +6,31 @@ import { pathIsInsideDir } from './utils/fs.js';
 
 export const DEFAULT_CHAT_ID = 'default';
 
-export interface UserMessage {
+export interface BaseMessage {
   id: string;
-  role: 'user';
+  role: string;
   content: string;
   timestamp: string;
 }
 
-export interface CommandLogMessage {
-  id: string;
-  messageId: string;
+export interface UserMessage extends BaseMessage {
+  role: 'user';
+}
+
+export interface CommandLogMessage extends BaseMessage {
   role: 'log';
+
+  messageId: string;
+
   source?: 'router';
-  content: string;
-  stderr: string;
-  timestamp: string;
-  command: string;
-  cwd: string;
-  exitCode: number;
-  stdout?: string;
   files?: string[];
   level?: 'default' | 'debug' | 'verbose';
+
+  command?: string;
+  cwd?: string;
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number;
 }
 
 export type ChatMessage = UserMessage | CommandLogMessage;

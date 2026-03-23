@@ -104,10 +104,12 @@ export class AgentSession {
     await queue.enqueue(
       async (signal) => {
         const runner = this.createRunner();
-        const lastLogMsg = await runner.executeWithFallbacks(message, signal);
-        if (lastLogMsg) {
-          await this.logger.log(lastLogMsg);
+        const result = await runner.executeWithFallbacks(message, signal);
+        if (!result) {
+          // TODO: throw an error? Log an error?
+          return;
         }
+        await this.logger.logCommandResult(result);
       },
       { text: message.content, sessionId: this.sessionId }
     );

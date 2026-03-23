@@ -1,14 +1,13 @@
-import { type UserMessage, type CommandLogMessage } from './chats.js';
 import { executeRouterPipeline } from './routers.js';
 import type { RouterState } from './routers/types.js';
 import { type Settings } from '../shared/config.js';
 import { readChatSettings, writeChatSettings } from '../shared/workspace.js';
 import { cronManager } from './cron.js';
-import { type Message } from './agent/types.js';
+import type { Message } from './agent/types.js';
 import { createAgentSession } from './agent/agent-session.js';
 import { createChatLogger } from './agent/chat-logger.js';
 
-export { calculateDelay, type RunCommandResult, type RunCommandFn } from './agent/agent-runner.js';
+export { calculateDelay } from './agent/agent-runner.js';
 
 export async function executeDirectMessage(
   chatId: string,
@@ -20,31 +19,10 @@ export async function executeDirectMessage(
 ) {
   const logger = createChatLogger(chatId);
 
-  const userMsg: UserMessage = {
-    id: state.messageId,
-    role: 'user',
-    content: userMessageContent ?? state.message,
-    timestamp: new Date().toISOString(),
-  };
-  await logger.log(userMsg);
-
+  const userMsg = await logger.logUserMessage(userMessageContent ?? state.message);
   if (state.reply) {
-    const routerLogMsg: CommandLogMessage = {
-      id: crypto.randomUUID(),
-      messageId: userMsg.id,
-      role: 'log',
-      source: 'router',
-      content: state.reply,
-      stderr: '',
-      timestamp: new Date().toISOString(),
-      command: 'router',
-      cwd,
-      exitCode: 0,
-      ...(state.reply.includes('NO_REPLY_NECESSARY') ? { level: 'verbose' as const } : {}),
-    };
-    await logger.log(routerLogMsg);
+    await logger.logAutomaticReply({ messageId: userMsg.id, content: state.reply });
   }
-
   if (!state.message.trim() && state.action !== 'stop' && state.action !== 'interrupt') {
     return;
   }

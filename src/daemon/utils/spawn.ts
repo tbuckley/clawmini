@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import type { RunCommandFn } from '../message.js';
+import type { RunCommandFn } from '../agent/types.js';
 
 const LOG_TO_TERMINAL = true;
 
