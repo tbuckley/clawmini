@@ -4,7 +4,11 @@ import {
   type FallbackSchema,
   type Settings,
 } from '../../shared/config.js';
-import { getActiveEnvironmentInfo, getEnvironmentPath, readEnvironment } from '../../shared/workspace.js';
+import {
+  getActiveEnvironmentInfo,
+  getEnvironmentPath,
+  readEnvironment,
+} from '../../shared/workspace.js';
 import { applyEnvOverrides, getActiveEnvKeys } from '../../shared/utils/env.js';
 import { getApiContext, generateToken } from '../auth.js';
 import { z } from 'zod';
@@ -106,7 +110,9 @@ export interface BuildContextOptions {
   cwd: string;
 }
 
-export async function buildAgentContext(options: BuildContextOptions): Promise<{ command: string; env: Record<string, string>; currentAgent: Agent } | null> {
+export async function buildAgentContext(
+  options: BuildContextOptions
+): Promise<{ command: string; env: Record<string, string>; currentAgent: Agent } | null> {
   const currentAgent: Agent = {
     ...options.mergedAgent,
     commands: {
@@ -164,7 +170,13 @@ export async function buildAgentContext(options: BuildContextOptions): Promise<{
   }
 
   let command = initialCommand;
-  command = await sandboxExecutionContext(command, env, agentSpecificEnvKeys, options.executionCwd, options.cwd);
+  command = await sandboxExecutionContext(
+    command,
+    env,
+    agentSpecificEnvKeys,
+    options.executionCwd,
+    options.cwd
+  );
 
   return { command, env, currentAgent };
 }

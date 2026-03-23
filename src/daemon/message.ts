@@ -1,6 +1,6 @@
 import { executeRouterPipeline } from './routers.js';
 import type { RouterState } from './routers/types.js';
-import { type Settings } from '../shared/config.js';
+import { type ChatSettings, type Settings } from '../shared/config.js';
 import { readChatSettings, writeChatSettings } from '../shared/workspace.js';
 import { cronManager } from './cron.js';
 import type { Message } from './agent/types.js';
@@ -130,7 +130,7 @@ async function applyRouterStateUpdates(
   chatId: string,
   cwd: string,
   finalState: RouterState,
-  chatSettings: any,
+  chatSettings: ChatSettings,
   initialAgent: string | undefined
 ) {
   const finalAgentId = finalState.agentId;
@@ -195,7 +195,7 @@ function extractDirectState(finalState: RouterState): RouterState {
     chatId: finalState.chatId,
     env: finalState.env ?? {},
   };
-  
+
   if (finalState.agentId !== undefined) directState.agentId = finalState.agentId;
   if (finalState.sessionId !== undefined) directState.sessionId = finalState.sessionId;
   if (finalState.reply !== undefined) directState.reply = finalState.reply;

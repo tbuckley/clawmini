@@ -83,7 +83,7 @@ export class AgentRunner {
       executionCwd: this.executionCwd,
       cwd: this.cwd,
     });
-    
+
     if (!context) return { success: false };
 
     const mainResult = await this.withTypingIndicator(() =>
@@ -100,7 +100,13 @@ export class AgentRunner {
     const additonalErrors = [];
 
     if (success && context.currentAgent.commands?.getMessageContent) {
-      const extraction = await extractMessageContent(context, mainResult, this.runCommand, this.executionCwd, signal);
+      const extraction = await extractMessageContent(
+        context,
+        mainResult,
+        this.runCommand,
+        this.executionCwd,
+        signal
+      );
       if (extraction.error) additonalErrors.push(extraction.error);
       if (extraction.result !== undefined) finalContent = extraction.result;
       if (!finalContent.trim()) success = false;
@@ -109,7 +115,13 @@ export class AgentRunner {
     let extractedSessionId: string | undefined;
 
     if (success && this.isNewSession && context.currentAgent.commands?.getSessionId) {
-      const extraction = await extractSessionId(context, mainResult, this.runCommand, this.executionCwd, signal);
+      const extraction = await extractSessionId(
+        context,
+        mainResult,
+        this.runCommand,
+        this.executionCwd,
+        signal
+      );
       if (extraction.error) additonalErrors.push(extraction.error);
       if (extraction.result) {
         extractedSessionId = extraction.result;
