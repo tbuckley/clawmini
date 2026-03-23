@@ -127,6 +127,13 @@ export class AgentSession {
   get workDirectory(): string {
     return resolveAgentWorkDir(this.agentId, this.settings.directory, this.workspaceRoot);
   }
+
+  stop() {
+    const queue = getMessageQueue(this.workDirectory);
+    // FIXME: Only stop tasks for this agent session
+    queue.abortCurrent();
+    queue.clear();
+  }
 }
 
 export async function executeDirectMessage(
@@ -192,8 +199,7 @@ export async function executeDirectMessage(
   // Process actions
 
   if (state.action === 'stop') {
-    queue.abortCurrent();
-    queue.clear();
+    agentSession.stop();
     return;
   }
 
@@ -222,7 +228,10 @@ export async function executeDirectMessage(
   const taskPromise = queue.enqueue(
     async (signal) => {
       const runner = agentSession.createRunner(settings);
-      const lastLogMsg = await runner.executeWithFallbacks(state, signal);
+      const lastLogMsg = await runner.executeWithFallbacks(
+        { id: state.messageId, content: state.message, env: state.env ?? {} },
+        signal
+      );
       if (lastLogMsg) {
         await logger.log(lastLogMsg);
       }

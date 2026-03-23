@@ -1,6 +1,5 @@
 /* eslint-disable max-lines */
 import { type CommandLogMessage, type ChatMessage } from './chats.js';
-import type { RouterState } from './routers/types.js';
 import {
   type Settings,
   type Agent,
@@ -94,6 +93,12 @@ function formatEnvironmentPrefix(
 
 export interface Logger {
   log(msg: ChatMessage): Promise<void>;
+}
+
+export interface Message {
+  id: string;
+  content: string;
+  env: Record<string, string>;
 }
 
 export class AgentRunner {
@@ -329,11 +334,11 @@ export class AgentRunner {
   }
 
   private async executeSingleAttempt(
-    state: RouterState,
+    message: Message,
     fallback?: Fallback | undefined,
     signal?: AbortSignal | undefined
   ): Promise<{ success: boolean; logMsg?: CommandLogMessage }> {
-    const context = await this.buildExecutionContext(state.message, state.env || {}, fallback);
+    const context = await this.buildExecutionContext(message.content, message.env, fallback);
     if (!context) return { success: false };
 
     const mainResult = await this.withTypingIndicator(() =>
@@ -371,18 +376,12 @@ export class AgentRunner {
 
     return {
       success,
-      logMsg: this.buildLogMessage(
-        state.messageId,
-        context.command,
-        finalContent,
-        errors,
-        mainResult
-      ),
+      logMsg: this.buildLogMessage(message.id, context.command, finalContent, errors, mainResult),
     };
   }
 
   async executeWithFallbacks(
-    state: RouterState,
+    message: Message,
     signal?: AbortSignal | undefined
   ): Promise<CommandLogMessage | undefined> {
     let lastLogMsg: CommandLogMessage | undefined;
@@ -391,7 +390,7 @@ export class AgentRunner {
       if (attempt.delay > 0) {
         const retryLogMsg: CommandLogMessage = {
           id: crypto.randomUUID(),
-          messageId: state.messageId,
+          messageId: message.id,
           role: 'log',
           content: `Error running agent, retrying in ${Math.round(attempt.delay / 1000)} seconds...`,
           stderr: '',
@@ -404,7 +403,7 @@ export class AgentRunner {
         await sleep(attempt.delay);
       }
 
-      const attemptResult = await this.executeSingleAttempt(state, attempt.fallback, signal);
+      const attemptResult = await this.executeSingleAttempt(message, attempt.fallback, signal);
 
       lastLogMsg = attemptResult.logMsg || lastLogMsg;
       if (attemptResult.success) {
