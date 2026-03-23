@@ -122,8 +122,7 @@ export async function handleUserMessage(
 
   await applyRouterStateUpdates(chatId, cwd, finalState, chatSettings, initialState.agentId);
 
-  const directState = extractDirectState(finalState);
-  await executeDirectMessage(chatId, directState, settings, cwd, noWait, message);
+  await executeDirectMessage(chatId, finalState, settings, cwd, noWait, message);
 }
 
 async function applyRouterStateUpdates(
@@ -186,20 +185,4 @@ async function applyRouterStateUpdates(
   if (finalState.sessionId === undefined) {
     finalState.sessionId = finalSessionId;
   }
-}
-
-function extractDirectState(finalState: RouterState): RouterState {
-  const directState: RouterState = {
-    messageId: finalState.messageId,
-    message: finalState.message,
-    chatId: finalState.chatId,
-    env: finalState.env ?? {},
-  };
-
-  if (finalState.agentId !== undefined) directState.agentId = finalState.agentId;
-  if (finalState.sessionId !== undefined) directState.sessionId = finalState.sessionId;
-  if (finalState.reply !== undefined) directState.reply = finalState.reply;
-  if (finalState.action !== undefined) directState.action = finalState.action;
-
-  return directState;
 }
