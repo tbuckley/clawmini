@@ -46,6 +46,7 @@ vi.mock('../../shared/workspace.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../shared/workspace.js')>();
   return {
     ...actual,
+    readSettings: vi.fn().mockResolvedValue(null),
     readChatSettings: vi.fn(),
     writeChatSettings: vi.fn(),
     getSettingsPath: vi.fn().mockReturnValue('/mock/settings.json'),

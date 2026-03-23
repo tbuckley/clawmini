@@ -1,67 +1,14 @@
 import { type UserMessage, type CommandLogMessage } from './chats.js';
 import { executeRouterPipeline } from './routers.js';
 import type { RouterState } from './routers/types.js';
-import { type Settings, type Agent } from '../shared/config.js';
-import {
-  readChatSettings,
-  writeChatSettings,
-  readAgentSessionSettings,
-  getAgent,
-  getWorkspaceRoot,
-} from '../shared/workspace.js';
+import { type Settings } from '../shared/config.js';
+import { readChatSettings, writeChatSettings } from '../shared/workspace.js';
 import { cronManager } from './cron.js';
 import { type Message } from './agent/types.js';
-import { AgentSession } from './agent/agent-session.js';
+import { createAgentSession } from './agent/agent-session.js';
 import { createChatLogger } from './agent/chat-logger.js';
 
 export { calculateDelay, type RunCommandResult, type RunCommandFn } from './agent/agent-runner.js';
-
-async function resolveSessionState(
-  chatId: string,
-  cwd: string,
-  sessionId?: string,
-  overrideAgentId?: string
-) {
-  const chatSettings = await readChatSettings(chatId, cwd);
-  const agentId =
-    overrideAgentId ??
-    (typeof chatSettings?.defaultAgent === 'string' ? chatSettings.defaultAgent : 'default');
-
-  let targetSessionId = sessionId;
-  if (!targetSessionId) {
-    const sessions = chatSettings?.sessions || {};
-    targetSessionId = sessions[agentId] || 'default';
-  }
-
-  const agentSessionSettings = await readAgentSessionSettings(agentId, targetSessionId, cwd);
-  const isNewSession = !agentSessionSettings;
-
-  return { chatSettings, agentId, targetSessionId, agentSessionSettings, isNewSession };
-}
-
-export async function resolveMergedAgent(
-  agentId: string,
-  settings: Settings | undefined,
-  cwd: string
-): Promise<Agent> {
-  let mergedAgent: Agent = settings?.defaultAgent || {};
-  if (agentId !== 'default') {
-    try {
-      const customAgent = await getAgent(agentId, cwd);
-      if (customAgent) {
-        mergedAgent = {
-          ...mergedAgent,
-          ...customAgent,
-          commands: { ...mergedAgent.commands, ...customAgent.commands },
-          env: { ...mergedAgent.env, ...customAgent.env },
-        };
-      }
-    } catch {
-      // Fall back to default if agent not found
-    }
-  }
-  return mergedAgent;
-}
 
 export async function executeDirectMessage(
   chatId: string,
@@ -103,22 +50,12 @@ export async function executeDirectMessage(
   }
 
   // Load the agent
-  const {
-    agentId,
-    agentSessionSettings,
-    targetSessionId: finalSessionId,
-  } = await resolveSessionState(chatId, cwd, state.sessionId, state.agentId);
-  const mergedAgent = await resolveMergedAgent(agentId, settings, cwd);
-  const workspaceRoot = getWorkspaceRoot(cwd);
-
-  const agentSession = new AgentSession({
-    agentId,
-    sessionId: finalSessionId,
+  const agentSession = await createAgentSession({
     chatId,
-    settings: mergedAgent,
-    sessionSettings: agentSessionSettings,
-    workspaceRoot,
-    globalSettings: settings,
+    agentId: state.agentId,
+    sessionId: state.sessionId,
+    cwd,
+    settings,
   });
   const message: Message = {
     id: state.messageId,

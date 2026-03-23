@@ -15,6 +15,8 @@ vi.mock('../shared/workspace.js', () => ({
     .fn()
     .mockImplementation((id, dir, root) => (dir ? `${root}/${dir}` : `${root}/${id}`)),
 
+  readSettings: vi.fn().mockResolvedValue(null),
+
   readChatSettings: vi.fn().mockResolvedValue(null),
   writeChatSettings: vi.fn().mockResolvedValue(undefined),
   readAgentSessionSettings: vi.fn().mockResolvedValue(null),

@@ -4,7 +4,14 @@ import { getMessageQueue } from '../queue.js';
 import { AgentRunner } from './agent-runner.js';
 import type { Logger, Message } from './types.js';
 import { runCommand } from '../utils/spawn.js';
-import { resolveAgentWorkDir } from '../../shared/workspace.js';
+import {
+  getAgent,
+  getWorkspaceRoot,
+  readAgentSessionSettings,
+  readChatSettings,
+  readSettings,
+  resolveAgentWorkDir,
+} from '../../shared/workspace.js';
 import { formatPendingMessages } from './utils.js';
 import { createChatLogger } from './chat-logger.js';
 
@@ -105,4 +112,80 @@ export class AgentSession {
       { text: message.content, sessionId: this.sessionId }
     );
   }
+}
+
+export async function createAgentSession(options: {
+  chatId: string;
+  agentId?: string | undefined;
+  sessionId?: string | undefined;
+  cwd: string;
+  settings?: Settings | undefined;
+}) {
+  const {
+    agentId,
+    agentSessionSettings,
+    targetSessionId: finalSessionId,
+  } = await resolveSessionState(options.chatId, options.cwd, options.sessionId, options.agentId);
+
+  // TODO: make it so that readSettings returns Settings|undefined
+  const settings = options.settings ?? (await readSettings(options.cwd)) ?? undefined;
+  const mergedAgent = await resolveMergedAgent(agentId, settings, options.cwd);
+  const workspaceRoot = getWorkspaceRoot(options.cwd);
+
+  return new AgentSession({
+    agentId,
+    sessionId: finalSessionId,
+    chatId: options.chatId,
+    settings: mergedAgent,
+    sessionSettings: agentSessionSettings,
+    workspaceRoot,
+    globalSettings: settings,
+  });
+}
+
+async function resolveSessionState(
+  chatId: string,
+  cwd: string,
+  sessionId?: string,
+  overrideAgentId?: string
+) {
+  const chatSettings = await readChatSettings(chatId, cwd);
+  const agentId =
+    overrideAgentId ??
+    (typeof chatSettings?.defaultAgent === 'string' ? chatSettings.defaultAgent : 'default');
+
+  let targetSessionId = sessionId;
+  if (!targetSessionId) {
+    const sessions = chatSettings?.sessions || {};
+    targetSessionId = sessions[agentId] || 'default';
+  }
+
+  const agentSessionSettings = await readAgentSessionSettings(agentId, targetSessionId, cwd);
+  const isNewSession = !agentSessionSettings;
+
+  return { chatSettings, agentId, targetSessionId, agentSessionSettings, isNewSession };
+}
+
+async function resolveMergedAgent(
+  agentId: string,
+  settings: Settings | undefined,
+  cwd: string
+): Promise<Agent> {
+  let mergedAgent: Agent = settings?.defaultAgent || {};
+  if (agentId !== 'default') {
+    try {
+      const customAgent = await getAgent(agentId, cwd);
+      if (customAgent) {
+        mergedAgent = {
+          ...mergedAgent,
+          ...customAgent,
+          commands: { ...mergedAgent.commands, ...customAgent.commands },
+          env: { ...mergedAgent.env, ...customAgent.env },
+        };
+      }
+    } catch {
+      // Fall back to default if agent not found
+    }
+  }
+  return mergedAgent;
 }
