@@ -99,7 +99,6 @@ export async function handleUserMessage(
   settings: Settings | undefined,
   cwd: string = process.cwd(),
   noWait: boolean = false,
-
   sessionId?: string,
   overrideAgentId?: string
 ): Promise<void> {
@@ -117,17 +116,25 @@ export async function handleUserMessage(
     overrideAgentId,
     sessionId
   );
-  const initialAgent = initialState.agentId;
 
   const routers = chatSettings.routers ?? settings?.routers ?? [];
-
   const finalState = await executeRouterPipeline(initialState, routers);
 
-  const finalMessage = finalState.message;
+  await applyRouterStateUpdates(chatId, cwd, finalState, chatSettings, initialState.agentId);
+
+  const directState = extractDirectState(finalState);
+  await executeDirectMessage(chatId, directState, settings, cwd, noWait, message);
+}
+
+async function applyRouterStateUpdates(
+  chatId: string,
+  cwd: string,
+  finalState: RouterState,
+  chatSettings: any,
+  initialAgent: string | undefined
+) {
   const finalAgentId = finalState.agentId;
   const finalSessionId = finalState.sessionId ?? crypto.randomUUID();
-  const routerEnv = finalState.env ?? {};
-
   const currentAgentId = finalAgentId ?? chatSettings.defaultAgent ?? 'default';
 
   let settingsChanged = false;
@@ -156,16 +163,16 @@ export async function handleUserMessage(
       for (const jobId of finalState.jobs.remove) {
         cronManager.unscheduleJob(chatId, jobId);
       }
-      chatSettings.jobs = chatSettings.jobs.filter((j) => !removeSet.has(j.id));
+      chatSettings.jobs = chatSettings.jobs.filter((j: any) => !removeSet.has(j.id));
       settingsChanged = true;
     }
 
     if (finalState.jobs.add?.length) {
-      const addMap = new Map(finalState.jobs.add.map((job) => [job.id, job]));
+      const addMap = new Map(finalState.jobs.add.map((job: any) => [job.id, job]));
       for (const job of finalState.jobs.add) {
         cronManager.scheduleJob(chatId, job);
       }
-      chatSettings.jobs = chatSettings.jobs.filter((j) => !addMap.has(j.id));
+      chatSettings.jobs = chatSettings.jobs.filter((j: any) => !addMap.has(j.id));
       chatSettings.jobs.push(...finalState.jobs.add);
       settingsChanged = true;
     }
@@ -175,16 +182,24 @@ export async function handleUserMessage(
     await writeChatSettings(chatId, chatSettings, cwd);
   }
 
+  // Ensure finalSessionId is set on state so extractDirectState gets it.
+  if (finalState.sessionId === undefined) {
+    finalState.sessionId = finalSessionId;
+  }
+}
+
+function extractDirectState(finalState: RouterState): RouterState {
   const directState: RouterState = {
     messageId: finalState.messageId,
-    message: finalMessage,
-    chatId,
-    env: routerEnv,
+    message: finalState.message,
+    chatId: finalState.chatId,
+    env: finalState.env ?? {},
   };
-  if (finalAgentId !== undefined) directState.agentId = finalAgentId;
-  if (finalSessionId !== undefined) directState.sessionId = finalSessionId;
+  
+  if (finalState.agentId !== undefined) directState.agentId = finalState.agentId;
+  if (finalState.sessionId !== undefined) directState.sessionId = finalState.sessionId;
   if (finalState.reply !== undefined) directState.reply = finalState.reply;
   if (finalState.action !== undefined) directState.action = finalState.action;
 
-  await executeDirectMessage(chatId, directState, settings, cwd, noWait, message);
+  return directState;
 }

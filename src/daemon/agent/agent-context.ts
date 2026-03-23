@@ -94,7 +94,7 @@ export async function sandboxExecutionContext(
 export interface BuildContextOptions {
   message: string;
   routerEnv: Record<string, string>;
-  fallback?: Fallback;
+  fallback?: Fallback | undefined;
   mergedAgent: Agent;
   isNewSession: boolean;
   agentSessionSettings: AgentSessionSettings | null;

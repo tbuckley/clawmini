@@ -24,7 +24,7 @@ export interface ExecutionResponse {
   command: string;
   cwd: string;
   result: RunCommandResult;
-  extractedSessionId?: string;
+  extractedSessionId?: string | undefined;
 }
 
 export type RunCommandResult = {
