@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleUserMessage } from './message.js';
 import * as workspace from '../shared/workspace.js';
 import { spawn } from 'node:child_process';
-import { runCommandCallback, createAutoFinishMockSpawn } from './message-test-utils.js';
+import { createAutoFinishMockSpawn } from './message-test-utils.js';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 vi.mock('../shared/chats.js', () => ({ appendMessage: vi.fn().mockResolvedValue(undefined) }));
@@ -54,14 +54,7 @@ describe('Agent Configuration & Execution CWD', () => {
       },
     };
 
-    await handleUserMessage(
-      'chat-custom',
-      'hello',
-      settings as any,
-      '/dir',
-      false,
-      runCommandCallback
-    );
+    await handleUserMessage('chat-custom', 'hello', settings as any, '/dir', false);
 
     expect(workspace.getAgent).toHaveBeenCalledWith('custom-agent', '/dir');
     expect(mockSpawn).toHaveBeenCalledWith(
@@ -87,14 +80,7 @@ describe('Agent Configuration & Execution CWD', () => {
 
     const settings = { defaultAgent: { commands: { new: 'echo main' } } };
 
-    await handleUserMessage(
-      'chat-dir-1',
-      'hi',
-      settings as any,
-      '/base/workspace',
-      false,
-      runCommandCallback
-    );
+    await handleUserMessage('chat-dir-1', 'hi', settings as any, '/base/workspace', false);
 
     expect(mockSpawn).toHaveBeenCalledWith(
       'echo agent-dir',
@@ -117,14 +103,7 @@ describe('Agent Configuration & Execution CWD', () => {
 
     const settings = { defaultAgent: { commands: { new: 'echo main' } } };
 
-    await handleUserMessage(
-      'chat-dir-2',
-      'hi',
-      settings as any,
-      '/base/workspace',
-      false,
-      runCommandCallback
-    );
+    await handleUserMessage('chat-dir-2', 'hi', settings as any, '/base/workspace', false);
 
     expect(mockSpawn).toHaveBeenCalledWith(
       'echo my-dir',

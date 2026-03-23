@@ -7,7 +7,6 @@ import type { CronJob, Settings } from '../shared/config.js';
 import fs from 'node:fs/promises';
 import { getSettingsPath } from '../shared/workspace.js';
 import { applyEnvOverrides } from '../shared/utils/env.js';
-import { runCommand } from './utils/spawn.js';
 
 export class CronManager {
   private jobs = new Map<string, schedule.Job>();
@@ -140,7 +139,6 @@ export class CronManager {
         routerState,
         globalSettings,
         process.cwd(),
-        runCommand,
         false,
         job.message
       );

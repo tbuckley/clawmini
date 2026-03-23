@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeDirectMessage } from './message.js';
 import { getMessageQueue } from './queue.js';
 import type { RouterState } from './routers/types.js';
+import { runCommand } from './utils/spawn.js';
+
+vi.mock('./utils/spawn.js', () => ({ runCommand: vi.fn() }));
 
 vi.mock('./chats.js', () => ({
   appendMessage: vi.fn().mockResolvedValue(undefined),
@@ -40,8 +43,8 @@ describe('Interruption flow in message handler', () => {
       action: 'stop',
     };
 
-    const runCommand = vi.fn();
-    await executeDirectMessage('chat1', state, undefined, '/test-interrupt-stop', runCommand, true);
+    vi.mocked(runCommand).mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+    await executeDirectMessage('chat1', state, undefined, '/test-interrupt-stop', true);
 
     expect(abortSpy).toHaveBeenCalled();
     expect(clearSpy).toHaveBeenCalled();
@@ -88,16 +91,9 @@ describe('Interruption flow in message handler', () => {
       sessionId: 'test-session',
     };
 
-    const runCommand = vi.fn().mockResolvedValue({ stdout: 'done', stderr: '', exitCode: 0 });
+    vi.mocked(runCommand).mockResolvedValue({ stdout: 'done', stderr: '', exitCode: 0 });
 
-    await executeDirectMessage(
-      'chat1',
-      state,
-      undefined,
-      '/test-interrupt-batch',
-      runCommand,
-      true
-    );
+    await executeDirectMessage('chat1', state, undefined, '/test-interrupt-batch', true);
 
     expect(abortSpy).toHaveBeenCalled();
 
@@ -120,15 +116,8 @@ describe('Interruption flow in message handler', () => {
       chatId: 'chat1',
     };
 
-    const runCommand = vi.fn();
-    await executeDirectMessage(
-      'chat1',
-      state,
-      undefined,
-      '/test-interrupt-empty',
-      runCommand,
-      true
-    );
+    vi.mocked(runCommand).mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+    await executeDirectMessage('chat1', state, undefined, '/test-interrupt-empty', true);
 
     expect(runCommand).not.toHaveBeenCalled();
     expect(queue['pending'].length).toBe(0);

@@ -18,7 +18,8 @@ import {
   resolveAgentWorkDir,
 } from '../shared/workspace.js';
 import { cronManager } from './cron.js';
-import { AgentRunner, type Logger, type RunCommandFn } from './agent-runner.js';
+import { AgentRunner, type Logger } from './agent-runner.js';
+import { runCommand } from './utils/spawn.js';
 
 export { calculateDelay, type RunCommandResult, type RunCommandFn } from './agent-runner.js';
 
@@ -108,7 +109,7 @@ export class AgentSession {
   createLogger(): Logger {
     return createChatLogger(this.chatId);
   }
-  createRunner(settings: Settings | undefined, runCommand: RunCommandFn): AgentRunner {
+  createRunner(settings: Settings | undefined): AgentRunner {
     return new AgentRunner(
       this.chatId,
       this.agentId,
@@ -133,7 +134,6 @@ export async function executeDirectMessage(
   state: RouterState,
   settings: Settings | undefined,
   cwd: string,
-  runCommand: RunCommandFn,
   noWait: boolean = false,
   userMessageContent?: string
 ) {
@@ -221,7 +221,7 @@ export async function executeDirectMessage(
 
   const taskPromise = queue.enqueue(
     async (signal) => {
-      const runner = agentSession.createRunner(settings, runCommand);
+      const runner = agentSession.createRunner(settings);
       const lastLogMsg = await runner.executeWithFallbacks(state, signal);
       if (lastLogMsg) {
         await logger.log(lastLogMsg);
@@ -275,7 +275,6 @@ export async function handleUserMessage(
   settings: Settings | undefined,
   cwd: string = process.cwd(),
   noWait: boolean = false,
-  runCommand: RunCommandFn,
 
   sessionId?: string,
   overrideAgentId?: string
@@ -363,5 +362,5 @@ export async function handleUserMessage(
   if (finalState.reply !== undefined) directState.reply = finalState.reply;
   if (finalState.action !== undefined) directState.action = finalState.action;
 
-  await executeDirectMessage(chatId, directState, settings, cwd, runCommand, noWait, message);
+  await executeDirectMessage(chatId, directState, settings, cwd, noWait, message);
 }

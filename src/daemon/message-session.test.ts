@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleUserMessage } from './message.js';
 import * as workspace from '../shared/workspace.js';
 import { spawn } from 'node:child_process';
-import { runCommandCallback, createAutoFinishMockSpawn } from './message-test-utils.js';
+import { createAutoFinishMockSpawn } from './message-test-utils.js';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 vi.mock('../shared/chats.js', () => ({ appendMessage: vi.fn().mockResolvedValue(undefined) }));
@@ -41,15 +41,7 @@ describe('Session Resolution & Execution', () => {
 
     const settings = { defaultAgent: { commands: { new: 'echo new', append: 'echo append' } } };
 
-    await handleUserMessage(
-      'chat1',
-      'hello',
-      settings as any,
-      '/dir-sess-1',
-      false,
-      runCommandCallback,
-      'my-session'
-    );
+    await handleUserMessage('chat1', 'hello', settings as any, '/dir-sess-1', false, 'my-session');
 
     expect(workspace.readChatSettings).toHaveBeenCalledWith('chat1', '/dir-sess-1');
     expect(workspace.readAgentSessionSettings).toHaveBeenCalledWith(
@@ -77,14 +69,7 @@ describe('Session Resolution & Execution', () => {
 
     const settings = { defaultAgent: { commands: { new: 'echo new', append: 'echo append' } } };
 
-    await handleUserMessage(
-      'chat1',
-      'hello',
-      settings as any,
-      '/dir-sess-3',
-      false,
-      runCommandCallback
-    );
+    await handleUserMessage('chat1', 'hello', settings as any, '/dir-sess-3', false);
 
     // Should use inferred session from chatSettings
     expect(workspace.readAgentSessionSettings).toHaveBeenCalledWith(
@@ -116,15 +101,7 @@ describe('Session Resolution & Execution', () => {
 
     const settings = { defaultAgent: { commands: { new: 'echo new' } } };
 
-    await handleUserMessage(
-      'chat1',
-      'hello',
-      settings as any,
-      '/dir-sess-2',
-      false,
-      runCommandCallback,
-      'my-session'
-    );
+    await handleUserMessage('chat1', 'hello', settings as any, '/dir-sess-2', false, 'my-session');
 
     expect(mockSpawn).toHaveBeenCalledWith('echo new', expect.anything());
   });

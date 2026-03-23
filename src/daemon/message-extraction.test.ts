@@ -4,7 +4,6 @@ import { handleUserMessage } from './message.js';
 import * as workspace from '../shared/workspace.js';
 import * as chats from './chats.js';
 import { spawn } from 'node:child_process';
-import { runCommandCallback } from './message-test-utils.js';
 import { EventEmitter } from 'node:events';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
@@ -72,14 +71,7 @@ describe('Extraction Logic', () => {
       },
     };
 
-    await handleUserMessage(
-      'chat1',
-      'hello',
-      settings as any,
-      '/dir-extract-1',
-      false,
-      runCommandCallback
-    );
+    await handleUserMessage('chat1', 'hello', settings as any, '/dir-extract-1', false);
 
     // Verify spawn was called twice
     expect(mockSpawn).toHaveBeenCalledTimes(2);
@@ -145,14 +137,7 @@ describe('Extraction Logic', () => {
       },
     };
 
-    await handleUserMessage(
-      'chat1',
-      'hello',
-      settings as any,
-      '/dir-extract-2',
-      false,
-      runCommandCallback
-    );
+    await handleUserMessage('chat1', 'hello', settings as any, '/dir-extract-2', false);
 
     expect(mockSpawn).toHaveBeenCalledTimes(2);
     expect(mockSpawn).toHaveBeenNthCalledWith(2, 'echo getMessageContent', expect.anything());

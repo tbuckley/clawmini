@@ -1,16 +1,14 @@
 import { spawn } from 'node:child_process';
 import type { RunCommandFn } from '../message.js';
 
-export const runCommand: RunCommandFn &
-  ((
-    args: Parameters<RunCommandFn>[0] & { logToTerminal?: boolean }
-  ) => ReturnType<RunCommandFn>) = async ({
+const LOG_TO_TERMINAL = true;
+
+export const runCommand: RunCommandFn = async ({
   command,
   cwd,
   env,
   stdin,
   signal,
-  logToTerminal,
 }: Parameters<RunCommandFn>[0] & { logToTerminal?: boolean }) => {
   return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve, reject) => {
     const p = spawn(command, { shell: true, cwd, env, signal });
@@ -31,7 +29,7 @@ export const runCommand: RunCommandFn &
     if (p.stdout) {
       p.stdout.on('data', (data) => {
         stdout += data.toString();
-        if (logToTerminal && !stdin) {
+        if (LOG_TO_TERMINAL && !stdin) {
           process.stdout.write(data);
         }
       });
@@ -40,7 +38,7 @@ export const runCommand: RunCommandFn &
     if (p.stderr) {
       p.stderr.on('data', (data) => {
         stderr += data.toString();
-        if (logToTerminal && !stdin) {
+        if (LOG_TO_TERMINAL && !stdin) {
           process.stderr.write(data);
         }
       });

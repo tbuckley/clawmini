@@ -2,6 +2,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleUserMessage } from './message.js';
 import * as chats from '../shared/chats.js';
+import { runCommand } from './utils/spawn.js';
+
+vi.mock('./utils/spawn.js', () => ({ runCommand: vi.fn() }));
 
 vi.mock('../shared/chats.js', () => ({
   appendMessage: vi.fn().mockResolvedValue(undefined),
@@ -37,7 +40,7 @@ describe('Message Verbosity (NO_REPLY_NECESSARY)', () => {
   });
 
   it('sets level to verbose for logMsg if stdout includes NO_REPLY_NECESSARY', async () => {
-    const runCommandMock = vi.fn().mockResolvedValue({
+    vi.mocked(runCommand).mockResolvedValue({
       stdout: 'Some output with NO_REPLY_NECESSARY inside',
       stderr: '',
       exitCode: 0,
@@ -49,14 +52,7 @@ describe('Message Verbosity (NO_REPLY_NECESSARY)', () => {
       },
     };
 
-    await handleUserMessage(
-      'chat-verbose-1',
-      'hello',
-      settings as any,
-      '/dir',
-      false,
-      runCommandMock
-    );
+    await handleUserMessage('chat-verbose-1', 'hello', settings as any, '/dir', false);
 
     expect(chats.appendMessage).toHaveBeenCalled();
     const calls = vi.mocked(chats.appendMessage).mock.calls;
@@ -69,7 +65,7 @@ describe('Message Verbosity (NO_REPLY_NECESSARY)', () => {
   });
 
   it('does not set level to verbose for logMsg if stdout does not include NO_REPLY_NECESSARY', async () => {
-    const runCommandMock = vi.fn().mockResolvedValue({
+    vi.mocked(runCommand).mockResolvedValue({
       stdout: 'Normal output',
       stderr: '',
       exitCode: 0,
@@ -81,14 +77,7 @@ describe('Message Verbosity (NO_REPLY_NECESSARY)', () => {
       },
     };
 
-    await handleUserMessage(
-      'chat-verbose-2',
-      'hello',
-      settings as any,
-      '/dir',
-      false,
-      runCommandMock
-    );
+    await handleUserMessage('chat-verbose-2', 'hello', settings as any, '/dir', false);
 
     const calls = vi.mocked(chats.appendMessage).mock.calls;
     const logMsgCall = calls.find(
@@ -99,7 +88,7 @@ describe('Message Verbosity (NO_REPLY_NECESSARY)', () => {
   });
 
   it('sets level to verbose for routerLogMsg if state.reply includes NO_REPLY_NECESSARY', async () => {
-    const runCommandMock = vi.fn().mockResolvedValue({
+    vi.mocked(runCommand).mockResolvedValue({
       stdout: 'Normal output',
       stderr: '',
       exitCode: 0,
@@ -117,8 +106,7 @@ describe('Message Verbosity (NO_REPLY_NECESSARY)', () => {
       'trigger NO_REPLY_NECESSARY via mock router',
       settings as any,
       '/dir',
-      false,
-      runCommandMock
+      false
     );
 
     const calls = vi.mocked(chats.appendMessage).mock.calls;

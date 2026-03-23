@@ -9,7 +9,6 @@ import { getSettingsPath, readChatSettings, getWorkspaceRoot } from '../../share
 import { CronJobSchema } from '../../shared/config.js';
 import { handleUserMessage } from '../message.js';
 import { getDefaultChatId, getMessages as fetchMessages } from '../chats.js';
-import { runCommand } from '../utils/spawn.js';
 import { apiProcedure, publicProcedure, router } from './trpc.js';
 import {
   getUniquePath,
@@ -94,16 +93,7 @@ export const sendMessage = apiProcedure
       message = message ? `${message}\n\n${fileList}` : fileList;
     }
 
-    await handleUserMessage(
-      chatId,
-      message,
-      settings,
-      undefined,
-      noWait,
-      (args) => runCommand({ ...args, logToTerminal: true }),
-      sessionId,
-      agentId
-    );
+    await handleUserMessage(chatId, message, settings, undefined, noWait, sessionId, agentId);
 
     return { success: true };
   });

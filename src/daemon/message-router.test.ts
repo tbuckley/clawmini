@@ -5,7 +5,7 @@ import * as workspace from '../shared/workspace.js';
 import * as chats from './chats.js';
 import { executeRouterPipeline } from './routers.js';
 import { spawn } from 'node:child_process';
-import { runCommandCallback, createAutoFinishMockSpawn } from './message-test-utils.js';
+import { createAutoFinishMockSpawn } from './message-test-utils.js';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 vi.mock('./chats.js', () => ({ appendMessage: vi.fn().mockResolvedValue(undefined) }));
@@ -61,14 +61,7 @@ describe('Router Pipeline Execution', () => {
       },
     };
 
-    await handleUserMessage(
-      'chat-router',
-      'hello world',
-      settings as any,
-      '/dir-router',
-      false,
-      runCommandCallback
-    );
+    await handleUserMessage('chat-router', 'hello world', settings as any, '/dir-router', false);
 
     // Verify userMsg is saved with original message
     expect(chats.appendMessage).toHaveBeenCalledWith(

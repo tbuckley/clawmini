@@ -169,7 +169,6 @@ describe('Daemon TRPC Router', () => {
         {},
         undefined,
         false,
-        expect.any(Function),
         undefined,
         undefined
       );
