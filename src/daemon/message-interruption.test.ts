@@ -100,10 +100,9 @@ describe('Interruption flow in message handler', () => {
     // Should have concatenated the pending tasks with the new message
     // and enqueued it.
 
-    // In our executeDirectMessage, the state.message gets mutated.
-    // However, it's easier to verify what was enqueued by extracting pending again,
-    // or by checking state.message.
-    expect(state.message).toBe(
+    // Verify that the new task enqueued contains the merged payload
+    expect(queue['pending'].length).toBe(1);
+    expect(queue['pending'][0]?.payload?.text).toBe(
       '<message>\npending 1\n</message>\n\n<message>\npending 2\n</message>\n\n<message>\nnew urgent task\n</message>'
     );
   });

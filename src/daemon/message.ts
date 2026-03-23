@@ -5,7 +5,7 @@ import {
   type CommandLogMessage,
   type ChatMessage,
 } from './chats.js';
-import { getMessageQueue } from './queue.js';
+import { getMessageQueue, Queue, type MessageQueuePayload } from './queue.js';
 import { executeRouterPipeline } from './routers.js';
 import type { RouterState } from './routers/types.js';
 import { type Settings, type Agent, type AgentSessionSettings } from '../shared/config.js';
@@ -18,7 +18,7 @@ import {
   resolveAgentWorkDir,
 } from '../shared/workspace.js';
 import { cronManager } from './cron.js';
-import { AgentRunner, type Logger } from './agent-runner.js';
+import { AgentRunner, type Logger, type Message } from './agent-runner.js';
 import { runCommand } from './utils/spawn.js';
 
 export { calculateDelay, type RunCommandResult, type RunCommandFn } from './agent-runner.js';
@@ -26,6 +26,8 @@ export { calculateDelay, type RunCommandResult, type RunCommandFn } from './agen
 export function formatPendingMessages(payloads: string[]): string {
   return payloads.map((text) => `<message>\n${text}\n</message>`).join('\n\n');
 }
+
+type MaybePromise<T> = T | Promise<T>;
 
 async function resolveSessionState(
   chatId: string,
@@ -89,6 +91,7 @@ export class AgentSession {
   public readonly settings: Agent;
   public readonly sessionSettings: AgentSessionSettings | null;
   public readonly workspaceRoot: string;
+  public readonly globalSettings: Settings | undefined;
 
   constructor(config: {
     agentId: string;
@@ -97,6 +100,7 @@ export class AgentSession {
     settings: Agent;
     sessionSettings: AgentSessionSettings | null;
     workspaceRoot: string;
+    globalSettings: Settings | undefined;
   }) {
     this.agentId = config.agentId;
     this.sessionId = config.sessionId;
@@ -104,12 +108,13 @@ export class AgentSession {
     this.settings = config.settings;
     this.sessionSettings = config.sessionSettings;
     this.workspaceRoot = config.workspaceRoot;
+    this.globalSettings = config.globalSettings;
   }
 
   createLogger(): Logger {
     return createChatLogger(this.chatId);
   }
-  createRunner(settings: Settings | undefined): AgentRunner {
+  createRunner(): AgentRunner {
     return new AgentRunner(
       this.chatId,
       this.agentId,
@@ -118,7 +123,7 @@ export class AgentSession {
       this.sessionSettings,
       this.workDirectory,
       this.workspaceRoot,
-      settings,
+      this.globalSettings,
       this.createLogger(),
       runCommand
     );
@@ -128,11 +133,54 @@ export class AgentSession {
     return resolveAgentWorkDir(this.agentId, this.settings.directory, this.workspaceRoot);
   }
 
+  private getTaskQueue(): Queue<MessageQueuePayload> {
+    return getMessageQueue(this.workDirectory);
+  }
+
   stop() {
-    const queue = getMessageQueue(this.workDirectory);
+    const queue = this.getTaskQueue();
     // FIXME: Only stop tasks for this agent session
     queue.abortCurrent();
     queue.clear();
+  }
+
+  interrupt(message: Message): MaybePromise<void> {
+    const queue = this.getTaskQueue();
+
+    const isMatchingSession = (p: { sessionId: string }) => p.sessionId === this.sessionId;
+    const currentPayload = queue.getCurrentPayload();
+    const currentMatches = currentPayload ? isMatchingSession(currentPayload) : false;
+
+    const extracted = queue.extractPending(isMatchingSession);
+    queue.abortCurrent(isMatchingSession);
+    const payloads = currentMatches && currentPayload ? [currentPayload, ...extracted] : extracted;
+
+    if (payloads.length > 0) {
+      // TODO: Figure out how to handle merging payloads when they have different env settings or other config.
+      // Currently, we only preserve the text content and drop any specific configuration attached to individual messages.
+      const pendingText = formatPendingMessages(payloads.map((p) => p.text));
+      message.content = `${pendingText}\n\n<message>\n${message.content}\n</message>`.trim();
+    }
+    return this.handleMessage(message);
+  }
+
+  async handleMessage(message: Message): Promise<void> {
+    if (!message.content.trim()) {
+      return;
+    }
+
+    const queue = this.getTaskQueue();
+    const logger = this.createLogger();
+    await queue.enqueue(
+      async (signal) => {
+        const runner = this.createRunner();
+        const lastLogMsg = await runner.executeWithFallbacks(message, signal);
+        if (lastLogMsg) {
+          await logger.log(lastLogMsg);
+        }
+      },
+      { text: message.content, sessionId: this.sessionId }
+    );
   }
 }
 
@@ -147,7 +195,7 @@ export async function executeDirectMessage(
   const logger = createChatLogger(chatId);
 
   const userMsg: UserMessage = {
-    id: state.messageId ?? crypto.randomUUID(),
+    id: state.messageId,
     role: 'user',
     content: userMessageContent ?? state.message,
     timestamp: new Date().toISOString(),
@@ -191,53 +239,26 @@ export async function executeDirectMessage(
     settings: mergedAgent,
     sessionSettings: agentSessionSettings,
     workspaceRoot,
+    globalSettings: settings,
   });
-
-  // Load the queue
-  const queue = getMessageQueue(agentSession.workDirectory);
+  const message: Message = {
+    id: state.messageId,
+    content: state.message,
+    env: state.env ?? {},
+  };
 
   // Process actions
-
   if (state.action === 'stop') {
     agentSession.stop();
     return;
   }
-
   if (state.action === 'interrupt') {
-    const targetSessionId = state.sessionId || 'default';
-    const isMatchingSession = (p: { sessionId: string }) => p.sessionId === targetSessionId;
-    const currentPayload = queue.getCurrentPayload();
-    const currentMatches = currentPayload ? isMatchingSession(currentPayload) : false;
-
-    const extracted = queue.extractPending(isMatchingSession);
-    queue.abortCurrent(isMatchingSession);
-    const payloads = currentMatches && currentPayload ? [currentPayload, ...extracted] : extracted;
-
-    if (payloads.length > 0) {
-      // TODO: Figure out how to handle merging payloads when they have different env settings or other config.
-      // Currently, we only preserve the text content and drop any specific configuration attached to individual messages.
-      const pendingText = formatPendingMessages(payloads.map((p) => p.text));
-      state.message = `${pendingText}\n\n<message>\n${state.message}\n</message>`.trim();
-    }
-  }
-
-  if (!state.message.trim()) {
+    agentSession.interrupt(message);
     return;
   }
 
-  const taskPromise = queue.enqueue(
-    async (signal) => {
-      const runner = agentSession.createRunner(settings);
-      const lastLogMsg = await runner.executeWithFallbacks(
-        { id: state.messageId, content: state.message, env: state.env ?? {} },
-        signal
-      );
-      if (lastLogMsg) {
-        await logger.log(lastLogMsg);
-      }
-    },
-    { text: state.message, sessionId: agentSession.sessionId }
-  );
+  // Process message
+  const taskPromise = agentSession.handleMessage(message);
 
   if (!noWait) {
     try {
