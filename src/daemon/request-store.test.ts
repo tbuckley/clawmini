@@ -6,6 +6,10 @@ import path from 'path';
 import * as workspace from '../shared/workspace.js';
 
 vi.mock('../shared/workspace.js', () => ({
+  resolveAgentWorkDir: vi
+    .fn()
+    .mockImplementation((id, dir, root) => (dir ? `${root}/${dir}` : `${root}/${id}`)),
+
   getClawminiDir: vi.fn(),
 }));
 

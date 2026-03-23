@@ -39,9 +39,12 @@ export function resolveAgentWorkDir(
   startDir = process.cwd()
 ): string {
   const workspaceRoot = getWorkspaceRoot(startDir);
-  const dirPath = customDir
-    ? path.resolve(workspaceRoot, customDir)
-    : path.resolve(workspaceRoot, agentId);
+  let dirPath = workspaceRoot;
+  if (customDir) {
+    dirPath = path.resolve(workspaceRoot, customDir);
+  } else if (agentId !== 'default') {
+    dirPath = path.resolve(workspaceRoot, agentId);
+  }
 
   if (!pathIsInsideDir(dirPath, workspaceRoot, { allowSameDir: true })) {
     throw new Error('Invalid agent directory: resolves outside the workspace.');

@@ -395,7 +395,7 @@ describe('Daemon TRPC Router', () => {
   describe('fetchPendingMessages', () => {
     let queue: ReturnType<typeof getMessageQueue>;
     beforeEach(() => {
-      queue = getMessageQueue(process.cwd());
+      queue = getMessageQueue(path.join(process.cwd(), 'a1'));
       queue.clear();
     });
 
@@ -439,7 +439,9 @@ describe('Daemon TRPC Router', () => {
     });
 
     it('should return empty string if no pending messages', async () => {
-      const caller = agentRouter.createCaller({});
+      const caller = agentRouter.createCaller({
+        tokenPayload: { agentId: 'test', sessionId: 's1' } as any,
+      });
       const result = await caller.fetchPendingMessages();
       expect(result.messages).toBe('');
     });

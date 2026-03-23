@@ -11,6 +11,10 @@ vi.mock('./routers.js', () => ({
   executeRouterPipeline: vi.fn().mockImplementation((state) => Promise.resolve(state)),
 }));
 vi.mock('../shared/workspace.js', () => ({
+  resolveAgentWorkDir: vi
+    .fn()
+    .mockImplementation((id, dir, root) => (dir ? `${root}/${dir}` : `${root}/${id}`)),
+
   readChatSettings: vi.fn().mockResolvedValue(null),
   writeChatSettings: vi.fn().mockResolvedValue(undefined),
   readAgentSessionSettings: vi.fn().mockResolvedValue(null),
@@ -55,7 +59,7 @@ describe('Session Resolution & Execution', () => {
     );
     expect(mockSpawn).toHaveBeenCalledWith(
       'echo new',
-      expect.objectContaining({ cwd: '/dir-sess-1' })
+      expect.objectContaining({ cwd: '/dir-sess-1/default' })
     );
   });
 

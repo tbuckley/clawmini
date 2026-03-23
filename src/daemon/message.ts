@@ -1,4 +1,4 @@
-import path from 'node:path';
+/* eslint-disable max-lines */
 import {
   appendMessage,
   type UserMessage,
@@ -8,16 +8,17 @@ import {
 import { getMessageQueue } from './queue.js';
 import { executeRouterPipeline } from './routers.js';
 import type { RouterState } from './routers/types.js';
-import { type Settings, type Agent } from '../shared/config.js';
+import { type Settings, type Agent, type AgentSessionSettings } from '../shared/config.js';
 import {
   readChatSettings,
   writeChatSettings,
   readAgentSessionSettings,
   getAgent,
   getWorkspaceRoot,
+  resolveAgentWorkDir,
 } from '../shared/workspace.js';
 import { cronManager } from './cron.js';
-import { AgentRunner, type RunCommandFn } from './agent-runner.js';
+import { AgentRunner, type Logger, type RunCommandFn } from './agent-runner.js';
 
 export { calculateDelay, type RunCommandResult, type RunCommandFn } from './agent-runner.js';
 
@@ -56,7 +57,7 @@ function createChatLogger(chatId: string) {
   };
 }
 
-async function resolveMergedAgent(
+export async function resolveMergedAgent(
   agentId: string,
   settings: Settings | undefined,
   cwd: string
@@ -78,6 +79,53 @@ async function resolveMergedAgent(
     }
   }
   return mergedAgent;
+}
+
+export class AgentSession {
+  public readonly agentId: string;
+  public readonly sessionId: string;
+  public readonly chatId: string;
+  public readonly settings: Agent;
+  public readonly sessionSettings: AgentSessionSettings | null;
+  public readonly workspaceRoot: string;
+
+  constructor(config: {
+    agentId: string;
+    sessionId: string;
+    chatId: string;
+    settings: Agent;
+    sessionSettings: AgentSessionSettings | null;
+    workspaceRoot: string;
+  }) {
+    this.agentId = config.agentId;
+    this.sessionId = config.sessionId;
+    this.chatId = config.chatId;
+    this.settings = config.settings;
+    this.sessionSettings = config.sessionSettings;
+    this.workspaceRoot = config.workspaceRoot;
+  }
+
+  createLogger(): Logger {
+    return createChatLogger(this.chatId);
+  }
+  createRunner(settings: Settings | undefined, runCommand: RunCommandFn): AgentRunner {
+    return new AgentRunner(
+      this.chatId,
+      this.agentId,
+      this.sessionId,
+      this.settings,
+      this.sessionSettings,
+      this.workDirectory,
+      this.workspaceRoot,
+      settings,
+      this.createLogger(),
+      runCommand
+    );
+  }
+
+  get workDirectory(): string {
+    return resolveAgentWorkDir(this.agentId, this.settings.directory, this.workspaceRoot);
+  }
 }
 
 export async function executeDirectMessage(
@@ -120,7 +168,28 @@ export async function executeDirectMessage(
     return;
   }
 
-  const queue = getMessageQueue(cwd);
+  // Load the agent
+  const {
+    agentId,
+    agentSessionSettings,
+    targetSessionId: finalSessionId,
+  } = await resolveSessionState(chatId, cwd, state.sessionId, state.agentId);
+  const mergedAgent = await resolveMergedAgent(agentId, settings, cwd);
+  const workspaceRoot = getWorkspaceRoot(cwd);
+
+  const agentSession = new AgentSession({
+    agentId,
+    sessionId: finalSessionId,
+    chatId,
+    settings: mergedAgent,
+    sessionSettings: agentSessionSettings,
+    workspaceRoot,
+  });
+
+  // Load the queue
+  const queue = getMessageQueue(agentSession.workDirectory);
+
+  // Process actions
 
   if (state.action === 'stop') {
     queue.abortCurrent();
@@ -150,46 +219,15 @@ export async function executeDirectMessage(
     return;
   }
 
-  const routerEnv = state.env ?? {};
-
   const taskPromise = queue.enqueue(
     async (signal) => {
-      const {
-        agentId,
-        agentSessionSettings,
-        targetSessionId: finalSessionId,
-      } = await resolveSessionState(chatId, cwd, state.sessionId, state.agentId);
-
-      const mergedAgent = await resolveMergedAgent(agentId, settings, cwd);
-
-      const workspaceRoot = getWorkspaceRoot(cwd);
-      let executionCwd = cwd;
-      if (mergedAgent.directory) {
-        executionCwd = path.resolve(workspaceRoot, mergedAgent.directory);
-      } else if (agentId !== 'default') {
-        executionCwd = path.resolve(workspaceRoot, agentId);
-      }
-
-      const runner = new AgentRunner(
-        chatId,
-        agentId,
-        finalSessionId,
-        mergedAgent,
-        agentSessionSettings,
-        executionCwd,
-        cwd,
-        settings,
-        logger,
-        runCommand
-      );
-
-      const lastLogMsg = await runner.executeWithFallbacks(state, routerEnv, userMsg, signal);
-
+      const runner = agentSession.createRunner(settings, runCommand);
+      const lastLogMsg = await runner.executeWithFallbacks(state, userMsg, signal);
       if (lastLogMsg) {
-        await appendMessage(chatId, lastLogMsg);
+        await logger.log(lastLogMsg);
       }
     },
-    { text: state.message, sessionId: state.sessionId || 'default' }
+    { text: state.message, sessionId: agentSession.sessionId }
   );
 
   if (!noWait) {

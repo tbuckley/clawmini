@@ -7,6 +7,10 @@ vi.mock('./chats.js', () => ({
   appendMessage: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../shared/workspace.js', () => ({
+  resolveAgentWorkDir: vi
+    .fn()
+    .mockImplementation((id, dir, root) => (dir ? `${root}/${dir}` : `${root}/${id}`)),
+
   readChatSettings: vi.fn().mockResolvedValue(null),
   writeChatSettings: vi.fn().mockResolvedValue(undefined),
   readAgentSessionSettings: vi.fn().mockResolvedValue(null),
@@ -25,7 +29,7 @@ describe('Interruption flow in message handler', () => {
   });
 
   it('stops execution and clears queue when action is stop', async () => {
-    const queue = getMessageQueue('/test-interrupt-stop');
+    const queue = getMessageQueue('/test-interrupt-stop/default');
     const abortSpy = vi.spyOn(queue, 'abortCurrent');
     const clearSpy = vi.spyOn(queue, 'clear');
 
@@ -48,7 +52,7 @@ describe('Interruption flow in message handler', () => {
   });
 
   it('interrupts execution and batches pending tasks when action is interrupt', async () => {
-    const queue = getMessageQueue('/test-interrupt-batch');
+    const queue = getMessageQueue('/test-interrupt-batch/default');
     const abortSpy = vi.spyOn(queue, 'abortCurrent');
 
     // Block the queue with a running task so subsequent ones stay pending

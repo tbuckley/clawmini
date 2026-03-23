@@ -330,12 +330,11 @@ export class AgentRunner {
 
   private async executeSingleAttempt(
     state: RouterState,
-    routerEnv: Record<string, string>,
     userMsg: UserMessage,
     fallback?: Fallback | undefined,
     signal?: AbortSignal | undefined
   ): Promise<{ success: boolean; logMsg?: CommandLogMessage }> {
-    const context = await this.buildExecutionContext(state.message, routerEnv, fallback);
+    const context = await this.buildExecutionContext(state.message, state.env || {}, fallback);
     if (!context) return { success: false };
 
     const mainResult = await this.withTypingIndicator(() =>
@@ -379,7 +378,6 @@ export class AgentRunner {
 
   async executeWithFallbacks(
     state: RouterState,
-    routerEnv: Record<string, string>,
     userMsg: UserMessage,
     signal?: AbortSignal | undefined
   ): Promise<CommandLogMessage | undefined> {
@@ -404,7 +402,6 @@ export class AgentRunner {
 
       const attemptResult = await this.executeSingleAttempt(
         state,
-        routerEnv,
         userMsg,
         attempt.fallback,
         signal
