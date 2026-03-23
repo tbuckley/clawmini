@@ -1,6 +1,6 @@
 import { emitTyping } from '../events.js';
 import type { ExecutionResponse, Message, RunCommandFn } from './types.js';
-import { type Fallback, buildAgentContext } from './agent-context.js';
+import { type Fallback } from './agent-context.js';
 import { extractMessageContent, extractSessionId } from './agent-extractors.js';
 import type { AgentSession } from './agent-session.js';
 
@@ -61,12 +61,11 @@ export class AgentRunner {
     fallback?: Fallback | undefined,
     signal?: AbortSignal | undefined
   ): Promise<{ success: boolean; response?: ExecutionResponse }> {
-    const context = await buildAgentContext({
-      message: message.content,
-      routerEnv: message.env,
-      fallback,
-      session: this.session,
-    });
+    const context = await this.session.buildExecutionContext(
+      message.content,
+      message.env,
+      fallback
+    );
 
     if (!context) return { success: false };
 

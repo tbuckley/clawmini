@@ -14,6 +14,9 @@ import {
 } from '../../shared/workspace.js';
 import { formatPendingMessages } from './utils.js';
 import { createChatLogger } from './chat-logger.js';
+import { sandboxExecutionContext, type Fallback } from './agent-context.js';
+import { applyEnvOverrides, getActiveEnvKeys } from '../../shared/utils/env.js';
+import { getApiContext, generateToken } from '../auth.js';
 
 export class AgentSession {
   public readonly agentId: string;
@@ -44,6 +47,83 @@ export class AgentSession {
     this.globalSettings = config.globalSettings;
 
     this.logger = config.logger ?? createChatLogger(this.chatId);
+  }
+
+  get isNewSession(): boolean {
+    return !this.sessionSettings;
+  }
+
+  async buildExecutionContext(
+    messageContent: string,
+    routerEnv: Record<string, string>,
+    fallback?: Fallback
+  ): Promise<{ command: string; env: Record<string, string>; currentAgent: Agent } | null> {
+    const currentAgent: Agent = {
+      ...this.settings,
+      commands: {
+        ...this.settings.commands,
+        ...(fallback?.commands || {}),
+      },
+      env: {
+        ...this.settings.env,
+        ...(fallback?.env || {}),
+      },
+    };
+
+    let initialCommand = currentAgent.commands?.new ?? '';
+    const env = {
+      ...process.env,
+      CLAW_CLI_MESSAGE: messageContent,
+    } as Record<string, string>;
+
+    applyEnvOverrides(env, currentAgent.env);
+
+    if (!this.isNewSession && currentAgent.commands?.append) {
+      initialCommand = currentAgent.commands.append;
+      applyEnvOverrides(env, this.sessionSettings?.env);
+    }
+
+    if (!initialCommand) {
+      return null;
+    }
+
+    const agentSpecificEnvKeys = getActiveEnvKeys(
+      currentAgent.env,
+      !this.isNewSession ? this.sessionSettings?.env : undefined
+    );
+    agentSpecificEnvKeys.add('CLAW_CLI_MESSAGE');
+
+    Object.assign(env, routerEnv);
+    Object.keys(routerEnv).forEach((k) => agentSpecificEnvKeys.add(k));
+
+    const apiCtx = getApiContext(this.globalSettings);
+    if (apiCtx) {
+      const proxyUrl = apiCtx.proxy_host
+        ? `${apiCtx.proxy_host}:${apiCtx.port}`
+        : `http://${apiCtx.host}:${apiCtx.port}`;
+      env['CLAW_API_URL'] = proxyUrl;
+      agentSpecificEnvKeys.add('CLAW_API_URL');
+
+      const token = generateToken({
+        chatId: this.chatId,
+        agentId: this.agentId,
+        sessionId: this.sessionId,
+        timestamp: Date.now(),
+      });
+      env['CLAW_API_TOKEN'] = token;
+      agentSpecificEnvKeys.add('CLAW_API_TOKEN');
+    }
+
+    let command = initialCommand;
+    command = await sandboxExecutionContext(
+      command,
+      env,
+      agentSpecificEnvKeys,
+      this.workDirectory,
+      this.workspaceRoot
+    );
+
+    return { command, env, currentAgent };
   }
 
   createRunner(): AgentRunner {
