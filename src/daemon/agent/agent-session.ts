@@ -8,6 +8,7 @@ import {
   getAgent,
   getWorkspaceRoot,
   readAgentSessionSettings,
+  writeAgentSessionSettings,
   readChatSettings,
   readSettings,
   resolveAgentWorkDir,
@@ -109,6 +110,16 @@ export class AgentSession {
           // TODO: throw an error? Log an error?
           return;
         }
+
+        if (result.extractedSessionId) {
+          await writeAgentSessionSettings(
+            this.agentId,
+            this.sessionId,
+            { env: { SESSION_ID: result.extractedSessionId } },
+            this.workspaceRoot
+          );
+        }
+
         await this.logger.logCommandResult(result);
       },
       { text: message.content, sessionId: this.sessionId }

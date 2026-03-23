@@ -9,7 +9,6 @@ import {
   getActiveEnvironmentInfo,
   getEnvironmentPath,
   readEnvironment,
-  writeAgentSessionSettings,
 } from '../../shared/workspace.js';
 import { getApiContext, generateToken } from '../auth.js';
 import { emitTyping } from '../events.js';
@@ -320,16 +319,13 @@ export class AgentRunner {
       if (!finalContent.trim()) success = false;
     }
 
+    let extractedSessionId: string | undefined;
+
     if (success && this.isNewSession && context.currentAgent.commands?.getSessionId) {
       const extraction = await this.extractSessionId(context, mainResult, signal);
       if (extraction.error) additonalErrors.push(extraction.error);
       if (extraction.result) {
-        await writeAgentSessionSettings(
-          this.agentId,
-          this.finalSessionId,
-          { env: { SESSION_ID: extraction.result } },
-          this.cwd
-        );
+        extractedSessionId = extraction.result;
       }
     }
 
@@ -340,6 +336,7 @@ export class AgentRunner {
         content: finalContent,
         command: context.command,
         cwd: this.executionCwd,
+        extractedSessionId,
         result: {
           ...mainResult,
           stderr: [mainResult.stderr, ...additonalErrors].join('\n\n'),
