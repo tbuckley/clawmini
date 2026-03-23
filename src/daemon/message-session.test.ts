@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleUserMessage } from './message.js';
 import * as workspace from '../shared/workspace.js';
 import { spawn } from 'node:child_process';
-import { runCommandCallback, createAutoFinishMockSpawn } from './message-test-utils.js';
+import { createAutoFinishMockSpawn } from './message-test-utils.js';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 vi.mock('../shared/chats.js', () => ({ appendMessage: vi.fn().mockResolvedValue(undefined) }));
@@ -11,6 +11,12 @@ vi.mock('./routers.js', () => ({
   executeRouterPipeline: vi.fn().mockImplementation((state) => Promise.resolve(state)),
 }));
 vi.mock('../shared/workspace.js', () => ({
+  resolveAgentWorkDir: vi
+    .fn()
+    .mockImplementation((id, dir, root) => (dir ? `${root}/${dir}` : `${root}/${id}`)),
+
+  readSettings: vi.fn().mockResolvedValue(null),
+
   readChatSettings: vi.fn().mockResolvedValue(null),
   writeChatSettings: vi.fn().mockResolvedValue(undefined),
   readAgentSessionSettings: vi.fn().mockResolvedValue(null),
@@ -37,15 +43,7 @@ describe('Session Resolution & Execution', () => {
 
     const settings = { defaultAgent: { commands: { new: 'echo new', append: 'echo append' } } };
 
-    await handleUserMessage(
-      'chat1',
-      'hello',
-      settings as any,
-      '/dir-sess-1',
-      false,
-      runCommandCallback,
-      'my-session'
-    );
+    await handleUserMessage('chat1', 'hello', settings as any, '/dir-sess-1', false, 'my-session');
 
     expect(workspace.readChatSettings).toHaveBeenCalledWith('chat1', '/dir-sess-1');
     expect(workspace.readAgentSessionSettings).toHaveBeenCalledWith(
@@ -55,7 +53,7 @@ describe('Session Resolution & Execution', () => {
     );
     expect(mockSpawn).toHaveBeenCalledWith(
       'echo new',
-      expect.objectContaining({ cwd: '/dir-sess-1' })
+      expect.objectContaining({ cwd: '/dir-sess-1/default' })
     );
   });
 
@@ -73,14 +71,7 @@ describe('Session Resolution & Execution', () => {
 
     const settings = { defaultAgent: { commands: { new: 'echo new', append: 'echo append' } } };
 
-    await handleUserMessage(
-      'chat1',
-      'hello',
-      settings as any,
-      '/dir-sess-3',
-      false,
-      runCommandCallback
-    );
+    await handleUserMessage('chat1', 'hello', settings as any, '/dir-sess-3', false);
 
     // Should use inferred session from chatSettings
     expect(workspace.readAgentSessionSettings).toHaveBeenCalledWith(
@@ -112,15 +103,7 @@ describe('Session Resolution & Execution', () => {
 
     const settings = { defaultAgent: { commands: { new: 'echo new' } } };
 
-    await handleUserMessage(
-      'chat1',
-      'hello',
-      settings as any,
-      '/dir-sess-2',
-      false,
-      runCommandCallback,
-      'my-session'
-    );
+    await handleUserMessage('chat1', 'hello', settings as any, '/dir-sess-2', false, 'my-session');
 
     expect(mockSpawn).toHaveBeenCalledWith('echo new', expect.anything());
   });

@@ -2,6 +2,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { executeDirectMessage } from './message.js';
 import * as events from './events.js';
+import { runCommand } from './utils/spawn.js';
+
+vi.mock('./utils/spawn.js', () => ({ runCommand: vi.fn() }));
 
 vi.mock('./events.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./events.js')>();
@@ -23,6 +26,12 @@ vi.mock('./queue.js', () => ({
 }));
 
 vi.mock('../shared/workspace.js', () => ({
+  resolveAgentWorkDir: vi
+    .fn()
+    .mockImplementation((id, dir, root) => (dir ? `${root}/${dir}` : `${root}/${id}`)),
+
+  readSettings: vi.fn().mockResolvedValue(null),
+
   readChatSettings: vi.fn().mockResolvedValue(null),
   writeChatSettings: vi.fn().mockResolvedValue(undefined),
   readAgentSessionSettings: vi.fn().mockResolvedValue(null),
@@ -59,7 +68,7 @@ describe('executeDirectMessage - Typing Indicator', () => {
     } as any;
 
     // We mock runCommand to delay its completion so we can advance timers
-    const mockRunCommand = vi.fn().mockImplementation(() => {
+    vi.mocked(runCommand).mockImplementation(() => {
       return new Promise((resolve) => {
         // We simulate that command takes 12000ms
         setTimeout(() => {
@@ -68,7 +77,7 @@ describe('executeDirectMessage - Typing Indicator', () => {
       });
     });
 
-    const execPromise = executeDirectMessage(chatId, state, settings, '/dir', mockRunCommand, true);
+    const execPromise = executeDirectMessage(chatId, state, settings, '/dir', true);
 
     // Advance time by 5000ms. Interval is set to 5000ms.
     await vi.advanceTimersByTimeAsync(5000);

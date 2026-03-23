@@ -4,7 +4,7 @@ import { handleUserMessage } from './message.js';
 import * as workspace from '../shared/workspace.js';
 import { cronManager } from './cron.js';
 import { spawn } from 'node:child_process';
-import { runCommandCallback, createAutoFinishMockSpawn } from './message-test-utils.js';
+import { createAutoFinishMockSpawn } from './message-test-utils.js';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 vi.mock('../shared/chats.js', () => ({ appendMessage: vi.fn().mockResolvedValue(undefined) }));
@@ -12,6 +12,12 @@ vi.mock('./routers.js', () => ({
   executeRouterPipeline: vi.fn().mockImplementation((state) => Promise.resolve(state)),
 }));
 vi.mock('../shared/workspace.js', () => ({
+  resolveAgentWorkDir: vi
+    .fn()
+    .mockImplementation((id, dir, root) => (dir ? `${root}/${dir}` : `${root}/${id}`)),
+
+  readSettings: vi.fn().mockResolvedValue(null),
+
   readChatSettings: vi.fn().mockResolvedValue(null),
   writeChatSettings: vi.fn().mockResolvedValue(undefined),
   readAgentSessionSettings: vi.fn().mockResolvedValue(null),
@@ -52,7 +58,7 @@ describe('Jobs and Session Handling in handleUserMessage', () => {
       },
     });
 
-    await handleUserMessage('chat1', 'test message', {} as any, '/dir', false, runCommandCallback);
+    await handleUserMessage('chat1', 'test message', {} as any, '/dir', false);
 
     expect(cronManager.unscheduleJob).toHaveBeenCalledWith('chat1', 'job2');
     expect(cronManager.scheduleJob).toHaveBeenCalledWith('chat1', {
@@ -85,7 +91,7 @@ describe('Jobs and Session Handling in handleUserMessage', () => {
       nextSessionId: 'new-session-id',
     });
 
-    await handleUserMessage('chat1', 'test message', {} as any, '/dir', false, runCommandCallback);
+    await handleUserMessage('chat1', 'test message', {} as any, '/dir', false);
 
     // Should have updated chatSettings with the nextSessionId
     expect(workspace.writeChatSettings).toHaveBeenCalledWith(

@@ -2,7 +2,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleUserMessage, calculateDelay } from './message.js';
 import { spawn } from 'node:child_process';
-import { runCommandCallback } from './message-test-utils.js';
 import * as chats from '../shared/chats.js';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
@@ -11,6 +10,12 @@ vi.mock('./routers.js', () => ({
   executeRouterPipeline: vi.fn().mockImplementation((state) => Promise.resolve(state)),
 }));
 vi.mock('../shared/workspace.js', () => ({
+  resolveAgentWorkDir: vi
+    .fn()
+    .mockImplementation((id, dir, root) => (dir ? `${root}/${dir}` : `${root}/${id}`)),
+
+  readSettings: vi.fn().mockResolvedValue(null),
+
   readChatSettings: vi.fn().mockResolvedValue(null),
   writeChatSettings: vi.fn().mockResolvedValue(undefined),
   readAgentSessionSettings: vi.fn().mockResolvedValue(null),
@@ -109,14 +114,7 @@ describe('Message Fallbacks & Retries', () => {
       },
     };
 
-    await handleUserMessage(
-      'chat-fallback',
-      'hello',
-      settings as any,
-      '/dir',
-      false,
-      runCommandCallback
-    );
+    await handleUserMessage('chat-fallback', 'hello', settings as any, '/dir', false);
 
     // Should call base once, then fallback once
     expect(mockSpawn).toHaveBeenCalledTimes(2);
@@ -175,14 +173,7 @@ describe('Message Fallbacks & Retries', () => {
       },
     };
 
-    await handleUserMessage(
-      'chat-empty',
-      'hello',
-      settings as any,
-      '/dir',
-      false,
-      runCommandCallback
-    );
+    await handleUserMessage('chat-empty', 'hello', settings as any, '/dir', false);
 
     // Call 1: base (success)
     // Call 2: getMessageContent (returns empty -> failure)
@@ -233,14 +224,7 @@ describe('Message Fallbacks & Retries', () => {
       },
     };
 
-    await handleUserMessage(
-      'chat-retries',
-      'hello',
-      settings as any,
-      '/dir',
-      false,
-      runCommandCallback
-    );
+    await handleUserMessage('chat-retries', 'hello', settings as any, '/dir', false);
 
     // Call 1: base (fail)
     // Call 2: fallback attempt 0 (fail)
@@ -290,14 +274,7 @@ describe('Message Fallbacks & Retries', () => {
       },
     };
 
-    await handleUserMessage(
-      'chat-log-retry',
-      'hello',
-      settings as any,
-      '/dir',
-      false,
-      runCommandCallback
-    );
+    await handleUserMessage('chat-log-retry', 'hello', settings as any, '/dir', false);
 
     // Should find the retry log message
     expect(chats.appendMessage).toHaveBeenCalledWith(

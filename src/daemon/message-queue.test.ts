@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleUserMessage } from './message.js';
 import * as chats from './chats.js';
 import { spawn } from 'node:child_process';
-import { runCommandCallback, createMockSpawn } from './message-test-utils.js';
+import { createMockSpawn } from './message-test-utils.js';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 vi.mock('./chats.js', () => ({ appendMessage: vi.fn().mockResolvedValue(undefined) }));
@@ -11,6 +11,12 @@ vi.mock('./routers.js', () => ({
   executeRouterPipeline: vi.fn().mockImplementation((state) => Promise.resolve(state)),
 }));
 vi.mock('../shared/workspace.js', () => ({
+  resolveAgentWorkDir: vi
+    .fn()
+    .mockImplementation((id, dir, root) => (dir ? `${root}/${dir}` : `${root}/${id}`)),
+
+  readSettings: vi.fn().mockResolvedValue(null),
+
   readChatSettings: vi.fn().mockResolvedValue(null),
   writeChatSettings: vi.fn().mockResolvedValue(undefined),
   readAgentSessionSettings: vi.fn().mockResolvedValue(null),
@@ -34,28 +40,14 @@ describe('Daemon Execution Queue', () => {
 
     const settings = { defaultAgent: { commands: { new: 'echo msg' } } };
 
-    const p1 = handleUserMessage(
-      'chat1',
-      'msg1',
-      settings as any,
-      '/dir1',
-      false,
-      runCommandCallback
-    );
+    const p1 = handleUserMessage('chat1', 'msg1', settings as any, '/dir1', false);
 
     await new Promise((r) => setTimeout(r, 0));
 
     const emitter1 = (mockSpawn as any).lastEmitter;
     expect(mockSpawn).toHaveBeenCalledTimes(1);
 
-    const p2 = handleUserMessage(
-      'chat1',
-      'msg2',
-      settings as any,
-      '/dir1',
-      false,
-      runCommandCallback
-    );
+    const p2 = handleUserMessage('chat1', 'msg2', settings as any, '/dir1', false);
 
     await new Promise((r) => setTimeout(r, 0));
 
@@ -84,11 +76,11 @@ describe('Daemon Execution Queue', () => {
 
     const settings = { defaultAgent: { commands: { new: 'echo msg' } } };
 
-    handleUserMessage('chat1', 'msg1', settings as any, '/dir1', false, runCommandCallback);
+    handleUserMessage('chat1', 'msg1', settings as any, '/dir1', false);
     await new Promise((r) => setTimeout(r, 0));
     expect(mockSpawn).toHaveBeenCalledTimes(1);
 
-    handleUserMessage('chat1', 'msg2', settings as any, '/dir2', false, runCommandCallback);
+    handleUserMessage('chat1', 'msg2', settings as any, '/dir2', false);
     await new Promise((r) => setTimeout(r, 0));
 
     // Since it's a different directory, it should spawn immediately
@@ -101,24 +93,10 @@ describe('Daemon Execution Queue', () => {
 
     const settings = { defaultAgent: { commands: { new: 'echo msg' } } };
 
-    const p1 = handleUserMessage(
-      'chat1',
-      'msg1',
-      settings as any,
-      '/dir-fail',
-      false,
-      runCommandCallback
-    );
+    const p1 = handleUserMessage('chat1', 'msg1', settings as any, '/dir-fail', false);
     await new Promise((r) => setTimeout(r, 0));
 
-    const p2 = handleUserMessage(
-      'chat1',
-      'msg2',
-      settings as any,
-      '/dir-fail',
-      false,
-      runCommandCallback
-    );
+    const p2 = handleUserMessage('chat1', 'msg2', settings as any, '/dir-fail', false);
 
     const emitter1 = (mockSpawn as any).emitters[0];
     emitter1.fail(new Error('command not found'));

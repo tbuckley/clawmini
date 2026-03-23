@@ -5,7 +5,7 @@ import * as workspace from '../shared/workspace.js';
 import * as chats from './chats.js';
 import { executeRouterPipeline } from './routers.js';
 import { spawn } from 'node:child_process';
-import { runCommandCallback, createAutoFinishMockSpawn } from './message-test-utils.js';
+import { createAutoFinishMockSpawn } from './message-test-utils.js';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 vi.mock('./chats.js', () => ({ appendMessage: vi.fn().mockResolvedValue(undefined) }));
@@ -13,6 +13,12 @@ vi.mock('./routers.js', () => ({
   executeRouterPipeline: vi.fn().mockImplementation((state) => Promise.resolve(state)),
 }));
 vi.mock('../shared/workspace.js', () => ({
+  resolveAgentWorkDir: vi
+    .fn()
+    .mockImplementation((id, dir, root) => (dir ? `${root}/${dir}` : `${root}/${id}`)),
+
+  readSettings: vi.fn().mockResolvedValue(null),
+
   readChatSettings: vi.fn().mockResolvedValue(null),
   writeChatSettings: vi.fn().mockResolvedValue(undefined),
   readAgentSessionSettings: vi.fn().mockResolvedValue(null),
@@ -57,14 +63,7 @@ describe('Router Pipeline Execution', () => {
       },
     };
 
-    await handleUserMessage(
-      'chat-router',
-      'hello world',
-      settings as any,
-      '/dir-router',
-      false,
-      runCommandCallback
-    );
+    await handleUserMessage('chat-router', 'hello world', settings as any, '/dir-router', false);
 
     // Verify userMsg is saved with original message
     expect(chats.appendMessage).toHaveBeenCalledWith(

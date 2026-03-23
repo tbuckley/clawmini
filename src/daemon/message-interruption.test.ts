@@ -2,11 +2,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeDirectMessage } from './message.js';
 import { getMessageQueue } from './queue.js';
 import type { RouterState } from './routers/types.js';
+import { runCommand } from './utils/spawn.js';
+
+vi.mock('./utils/spawn.js', () => ({ runCommand: vi.fn() }));
 
 vi.mock('./chats.js', () => ({
   appendMessage: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../shared/workspace.js', () => ({
+  resolveAgentWorkDir: vi
+    .fn()
+    .mockImplementation((id, dir, root) => (dir ? `${root}/${dir}` : `${root}/${id}`)),
+
+  readSettings: vi.fn().mockResolvedValue(null),
+
   readChatSettings: vi.fn().mockResolvedValue(null),
   writeChatSettings: vi.fn().mockResolvedValue(undefined),
   readAgentSessionSettings: vi.fn().mockResolvedValue(null),
@@ -25,7 +34,7 @@ describe('Interruption flow in message handler', () => {
   });
 
   it('stops execution and clears queue when action is stop', async () => {
-    const queue = getMessageQueue('/test-interrupt-stop');
+    const queue = getMessageQueue('/test-interrupt-stop/default');
     const abortSpy = vi.spyOn(queue, 'abortCurrent');
     const clearSpy = vi.spyOn(queue, 'clear');
 
@@ -36,8 +45,8 @@ describe('Interruption flow in message handler', () => {
       action: 'stop',
     };
 
-    const runCommand = vi.fn();
-    await executeDirectMessage('chat1', state, undefined, '/test-interrupt-stop', runCommand, true);
+    vi.mocked(runCommand).mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+    await executeDirectMessage('chat1', state, undefined, '/test-interrupt-stop', true);
 
     expect(abortSpy).toHaveBeenCalled();
     expect(clearSpy).toHaveBeenCalled();
@@ -48,7 +57,7 @@ describe('Interruption flow in message handler', () => {
   });
 
   it('interrupts execution and batches pending tasks when action is interrupt', async () => {
-    const queue = getMessageQueue('/test-interrupt-batch');
+    const queue = getMessageQueue('/test-interrupt-batch/default');
     const abortSpy = vi.spyOn(queue, 'abortCurrent');
 
     // Block the queue with a running task so subsequent ones stay pending
@@ -84,26 +93,18 @@ describe('Interruption flow in message handler', () => {
       sessionId: 'test-session',
     };
 
-    const runCommand = vi.fn().mockResolvedValue({ stdout: 'done', stderr: '', exitCode: 0 });
+    vi.mocked(runCommand).mockResolvedValue({ stdout: 'done', stderr: '', exitCode: 0 });
 
-    await executeDirectMessage(
-      'chat1',
-      state,
-      undefined,
-      '/test-interrupt-batch',
-      runCommand,
-      true
-    );
+    await executeDirectMessage('chat1', state, undefined, '/test-interrupt-batch', true);
 
     expect(abortSpy).toHaveBeenCalled();
 
     // Should have concatenated the pending tasks with the new message
     // and enqueued it.
 
-    // In our executeDirectMessage, the state.message gets mutated.
-    // However, it's easier to verify what was enqueued by extracting pending again,
-    // or by checking state.message.
-    expect(state.message).toBe(
+    // Verify that the new task enqueued contains the merged payload
+    expect(queue['pending'].length).toBe(1);
+    expect(queue['pending'][0]?.payload?.text).toBe(
       '<message>\npending 1\n</message>\n\n<message>\npending 2\n</message>\n\n<message>\nnew urgent task\n</message>'
     );
   });
@@ -116,15 +117,8 @@ describe('Interruption flow in message handler', () => {
       chatId: 'chat1',
     };
 
-    const runCommand = vi.fn();
-    await executeDirectMessage(
-      'chat1',
-      state,
-      undefined,
-      '/test-interrupt-empty',
-      runCommand,
-      true
-    );
+    vi.mocked(runCommand).mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+    await executeDirectMessage('chat1', state, undefined, '/test-interrupt-empty', true);
 
     expect(runCommand).not.toHaveBeenCalled();
     expect(queue['pending'].length).toBe(0);

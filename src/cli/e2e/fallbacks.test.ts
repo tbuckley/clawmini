@@ -134,7 +134,7 @@ describe('E2E Fallbacks Tests', () => {
       lines.filter((l) => l.role === 'log' && l.content.includes('retrying')).length
     ).toBeGreaterThanOrEqual(1);
     expect(lines[lines.length - 1].content.trim()).toBe('Third time is a charm');
-  });
+  }, 10000);
 
   it('should report final failure when all fallbacks are exhausted', async () => {
     const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');

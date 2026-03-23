@@ -138,17 +138,12 @@ describe('E2E Export Lite Functionality Tests', () => {
     expect(delStdout).toContain("Job 'lite-job' deleted successfully.");
 
     // 5. Test fetch-pending
-    const sleeperAgentDir = path.resolve(e2eDir, 'sleeper');
-    fs.mkdirSync(sleeperAgentDir, { recursive: true });
-    await runCli(['agents', 'add', 'sleeper', '--dir', 'sleeper']);
-    const sleeperSettings = path.resolve(e2eDir, '.clawmini/agents/sleeper/settings.json');
-    fs.mkdirSync(path.dirname(sleeperSettings), { recursive: true });
     const sleepCommand =
       process.platform === 'win32' ? 'node -e "setTimeout(() => {}, 5000)"' : 'sleep 5';
-    fs.writeFileSync(sleeperSettings, JSON.stringify({ commands: { new: sleepCommand } }));
+    fs.writeFileSync(dumperSettings, JSON.stringify({ commands: { new: sleepCommand } }));
 
     await runCli(['chats', 'add', 'sleep-chat']);
-    // Start the sleeper agent to block the queue
+    // Start the agent to block the queue
     await runCli([
       'messages',
       'send',
@@ -156,12 +151,21 @@ describe('E2E Export Lite Functionality Tests', () => {
       '--chat',
       'sleep-chat',
       '--agent',
-      'sleeper',
+      'lite-env-dumper',
       '--no-wait',
     ]);
 
     // Send a pending message that will be queued
-    await runCli(['messages', 'send', 'my pending message', '--chat', 'sleep-chat', '--no-wait']);
+    await runCli([
+      'messages',
+      'send',
+      'my pending message',
+      '--chat',
+      'sleep-chat',
+      '--agent',
+      'lite-env-dumper',
+      '--no-wait',
+    ]);
 
     // Fetch the pending message
     const fetchProcess = spawn('node', [litePath, 'fetch-pending'], {

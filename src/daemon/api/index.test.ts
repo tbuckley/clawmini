@@ -46,6 +46,7 @@ vi.mock('../../shared/workspace.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../shared/workspace.js')>();
   return {
     ...actual,
+    readSettings: vi.fn().mockResolvedValue(null),
     readChatSettings: vi.fn(),
     writeChatSettings: vi.fn(),
     getSettingsPath: vi.fn().mockReturnValue('/mock/settings.json'),
@@ -169,7 +170,6 @@ describe('Daemon TRPC Router', () => {
         {},
         undefined,
         false,
-        expect.any(Function),
         undefined,
         undefined
       );
@@ -395,7 +395,7 @@ describe('Daemon TRPC Router', () => {
   describe('fetchPendingMessages', () => {
     let queue: ReturnType<typeof getMessageQueue>;
     beforeEach(() => {
-      queue = getMessageQueue(process.cwd());
+      queue = getMessageQueue(path.join(process.cwd(), 'a1'));
       queue.clear();
     });
 
@@ -439,7 +439,9 @@ describe('Daemon TRPC Router', () => {
     });
 
     it('should return empty string if no pending messages', async () => {
-      const caller = agentRouter.createCaller({});
+      const caller = agentRouter.createCaller({
+        tokenPayload: { agentId: 'test', sessionId: 's1' } as any,
+      });
       const result = await caller.fetchPendingMessages();
       expect(result.messages).toBe('');
     });

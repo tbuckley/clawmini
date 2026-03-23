@@ -50,8 +50,7 @@ export type CronJob = {
   };
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const CronJobSchema: z.ZodType<any> = z.lazy(() =>
+export const CronJobSchema = z.lazy(() =>
   z.looseObject({
     id: z.string().min(1),
     createdAt: z.string().optional(),
@@ -74,7 +73,7 @@ export const CronJobSchema: z.ZodType<any> = z.lazy(() =>
       })
       .optional(),
   })
-);
+) as z.ZodType<CronJob>;
 
 export const RouterConfigSchema = z.union([
   z.string(),
