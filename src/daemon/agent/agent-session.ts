@@ -20,7 +20,7 @@ export class AgentSession {
   public readonly sessionId: string;
   public readonly chatId: string;
   public readonly settings: Agent;
-  public readonly sessionSettings: AgentSessionSettings | null;
+  public sessionSettings: AgentSessionSettings | null;
   public readonly workspaceRoot: string;
   public readonly globalSettings: Settings | undefined;
   public readonly logger: Logger;
@@ -88,6 +88,11 @@ export class AgentSession {
     const queue = this.getTaskQueue();
     await queue.enqueue(
       async (signal) => {
+        // Refresh sessionSettings immediately before execution
+        this.sessionSettings =
+          (await readAgentSessionSettings(this.agentId, this.sessionId, this.workspaceRoot)) ??
+          null;
+
         const runner = this.createRunner();
         const result = await runner.executeWithFallbacks(message, signal);
         if (!result) {
@@ -119,12 +124,6 @@ export async function createAgentSession(options: {
   settings?: Settings | undefined;
   logger?: Logger;
 }) {
-  const agentSessionSettings = await readAgentSessionSettings(
-    options.agentId,
-    options.sessionId,
-    options.cwd
-  );
-
   // TODO: make it so that readSettings returns Settings|undefined
   const settings = options.settings ?? (await readSettings(options.cwd)) ?? undefined;
   const mergedAgent = await resolveMergedAgent(options.agentId, settings, options.cwd);
@@ -135,7 +134,7 @@ export async function createAgentSession(options: {
     sessionId: options.sessionId,
     chatId: options.chatId,
     settings: mergedAgent,
-    sessionSettings: agentSessionSettings ?? null,
+    sessionSettings: null, // Resolves lazily at execution time
     workspaceRoot,
     globalSettings: settings,
     ...(options.logger ? { logger: options.logger } : {}),
