@@ -1,6 +1,11 @@
 /* eslint-disable max-lines */
 import path from 'node:path';
-import { appendMessage, type UserMessage, type CommandLogMessage } from './chats.js';
+import {
+  appendMessage,
+  type UserMessage,
+  type CommandLogMessage,
+  type ChatMessage,
+} from './chats.js';
 import { getMessageQueue } from './queue.js';
 import { executeRouterPipeline } from './routers.js';
 import type { RouterState } from './routers/types.js';
@@ -177,6 +182,18 @@ function formatEnvironmentPrefix(
   );
 }
 
+interface Logger {
+  log(msg: ChatMessage): Promise<void>;
+}
+
+function createChatLogger(chatId: string): Logger {
+  return {
+    log: async (msg: ChatMessage) => {
+      await appendMessage(chatId, msg);
+    },
+  };
+}
+
 export async function executeDirectMessage(
   chatId: string,
   state: RouterState,
@@ -186,13 +203,15 @@ export async function executeDirectMessage(
   noWait: boolean = false,
   userMessageContent?: string
 ) {
+  const logger = createChatLogger(chatId);
+
   const userMsg: UserMessage = {
     id: state.messageId ?? crypto.randomUUID(),
     role: 'user',
     content: userMessageContent ?? state.message,
     timestamp: new Date().toISOString(),
   };
-  await appendMessage(chatId, userMsg);
+  await logger.log(userMsg);
 
   if (state.reply) {
     const routerLogMsg: CommandLogMessage = {
@@ -208,7 +227,7 @@ export async function executeDirectMessage(
       exitCode: 0,
       ...(state.reply.includes('NO_REPLY_NECESSARY') ? { level: 'verbose' as const } : {}),
     };
-    await appendMessage(chatId, routerLogMsg);
+    await logger.log(routerLogMsg);
   }
 
   if (!state.message.trim() && state.action !== 'stop' && state.action !== 'interrupt') {
@@ -307,7 +326,7 @@ export async function executeDirectMessage(
               cwd: executionCwd,
               exitCode: 0,
             };
-            await appendMessage(chatId, retryLogMsg);
+            await logger.log(retryLogMsg);
             await sleep(delay);
           }
 
