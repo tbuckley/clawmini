@@ -141,24 +141,7 @@ export async function main() {
   }
 }
 
-import { fileURLToPath } from 'node:url';
-
-const isMainModule = (() => {
-  try {
-    if (typeof process === 'undefined' || !process.argv || process.argv.length < 2) return false;
-    const argv1 = process.argv[1];
-    if (!argv1) return false;
-    const p1 = path.resolve(argv1);
-    const p2 = path.resolve(fileURLToPath(import.meta.url));
-    return p1 === p2;
-  } catch {
-    return false;
-  }
-})();
-
-if (isMainModule) {
-  main().catch((error) => {
-    console.error('Unhandled error in Discord Adapter:', error);
-    process.exit(1);
-  });
-}
+main().catch((error) => {
+  console.error('Unhandled error in Discord Adapter:', error);
+  process.exit(1);
+});
