@@ -85,6 +85,20 @@ export class Queue<TPayload = string> {
 
     return extracted;
   }
+
+  interrupt(predicate?: (payload: TPayload) => boolean): TPayload[] {
+    const payloads: TPayload[] = [];
+    
+    const currentMatches = !predicate || (this.currentPayload !== undefined && predicate(this.currentPayload));
+    if (currentMatches && this.currentPayload !== undefined) {
+      payloads.push(this.currentPayload);
+      this.abortCurrent(predicate);
+    }
+    
+    payloads.push(...this.extractPending(predicate));
+    
+    return payloads;
+  }
 }
 
 export interface MessageQueuePayload {

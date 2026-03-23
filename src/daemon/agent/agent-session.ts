@@ -80,12 +80,7 @@ export class AgentSession {
     const queue = this.getTaskQueue();
 
     const isMatchingSession = (p: { sessionId: string }) => p.sessionId === this.sessionId;
-    const currentPayload = queue.getCurrentPayload();
-    const currentMatches = currentPayload ? isMatchingSession(currentPayload) : false;
-
-    const extracted = queue.extractPending(isMatchingSession);
-    queue.abortCurrent(isMatchingSession);
-    const payloads = currentMatches && currentPayload ? [currentPayload, ...extracted] : extracted;
+    const payloads = queue.interrupt(isMatchingSession);
 
     if (payloads.length > 0) {
       // TODO: Figure out how to handle merging payloads when they have different env settings or other config.
