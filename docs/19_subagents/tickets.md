@@ -27,7 +27,7 @@
 - **Verification**:
   - Add comprehensive unit tests covering scheduling, locking, deadlock detection/resolution, and priority queuing.
   - Run `npm run validate`.
-- **Status**: not started
+- **Status**: complete
 
 ## Ticket 4: TRPC API Endpoints
 - **Description**: Expose subagent management commands via the daemon's TRPC API.
