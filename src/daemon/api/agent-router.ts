@@ -56,6 +56,7 @@ export const logMessage = apiProcedure
       command: `clawmini-lite log${filesArgStr}`,
       cwd: process.cwd(),
       exitCode: 0,
+      ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
       ...(filePaths.length > 0 ? { files: filePaths } : {}),
     };
 
@@ -178,6 +179,7 @@ export const createPolicyRequest = apiProcedure
         command: commandStr,
         cwd: getWorkspaceRoot(),
         exitCode,
+        ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
       };
 
       await appendMessage(chatId, logMsg);
@@ -198,6 +200,7 @@ export const createPolicyRequest = apiProcedure
       command: 'policy-request',
       cwd: process.cwd(),
       exitCode: 0,
+      ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
     };
 
     await appendMessage(chatId, logMsg);
