@@ -62,6 +62,7 @@ export class AgentSession {
       },
       env: {
         ...this.settings.env,
+        ...(this.subagentId && this.settings.subagentEnv ? this.settings.subagentEnv : {}),
         ...(fallback?.env || {}),
       },
     };
