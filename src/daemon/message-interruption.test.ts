@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeDirectMessage } from './message.js';
-import { getMessageQueue } from './queue.js';
+import { taskScheduler } from './agent/task-scheduler.js';
 import type { RouterState } from './routers/types.js';
 import { runCommand } from './utils/spawn.js';
+import { randomUUID } from 'node:crypto';
 
 vi.mock('./utils/spawn.js', () => ({ runCommand: vi.fn() }));
 
@@ -34,55 +35,71 @@ describe('Interruption flow in message handler', () => {
   });
 
   it('stops execution and clears queue when action is stop', async () => {
-    const queue = getMessageQueue('/test-interrupt-stop/default');
-    const abortSpy = vi.spyOn(queue, 'abortCurrent');
-    const clearSpy = vi.spyOn(queue, 'clear');
+    const sessionId = 'test-interrupt-stop';
+    taskScheduler.abortTasks(sessionId);
+    const abortSpy = vi.spyOn(taskScheduler, 'abortTasks');
 
     const state: RouterState = {
       message: 'stop everything',
       messageId: 'mock-msg-id',
       chatId: 'chat1',
       action: 'stop',
+      sessionId,
     };
 
     vi.mocked(runCommand).mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
     await executeDirectMessage('chat1', state, undefined, '/test-interrupt-stop', true);
 
-    expect(abortSpy).toHaveBeenCalled();
-    expect(clearSpy).toHaveBeenCalled();
+    expect(abortSpy).toHaveBeenCalledWith(sessionId);
     expect(runCommand).not.toHaveBeenCalled();
 
     // We expect it NOT to enqueue because it returns early
-    expect(queue['pending'].length).toBe(0);
+    expect(taskScheduler['queue'].length).toBe(0);
   });
 
   it('interrupts execution and batches pending tasks when action is interrupt', async () => {
-    const queue = getMessageQueue('/test-interrupt-batch/default');
-    const abortSpy = vi.spyOn(queue, 'abortCurrent');
+    const sessionId = 'test-interrupt-batch';
+    taskScheduler.abortTasks(sessionId);
+    const interruptSpy = vi.spyOn(taskScheduler, 'interruptTasks');
 
     // Block the queue with a running task so subsequent ones stay pending
-    queue
-      .enqueue(async () => {
-        await new Promise((r) => setTimeout(r, 500));
+    taskScheduler
+      .schedule({
+        id: randomUUID(),
+        rootChatId: 'chat1',
+        dirPath: 'dir1',
+        sessionId,
+        execute: async () => {
+          await new Promise((r) => setTimeout(r, 500));
+        },
       })
       .catch(() => {});
 
     // Enqueue some dummy tasks with payloads
-    queue
-      .enqueue(
-        async () => {
+    taskScheduler
+      .schedule({
+        id: randomUUID(),
+        rootChatId: 'chat1',
+        dirPath: 'dir1',
+        sessionId,
+        text: 'pending 1',
+        execute: async () => {
           await new Promise((r) => setTimeout(r, 100));
         },
-        { text: 'pending 1', sessionId: 'test-session' }
-      )
+      })
       .catch(() => {});
-    queue
-      .enqueue(
-        async () => {
+
+    taskScheduler
+      .schedule({
+        id: randomUUID(),
+        rootChatId: 'chat1',
+        dirPath: 'dir1',
+        sessionId,
+        text: 'pending 2',
+        execute: async () => {
           await new Promise((r) => setTimeout(r, 100));
         },
-        { text: 'pending 2', sessionId: 'test-session' }
-      )
+      })
       .catch(() => {});
 
     const state: RouterState = {
@@ -90,37 +107,39 @@ describe('Interruption flow in message handler', () => {
       messageId: 'mock-msg-id',
       chatId: 'chat1',
       action: 'interrupt',
-      sessionId: 'test-session',
+      sessionId,
     };
 
     vi.mocked(runCommand).mockResolvedValue({ stdout: 'done', stderr: '', exitCode: 0 });
 
     await executeDirectMessage('chat1', state, undefined, '/test-interrupt-batch', true);
 
-    expect(abortSpy).toHaveBeenCalled();
-
-    // Should have concatenated the pending tasks with the new message
-    // and enqueued it.
+    expect(interruptSpy).toHaveBeenCalledWith(sessionId);
 
     // Verify that the new task enqueued contains the merged payload
-    expect(queue['pending'].length).toBe(1);
-    expect(queue['pending'][0]?.payload?.text).toBe(
+    const newlyEnqueued = taskScheduler['queue'].find((t) => t.task.sessionId === sessionId);
+    expect(newlyEnqueued).toBeDefined();
+    expect(newlyEnqueued?.task.text).toBe(
       '<message>\npending 1\n</message>\n\n<message>\npending 2\n</message>\n\n<message>\nnew urgent task\n</message>'
     );
   });
 
   it('returns early when message is empty and no action is specified', async () => {
-    const queue = getMessageQueue('/test-interrupt-empty');
+    const sessionId = 'test-interrupt-empty';
+    taskScheduler.abortTasks(sessionId);
+
     const state: RouterState = {
       message: '   ',
       messageId: 'mock-msg-id',
       chatId: 'chat1',
+      sessionId,
     };
 
     vi.mocked(runCommand).mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
     await executeDirectMessage('chat1', state, undefined, '/test-interrupt-empty', true);
 
     expect(runCommand).not.toHaveBeenCalled();
-    expect(queue['pending'].length).toBe(0);
+    const queuedForSession = taskScheduler['queue'].filter((t) => t.task.sessionId === sessionId);
+    expect(queuedForSession.length).toBe(0);
   });
 });

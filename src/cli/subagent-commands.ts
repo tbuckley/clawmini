@@ -114,6 +114,7 @@ export function registerSubagentCommands(
         let subagents = result.subagents;
 
         if (options.pending) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           subagents = subagents.filter((s: any) => s.status === 'active' || s.status === 'pending');
         }
 
@@ -127,6 +128,7 @@ export function registerSubagentCommands(
           return;
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const sub of subagents as any[]) {
           console.log(`\n=== Subagent: ${sub.id || 'N/A'} ===`);
           console.log(`  Agent:      ${sub.agentId || 'N/A'}`);

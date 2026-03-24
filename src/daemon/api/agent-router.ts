@@ -4,18 +4,12 @@ import path from 'node:path';
 import { TRPCError } from '@trpc/server';
 import { appendMessage, type CommandLogMessage } from '../chats.js';
 import { executeSafe, generateRequestPreview, executeRequest } from '../policy-utils.js';
-import {
-  getWorkspaceRoot,
-  readPolicies,
-  getClawminiDir,
-  resolveAgentWorkDir,
-  getAgent,
-} from '../../shared/workspace.js';
+import { getWorkspaceRoot, readPolicies, getClawminiDir } from '../../shared/workspace.js';
 import { PolicyRequestService } from '../policy-request-service.js';
 import { RequestStore } from '../request-store.js';
 import { CronJobSchema } from '../../shared/config.js';
 import { apiProcedure, router } from './trpc.js';
-import { getMessageQueue } from '../queue.js';
+import { taskScheduler } from '../agent/task-scheduler.js';
 import { formatPendingMessages } from '../agent/utils.js';
 import {
   resolveAgentDir,
@@ -216,16 +210,14 @@ export const fetchPendingMessages = apiProcedure.mutation(async ({ ctx }) => {
   if (!ctx.tokenPayload?.agentId) {
     throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing agent ID' });
   }
-  const agentSettings = await getAgent(ctx.tokenPayload?.agentId);
-  const agentDir = resolveAgentWorkDir(ctx.tokenPayload?.agentId, agentSettings?.directory);
-  const queue = getMessageQueue(agentDir);
   const targetSessionId = ctx.tokenPayload?.sessionId || 'default';
 
-  const extracted = queue.extractPending((p) => p.sessionId === targetSessionId);
+  const extracted = taskScheduler.extractPending(targetSessionId);
   if (extracted.length === 0) {
     return { messages: '' };
   }
-  return { messages: formatPendingMessages(extracted.map((p) => p.text)) };
+
+  return { messages: formatPendingMessages(extracted) };
 });
 
 import {

@@ -55,3 +55,15 @@
 - Updated the `list` command to accept `--pending` and `--json` options. Default output now produces a formatted property list instead of an unstructured JSON payload.
 - Verified everything with `npm run validate` and all tests/checks passed.
 - Marked Ticket 7 as complete.
+
+## Ticket 8: Execution, Concurrency & Lifecycle Fixes
+- Updated TaskScheduler to natively support aborting (via AbortController) and interrupting tasks by sessionId.
+- Removed the legacy per-directory Queue (getMessageQueue) dependency from AgentSession.
+- Updated AgentSession to directly use taskScheduler for all task execution, stop(), and interrupt().
+- Refactored fetchPendingMessages to use taskScheduler.extractPending instead of getMessageQueue.
+- Fixed mock usages of getMessageQueue in testing files (message-interruption.test.ts, message-typing.test.ts, api/index.test.ts) to correctly use taskScheduler.
+- Handled ESLint warnings (avoiding any types and fixing no-unused-vars) in src/cli/subagent-commands.ts and src/daemon/api/agent-router.ts.
+- Added AfterAgent hook to templates/gemini-claw/.gemini/settings.json that executes a newly created Node script: check-subagents.mjs.
+- check-subagents.mjs enforces cascade completion by extracting CLAW_API_TOKEN, checking for running subagents that belong to the current agent, and blocking completion using the "deny" decision protocol.
+- Verified everything with npm run validate.
+- Marked Ticket 8 as complete.

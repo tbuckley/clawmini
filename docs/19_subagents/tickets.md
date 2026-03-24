@@ -87,7 +87,7 @@
 - **Verification**:
   - Verify subagents don't block parent or each other. Process termination verified via mock tests.
   - Run `npm run validate`.
-- **Status**: todo
+- **Status**: complete
 
 ## Ticket 9: Logging and Web UI Integration
 

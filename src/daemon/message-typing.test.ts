@@ -19,10 +19,14 @@ vi.mock('../shared/chats.js', () => ({
   appendMessage: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('./queue.js', () => ({
-  getMessageQueue: vi.fn().mockReturnValue({
-    enqueue: (fn: any) => fn(),
-  }),
+vi.mock('./agent/task-scheduler.js', () => ({
+  taskScheduler: {
+    schedule: vi
+      .fn()
+      .mockImplementation(async (task: any) => task.execute(new AbortController().signal)),
+    abortTasks: vi.fn(),
+    interruptTasks: vi.fn().mockReturnValue([]),
+  },
 }));
 
 vi.mock('../shared/workspace.js', () => ({

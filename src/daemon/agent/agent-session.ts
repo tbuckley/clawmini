@@ -1,5 +1,4 @@
 import type { Agent, Settings } from '../../shared/config.js';
-import { getMessageQueue } from '../queue.js';
 import { AgentRunner } from './agent-runner.js';
 import type { Logger, Message } from './types.js';
 import { runCommand } from '../utils/spawn.js';
@@ -124,27 +123,17 @@ export class AgentSession {
     return resolveAgentWorkDir(this.agentId, this.settings.directory, this.workspaceRoot);
   }
 
-  private getTaskQueue() {
-    return getMessageQueue(this.workDirectory);
-  }
-
   stop() {
-    const queue = this.getTaskQueue();
-    // FIXME: Only stop tasks for this agent session
-    queue.abortCurrent();
-    queue.clear();
+    taskScheduler.abortTasks(this.sessionId);
   }
 
   interrupt(message: Message): Message {
-    const queue = this.getTaskQueue();
-
-    const isMatchingSession = (p: { sessionId: string }) => p.sessionId === this.sessionId;
-    const payloads = queue.interrupt(isMatchingSession);
+    const payloads = taskScheduler.interruptTasks(this.sessionId);
 
     if (payloads.length > 0) {
       // TODO: Figure out how to handle merging payloads when they have different env settings or other config.
       // Currently, we only preserve the text content and drop any specific configuration attached to individual messages.
-      const pendingText = formatPendingMessages(payloads.map((p) => p.text));
+      const pendingText = formatPendingMessages(payloads);
       return {
         ...message,
         content: `${pendingText}\n\n<message>\n${message.content}\n</message>`.trim(),
@@ -158,54 +147,41 @@ export class AgentSession {
       return;
     }
 
-    const queue = this.getTaskQueue();
-    await queue.enqueue(
-      async (signal) => {
-        return new Promise<void>((resolve, reject) => {
-          taskScheduler
-            .schedule({
-              id: `task-${this.agentId}-${randomUUID()}`,
-              rootChatId: this.chatId,
-              dirPath: this.workDirectory,
-              execute: async () => {
-                try {
-                  // Refresh sessionSettings immediately before execution
-                  const sessionSettings = await readAgentSessionSettings(
-                    this.agentId,
-                    this.sessionId,
-                    this.workspaceRoot
-                  );
-                  // TODO: create a copy of the message first
-                  applyEnvOverrides(message.env, sessionSettings?.env);
+    await taskScheduler.schedule({
+      id: `task-${this.agentId}-${randomUUID()}`,
+      rootChatId: this.chatId,
+      dirPath: this.workDirectory,
+      sessionId: this.sessionId,
+      text: message.content,
+      execute: async (signal) => {
+        // Refresh sessionSettings immediately before execution
+        const sessionSettings = await readAgentSessionSettings(
+          this.agentId,
+          this.sessionId,
+          this.workspaceRoot
+        );
+        // TODO: create a copy of the message first
+        applyEnvOverrides(message.env, sessionSettings?.env);
 
-                  const runner = this.createRunner();
-                  const result = await runner.executeWithFallbacks(message, signal);
-                  if (!result) {
-                    // TODO: throw an error? Log an error?
-                    return resolve();
-                  }
+        const runner = this.createRunner();
+        const result = await runner.executeWithFallbacks(message, signal);
+        if (!result) {
+          // TODO: throw an error? Log an error?
+          return;
+        }
 
-                  if (result.extractedSessionId) {
-                    await writeAgentSessionSettings(
-                      this.agentId,
-                      this.sessionId,
-                      { env: { SESSION_ID: result.extractedSessionId } },
-                      this.workspaceRoot
-                    );
-                  }
+        if (result.extractedSessionId) {
+          await writeAgentSessionSettings(
+            this.agentId,
+            this.sessionId,
+            { env: { SESSION_ID: result.extractedSessionId } },
+            this.workspaceRoot
+          );
+        }
 
-                  await this.logger.logCommandResult(result);
-                  resolve();
-                } catch (err) {
-                  reject(err);
-                }
-              },
-            })
-            .catch(reject);
-        });
+        await this.logger.logCommandResult(result);
       },
-      { text: message.content, sessionId: this.sessionId }
-    );
+    });
   }
 }
 

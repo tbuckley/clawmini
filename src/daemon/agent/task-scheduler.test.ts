@@ -12,11 +12,13 @@ describe('TaskScheduler', () => {
     id: string,
     rootChatId: string,
     dirPath: string,
-    execute: () => Promise<void>
+    execute: (signal: AbortSignal) => Promise<void>,
+    sessionId: string = 'test-session'
   ) => ({
     id,
     rootChatId,
     dirPath,
+    sessionId,
     execute,
   });
 
