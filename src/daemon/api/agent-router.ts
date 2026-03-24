@@ -227,6 +227,7 @@ import {
   subagentStop,
   subagentDelete,
   subagentList,
+  subagentTail,
 } from './subagent-router.js';
 
 export const agentRouter = router({
@@ -245,6 +246,7 @@ export const agentRouter = router({
   subagentStop,
   subagentDelete,
   subagentList,
+  subagentTail,
 });
 
 export type AgentRouter = typeof agentRouter;

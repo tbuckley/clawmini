@@ -1,7 +1,6 @@
 import { Command } from 'commander';
 import type { createTRPCClient } from '@trpc/client';
 import type { AgentRouter as AppRouter } from '../daemon/api/index.js';
-import { getMessages, getDefaultChatId } from '../shared/chats.js';
 
 export function registerSubagentCommands(
   program: Command,
@@ -145,16 +144,14 @@ export function registerSubagentCommands(
     .description('View message history for a specific subagent')
     .option('-n, --lines <number>', 'Number of messages to show', parseInt)
     .option('--json', 'Output raw JSONL format')
-    .option('-c, --chat <id>', 'Specific chat to view')
     .action(async (subagentId, options) => {
       try {
-        const chatId = options.chat ?? (await getDefaultChatId());
-        const allMessages = await getMessages(chatId);
-        let messages = allMessages.filter((msg) => msg.subagentId === subagentId);
-
-        if (options.lines !== undefined && !isNaN(options.lines) && options.lines > 0) {
-          messages = messages.slice(-options.lines);
-        }
+        const client = getClient();
+        const result = await client.subagentTail.query({
+          subagentId,
+          limit: options.lines,
+        });
+        const messages = result.messages;
 
         if (options.json) {
           messages.forEach((msg) => console.log(JSON.stringify(msg)));

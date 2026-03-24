@@ -249,3 +249,15 @@ export const subagentList = apiProcedure
     }
     return { subagents };
   });
+
+export const subagentTail = apiProcedure
+  .input(z.object({ subagentId: z.string(), limit: z.number().optional() }))
+  .query(async ({ input, ctx }) => {
+    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
+    const chatId = ctx.tokenPayload.chatId;
+
+    const logger = createChatLogger(chatId, input.subagentId);
+    const messages = await logger.getMessages(input.limit);
+
+    return { messages };
+  });
