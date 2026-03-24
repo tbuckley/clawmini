@@ -1,19 +1,30 @@
 import {
   appendMessage,
+  getMessages,
   type ChatMessage,
   type CommandLogMessage,
   type UserMessage,
 } from '../chats.js';
 import type { Logger } from './types.js';
 
-export function createChatLogger(chatId: string): Logger {
+export function createChatLogger(chatId: string, subagentId?: string): Logger {
   async function append<T extends ChatMessage>(msg: T): Promise<T> {
-    await appendMessage(chatId, msg);
-    return msg;
+    const finalMsg = subagentId ? { ...msg, subagentId } : msg;
+    await appendMessage(chatId, finalMsg);
+    return finalMsg as T;
   }
 
   return {
     append,
+
+    getMessages: async (limit?: number) => {
+      const msgs = await getMessages(chatId);
+      let filtered = subagentId ? msgs.filter((m) => m.subagentId === subagentId) : msgs;
+      if (limit !== undefined && limit > 0) {
+        filtered = filtered.slice(-limit);
+      }
+      return filtered;
+    },
 
     logUserMessage: async (msg) =>
       append({
