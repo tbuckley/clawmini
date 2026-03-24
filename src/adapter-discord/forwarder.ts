@@ -69,7 +69,8 @@ export async function startDaemonToDiscordForwarder(
                 const message = rawMessage as ChatMessage;
 
                 // Only forward logs (agent responses, system messages)
-                if (message.role === 'log') {
+                // Ignore any messages associated with subagents
+                if (message.role === 'log' && !message.subagentId) {
                   const logMessage = message as CommandLogMessage;
 
                   if (logMessage.level === 'verbose') {

@@ -15,9 +15,10 @@ export async function executeDirectMessage(
   settings: Settings | undefined,
   cwd: string,
   noWait: boolean = false,
-  userMessageContent?: string
+  userMessageContent?: string,
+  subagentId?: string
 ) {
-  const logger = createChatLogger(chatId);
+  const logger = createChatLogger(chatId, subagentId);
 
   const userMsg = await logger.logUserMessage(userMessageContent ?? state.message);
   if (state.reply) {

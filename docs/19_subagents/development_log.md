@@ -56,14 +56,12 @@
 - Verified everything with `npm run validate` and all tests/checks passed.
 - Marked Ticket 7 as complete.
 
-## Ticket 8: Execution, Concurrency & Lifecycle Fixes
-- Updated TaskScheduler to natively support aborting (via AbortController) and interrupting tasks by sessionId.
-- Removed the legacy per-directory Queue (getMessageQueue) dependency from AgentSession.
-- Updated AgentSession to directly use taskScheduler for all task execution, stop(), and interrupt().
-- Refactored fetchPendingMessages to use taskScheduler.extractPending instead of getMessageQueue.
-- Fixed mock usages of getMessageQueue in testing files (message-interruption.test.ts, message-typing.test.ts, api/index.test.ts) to correctly use taskScheduler.
-- Handled ESLint warnings (avoiding any types and fixing no-unused-vars) in src/cli/subagent-commands.ts and src/daemon/api/agent-router.ts.
-- Added AfterAgent hook to templates/gemini-claw/.gemini/settings.json that executes a newly created Node script: check-subagents.mjs.
-- check-subagents.mjs enforces cascade completion by extracting CLAW_API_TOKEN, checking for running subagents that belong to the current agent, and blocking completion using the "deny" decision protocol.
-- Verified everything with npm run validate.
-- Marked Ticket 8 as complete.
+## Ticket 9: Logging and Web UI Integration
+- Updated `src/daemon/message.ts` to accept an optional `subagentId` parameter in `executeDirectMessage` and pass it down to `createChatLogger`.
+- Replaced manual `AgentSession` execution in `src/daemon/api/subagent-router.ts` for both `subagentSpawn` and `subagentSend` with `executeDirectMessage`. This explicitly logs incoming subagent messages to the chat history.
+- Added `subagentId?: string` to `BaseMessage` in `web/src/lib/types.ts` and `src/shared/chats.ts`.
+- Updated Svelte `filteredMessages` logic in `web/src/routes/chats/[id]/+page.svelte` to hide messages with a `subagentId` unless `appState.verbosityLevel` is set to `debug` or `verbose`. Added visual `[subagentId]` tags to both user and log messages in the Svelte template for when they are revealed.
+- Updated `src/cli/commands/messages.ts` to filter out messages with a `subagentId` in the `messages tail` command.
+- Updated `src/adapter-discord/forwarder.ts` to ignore any log messages with a `subagentId` before forwarding them to Discord.
+- Verified all type, linting, and formatting checks pass with `npm run validate`.
+- Marked Ticket 9 as complete.

@@ -100,7 +100,7 @@
   - Check the chat payload and Web UI rendering (default hidden vs debug visible).
   - Check the output of `clawmini messages tail` to ensure it ignores subagent messages.
   - Run `npm run validate`.
-- **Status**: todo
+- **Status**: complete
 
 ## Ticket 10: Daemon Startup & Recovery
 

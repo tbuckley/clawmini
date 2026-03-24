@@ -3,8 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { TRPCError } from '@trpc/server';
 import { getWorkspaceRoot, readChatSettings, writeChatSettings } from '../../shared/workspace.js';
 import { apiProcedure } from './trpc.js';
-import { createAgentSession } from '../agent/agent-session.js';
-import { createChatLogger } from '../agent/chat-logger.js';
+import { executeDirectMessage } from '../message.js';
 
 const MAX_SUBAGENT_DEPTH = 2;
 
@@ -54,19 +53,22 @@ export const subagentSpawn = apiProcedure
     // Execute asynchronously
     (async () => {
       try {
-        const session = await createAgentSession({
+        await executeDirectMessage(
           chatId,
-          agentId,
-          sessionId,
-          cwd: workspaceRoot,
-          logger: createChatLogger(chatId, id),
-        });
-
-        await session.handleMessage({
-          id: randomUUID(),
-          content: input.prompt,
-          env: {},
-        });
+          {
+            messageId: randomUUID(),
+            message: input.prompt,
+            chatId,
+            agentId,
+            sessionId,
+            env: {},
+          },
+          undefined, // settings
+          workspaceRoot,
+          false, // noWait
+          undefined, // userMessageContent
+          id // subagentId
+        );
 
         // Update status
         const finalSettings = (await readChatSettings(chatId)) || {};
@@ -77,17 +79,20 @@ export const subagentSpawn = apiProcedure
 
         // Notify parent
         if (parentId) {
-          const parentSession = await createAgentSession({
+          await executeDirectMessage(
             chatId,
-            agentId: parentId,
-            sessionId: ctx.tokenPayload?.sessionId || 'default',
-            cwd: workspaceRoot,
-          });
-          await parentSession.handleMessage({
-            id: randomUUID(),
-            content: `<notification>Subagent ${id} completed.</notification>`,
-            env: {},
-          });
+            {
+              messageId: randomUUID(),
+              message: `<notification>Subagent ${id} completed.</notification>`,
+              chatId,
+              agentId: parentId,
+              sessionId: ctx.tokenPayload?.sessionId || 'default',
+              env: {},
+            },
+            undefined,
+            workspaceRoot,
+            true // noWait
+          );
         }
       } catch {
         const errSettings = (await readChatSettings(chatId)) || {};
@@ -127,19 +132,22 @@ export const subagentSend = apiProcedure
     // Execute asynchronously
     (async () => {
       try {
-        const session = await createAgentSession({
+        await executeDirectMessage(
           chatId,
-          agentId: sub.agentId || 'default',
-          sessionId: sub.sessionId || 'default',
-          cwd: workspaceRoot,
-          logger: createChatLogger(chatId, sub.id || 'default'),
-        });
-
-        await session.handleMessage({
-          id: randomUUID(),
-          content: input.prompt,
-          env: {},
-        });
+          {
+            messageId: randomUUID(),
+            message: input.prompt,
+            chatId,
+            agentId: sub.agentId || 'default',
+            sessionId: sub.sessionId || 'default',
+            env: {},
+          },
+          undefined, // settings
+          workspaceRoot,
+          false, // noWait
+          undefined, // userMessageContent
+          sub.id // subagentId
+        );
       } catch {
         // Optionally handle failure logic
       }
