@@ -64,4 +64,4 @@
 - Updated `src/cli/commands/messages.ts` to filter out messages with a `subagentId` in the `messages tail` command.
 - Updated `src/adapter-discord/forwarder.ts` to ignore any log messages with a `subagentId` before forwarding them to Discord.
 - Verified all type, linting, and formatting checks pass with `npm run validate`.
-- Marked Ticket 9 as complete.
+- Marked Ticket 9 as complete.\n## Bug: Missing Output from Async Subagents\n\n### Reproducible Steps\n1. Run an async subagent.\n2. Observe the notification upon completion.\n3. Verify that the output is missing from the notification.\n4. Check if a tool like 'clawmini-lite.js subagents tail' exists.\n

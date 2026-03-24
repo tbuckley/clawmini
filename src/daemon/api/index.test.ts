@@ -432,9 +432,17 @@ describe('Daemon TRPC Router', () => {
         text: 'Task 3',
         execute: async () => {},
       });
+      const p3_5 = taskScheduler.schedule({
+        id: 't3_5',
+        rootChatId: 'c2', // force block
+        dirPath: 'd1',
+        sessionId: 's2',
+        text: 'Task 3.5',
+        execute: async () => {},
+      });
       const p4 = taskScheduler.schedule({
         id: 't4',
-        rootChatId: 'c1', // force block
+        rootChatId: 'c2',
         dirPath: 'd1',
         sessionId: 's2',
         text: 'Task 4',
@@ -444,6 +452,7 @@ describe('Daemon TRPC Router', () => {
       // We expect them to throw AbortError when extracted
       p2.catch(() => {});
       p3.catch(() => {});
+      p3_5.catch(() => {});
       p4.catch(() => {});
 
       const caller = agentRouter.createCaller({

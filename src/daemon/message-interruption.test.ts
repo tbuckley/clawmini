@@ -54,7 +54,8 @@ describe('Interruption flow in message handler', () => {
     expect(runCommand).not.toHaveBeenCalled();
 
     // We expect it NOT to enqueue because it returns early
-    expect(taskScheduler['queue'].length).toBe(0);
+    const key = `chat1:${sessionId}`;
+    expect(taskScheduler['queues'].get(key)?.['queue'].length ?? 0).toBe(0);
   });
 
   it('interrupts execution and batches pending tasks when action is interrupt', async () => {
@@ -117,7 +118,9 @@ describe('Interruption flow in message handler', () => {
     expect(interruptSpy).toHaveBeenCalledWith(sessionId);
 
     // Verify that the new task enqueued contains the merged payload
-    const newlyEnqueued = taskScheduler['queue'].find((t) => t.task.sessionId === sessionId);
+    const queueKey = `chat1:${sessionId}`;
+    const queueItems = taskScheduler['queues'].get(queueKey)?.['queue'] || [];
+    const newlyEnqueued = queueItems.find((t) => t.task.sessionId === sessionId);
     expect(newlyEnqueued).toBeDefined();
     expect(newlyEnqueued?.task.text).toBe(
       '<message>\npending 1\n</message>\n\n<message>\npending 2\n</message>\n\n<message>\nnew urgent task\n</message>'
@@ -139,7 +142,8 @@ describe('Interruption flow in message handler', () => {
     await executeDirectMessage('chat1', state, undefined, '/test-interrupt-empty', true);
 
     expect(runCommand).not.toHaveBeenCalled();
-    const queuedForSession = taskScheduler['queue'].filter((t) => t.task.sessionId === sessionId);
+    const queueKey = `chat1:${sessionId}`;
+    const queuedForSession = taskScheduler['queues'].get(queueKey)?.['queue'] || [];
     expect(queuedForSession.length).toBe(0);
   });
 });

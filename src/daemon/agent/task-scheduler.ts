@@ -7,216 +7,239 @@ export interface AgentTask {
   execute: (signal: AbortSignal) => Promise<void>;
 }
 
-interface QueuedTask {
-  task: AgentTask;
-  resolve: () => void;
-  reject: (err: unknown) => void;
-  queuedAt: number;
-}
+class ResourceLock {
+  private resources = new Map<
+    string,
+    {
+      activeWorkspace: string;
+      count: number;
+      waiters: Array<{
+        workspaceId: string;
+        resolve: () => void;
+        reject: (err: Error) => void;
+      }>;
+    }
+  >();
 
-export class TaskScheduler {
-  public MAX_CONCURRENT_AGENTS = 5;
+  async acquire(resourceId: string, workspaceId: string, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) {
+      const error = new Error('Task aborted');
+      error.name = 'AbortError';
+      throw error;
+    }
 
-  private queue: QueuedTask[] = [];
-  private activeTasks = new Map<string, { task: AgentTask; controller: AbortController }>();
-  private blockedTasks = new Set<string>();
+    const res = this.resources.get(resourceId);
+    if (!res) {
+      this.resources.set(resourceId, { activeWorkspace: workspaceId, count: 1, waiters: [] });
+      return;
+    }
 
-  // resource locks
-  // We keep track of how many tasks are using a resource, or just track ownership.
-  // Actually, for a lock map, we can map resource ID to the task ID holding it.
-  // BUT to allow subagents to run when parent is blocked, blocked tasks release their locks.
-  private dirLocks = new Map<string, string>(); // dirPath -> taskId
-  private rootChatLocks = new Map<string, string>(); // rootChatId -> taskId
+    if (res.activeWorkspace === workspaceId) {
+      res.count++;
+      return;
+    }
 
-  // queue for tasks waiting to be unblocked
-  private unblockQueue: Array<{ taskId: string; resolve: () => void }> = [];
+    return new Promise<void>((resolve, reject) => {
+      const waiter = { workspaceId, resolve, reject };
+      res!.waiters.push(waiter);
 
-  public schedule(task: AgentTask): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.queue.push({
-        task,
-        resolve,
-        reject,
-        queuedAt: Date.now(),
-      });
-      this.processQueue();
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          const idx = res!.waiters.indexOf(waiter);
+          if (idx !== -1) {
+            res!.waiters.splice(idx, 1);
+            const error = new Error('Task aborted');
+            error.name = 'AbortError';
+            reject(error);
+          }
+        });
+      }
     });
   }
 
-  public extractPending(sessionId: string): string[] {
+  release(resourceId: string, _workspaceId: string) {
+    const res = this.resources.get(resourceId);
+    if (!res) return;
+
+    res.count--;
+    if (res.count === 0) {
+      if (res.waiters.length > 0) {
+        const nextWorkspace = res.waiters[0]!.workspaceId;
+        res.activeWorkspace = nextWorkspace;
+
+        const remainingWaiters = [];
+        for (const waiter of res.waiters) {
+          if (waiter.workspaceId === nextWorkspace) {
+            res.count++;
+            waiter.resolve();
+          } else {
+            remainingWaiters.push(waiter);
+          }
+        }
+        res.waiters = remainingWaiters;
+      } else {
+        this.resources.delete(resourceId);
+      }
+    }
+  }
+}
+
+class TaskQueue {
+  private queue: Array<{
+    task: AgentTask;
+    resolve: () => void;
+    reject: (err: unknown) => void;
+  }> = [];
+  private activeTask: { task: AgentTask; controller: AbortController } | null = null;
+  private isProcessing = false;
+
+  constructor(
+    public readonly sessionId: string,
+    private resourceLock: ResourceLock,
+    private onEmpty: (sessionId: string) => void
+  ) {}
+
+  enqueue(task: AgentTask): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ task, resolve, reject });
+      this.process();
+    });
+  }
+
+  private async process() {
+    if (this.isProcessing || this.activeTask || this.queue.length === 0) return;
+    this.isProcessing = true;
+
+    while (this.queue.length > 0) {
+      const next = this.queue.shift()!;
+      const controller = new AbortController();
+      this.activeTask = { task: next.task, controller };
+
+      let acquired = false;
+      try {
+        await this.resourceLock.acquire(next.task.dirPath, next.task.rootChatId, controller.signal);
+        acquired = true;
+
+        if (!controller.signal.aborted) {
+          await next.task.execute(controller.signal);
+        }
+        next.resolve();
+      } catch (err) {
+        next.reject(err);
+      } finally {
+        if (acquired) {
+          this.resourceLock.release(next.task.dirPath, next.task.rootChatId);
+        }
+        this.activeTask = null;
+      }
+    }
+
+    this.isProcessing = false;
+    this.onEmpty(this.sessionId);
+  }
+
+  abortAll() {
+    const error = new Error('Task aborted');
+    error.name = 'AbortError';
+
+    if (this.activeTask) {
+      this.activeTask.controller.abort(error);
+    }
+
+    for (const qTask of this.queue) {
+      qTask.reject(error);
+    }
+    this.queue = [];
+  }
+
+  interruptAndExtract(): string[] {
     const payloads: string[] = [];
-    const remainingQueue: QueuedTask[] = [];
+
+    const error = new Error('Task aborted');
+    error.name = 'AbortError';
+
+    if (this.activeTask) {
+      if (this.activeTask.task.text !== undefined) {
+        payloads.push(this.activeTask.task.text);
+      }
+      this.activeTask.controller.abort(error);
+    }
+
+    for (const qTask of this.queue) {
+      if (qTask.task.text !== undefined) {
+        payloads.push(qTask.task.text);
+      }
+      qTask.reject(error);
+    }
+    this.queue = [];
+
+    return payloads;
+  }
+
+  extractPending(): string[] {
+    const payloads: string[] = [];
 
     const error = new Error('Task extracted for batching');
     error.name = 'AbortError';
 
     for (const qTask of this.queue) {
-      if (qTask.task.sessionId === sessionId) {
-        if (qTask.task.text !== undefined) payloads.push(qTask.task.text);
-        qTask.reject(error);
-      } else {
-        remainingQueue.push(qTask);
+      if (qTask.task.text !== undefined) {
+        payloads.push(qTask.task.text);
+      }
+      qTask.reject(error);
+    }
+    this.queue = [];
+
+    return payloads;
+  }
+}
+
+export class TaskScheduler {
+  private queues = new Map<string, TaskQueue>();
+  private resourceLock = new ResourceLock();
+
+  private getQueueKey(sessionId: string, rootChatId: string): string {
+    return `${rootChatId}:${sessionId}`;
+  }
+
+  public schedule(task: AgentTask): Promise<void> {
+    const key = this.getQueueKey(task.sessionId, task.rootChatId);
+    let queue = this.queues.get(key);
+    if (!queue) {
+      queue = new TaskQueue(task.sessionId, this.resourceLock, () => {
+        this.queues.delete(key);
+      });
+      this.queues.set(key, queue);
+    }
+    return queue.enqueue(task);
+  }
+
+  public extractPending(sessionId: string): string[] {
+    const payloads: string[] = [];
+    for (const queue of this.queues.values()) {
+      if (queue.sessionId === sessionId) {
+        payloads.push(...queue.extractPending());
       }
     }
-    this.queue = remainingQueue;
-
     return payloads;
   }
 
   public abortTasks(sessionId: string): void {
-    const error = new Error('Task aborted');
-    error.name = 'AbortError';
-
-    // Abort active tasks
-    for (const { task, controller } of this.activeTasks.values()) {
-      if (task.sessionId === sessionId) {
-        controller.abort(error);
+    for (const queue of this.queues.values()) {
+      if (queue.sessionId === sessionId) {
+        queue.abortAll();
       }
     }
-
-    // Remove and reject pending tasks
-    const remainingQueue: QueuedTask[] = [];
-    for (const qTask of this.queue) {
-      if (qTask.task.sessionId === sessionId) {
-        qTask.reject(error);
-      } else {
-        remainingQueue.push(qTask);
-      }
-    }
-    this.queue = remainingQueue;
   }
 
   public interruptTasks(sessionId: string): string[] {
     const payloads: string[] = [];
-
-    // Abort active tasks and collect text
-    const error = new Error('Task aborted');
-    error.name = 'AbortError';
-
-    for (const { task, controller } of this.activeTasks.values()) {
-      if (task.sessionId === sessionId) {
-        if (task.text !== undefined) payloads.push(task.text);
-        controller.abort(error);
+    for (const queue of this.queues.values()) {
+      if (queue.sessionId === sessionId) {
+        payloads.push(...queue.interruptAndExtract());
       }
     }
-
-    // Remove pending tasks, reject them, and collect text
-    const remainingQueue: QueuedTask[] = [];
-    for (const qTask of this.queue) {
-      if (qTask.task.sessionId === sessionId) {
-        if (qTask.task.text !== undefined) payloads.push(qTask.task.text);
-        qTask.reject(error);
-      } else {
-        remainingQueue.push(qTask);
-      }
-    }
-    this.queue = remainingQueue;
-
     return payloads;
-  }
-
-  public markBlocked(taskId: string) {
-    const active = this.activeTasks.get(taskId);
-    if (!active) return;
-    this.blockedTasks.add(taskId);
-    this.releaseLocks(active.task);
-    this.processQueue();
-  }
-
-  public markUnblocked(taskId: string): Promise<void> {
-    return new Promise((resolve) => {
-      this.unblockQueue.push({ taskId, resolve });
-      this.processQueue();
-    });
-  }
-
-  private processQueue() {
-    this.processUnblockQueue();
-
-    // pool expansion: activeTasks.size - blockedTasks.size
-    const effectiveActiveCount = this.activeTasks.size - this.blockedTasks.size;
-    let availableSlots = this.MAX_CONCURRENT_AGENTS - effectiveActiveCount;
-
-    if (availableSlots <= 0) return;
-
-    // To prevent starvation, we iterate from oldest to newest.
-    // We only process tasks that can acquire locks.
-    const toStart: QueuedTask[] = [];
-    const remainingQueue: QueuedTask[] = [];
-
-    for (const qTask of this.queue) {
-      if (availableSlots > 0 && this.canAcquireLocks(qTask.task)) {
-        this.acquireLocks(qTask.task);
-        toStart.push(qTask);
-        availableSlots--;
-      } else {
-        remainingQueue.push(qTask);
-      }
-    }
-
-    this.queue = remainingQueue;
-
-    for (const qTask of toStart) {
-      this.runTask(qTask);
-    }
-  }
-
-  private processUnblockQueue() {
-    const remaining: typeof this.unblockQueue = [];
-    for (const item of this.unblockQueue) {
-      const active = this.activeTasks.get(item.taskId);
-      if (active && this.canAcquireLocks(active.task)) {
-        this.acquireLocks(active.task);
-        this.blockedTasks.delete(item.taskId);
-        item.resolve();
-      } else {
-        remaining.push(item);
-      }
-    }
-    this.unblockQueue = remaining;
-  }
-
-  private async runTask(qTask: QueuedTask) {
-    const controller = new AbortController();
-    this.activeTasks.set(qTask.task.id, { task: qTask.task, controller });
-    try {
-      await qTask.task.execute(controller.signal);
-      qTask.resolve();
-    } catch (err) {
-      qTask.reject(err);
-    } finally {
-      this.activeTasks.delete(qTask.task.id);
-      this.blockedTasks.delete(qTask.task.id);
-      this.releaseLocks(qTask.task);
-      this.processQueue();
-    }
-  }
-
-  private canAcquireLocks(task: AgentTask): boolean {
-    if (this.dirLocks.has(task.dirPath) && this.dirLocks.get(task.dirPath) !== task.id) {
-      return false;
-    }
-    if (
-      this.rootChatLocks.has(task.rootChatId) &&
-      this.rootChatLocks.get(task.rootChatId) !== task.id
-    ) {
-      return false;
-    }
-    return true;
-  }
-
-  private acquireLocks(task: AgentTask) {
-    this.dirLocks.set(task.dirPath, task.id);
-    this.rootChatLocks.set(task.rootChatId, task.id);
-  }
-
-  private releaseLocks(task: AgentTask) {
-    if (this.dirLocks.get(task.dirPath) === task.id) {
-      this.dirLocks.delete(task.dirPath);
-    }
-    if (this.rootChatLocks.get(task.rootChatId) === task.id) {
-      this.rootChatLocks.delete(task.rootChatId);
-    }
   }
 }
 

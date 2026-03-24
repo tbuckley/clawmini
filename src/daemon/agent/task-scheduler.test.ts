@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { TaskScheduler } from './task-scheduler.js';
 
 describe('TaskScheduler', () => {
@@ -19,28 +19,8 @@ describe('TaskScheduler', () => {
     rootChatId,
     dirPath,
     sessionId,
+    text: `task-${id}`,
     execute,
-  });
-
-  it('enforces MAX_CONCURRENT_AGENTS limit', async () => {
-    let running = 0;
-    const maxRunning = vi.fn();
-
-    const execute = async () => {
-      running++;
-      maxRunning(running);
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      running--;
-    };
-
-    const tasks = Array.from({ length: 10 }).map((_, i) =>
-      createTask(`t${i}`, `root${i}`, `dir${i}`, execute)
-    );
-
-    await Promise.all(tasks.map((t) => scheduler.schedule(t)));
-
-    // Ensure it never exceeded 5
-    expect(Math.max(...maxRunning.mock.calls.map((c) => c[0]))).toBe(5);
   });
 
   it('implements resource lock maps (directory and rootChatId)', async () => {
@@ -51,9 +31,28 @@ describe('TaskScheduler', () => {
       executed.push(`${id}-end`);
     };
 
-    // t1 and t2 have same dirPath, should run sequentially
-    const t1 = createTask('t1', 'root1', 'dirA', execute('t1'));
-    const t2 = createTask('t2', 'root2', 'dirA', execute('t2'));
+    // t1 and t2 have same dirPath but different rootChatIds, should run sequentially
+    const t1 = createTask('t1', 'root1', 'dirA', execute('t1'), 'session1');
+    const t2 = createTask('t2', 'root2', 'dirA', execute('t2'), 'session2');
+
+    const p1 = scheduler.schedule(t1);
+    const p2 = scheduler.schedule(t2);
+
+    await Promise.all([p1, p2]);
+
+    expect(executed).toEqual(['t1-start', 't1-end', 't2-start', 't2-end']);
+  });
+
+  it('processes tasks sequentially for the same session', async () => {
+    const executed: string[] = [];
+    const execute = (id: string) => async () => {
+      executed.push(`${id}-start`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      executed.push(`${id}-end`);
+    };
+
+    const t1 = createTask('t1', 'root1', 'dirA', execute('t1'), 'session1');
+    const t2 = createTask('t2', 'root1', 'dirA', execute('t2'), 'session1');
 
     const p1 = scheduler.schedule(t1);
     const p2 = scheduler.schedule(t2);
@@ -72,11 +71,11 @@ describe('TaskScheduler', () => {
     };
 
     // t1 blocks dirA
-    const t1 = createTask('t1', 'root1', 'dirA', execute('t1'));
+    const t1 = createTask('t1', 'root1', 'dirA', execute('t1'), 'session1');
     // t2 is queued, wants dirA
-    const t2 = createTask('t2', 'root2', 'dirA', execute('t2'));
+    const t2 = createTask('t2', 'root2', 'dirA', execute('t2'), 'session2');
     // t3 is queued later, wants dirB
-    const t3 = createTask('t3', 'root3', 'dirB', execute('t3'));
+    const t3 = createTask('t3', 'root3', 'dirB', execute('t3'), 'session3');
 
     const p1 = scheduler.schedule(t1);
     const p2 = scheduler.schedule(t2);
@@ -90,67 +89,114 @@ describe('TaskScheduler', () => {
     expect(executed.indexOf('t3-start')).toBeLessThan(executed.indexOf('t2-start'));
   });
 
-  it('avoids deadlock with temporary pool expansion', async () => {
-    // Fill up to MAX_CONCURRENT_AGENTS
-    let blockedCount = 0;
+  it('allows subagents to run in parallel when they share a workspace', async () => {
+    let parentFinished = false;
+    let subagentFinished = false;
 
-    const executeBlock = (id: string) => async () => {
-      // Simulate blocking wait
-      scheduler.markBlocked(id);
-      blockedCount++;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      scheduler.markUnblocked(id);
-      blockedCount--;
-    };
+    // Parent task in root1, dir1
+    const parentTask = createTask(
+      'parent',
+      'root1',
+      'dir1',
+      async () => {
+        // Schedule subagent task in the same workspace (root1) and same resource (dir1)
+        // Since it shares the workspace, it can run in parallel
+        const subTask = createTask(
+          'sub',
+          'root1',
+          'dir1',
+          async () => {
+            subagentFinished = true;
+          },
+          'sub-session'
+        );
 
-    // 5 tasks that will block
-    const tasks = Array.from({ length: 5 }).map((_, i) =>
-      createTask(`t${i}`, `root${i}`, `dir${i}`, executeBlock(`t${i}`))
+        await scheduler.schedule(subTask);
+        parentFinished = true;
+      },
+      'parent-session'
     );
 
-    const promises = tasks.map((t) => scheduler.schedule(t));
+    await scheduler.schedule(parentTask);
 
-    // Wait for all to be blocked
+    expect(subagentFinished).toBe(true);
+    expect(parentFinished).toBe(true);
+  });
+
+  it('can extract pending tasks', async () => {
+    let parentRunning = false;
+    const parentTask = createTask(
+      'parent',
+      'root1',
+      'dir1',
+      async () => {
+        parentRunning = true;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      },
+      'session1'
+    );
+
+    const pendingTask = createTask('pending', 'root1', 'dir1', async () => {}, 'session1');
+
+    const p1 = scheduler.schedule(parentTask);
+    const p2 = scheduler.schedule(pendingTask);
+
+    // Wait for parent to start
     await new Promise((resolve) => {
       const check = setInterval(() => {
-        if (blockedCount === 5) {
+        if (parentRunning) {
           clearInterval(check);
           resolve(null);
         }
       }, 5);
     });
 
-    // Now schedule a 6th task. It should run immediately because the pool expanded.
-    let t6Ran = false;
-    const t6 = createTask('t6', 'root6', 'dir6', async () => {
-      t6Ran = true;
-    });
+    const pending = scheduler.extractPending('session1');
+    expect(pending).toEqual(['task-pending']);
 
-    await scheduler.schedule(t6);
-    expect(t6Ran).toBe(true);
-
-    await Promise.all(promises);
+    await expect(p2).rejects.toThrow('Task extracted for batching');
+    await p1;
   });
 
-  it('allows subagents to run when parent is blocked', async () => {
-    let parentFinished = false;
-    let subagentFinished = false;
+  it('can abort all tasks in a session', async () => {
+    let parentRunning = false;
+    let aborted = false;
 
-    const parentTask = createTask('parent', 'root1', 'dir1', async () => {
-      scheduler.markBlocked('parent');
+    const parentTask = createTask(
+      'parent',
+      'root1',
+      'dir1',
+      async (signal) => {
+        parentRunning = true;
+        return new Promise<void>((_, reject) => {
+          signal.addEventListener('abort', () => {
+            aborted = true;
+            reject(new Error('Aborted'));
+          });
+        });
+      },
+      'session1'
+    );
 
-      const subTask = createTask('sub', 'root1', 'dir1', async () => {
-        subagentFinished = true;
-      });
+    const pendingTask = createTask('pending', 'root1', 'dir1', async () => {}, 'session1');
 
-      await scheduler.schedule(subTask);
-      scheduler.markUnblocked('parent');
-      parentFinished = true;
+    const p1 = scheduler.schedule(parentTask);
+    const p2 = scheduler.schedule(pendingTask);
+
+    // Wait for parent to start
+    await new Promise((resolve) => {
+      const check = setInterval(() => {
+        if (parentRunning) {
+          clearInterval(check);
+          resolve(null);
+        }
+      }, 5);
     });
 
-    await scheduler.schedule(parentTask);
+    scheduler.abortTasks('session1');
 
-    expect(subagentFinished).toBe(true);
-    expect(parentFinished).toBe(true);
+    await expect(p1).rejects.toThrow();
+    await expect(p2).rejects.toThrow('Task aborted');
+    expect(aborted).toBe(true);
   });
 });

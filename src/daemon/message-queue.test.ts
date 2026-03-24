@@ -42,14 +42,14 @@ describe('Daemon Execution Queue', () => {
 
     const p1 = handleUserMessage('chat1', 'msg1', settings as any, '/dir1', false);
 
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 50));
 
     const emitter1 = (mockSpawn as any).lastEmitter;
     expect(mockSpawn).toHaveBeenCalledTimes(1);
 
     const p2 = handleUserMessage('chat1', 'msg2', settings as any, '/dir1', false);
 
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 50));
 
     // spawn should still be 1 because p2 is queued
     expect(mockSpawn).toHaveBeenCalledTimes(1);
@@ -77,11 +77,11 @@ describe('Daemon Execution Queue', () => {
     const settings = { defaultAgent: { commands: { new: 'echo msg' } } };
 
     const p1 = handleUserMessage('chat1', 'msg1', settings as any, '/dir1', false);
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 50));
     expect(mockSpawn).toHaveBeenCalledTimes(1);
 
     const p2 = handleUserMessage('chat2', 'msg2', settings as any, '/dir2', false);
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 50));
 
     // Since it's a different directory and different chat, it should spawn immediately
     expect(mockSpawn).toHaveBeenCalledTimes(2);
