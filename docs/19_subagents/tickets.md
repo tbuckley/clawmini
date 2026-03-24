@@ -46,7 +46,7 @@
 - **Verification**:
   - Verify CLI command parsing and TRPC integration (via mock tests or e2e tests if available).
   - Run `npm run validate`.
-- **Status**: not started
+- **Status**: complete
 
 ## Ticket 6: Agent Lifecycle & Execution Integration
 - **Description**: Tie everything together in the agent's run loop.

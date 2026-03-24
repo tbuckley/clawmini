@@ -29,3 +29,10 @@
 - Addressed TypeScript typing errors for `settings.subagents` non-null indexing.
 - Verified everything with `npm run validate` (all checks passed successfully).
 - Marked Ticket 4 as complete.
+
+## Ticket 5: CLI Interface (`clawmini-lite`)
+- Extracted subagent commands logic to a new file `src/cli/subagent-commands.ts` to keep `src/cli/lite.ts` concise and adhere to `max-lines` ESLint rule.
+- Added `subagents` group to `clawmini-lite` with subcommands: `spawn`, `send`, `wait`, `stop`, `delete`, and `list`.
+- Wired the CLI commands directly to the TRPC AppRouter (`subagentSpawn`, `subagentWait`, etc.).
+- Verified `npm run validate` and all tests/formatting passed successfully.
+- Marked Ticket 5 as complete.
