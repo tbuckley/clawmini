@@ -2,9 +2,11 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { TRPCError } from '@trpc/server';
 import { getWorkspaceRoot, readChatSettings, writeChatSettings } from '../../shared/workspace.js';
-import { taskScheduler } from '../agent/task-scheduler.js';
 import { apiProcedure } from './trpc.js';
-import { resolveAgentDir } from './router-utils.js';
+import { createAgentSession } from '../agent/agent-session.js';
+import { createChatLogger } from '../agent/chat-logger.js';
+
+const MAX_SUBAGENT_DEPTH = 2;
 
 export const subagentSpawn = apiProcedure
   .input(
@@ -22,6 +24,16 @@ export const subagentSpawn = apiProcedure
     const settings = (await readChatSettings(chatId)) || {};
     settings.subagents = settings.subagents || {};
 
+    let depth = 0;
+    let currentParentId: string | undefined = parentId;
+    while (currentParentId && settings.subagents[currentParentId]) {
+      depth++;
+      currentParentId = settings.subagents[currentParentId]?.parentId;
+    }
+    if (depth >= MAX_SUBAGENT_DEPTH) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Max subagent depth reached' });
+    }
+
     const id = input.subagentId || randomUUID();
     const sessionId = randomUUID();
 
@@ -37,16 +49,53 @@ export const subagentSpawn = apiProcedure
     await writeChatSettings(chatId, settings);
 
     const workspaceRoot = getWorkspaceRoot(process.cwd());
-    const dirPath = await resolveAgentDir(input.targetAgentId, workspaceRoot);
 
-    taskScheduler.schedule({
-      id,
-      rootChatId: chatId,
-      dirPath,
-      execute: async () => {
-        // TBD: Ticket 6 will implement the execution loop
-      },
-    });
+    // Execute asynchronously
+    (async () => {
+      try {
+        const session = await createAgentSession({
+          chatId,
+          agentId: input.targetAgentId,
+          sessionId,
+          cwd: workspaceRoot,
+          logger: createChatLogger(chatId, id),
+        });
+
+        await session.handleMessage({
+          id: randomUUID(),
+          content: input.prompt,
+          env: {},
+        });
+
+        // Update status
+        const finalSettings = (await readChatSettings(chatId)) || {};
+        if (finalSettings.subagents?.[id]) {
+          finalSettings.subagents[id]!.status = 'completed';
+          await writeChatSettings(chatId, finalSettings);
+        }
+
+        // Notify parent
+        if (parentId) {
+          const parentSession = await createAgentSession({
+            chatId,
+            agentId: parentId,
+            sessionId: ctx.tokenPayload?.sessionId || 'default',
+            cwd: workspaceRoot,
+          });
+          await parentSession.handleMessage({
+            id: randomUUID(),
+            content: `<notification>Subagent ${id} completed.</notification>`,
+            env: {},
+          });
+        }
+      } catch {
+        const errSettings = (await readChatSettings(chatId)) || {};
+        if (errSettings.subagents?.[id]) {
+          errSettings.subagents[id]!.status = 'failed';
+          await writeChatSettings(chatId, errSettings);
+        }
+      }
+    })();
 
     return { id };
   });
@@ -67,7 +116,34 @@ export const subagentSend = apiProcedure
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Subagent not found' });
     }
 
-    // TBD: Ticket 6
+    const sub = settings.subagents[input.subagentId];
+    if (!sub) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Subagent not found' });
+    }
+
+    const workspaceRoot = getWorkspaceRoot(process.cwd());
+
+    // Execute asynchronously
+    (async () => {
+      try {
+        const session = await createAgentSession({
+          chatId,
+          agentId: sub.agentId || 'default',
+          sessionId: sub.sessionId || 'default',
+          cwd: workspaceRoot,
+          logger: createChatLogger(chatId, sub.id || 'default'),
+        });
+
+        await session.handleMessage({
+          id: randomUUID(),
+          content: input.prompt,
+          env: {},
+        });
+      } catch {
+        // Optionally handle failure logic
+      }
+    })();
+
     return { success: true };
   });
 
@@ -127,6 +203,7 @@ export const subagentDelete = apiProcedure
 
     return { success: true, deleted: false };
   });
+
 export const subagentList = apiProcedure.query(async ({ ctx }) => {
   if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
   const chatId = ctx.tokenPayload.chatId;

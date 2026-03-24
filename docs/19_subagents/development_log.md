@@ -36,3 +36,13 @@
 - Wired the CLI commands directly to the TRPC AppRouter (`subagentSpawn`, `subagentWait`, etc.).
 - Verified `npm run validate` and all tests/formatting passed successfully.
 - Marked Ticket 5 as complete.
+
+## Ticket 6: Agent Lifecycle & Execution Integration
+- Updated `AgentSession.handleMessage` to wrap execution in `taskScheduler.schedule` to enqueue to the global task limits rather than running immediately.
+- Updated `subagentSpawn` inside `src/daemon/api/subagent-router.ts` to enforce `MAX_SUBAGENT_DEPTH = 2` by walking the `parentId` chain.
+- Refactored `subagentSpawn` and `subagentSend` to asynchronously instantiate an `AgentSession` and call `.handleMessage()`, which automatically delegates task execution to the TaskScheduler.
+- Implemented subagent completion notifications by automatically appending a `<notification>` message to the parent agent upon completion in `subagentSpawn`.
+- Fixed several TypeScript errors and unused import lint warnings in `subagent-router.ts`.
+- Addressed failing tests in `src/daemon/message-queue.test.ts` caused by `taskScheduler` retaining locks across tests by correctly calling `.finish()` on mocked emitters and increasing test timeouts.
+- Ran `npm run validate` which executed flawlessly.
+- Marked Ticket 6 as complete.

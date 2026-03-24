@@ -16,6 +16,8 @@ import { createChatLogger } from './chat-logger.js';
 import { sandboxExecutionContext, type Fallback } from './agent-context.js';
 import { applyEnvOverrides, getActiveEnvKeys } from '../../shared/utils/env.js';
 import { getApiContext, generateToken } from '../auth.js';
+import { taskScheduler } from './task-scheduler.js';
+import { randomUUID } from 'node:crypto';
 
 export class AgentSession {
   public readonly agentId: string;
@@ -159,32 +161,48 @@ export class AgentSession {
     const queue = this.getTaskQueue();
     await queue.enqueue(
       async (signal) => {
-        // Refresh sessionSettings immediately before execution
-        const sessionSettings = await readAgentSessionSettings(
-          this.agentId,
-          this.sessionId,
-          this.workspaceRoot
-        );
-        // TODO: create a copy of the message first
-        applyEnvOverrides(message.env, sessionSettings?.env);
+        return new Promise<void>((resolve, reject) => {
+          taskScheduler
+            .schedule({
+              id: `task-${this.agentId}-${randomUUID()}`,
+              rootChatId: this.chatId,
+              dirPath: this.workDirectory,
+              execute: async () => {
+                try {
+                  // Refresh sessionSettings immediately before execution
+                  const sessionSettings = await readAgentSessionSettings(
+                    this.agentId,
+                    this.sessionId,
+                    this.workspaceRoot
+                  );
+                  // TODO: create a copy of the message first
+                  applyEnvOverrides(message.env, sessionSettings?.env);
 
-        const runner = this.createRunner();
-        const result = await runner.executeWithFallbacks(message, signal);
-        if (!result) {
-          // TODO: throw an error? Log an error?
-          return;
-        }
+                  const runner = this.createRunner();
+                  const result = await runner.executeWithFallbacks(message, signal);
+                  if (!result) {
+                    // TODO: throw an error? Log an error?
+                    return resolve();
+                  }
 
-        if (result.extractedSessionId) {
-          await writeAgentSessionSettings(
-            this.agentId,
-            this.sessionId,
-            { env: { SESSION_ID: result.extractedSessionId } },
-            this.workspaceRoot
-          );
-        }
+                  if (result.extractedSessionId) {
+                    await writeAgentSessionSettings(
+                      this.agentId,
+                      this.sessionId,
+                      { env: { SESSION_ID: result.extractedSessionId } },
+                      this.workspaceRoot
+                    );
+                  }
 
-        await this.logger.logCommandResult(result);
+                  await this.logger.logCommandResult(result);
+                  resolve();
+                } catch (err) {
+                  reject(err);
+                }
+              },
+            })
+            .catch(reject);
+        });
       },
       { text: message.content, sessionId: this.sessionId }
     );

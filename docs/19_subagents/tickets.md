@@ -57,4 +57,4 @@
 - **Verification**:
   - Add integration tests verifying full workflows: spawning a subagent, parent blocking/async notification, depth limits, and concurrent execution constraints.
   - Run `npm run validate`.
-- **Status**: not started
+- **Status**: complete
