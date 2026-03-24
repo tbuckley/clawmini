@@ -26,14 +26,14 @@ By allowing agents to spawn background subagents:
 ### 4.1 CLI Interface for Agents (`clawmini-lite`)
 Agents will use the `clawmini-lite` executable to manage subagents. The following new commands must be added:
 
-- `spawn <message> [--agent <name>] [--async] [--id <id>]`
-  - Creates a new subagent.
+- `spawn "message" [--agent <name>] [--async] [--id <id>]`
+  - Creates a new subagent. Note: The implementation must strictly use this signature (message first), and drop any legacy `<name> [--prompt "message"]` formatting.
   - If `--agent` is not provided, defaults to the current agent's configuration.
   - Generates a unique ID unless `--id` is provided (throws error if provided ID is not unique).
   - **Behavior (Sync by default for subagents):** Blocks until the subagent completes, returning the final output.
   - **Behavior (Async):** Returns immediately with `Subagent created: <id>`. When the subagent finishes, a notification is sent to the parent agent. (Note: Main agents must *always* execute this asynchronously, overriding the flag if necessary).
 
-- `send <id> <message> [--async]`
+- `send <id> "message" [--async]`
   - Sends a follow-up message to an existing subagent.
   - Obeys the same sync/async blocking rules as `spawn`.
 
@@ -46,10 +46,12 @@ Agents will use the `clawmini-lite` executable to manage subagents. The followin
 - `delete <id>`
   - Deletes the specified subagent (and stops any current work).
 
-- `list`
-  - Lists all subagents associated with the current agent.
+- `list [--pending] [--json]`
+  - Lists subagents associated with the current agent. Defaults to a readable text output.
+  - `--pending`: Only list subagents that are currently active/pending.
+  - `--json`: Output the list as a JSON array.
   - Output should include: ID, Agent Name, Creation Time, Status (Active/Completed/Failed), and a snippet of the initial message.
-  - Note: This lists *all* subagents, including completed/failed ones, until they are explicitly deleted.
+  - Note: This lists *all* subagents, including completed/failed ones, until they are explicitly deleted (unless `--pending` is used).
 
 ### 4.2 Agent Hierarchy & Concurrency
 
@@ -94,7 +96,11 @@ When a subagent completes a task and the parent agent is not actively blocking o
   - Added properties should track `agentId`, `sessionId`, `createdAt`, `status`, and parent hierarchy.
 - **Chat Logs (`chat.jsonl`):** Subagent messages will be stored in the *same* `chat.jsonl` file as the main agent.
   - `BaseMessage` will be extended with an optional `subagentId?: string` property.
+  - Spawning or sending a message to a subagent should log the incoming message to the chat directly. Ideally, utilize `executeDirectMessage` to ensure the flow is tracked cleanly.
   - The `ChatLogger` (`src/daemon/agent/chat-logger.ts`) will be updated to allow creating a "subagent view". This view will transparently inject the `subagentId` into outgoing messages and filter incoming logs so the subagent only sees its own context.
+- **Web UI Integration:**
+  - The Web UI must be updated to hide subagent messages by default to keep the main chat clean.
+  - Subagent messages should be revealed in debug/verbose modes, accompanied by a clear visual tag indicating their `subagentId`.
 
 ### 4.5 Environment & Context
 
@@ -128,6 +134,11 @@ When an agent receives a message (either a user message or a notification from a
 - **Deadlock Avoidance:** A deadlock can occur if the Active Task Pool is completely full of parent agents that are synchronously blocked (e.g., waiting for subagents to complete) while their required subagents are stuck in the Global Task Queue.
   - **Detection:** The scheduler must track the state of active tasks. If the Active Task Pool is at `MAX_CONCURRENT_AGENTS` capacity and *every* task in the pool is in a "blocked waiting for subagent" state, the system has deadlocked.
   - **Resolution (Pool Expansion):** Upon detecting this state, the scheduler temporarily expands the effective `MAX_CONCURRENT_AGENTS` limit by 1, allowing the oldest eligible subagent task in the queue to be promoted. Once any active task completes, the pool limit shrinks back to its original maximum.
+
+### 5.4 Execution Integration & Cleanup
+- **Remove Legacy TaskQueue:** The system must rely *exclusively* on the new centralized Task Scheduler. The legacy per-directory `TaskQueue` must be removed to prevent subagents from erroneously blocking their parent agent or each other.
+- **Interrupt/Stop Updates:** Because execution relies entirely on the centralized scheduler, the `stop()` and `interrupt()` mechanisms must be updated to interface directly with the scheduler and aggressively terminate underlying OS processes (e.g., shell commands) instead of relying on the old directory-level queues.
+- **Cascade Completion Logic:** A parent subagent cannot be considered "completed" if it still has active sub-subagents running.
 
 ## 6. Non-Functional Requirements (Privacy, Security, etc.)
 
