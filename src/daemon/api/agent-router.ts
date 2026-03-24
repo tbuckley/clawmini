@@ -228,6 +228,15 @@ export const fetchPendingMessages = apiProcedure.mutation(async ({ ctx }) => {
   return { messages: formatPendingMessages(extracted.map((p) => p.text)) };
 });
 
+import {
+  subagentSpawn,
+  subagentSend,
+  subagentWait,
+  subagentStop,
+  subagentDelete,
+  subagentList,
+} from './subagent-router.js';
+
 export const agentRouter = router({
   logMessage,
   listCronJobs: agentListCronJobs,
@@ -238,6 +247,12 @@ export const agentRouter = router({
   createPolicyRequest,
   fetchPendingMessages,
   ping,
+  subagentSpawn,
+  subagentSend,
+  subagentWait,
+  subagentStop,
+  subagentDelete,
+  subagentList,
 });
 
 export type AgentRouter = typeof agentRouter;

@@ -36,7 +36,7 @@
 - **Verification**:
   - Add unit/integration tests for the new TRPC routes.
   - Run `npm run validate`.
-- **Status**: not started
+- **Status**: complete
 
 ## Ticket 5: CLI Interface (`clawmini-lite`)
 - **Description**: Provide the interface for agents to manage subagents.
