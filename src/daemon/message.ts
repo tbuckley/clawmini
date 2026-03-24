@@ -33,6 +33,7 @@ export async function executeDirectMessage(
     chatId,
     agentId: state.agentId || 'default',
     sessionId: state.sessionId || 'default',
+    ...(subagentId ? { subagentId } : {}),
     cwd,
     settings,
     logger,

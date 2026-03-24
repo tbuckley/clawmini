@@ -9,6 +9,7 @@ export interface TokenPayload {
   chatId: string;
   agentId: string;
   sessionId: string;
+  subagentId?: string;
   timestamp: number;
 }
 

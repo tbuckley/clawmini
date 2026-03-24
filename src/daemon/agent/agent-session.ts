@@ -22,6 +22,7 @@ export class AgentSession {
   public readonly agentId: string;
   public readonly sessionId: string;
   public readonly chatId: string;
+  public readonly subagentId: string | undefined;
   public readonly settings: Agent;
   public readonly workspaceRoot: string;
   public readonly globalSettings: Settings | undefined;
@@ -31,6 +32,7 @@ export class AgentSession {
     agentId: string;
     sessionId: string;
     chatId: string;
+    subagentId?: string;
     settings: Agent;
     workspaceRoot: string;
     globalSettings: Settings | undefined;
@@ -39,6 +41,7 @@ export class AgentSession {
     this.agentId = config.agentId;
     this.sessionId = config.sessionId;
     this.chatId = config.chatId;
+    this.subagentId = config.subagentId;
     this.settings = config.settings;
     this.workspaceRoot = config.workspaceRoot;
     this.globalSettings = config.globalSettings;
@@ -97,6 +100,7 @@ export class AgentSession {
         chatId: this.chatId,
         agentId: this.agentId,
         sessionId: this.sessionId,
+        ...(this.subagentId ? { subagentId: this.subagentId } : {}),
         timestamp: Date.now(),
       });
       env['CLAW_API_TOKEN'] = token;
@@ -189,6 +193,7 @@ export async function createAgentSession(options: {
   chatId: string;
   agentId: string;
   sessionId: string;
+  subagentId?: string;
   cwd: string;
   settings?: Settings | undefined;
   logger?: Logger;
@@ -202,6 +207,7 @@ export async function createAgentSession(options: {
     agentId: options.agentId,
     sessionId: options.sessionId,
     chatId: options.chatId,
+    ...(options.subagentId ? { subagentId: options.subagentId } : {}),
     settings: mergedAgent,
     workspaceRoot,
     globalSettings: settings,

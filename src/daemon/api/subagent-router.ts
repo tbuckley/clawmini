@@ -18,7 +18,7 @@ export const subagentSpawn = apiProcedure
   .mutation(async ({ input, ctx }) => {
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
-    const parentId = ctx.tokenPayload.agentId;
+    const parentId = ctx.tokenPayload.subagentId || ctx.tokenPayload.agentId;
 
     const settings = (await readChatSettings(chatId)) || {};
     settings.subagents = settings.subagents || {};
@@ -35,7 +35,7 @@ export const subagentSpawn = apiProcedure
 
     const id = input.subagentId || randomUUID();
     const sessionId = randomUUID();
-    const agentId = input.targetAgentId || 'default';
+    const agentId = input.targetAgentId || parentId;
 
     settings.subagents[id] = {
       id,
@@ -213,9 +213,28 @@ export const subagentDelete = apiProcedure
     return { success: true, deleted: false };
   });
 
-export const subagentList = apiProcedure.query(async ({ ctx }) => {
-  if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
-  const chatId = ctx.tokenPayload.chatId;
-  const settings = await readChatSettings(chatId);
-  return { subagents: Object.values(settings?.subagents || {}) };
-});
+export const subagentList = apiProcedure
+  .input(z.object({ blocking: z.boolean().optional() }).optional())
+  .query(async ({ input, ctx }) => {
+    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
+    const chatId = ctx.tokenPayload.chatId;
+    const settings = await readChatSettings(chatId);
+
+    let subagents = Object.values(settings?.subagents || {});
+
+    const isSubagent = !!ctx.tokenPayload.subagentId;
+    const myId = ctx.tokenPayload.subagentId || ctx.tokenPayload.agentId;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    subagents = subagents.filter((s: any) => s.parentId === myId);
+
+    if (input?.blocking) {
+      if (!isSubagent) {
+        subagents = [];
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        subagents = subagents.filter((s: any) => s.status === 'active' || s.status === 'pending');
+      }
+    }
+    return { subagents };
+  });

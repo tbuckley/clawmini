@@ -105,18 +105,13 @@ export function registerSubagentCommands(
   subagents
     .command('list')
     .description('List all subagents')
-    .option('--pending', 'Filter for active subagents')
+    .option('--blocking', 'Filter for subagents that block the current agent')
     .option('--json', 'Output as JSON')
     .action(async (options) => {
       try {
         const client = getClient();
-        const result = await client.subagentList.query();
-        let subagents = result.subagents;
-
-        if (options.pending) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          subagents = subagents.filter((s: any) => s.status === 'active' || s.status === 'pending');
-        }
+        const result = await client.subagentList.query({ blocking: options.blocking });
+        const subagents = result.subagents;
 
         if (options.json) {
           console.log(JSON.stringify(subagents, null, 2));
