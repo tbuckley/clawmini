@@ -65,3 +65,4 @@
 - Updated `src/adapter-discord/forwarder.ts` to ignore any log messages with a `subagentId` before forwarding them to Discord.
 - Verified all type, linting, and formatting checks pass with `npm run validate`.
 - Marked Ticket 9 as complete.\n## Bug: Missing Output from Async Subagents\n\n### Reproducible Steps\n1. Run an async subagent.\n2. Observe the notification upon completion.\n3. Verify that the output is missing from the notification.\n4. Check if a tool like 'clawmini-lite.js subagents tail' exists.\n
+\n### Solution\n1. Modified `src/daemon/api/subagent-router.ts` to include the output content of the last log message in the notification sent back to the parent agent when an async subagent completes.\n2. Added `clawmini-lite.js subagents tail <subagentId>` (and to the CLI `subagents` command via `src/cli/subagent-commands.ts`) to allow fetching subagent messages locally.\n3. Verified everything compiles and tests pass.\n

@@ -4,6 +4,7 @@ import { TRPCError } from '@trpc/server';
 import { getWorkspaceRoot, readChatSettings, writeChatSettings } from '../../shared/workspace.js';
 import { apiProcedure } from './trpc.js';
 import { executeDirectMessage } from '../message.js';
+import { createChatLogger } from '../agent/chat-logger.js';
 
 const MAX_SUBAGENT_DEPTH = 2;
 
@@ -79,11 +80,21 @@ export const subagentSpawn = apiProcedure
 
         // Notify parent
         if (parentId) {
+          const logger = createChatLogger(chatId, id);
+          const msgs = await logger.getMessages();
+          const lastLogMessage = msgs
+            .reverse()
+            .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
+          let outputContent = '';
+          if (lastLogMessage && 'content' in lastLogMessage) {
+            outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;
+          }
+
           await executeDirectMessage(
             chatId,
             {
               messageId: randomUUID(),
-              message: `<notification>Subagent ${id} completed.</notification>`,
+              message: `<notification>Subagent ${id} completed.</notification>${outputContent}`,
               chatId,
               agentId: parentId,
               sessionId: ctx.tokenPayload?.sessionId || 'default',

@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import type { createTRPCClient } from '@trpc/client';
 import type { AgentRouter as AppRouter } from '../daemon/api/index.js';
+import { getMessages, getDefaultChatId } from '../shared/chats.js';
 
 export function registerSubagentCommands(
   program: Command,
@@ -133,6 +134,43 @@ export function registerSubagentCommands(
           if (sub.parentId) console.log(`  Parent ID:  ${sub.parentId}`);
         }
         console.log();
+      } catch (err) {
+        console.error('Error:', err instanceof Error ? err.message : err);
+        process.exit(1);
+      }
+    });
+
+  subagents
+    .command('tail <subagentId>')
+    .description('View message history for a specific subagent')
+    .option('-n, --lines <number>', 'Number of messages to show', parseInt)
+    .option('--json', 'Output raw JSONL format')
+    .option('-c, --chat <id>', 'Specific chat to view')
+    .action(async (subagentId, options) => {
+      try {
+        const chatId = options.chat ?? (await getDefaultChatId());
+        const allMessages = await getMessages(chatId);
+        let messages = allMessages.filter((msg) => msg.subagentId === subagentId);
+
+        if (options.lines !== undefined && !isNaN(options.lines) && options.lines > 0) {
+          messages = messages.slice(-options.lines);
+        }
+
+        if (options.json) {
+          messages.forEach((msg) => console.log(JSON.stringify(msg)));
+        } else {
+          messages.forEach((msg) => {
+            if (msg.role === 'user') {
+              console.log(`[USER] ${msg.content}`);
+            } else if (msg.role === 'log') {
+              if (msg.content) {
+                console.log(`[LOG] ${msg.content.trim()}`);
+              } else if ('stderr' in msg && msg.stderr) {
+                console.error(`[STDERR] ${msg.stderr.trim()}`);
+              }
+            }
+          });
+        }
       } catch (err) {
         console.error('Error:', err instanceof Error ? err.message : err);
         process.exit(1);
