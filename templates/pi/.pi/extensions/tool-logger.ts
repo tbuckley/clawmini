@@ -21,7 +21,7 @@ export default function (pi: ExtensionAPI) {
     const logMessage = `🔧 ${toolName} - \`${logInput}\``;
 
     try {
-      const result = await pi.exec("clawmini-lite", ["log", logMessage], { cwd: ctx.cwd });
+      const result = await pi.exec("clawmini-lite.js", ["log", logMessage], { cwd: ctx.cwd });
       if (result.code !== 0) {
         console.warn(`clawmini-lite failed: ${result.stderr}`);
       }
