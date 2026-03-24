@@ -9,19 +9,29 @@ export function registerSubagentCommands(
   const subagents = program.command('subagents').description('Manage subagents');
 
   subagents
-    .command('spawn <targetAgentId>')
+    .command('spawn <message>')
     .description('Spawn a new subagent')
-    .option('-p, --prompt <prompt>', 'Prompt for the subagent', '')
+    .option('-a, --agent <name>', 'Target agent name')
     .option('-i, --id <subagentId>', 'Optional custom ID for the subagent')
-    .action(async (targetAgentId, options) => {
+    .option('--async', 'Run asynchronously without blocking')
+    .action(async (message, options) => {
       try {
         const client = getClient();
         const result = await client.subagentSpawn.mutate({
-          targetAgentId,
-          prompt: options.prompt,
+          targetAgentId: options.agent,
+          prompt: message,
           subagentId: options.id,
         });
         console.log(`Subagent spawned successfully with ID: ${result.id}`);
+
+        if (!options.async && result.depth > 0) {
+          console.log(`Waiting for subagent ${result.id} to complete...`);
+          let waitResult;
+          do {
+            waitResult = await client.subagentWait.mutate({ subagentId: result.id });
+          } while (waitResult.status === 'active');
+          console.log(`Subagent status: ${waitResult.status}`);
+        }
       } catch (err) {
         console.error('Error:', err instanceof Error ? err.message : err);
         process.exit(1);
@@ -95,11 +105,37 @@ export function registerSubagentCommands(
   subagents
     .command('list')
     .description('List all subagents')
-    .action(async () => {
+    .option('--pending', 'Filter for active subagents')
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
       try {
         const client = getClient();
         const result = await client.subagentList.query();
-        console.log(JSON.stringify(result.subagents, null, 2));
+        let subagents = result.subagents;
+
+        if (options.pending) {
+          subagents = subagents.filter((s: any) => s.status === 'active' || s.status === 'pending');
+        }
+
+        if (options.json) {
+          console.log(JSON.stringify(subagents, null, 2));
+          return;
+        }
+
+        if (subagents.length === 0) {
+          console.log('No subagents found.');
+          return;
+        }
+
+        for (const sub of subagents as any[]) {
+          console.log(`\n=== Subagent: ${sub.id || 'N/A'} ===`);
+          console.log(`  Agent:      ${sub.agentId || 'N/A'}`);
+          console.log(`  Status:     ${sub.status || 'N/A'}`);
+          console.log(`  Created:    ${sub.createdAt || 'N/A'}`);
+          console.log(`  Session ID: ${sub.sessionId || 'N/A'}`);
+          if (sub.parentId) console.log(`  Parent ID:  ${sub.parentId}`);
+        }
+        console.log();
       } catch (err) {
         console.error('Error:', err instanceof Error ? err.message : err);
         process.exit(1);

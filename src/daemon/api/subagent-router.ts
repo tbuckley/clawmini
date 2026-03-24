@@ -12,7 +12,7 @@ export const subagentSpawn = apiProcedure
   .input(
     z.object({
       subagentId: z.string().optional(),
-      targetAgentId: z.string(),
+      targetAgentId: z.string().optional(),
       prompt: z.string(),
     })
   )
@@ -36,10 +36,11 @@ export const subagentSpawn = apiProcedure
 
     const id = input.subagentId || randomUUID();
     const sessionId = randomUUID();
+    const agentId = input.targetAgentId || 'default';
 
     settings.subagents[id] = {
       id,
-      agentId: input.targetAgentId,
+      agentId,
       sessionId,
       createdAt: new Date().toISOString(),
       status: 'active',
@@ -55,7 +56,7 @@ export const subagentSpawn = apiProcedure
       try {
         const session = await createAgentSession({
           chatId,
-          agentId: input.targetAgentId,
+          agentId,
           sessionId,
           cwd: workspaceRoot,
           logger: createChatLogger(chatId, id),
@@ -97,7 +98,7 @@ export const subagentSpawn = apiProcedure
       }
     })();
 
-    return { id };
+    return { id, depth };
   });
 
 export const subagentSend = apiProcedure

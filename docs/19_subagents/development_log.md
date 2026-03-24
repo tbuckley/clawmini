@@ -46,3 +46,12 @@
 - Addressed failing tests in `src/daemon/message-queue.test.ts` caused by `taskScheduler` retaining locks across tests by correctly calling `.finish()` on mocked emitters and increasing test timeouts.
 - Ran `npm run validate` which executed flawlessly.
 - Marked Ticket 6 as complete.
+
+## Ticket 7: Subagent Command & CLI Enhancements
+- Updated `src/cli/subagent-commands.ts` to change the `spawn` command signature to use positional `message` rather than `targetAgentId`.
+- Added `--agent`, `--id`, and `--async` flags to the `spawn` command.
+- Updated `src/daemon/api/subagent-router.ts` to optionally accept `targetAgentId` and gracefully default to `'default'`.
+- Ensured the `subagentSpawn` TRPC endpoint returns `depth` so the CLI can conditionally block on subagent execution unless `--async` is passed or `depth === 0`. Main agents are forced to be async.
+- Updated the `list` command to accept `--pending` and `--json` options. Default output now produces a formatted property list instead of an unstructured JSON payload.
+- Verified everything with `npm run validate` and all tests/checks passed.
+- Marked Ticket 7 as complete.

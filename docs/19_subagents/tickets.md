@@ -75,7 +75,7 @@
 - **Verification**:
   - Verify `list` outputs correct text or JSON based on flags.
   - Run `npm run validate`.
-- **Status**: todo
+- **Status**: complete
 
 ## Ticket 8: Execution, Concurrency & Lifecycle Fixes
 
