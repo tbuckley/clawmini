@@ -5,6 +5,7 @@ export interface RouterState {
   message: string;
   chatId: string;
   agentId?: string;
+  subagentId?: string;
   sessionId?: string;
   nextSessionId?: string;
   env?: Record<string, string>;

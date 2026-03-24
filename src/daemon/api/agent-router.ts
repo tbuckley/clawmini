@@ -153,7 +153,8 @@ export const createPolicyRequest = apiProcedure
       input.fileMappings,
       chatId,
       agentId,
-      isAutoApprove
+      isAutoApprove,
+      ctx.tokenPayload.subagentId
     );
 
     if (isAutoApprove) {
@@ -172,6 +173,7 @@ export const createPolicyRequest = apiProcedure
         messageId: randomUUID(),
         role: 'log' as const,
         source: 'router' as const,
+        level: 'verbose' as const, // Auto approvals do not need to be shown to the user
         content: `[Auto-approved] Policy ${input.commandName} was executed.`,
         stderr,
         stdout, // Adding stdout and stderr for execution context
@@ -180,7 +182,7 @@ export const createPolicyRequest = apiProcedure
         cwd: getWorkspaceRoot(),
         exitCode,
         ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
-      };
+      } satisfies CommandLogMessage;
 
       await appendMessage(chatId, logMsg);
       return request;
@@ -201,7 +203,7 @@ export const createPolicyRequest = apiProcedure
       cwd: process.cwd(),
       exitCode: 0,
       ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
-    };
+    } satisfies CommandLogMessage;
 
     await appendMessage(chatId, logMsg);
     return request;
