@@ -19,7 +19,8 @@ export const subagentSpawn = apiProcedure
   .mutation(async ({ input, ctx }) => {
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
-    const parentId = ctx.tokenPayload.subagentId || ctx.tokenPayload.agentId;
+    const parentAgentId = ctx.tokenPayload.agentId;
+    const parentId = ctx.tokenPayload.subagentId;
 
     const settings = (await readChatSettings(chatId)) || {};
     settings.subagents = settings.subagents || {};
@@ -36,7 +37,12 @@ export const subagentSpawn = apiProcedure
 
     const id = input.subagentId || randomUUID();
     const sessionId = randomUUID();
-    const agentId = input.targetAgentId || parentId;
+    const agentId = input.targetAgentId || parentAgentId;
+
+    // Make sure the id does not already exist
+    if (settings.subagents[id]) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Subagent ID already exists' });
+    }
 
     settings.subagents[id] = {
       id,
@@ -79,32 +85,37 @@ export const subagentSpawn = apiProcedure
         }
 
         // Notify parent
-        if (parentId) {
-          const logger = createChatLogger(chatId, id);
-          const msgs = await logger.getMessages();
-          const lastLogMessage = msgs
-            .reverse()
-            .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
-          let outputContent = '';
-          if (lastLogMessage && 'content' in lastLogMessage) {
-            outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;
-          }
-
-          await executeDirectMessage(
-            chatId,
-            {
-              messageId: randomUUID(),
-              message: `<notification>Subagent ${id} completed.</notification>${outputContent}`,
-              chatId,
-              agentId: parentId,
-              sessionId: ctx.tokenPayload?.sessionId || 'default',
-              env: {},
-            },
-            undefined,
-            workspaceRoot,
-            true // noWait
-          );
+        const logger = createChatLogger(chatId, id);
+        const msgs = await logger.getMessages();
+        const lastLogMessage = msgs
+          .reverse()
+          .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
+        let outputContent = '';
+        if (lastLogMessage && 'content' in lastLogMessage) {
+          outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;
         }
+
+        console.log(
+          'Notifying parent',
+          chatId,
+          ctx.tokenPayload?.agentId,
+          ctx.tokenPayload?.subagentId
+        );
+        await executeDirectMessage(
+          chatId,
+          {
+            messageId: randomUUID(),
+            message: `<notification>Subagent ${id} completed.</notification>${outputContent}`,
+            chatId,
+            agentId: ctx.tokenPayload?.agentId || 'default',
+            ...(ctx.tokenPayload?.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
+            sessionId: ctx.tokenPayload?.sessionId || 'default',
+            env: {},
+          },
+          undefined,
+          workspaceRoot,
+          true // noWait
+        );
       } catch {
         const errSettings = (await readChatSettings(chatId)) || {};
         if (errSettings.subagents?.[id]) {
@@ -234,17 +245,15 @@ export const subagentList = apiProcedure
     let subagents = Object.values(settings?.subagents || {});
 
     const isSubagent = !!ctx.tokenPayload.subagentId;
-    const myId = ctx.tokenPayload.subagentId || ctx.tokenPayload.agentId;
+    const myId = ctx.tokenPayload.subagentId;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    subagents = subagents.filter((s: any) => s.parentId === myId);
+    subagents = subagents.filter((s) => s.parentId === myId);
 
     if (input?.blocking) {
       if (!isSubagent) {
         subagents = [];
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        subagents = subagents.filter((s: any) => s.status === 'active' || s.status === 'pending');
+        subagents = subagents.filter((s) => s.status === 'active');
       }
     }
     return { subagents };
