@@ -1,13 +1,14 @@
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { TRPCError } from '@trpc/server';
-import { getWorkspaceRoot, readChatSettings, writeChatSettings } from '../../shared/workspace.js';
+import { getWorkspaceRoot, readChatSettings, updateChatSettings } from '../../shared/workspace.js';
 import { apiProcedure } from './trpc.js';
 import { createChatLogger } from '../agent/chat-logger.js';
 import { on } from 'node:events';
 import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
 import { createAgentSession } from '../agent/agent-session.js';
 import { executeSubagent, getSubagentDepth } from './subagent-utils.js';
+import type { SubagentTracker } from '../../shared/config.js';
 
 const MAX_SUBAGENT_DEPTH = 2;
 
@@ -26,33 +27,35 @@ export const subagentSpawn = apiProcedure
     const parentAgentId = ctx.tokenPayload.agentId;
     const parentId = ctx.tokenPayload.subagentId;
 
-    const settings = (await readChatSettings(chatId)) || {};
-    settings.subagents = settings.subagents || {};
-
-    const depth = getSubagentDepth(settings, parentId);
-    if (depth >= MAX_SUBAGENT_DEPTH) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Max subagent depth reached' });
-    }
-
     const id = input.subagentId || randomUUID();
     const sessionId = randomUUID();
     const agentId = input.targetAgentId || parentAgentId;
+    let depth = 0;
 
-    // Make sure the id does not already exist
-    if (settings.subagents[id]) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Subagent ID already exists' });
-    }
+    await updateChatSettings(chatId, (settings) => {
+      settings.subagents = settings.subagents || {};
 
-    settings.subagents[id] = {
-      id,
-      agentId,
-      sessionId,
-      createdAt: new Date().toISOString(),
-      status: 'active',
-      parentId,
-    };
+      depth = getSubagentDepth(settings, parentId);
+      if (depth >= MAX_SUBAGENT_DEPTH) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Max subagent depth reached' });
+      }
 
-    await writeChatSettings(chatId, settings);
+      // Make sure the id does not already exist
+      if (settings.subagents[id]) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Subagent ID already exists' });
+      }
+
+      settings.subagents[id] = {
+        id,
+        agentId,
+        sessionId,
+        createdAt: new Date().toISOString(),
+        status: 'active',
+        parentId,
+      };
+
+      return settings;
+    });
 
     const workspaceRoot = getWorkspaceRoot(process.cwd());
 
@@ -83,27 +86,26 @@ export const subagentSend = apiProcedure
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
 
-    const settings = await readChatSettings(chatId);
-    if (!settings?.subagents?.[input.subagentId]) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Subagent not found' });
-    }
+    let sub: SubagentTracker | undefined;
 
-    const sub = settings.subagents[input.subagentId];
-    if (!sub) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Subagent not found' });
-    }
+    await updateChatSettings(chatId, (settings) => {
+      if (!settings.subagents?.[input.subagentId]) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Subagent not found' });
+      }
 
-    sub.status = 'active';
-    await writeChatSettings(chatId, settings);
+      sub = settings.subagents[input.subagentId];
+      sub!.status = 'active';
+      return settings;
+    });
 
     const workspaceRoot = getWorkspaceRoot(process.cwd());
 
     // Execute asynchronously
     executeSubagent(
       chatId,
-      sub.id,
-      sub.agentId || 'default',
-      sub.sessionId || 'default',
+      sub!.id,
+      sub!.agentId || 'default',
+      sub!.sessionId || 'default',
       input.prompt,
       input.async,
       ctx.tokenPayload,
@@ -198,22 +200,28 @@ export const subagentStop = apiProcedure
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
 
-    const settings = await readChatSettings(chatId);
-    if (settings?.subagents) {
-      const sub = settings.subagents[input.subagentId];
-      if (sub) {
-        sub.status = 'failed';
-        await writeChatSettings(chatId, settings);
+    let subToStop: SubagentTracker | undefined;
 
-        const session = await createAgentSession({
-          chatId,
-          agentId: sub.agentId || 'default',
-          sessionId: sub.sessionId || 'default',
-          subagentId: input.subagentId,
-          cwd: process.cwd(),
-        });
-        session.stop();
+    await updateChatSettings(chatId, (settings) => {
+      if (settings.subagents) {
+        const sub = settings.subagents[input.subagentId];
+        if (sub) {
+          sub.status = 'failed';
+          subToStop = sub;
+        }
       }
+      return settings;
+    });
+
+    if (subToStop) {
+      const session = await createAgentSession({
+        chatId,
+        agentId: subToStop.agentId || 'default',
+        sessionId: subToStop.sessionId || 'default',
+        subagentId: input.subagentId,
+        cwd: process.cwd(),
+      });
+      session.stop();
     }
 
     return { success: true };
@@ -225,16 +233,21 @@ export const subagentDelete = apiProcedure
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
 
-    const settings = await readChatSettings(chatId);
-    if (settings?.subagents && settings.subagents[input.subagentId]) {
-      const sub = settings.subagents[input.subagentId]!;
-      delete settings.subagents[input.subagentId];
-      await writeChatSettings(chatId, settings);
+    let subToDelete: SubagentTracker | undefined;
 
+    await updateChatSettings(chatId, (settings) => {
+      if (settings.subagents && settings.subagents[input.subagentId]) {
+        subToDelete = settings.subagents[input.subagentId]!;
+        delete settings.subagents[input.subagentId];
+      }
+      return settings;
+    });
+
+    if (subToDelete) {
       const session = await createAgentSession({
         chatId,
-        agentId: sub.agentId || 'default',
-        sessionId: sub.sessionId || 'default',
+        agentId: subToDelete.agentId || 'default',
+        sessionId: subToDelete.sessionId || 'default',
         subagentId: input.subagentId,
         cwd: process.cwd(),
       });

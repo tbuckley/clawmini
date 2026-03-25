@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readChatSettings, writeChatSettings } from '../../shared/workspace.js';
+import { updateChatSettings } from '../../shared/workspace.js';
 import { executeDirectMessage } from '../message.js';
 import { createChatLogger } from '../agent/chat-logger.js';
 import type { ChatSettings } from '../../shared/config.js';
@@ -43,11 +43,12 @@ export async function executeSubagent(
     );
 
     // Update status
-    const finalSettings = (await readChatSettings(chatId)) || {};
-    if (finalSettings.subagents?.[subagentId]) {
-      finalSettings.subagents[subagentId]!.status = 'completed';
-      await writeChatSettings(chatId, finalSettings);
-    }
+    await updateChatSettings(chatId, (finalSettings) => {
+      if (finalSettings.subagents?.[subagentId]) {
+        finalSettings.subagents[subagentId]!.status = 'completed';
+      }
+      return finalSettings;
+    });
 
     const logger = createChatLogger(chatId, subagentId);
 
@@ -86,11 +87,12 @@ export async function executeSubagent(
       );
     }
   } catch {
-    const errSettings = (await readChatSettings(chatId)) || {};
-    if (errSettings.subagents?.[subagentId]) {
-      errSettings.subagents[subagentId]!.status = 'failed';
-      await writeChatSettings(chatId, errSettings);
-    }
+    await updateChatSettings(chatId, (errSettings) => {
+      if (errSettings.subagents?.[subagentId]) {
+        errSettings.subagents[subagentId]!.status = 'failed';
+      }
+      return errSettings;
+    });
     const logger = createChatLogger(chatId, subagentId);
     await logger.logSystemEvent({ content: 'Subagent failed', level: 'debug' });
   }
