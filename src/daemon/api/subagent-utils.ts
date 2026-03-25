@@ -50,30 +50,14 @@ export async function executeSubagent(
     }
 
     const logger = createChatLogger(chatId, subagentId);
-    if (!isAsync) {
-      // Emit debug message to wake up waiters
-      await logger.append({
-        id: randomUUID(),
-        role: 'log',
-        content: 'Subagent completed',
-        timestamp: new Date().toISOString(),
-        messageId: randomUUID(),
-        command: '',
-        cwd: '',
-        stdout: '',
-        stderr: '',
-        exitCode: 0,
-        level: 'debug',
-        source: 'router',
-      });
-    }
+    
+    // Emit debug message to wake up waiters
+    await logger.logSystemEvent({ content: 'Subagent completed', level: 'debug' });
 
     if (isAsync) {
-      // TODO: make it more efficient to get the resulting message from a run
-      const msgs = await logger.getMessages();
-      const lastLogMessage = msgs
-        .reverse()
-        .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
+      const lastLogMessage = await logger.findLastMessage(
+        (m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router'
+      );
       let outputContent = '';
       if (lastLogMessage && 'content' in lastLogMessage) {
         outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;
@@ -108,19 +92,6 @@ export async function executeSubagent(
       await writeChatSettings(chatId, errSettings);
     }
     const logger = createChatLogger(chatId, subagentId);
-    await logger.append({
-      id: randomUUID(),
-      role: 'log',
-      content: 'Subagent failed',
-      timestamp: new Date().toISOString(),
-      messageId: randomUUID(),
-      command: '',
-      cwd: '',
-      stdout: '',
-      stderr: '',
-      exitCode: 1,
-      level: 'debug',
-      source: 'router',
-    });
+    await logger.logSystemEvent({ content: 'Subagent failed', level: 'debug' });
   }
 }

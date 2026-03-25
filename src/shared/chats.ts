@@ -167,3 +167,62 @@ export async function setDefaultChatId(id: string, startDir = process.cwd()): Pr
 
   await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
 }
+
+export async function findLastMessage(
+  id: string,
+  predicate: (msg: ChatMessage) => boolean,
+  startDir = process.cwd()
+): Promise<ChatMessage | null> {
+  assertValidChatId(id);
+  const chatsDir = await getChatsDir(startDir);
+  const chatFile = path.join(chatsDir, id, 'chat.jsonl');
+  if (!existsSync(chatFile)) {
+    return null;
+  }
+
+  const fd = await fs.open(chatFile, 'r');
+  try {
+    const stats = await fd.stat();
+    if (stats.size === 0) return null;
+
+    const chunkSize = 64 * 1024;
+    let position = stats.size;
+    const buffer = Buffer.alloc(chunkSize);
+    let leftover = '';
+
+    while (position > 0) {
+      const readSize = Math.min(chunkSize, position);
+      position -= readSize;
+
+      const { bytesRead } = await fd.read(buffer, 0, readSize, position);
+      const chunk = buffer.toString('utf8', 0, bytesRead) + leftover;
+
+      const lines = chunk.split('\n');
+      leftover = lines.shift() || '';
+
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i]?.trim();
+        if (!line) continue;
+        try {
+          const msg = JSON.parse(line) as ChatMessage;
+          if (predicate(msg)) return msg;
+        } catch {
+          // Ignore invalid JSON lines
+        }
+      }
+    }
+
+    if (leftover.trim()) {
+      try {
+        const msg = JSON.parse(leftover.trim()) as ChatMessage;
+        if (predicate(msg)) return msg;
+      } catch {
+        // Ignore invalid JSON lines
+      }
+    }
+  } finally {
+    await fd.close();
+  }
+
+  return null;
+}

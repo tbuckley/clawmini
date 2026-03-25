@@ -122,11 +122,9 @@ async function checkSubagentStatus(chatId: string, subagentId: string) {
     let outputContent: string | undefined;
     if (sub.status === 'completed') {
       const logger = createChatLogger(chatId, subagentId);
-      // TODO: make it more efficient to get the resulting message from a run
-      const msgs = await logger.getMessages();
-      const lastLogMessage = msgs
-        .reverse()
-        .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
+      const lastLogMessage = await logger.findLastMessage(
+        (m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router' && m.content !== 'Subagent completed'
+      );
       if (lastLogMessage && 'content' in lastLogMessage) {
         outputContent = lastLogMessage.content;
       }
@@ -162,12 +160,15 @@ export const subagentWait = apiProcedure
       for await (const [event] of on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, {
         signal: ac.signal,
       })) {
-        if (event.chatId === chatId) {
-          const status = await checkSubagentStatus(chatId, input.subagentId);
-          if (status) {
-            clearTimeout(timeout);
-            if (signal) signal.removeEventListener('abort', onAbort);
-            return status;
+        if (event.chatId === chatId && event.message?.subagentId === input.subagentId) {
+          const msg = event.message;
+          if (msg.role === 'log' && (msg.content === 'Subagent completed' || msg.content === 'Subagent failed')) {
+            const status = await checkSubagentStatus(chatId, input.subagentId);
+            if (status) {
+              clearTimeout(timeout);
+              if (signal) signal.removeEventListener('abort', onAbort);
+              return status;
+            }
           }
         }
       }

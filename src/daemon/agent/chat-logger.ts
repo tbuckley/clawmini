@@ -1,6 +1,7 @@
 import {
   appendMessage,
   getMessages,
+  findLastMessage as findLastMessageFromStorage,
   type ChatMessage,
   type CommandLogMessage,
   type UserMessage,
@@ -24,6 +25,16 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         filtered = filtered.slice(-limit);
       }
       return filtered;
+    },
+
+    findLastMessage: async (predicate) => {
+      return findLastMessageFromStorage(
+        chatId,
+        (msg: ChatMessage) => {
+          if (subagentId && msg.subagentId !== subagentId) return false;
+          return predicate(msg);
+        }
+      );
     },
 
     logUserMessage: async (msg) =>
@@ -50,6 +61,23 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         stderr: result.stderr,
         exitCode: result.exitCode,
       }),
+
+    logSystemEvent: async ({ content, level }) =>
+      append({
+        id: crypto.randomUUID(),
+        role: 'log',
+        content,
+        timestamp: new Date().toISOString(),
+
+        messageId: crypto.randomUUID(),
+        source: 'router',
+        level: level || 'debug',
+
+        stderr: '',
+        command: '',
+        cwd: '',
+        exitCode: 0,
+      } satisfies CommandLogMessage),
 
     logAutomaticReply: async ({ messageId, content }) =>
       append({

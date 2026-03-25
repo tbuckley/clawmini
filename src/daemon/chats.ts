@@ -20,6 +20,7 @@ export {
   listChats,
   deleteChat,
   getMessages,
+  findLastMessage,
   getDefaultChatId,
   setDefaultChatId,
   DEFAULT_CHAT_ID,
