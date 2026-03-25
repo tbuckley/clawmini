@@ -50,7 +50,7 @@ export async function executeSubagent(
     }
 
     const logger = createChatLogger(chatId, subagentId);
-    
+
     // Emit debug message to wake up waiters
     await logger.logSystemEvent({ content: 'Subagent completed', level: 'debug' });
 

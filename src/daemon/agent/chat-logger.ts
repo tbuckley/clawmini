@@ -28,13 +28,10 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
     },
 
     findLastMessage: async (predicate) => {
-      return findLastMessageFromStorage(
-        chatId,
-        (msg: ChatMessage) => {
-          if (subagentId && msg.subagentId !== subagentId) return false;
-          return predicate(msg);
-        }
-      );
+      return findLastMessageFromStorage(chatId, (msg: ChatMessage) => {
+        if (subagentId && msg.subagentId !== subagentId) return false;
+        return predicate(msg);
+      });
     },
 
     logUserMessage: async (msg) =>
