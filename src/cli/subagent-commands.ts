@@ -21,16 +21,22 @@ export function registerSubagentCommands(
           targetAgentId: options.agent,
           prompt: message,
           subagentId: options.id,
+          async: options.async,
         });
         console.log(`Subagent spawned successfully with ID: ${result.id}`);
 
-        if (!options.async && result.depth > 0) {
+        if (!options.async) {
           console.log(`Waiting for subagent ${result.id} to complete...`);
           let waitResult;
           do {
             waitResult = await client.subagentWait.mutate({ subagentId: result.id });
           } while (waitResult.status === 'active');
-          console.log(`Subagent status: ${waitResult.status}`);
+
+          if (waitResult.status === 'completed' && waitResult.output) {
+            console.log(`\n<subagent_output>\n${waitResult.output}\n</subagent_output>`);
+          } else {
+            console.log(`Subagent status: ${waitResult.status}`);
+          }
         }
       } catch (err) {
         console.error('Error:', err instanceof Error ? err.message : err);
@@ -42,14 +48,29 @@ export function registerSubagentCommands(
     .command('send <subagentId>')
     .description('Send a message to a subagent')
     .requiredOption('-p, --prompt <prompt>', 'Prompt to send')
+    .option('--async', 'Run asynchronously without blocking')
     .action(async (subagentId, options) => {
       try {
         const client = getClient();
         await client.subagentSend.mutate({
           subagentId,
           prompt: options.prompt,
+          async: options.async,
         });
         console.log(`Message sent to subagent ${subagentId}`);
+
+        if (!options.async) {
+          let waitResult;
+          do {
+            waitResult = await client.subagentWait.mutate({ subagentId });
+          } while (waitResult.status === 'active');
+
+          if (waitResult.status === 'completed' && waitResult.output) {
+            console.log(`\n<subagent_output>\n${waitResult.output}\n</subagent_output>`);
+          } else {
+            console.log(`Subagent status: ${waitResult.status}`);
+          }
+        }
       } catch (err) {
         console.error('Error:', err instanceof Error ? err.message : err);
         process.exit(1);
@@ -62,8 +83,19 @@ export function registerSubagentCommands(
     .action(async (subagentId) => {
       try {
         const client = getClient();
-        const result = await client.subagentWait.mutate({ subagentId });
-        console.log(`Subagent status: ${result.status}`);
+        console.log(`Waiting for subagent ${subagentId} to complete...`);
+        let result;
+        do {
+          result = await client.subagentWait.mutate({ subagentId });
+        } while (result.status === 'active');
+
+        if (result.status === 'completed' && (result as any).output) {
+          console.log(
+            `\n=== Subagent Output ===\n${(result as any).output}\n=======================`
+          );
+        } else {
+          console.log(`Subagent status: ${result.status}`);
+        }
       } catch (err) {
         console.error('Error:', err instanceof Error ? err.message : err);
         process.exit(1);

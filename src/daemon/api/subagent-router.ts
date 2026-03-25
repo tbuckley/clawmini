@@ -14,6 +14,7 @@ export const subagentSpawn = apiProcedure
       subagentId: z.string().optional(),
       targetAgentId: z.string().optional(),
       prompt: z.string(),
+      async: z.boolean().optional(),
     })
   )
   .mutation(async ({ input, ctx }) => {
@@ -85,37 +86,39 @@ export const subagentSpawn = apiProcedure
         }
 
         // Notify parent
-        const logger = createChatLogger(chatId, id);
-        const msgs = await logger.getMessages();
-        const lastLogMessage = msgs
-          .reverse()
-          .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
-        let outputContent = '';
-        if (lastLogMessage && 'content' in lastLogMessage) {
-          outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;
-        }
+        if (input.async) {
+          const logger = createChatLogger(chatId, id);
+          const msgs = await logger.getMessages();
+          const lastLogMessage = msgs
+            .reverse()
+            .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
+          let outputContent = '';
+          if (lastLogMessage && 'content' in lastLogMessage) {
+            outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;
+          }
 
-        console.log(
-          'Notifying parent',
-          chatId,
-          ctx.tokenPayload?.agentId,
-          ctx.tokenPayload?.subagentId
-        );
-        await executeDirectMessage(
-          chatId,
-          {
-            messageId: randomUUID(),
-            message: `<notification>Subagent ${id} completed.</notification>${outputContent}`,
+          console.log(
+            'Notifying parent',
             chatId,
-            agentId: ctx.tokenPayload?.agentId || 'default',
-            ...(ctx.tokenPayload?.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
-            sessionId: ctx.tokenPayload?.sessionId || 'default',
-            env: {},
-          },
-          undefined,
-          workspaceRoot,
-          true // noWait
-        );
+            ctx.tokenPayload?.agentId,
+            ctx.tokenPayload?.subagentId
+          );
+          await executeDirectMessage(
+            chatId,
+            {
+              messageId: randomUUID(),
+              message: `<notification>Subagent ${id} completed.</notification>${outputContent}`,
+              chatId,
+              agentId: ctx.tokenPayload?.agentId || 'default',
+              ...(ctx.tokenPayload?.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
+              sessionId: ctx.tokenPayload?.sessionId || 'default',
+              env: {},
+            },
+            undefined,
+            workspaceRoot,
+            true // noWait
+          );
+        }
       } catch {
         const errSettings = (await readChatSettings(chatId)) || {};
         if (errSettings.subagents?.[id]) {
@@ -133,6 +136,7 @@ export const subagentSend = apiProcedure
     z.object({
       subagentId: z.string(),
       prompt: z.string(),
+      async: z.boolean().optional(),
     })
   )
   .mutation(async ({ input, ctx }) => {
@@ -148,6 +152,9 @@ export const subagentSend = apiProcedure
     if (!sub) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Subagent not found' });
     }
+
+    sub.status = 'active';
+    await writeChatSettings(chatId, settings);
 
     const workspaceRoot = getWorkspaceRoot(process.cwd());
 
@@ -170,8 +177,54 @@ export const subagentSend = apiProcedure
           undefined, // userMessageContent
           sub.id // subagentId
         );
+
+        // Update status
+        const finalSettings = (await readChatSettings(chatId)) || {};
+        if (finalSettings.subagents?.[input.subagentId]) {
+          finalSettings.subagents[input.subagentId]!.status = 'completed';
+          await writeChatSettings(chatId, finalSettings);
+        }
+
+        if (input.async) {
+          // Notify parent
+          const logger = createChatLogger(chatId, input.subagentId);
+          const msgs = await logger.getMessages();
+          const lastLogMessage = msgs
+            .reverse()
+            .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
+          let outputContent = '';
+          if (lastLogMessage && 'content' in lastLogMessage) {
+            outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;
+          }
+
+          console.log(
+            'Notifying parent',
+            chatId,
+            ctx.tokenPayload?.agentId,
+            ctx.tokenPayload?.subagentId
+          );
+          await executeDirectMessage(
+            chatId,
+            {
+              messageId: randomUUID(),
+              message: `<notification>Message to subagent ${input.subagentId} completed.</notification>${outputContent}`,
+              chatId,
+              agentId: ctx.tokenPayload?.agentId || 'default',
+              ...(ctx.tokenPayload?.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
+              sessionId: ctx.tokenPayload?.sessionId || 'default',
+              env: {},
+            },
+            undefined,
+            workspaceRoot,
+            true // noWait
+          );
+        }
       } catch {
-        // Optionally handle failure logic
+        const errSettings = (await readChatSettings(chatId)) || {};
+        if (errSettings.subagents?.[input.subagentId]) {
+          errSettings.subagents[input.subagentId]!.status = 'failed';
+          await writeChatSettings(chatId, errSettings);
+        }
       }
     })();
 
@@ -191,14 +244,27 @@ export const subagentWait = apiProcedure
       if (!sub) throw new TRPCError({ code: 'NOT_FOUND', message: 'Subagent not found' });
 
       if (sub.status === 'completed' || sub.status === 'failed') {
-        return { status: sub.status };
+        let outputContent: string | undefined;
+        if (sub.status === 'completed') {
+          const logger = createChatLogger(chatId, input.subagentId);
+          const msgs = await logger.getMessages();
+          const lastLogMessage = msgs
+            .reverse()
+            .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
+          if (lastLogMessage && 'content' in lastLogMessage) {
+            outputContent = lastLogMessage.content;
+          }
+
+          return { status: 'completed' as const, output: outputContent };
+        }
+        return { status: 'failed' as const };
       }
 
       await new Promise((r) => setTimeout(r, 1000));
       iterations++;
     }
 
-    return { status: 'active' };
+    return { status: 'active' as const, output: undefined };
   });
 
 export const subagentStop = apiProcedure

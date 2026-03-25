@@ -76,7 +76,7 @@ export class AgentRunner {
     );
 
     let success = mainResult.exitCode === 0;
-    let finalContent = mainResult.stdout;
+    let finalContent = mainResult.stdout.trim();
     const additonalErrors = [];
 
     if (success && context.currentAgent.commands?.getMessageContent) {
@@ -88,8 +88,8 @@ export class AgentRunner {
         signal
       );
       if (extraction.error) additonalErrors.push(extraction.error);
-      if (extraction.result !== undefined) finalContent = extraction.result;
-      if (!finalContent.trim()) success = false;
+      if (extraction.result !== undefined) finalContent = extraction.result.trim();
+      if (!finalContent) success = false;
     }
 
     let extractedSessionId: string | undefined;
