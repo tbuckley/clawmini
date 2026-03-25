@@ -34,11 +34,12 @@ class ResourceLock {
       return;
     }
 
-    if (res.activeWorkspace === workspaceId && res.waiters.length === 0) {
+    if (res.activeWorkspace === workspaceId) {
       // Allow re-entrancy for the same rootChatId (workspaceId) so that the
       // root agent and its subagents can run in parallel in the same directory.
       // This ensures the root agent remains available to coordinate its subagents,
       // assuming it will manage conflicts appropriately.
+      // Note: This risks starvation if agents/subagents from this workspace never release the resource.
       res.count++;
       return;
     }
@@ -48,7 +49,7 @@ class ResourceLock {
       res!.waiters.push(waiter);
 
       if (signal) {
-        signal.addEventListener('abort', () => {
+        const onAbort = () => {
           const idx = res!.waiters.indexOf(waiter);
           if (idx !== -1) {
             res!.waiters.splice(idx, 1);
@@ -56,7 +57,19 @@ class ResourceLock {
             error.name = 'AbortError';
             reject(error);
           }
-        });
+        };
+        signal.addEventListener('abort', onAbort);
+
+        // Intercept resolve to clean up the listener
+        waiter.resolve = () => {
+          signal.removeEventListener('abort', onAbort);
+          resolve();
+        };
+        // Intercept reject to clean up the listener
+        waiter.reject = (err: Error) => {
+          signal.removeEventListener('abort', onAbort);
+          reject(err);
+        };
       }
     });
   }
