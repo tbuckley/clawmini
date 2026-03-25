@@ -20,7 +20,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
 
     getMessages: async (limit?: number) => {
       const msgs = await getMessages(chatId);
-      let filtered = subagentId ? msgs.filter((m) => m.subagentId === subagentId) : msgs;
+      let filtered = msgs.filter((m) => m.subagentId === subagentId);
       if (limit !== undefined && limit > 0) {
         filtered = filtered.slice(-limit);
       }
@@ -29,7 +29,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
 
     findLastMessage: async (predicate) => {
       return findLastMessageFromStorage(chatId, (msg: ChatMessage) => {
-        if (subagentId && msg.subagentId !== subagentId) return false;
+        if (msg.subagentId !== subagentId) return false;
         return predicate(msg);
       });
     },

@@ -70,7 +70,7 @@ describe('ChatLogger', () => {
       expect(filtered[0]!.id).toBe('4');
     });
 
-    it('should return all messages if no subagentId', async () => {
+    it('should not return subagent messages if no subagentId', async () => {
       const mockMessages: ChatMessage[] = [
         { id: '1', role: 'user', content: 'root msg', timestamp: '1' },
         { id: '2', role: 'user', content: 'sub msg 1', timestamp: '2', subagentId: 'sub-1' },
@@ -80,7 +80,8 @@ describe('ChatLogger', () => {
       const logger = createChatLogger('chat-1');
       const filtered = await logger.getMessages();
 
-      expect(filtered).toHaveLength(2);
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0]!.id).toBe('1');
     });
   });
 });
