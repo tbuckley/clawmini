@@ -35,6 +35,10 @@ class ResourceLock {
     }
 
     if (res.activeWorkspace === workspaceId && res.waiters.length === 0) {
+      // Allow re-entrancy for the same rootChatId (workspaceId) so that the
+      // root agent and its subagents can run in parallel in the same directory.
+      // This ensures the root agent remains available to coordinate its subagents,
+      // assuming it will manage conflicts appropriately.
       res.count++;
       return;
     }

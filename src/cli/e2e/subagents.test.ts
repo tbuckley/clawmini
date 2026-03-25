@@ -22,7 +22,7 @@ describe('E2E Subagents Tests', () => {
       settingsPath,
       JSON.stringify({
         ...JSON.parse(originalSettings),
-        api: { host: '127.0.0.1', port: 3008 },
+        api: { host: '127.0.0.1', port: 3012 },
       })
     );
     await runCli(['up']);

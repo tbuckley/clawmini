@@ -14,10 +14,9 @@
 - Ran `npm run validate` and all checks passed.
 
 ## Ticket 3: Centralized Task Scheduler
-- Created TaskScheduler in `src/daemon/agent/task-scheduler.ts` with a strict 5-concurrent agent limit.
+- Created TaskScheduler in `src/daemon/agent/task-scheduler.ts`.
 - Implemented queueing with oldest-task-first starvation avoidance.
-- Implemented deadlock avoidance. When tasks block waiting for subagents, they yield their concurrency slots AND their locks (dirPath and rootChatId locks) so subagents can execute and resolve the block.
-- Added comprehensive tests in `src/daemon/agent/task-scheduler.test.ts` to verify locks, starvation avoidance, deadlock resolution, and concurrency limits.
+- Added comprehensive tests in `src/daemon/agent/task-scheduler.test.ts` to verify locks and starvation avoidance.
 - All checks passed successfully via `npm run validate`.
 
 ## Ticket 4: TRPC API Endpoints

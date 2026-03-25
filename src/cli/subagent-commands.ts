@@ -88,8 +88,8 @@ export function registerSubagentCommands(
           result = await client.subagentWait.mutate({ subagentId });
         } while (result.status === 'active');
 
-        if (result.status === 'completed' && (result as any).output) {
-          console.log((result as any).output);
+        if (result.status === 'completed' && 'output' in result && result.output) {
+          console.log(result.output);
         } else {
           console.log(`Subagent status: ${result.status}`);
         }
