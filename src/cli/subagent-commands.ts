@@ -83,16 +83,13 @@ export function registerSubagentCommands(
     .action(async (subagentId) => {
       try {
         const client = getClient();
-        console.log(`Waiting for subagent ${subagentId} to complete...`);
         let result;
         do {
           result = await client.subagentWait.mutate({ subagentId });
         } while (result.status === 'active');
 
         if (result.status === 'completed' && (result as any).output) {
-          console.log(
-            `\n=== Subagent Output ===\n${(result as any).output}\n=======================`
-          );
+          console.log((result as any).output);
         } else {
           console.log(`Subagent status: ${result.status}`);
         }

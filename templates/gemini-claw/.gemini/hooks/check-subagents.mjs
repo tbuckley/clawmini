@@ -2,8 +2,6 @@
 /* global process */
 import { execSync } from 'node:child_process';
 
-const token = process.env.CLAW_API_TOKEN;
-if (!token) process.exit(0);
 
 try {
   const output = execSync('npx clawmini-lite subagents list --json --blocking', { encoding: 'utf-8' });

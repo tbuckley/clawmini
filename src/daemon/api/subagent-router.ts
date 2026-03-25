@@ -5,8 +5,106 @@ import { getWorkspaceRoot, readChatSettings, writeChatSettings } from '../../sha
 import { apiProcedure } from './trpc.js';
 import { executeDirectMessage } from '../message.js';
 import { createChatLogger } from '../agent/chat-logger.js';
+import { on } from 'node:events';
+import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
+import { createAgentSession } from '../agent/agent-session.js';
 
 const MAX_SUBAGENT_DEPTH = 2;
+
+function getSubagentDepth(settings: any, parentId: string | undefined): number {
+  let depth = 0;
+  let currentParentId = parentId;
+  while (currentParentId && settings.subagents?.[currentParentId]) {
+    depth++;
+    currentParentId = settings.subagents[currentParentId]?.parentId;
+  }
+  return depth;
+}
+
+async function executeSubagent(
+  chatId: string,
+  subagentId: string,
+  agentId: string,
+  sessionId: string,
+  prompt: string,
+  isAsync: boolean | undefined,
+  parentTokenPayload: any,
+  workspaceRoot: string
+) {
+  try {
+    await executeDirectMessage(
+      chatId,
+      {
+        messageId: randomUUID(),
+        message: prompt,
+        chatId,
+        agentId,
+        sessionId,
+        env: {},
+      },
+      undefined, // settings
+      workspaceRoot,
+      false, // noWait
+      undefined, // userMessageContent
+      subagentId // subagentId
+    );
+
+    // Update status
+    const finalSettings = (await readChatSettings(chatId)) || {};
+    if (finalSettings.subagents?.[subagentId]) {
+      finalSettings.subagents[subagentId]!.status = 'completed';
+      await writeChatSettings(chatId, finalSettings);
+    }
+
+    const logger = createChatLogger(chatId, subagentId);
+    if (!isAsync) {
+      // Emit debug message to wake up waiters
+      await logger.log('Subagent completed');
+    }
+
+    if (isAsync) {
+      // TODO: make it more efficient to get the resulting message from a run
+      const msgs = await logger.getMessages();
+      const lastLogMessage = msgs
+        .reverse()
+        .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
+      let outputContent = '';
+      if (lastLogMessage && 'content' in lastLogMessage) {
+        outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;
+      }
+
+      console.log(
+        'Notifying parent',
+        chatId,
+        parentTokenPayload?.agentId,
+        parentTokenPayload?.subagentId
+      );
+      await executeDirectMessage(
+        chatId,
+        {
+          messageId: randomUUID(),
+          message: `<notification>Subagent ${subagentId} completed.</notification>${outputContent}`,
+          chatId,
+          agentId: parentTokenPayload?.agentId || 'default',
+          ...(parentTokenPayload?.subagentId ? { subagentId: parentTokenPayload.subagentId } : {}),
+          sessionId: parentTokenPayload?.sessionId || 'default',
+          env: {},
+        },
+        undefined,
+        workspaceRoot,
+        true // noWait
+      );
+    }
+  } catch {
+    const errSettings = (await readChatSettings(chatId)) || {};
+    if (errSettings.subagents?.[subagentId]) {
+      errSettings.subagents[subagentId]!.status = 'failed';
+      await writeChatSettings(chatId, errSettings);
+    }
+    const logger = createChatLogger(chatId, subagentId);
+    await logger.log('Subagent failed');
+  }
+}
 
 export const subagentSpawn = apiProcedure
   .input(
@@ -26,12 +124,7 @@ export const subagentSpawn = apiProcedure
     const settings = (await readChatSettings(chatId)) || {};
     settings.subagents = settings.subagents || {};
 
-    let depth = 0;
-    let currentParentId: string | undefined = parentId;
-    while (currentParentId && settings.subagents[currentParentId]) {
-      depth++;
-      currentParentId = settings.subagents[currentParentId]?.parentId;
-    }
+    const depth = getSubagentDepth(settings, parentId);
     if (depth >= MAX_SUBAGENT_DEPTH) {
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'Max subagent depth reached' });
     }
@@ -59,74 +152,16 @@ export const subagentSpawn = apiProcedure
     const workspaceRoot = getWorkspaceRoot(process.cwd());
 
     // Execute asynchronously
-    (async () => {
-      try {
-        await executeDirectMessage(
-          chatId,
-          {
-            messageId: randomUUID(),
-            message: input.prompt,
-            chatId,
-            agentId,
-            sessionId,
-            env: {},
-          },
-          undefined, // settings
-          workspaceRoot,
-          false, // noWait
-          undefined, // userMessageContent
-          id // subagentId
-        );
-
-        // Update status
-        const finalSettings = (await readChatSettings(chatId)) || {};
-        if (finalSettings.subagents?.[id]) {
-          finalSettings.subagents[id]!.status = 'completed';
-          await writeChatSettings(chatId, finalSettings);
-        }
-
-        // Notify parent
-        if (input.async) {
-          const logger = createChatLogger(chatId, id);
-          const msgs = await logger.getMessages();
-          const lastLogMessage = msgs
-            .reverse()
-            .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
-          let outputContent = '';
-          if (lastLogMessage && 'content' in lastLogMessage) {
-            outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;
-          }
-
-          console.log(
-            'Notifying parent',
-            chatId,
-            ctx.tokenPayload?.agentId,
-            ctx.tokenPayload?.subagentId
-          );
-          await executeDirectMessage(
-            chatId,
-            {
-              messageId: randomUUID(),
-              message: `<notification>Subagent ${id} completed.</notification>${outputContent}`,
-              chatId,
-              agentId: ctx.tokenPayload?.agentId || 'default',
-              ...(ctx.tokenPayload?.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
-              sessionId: ctx.tokenPayload?.sessionId || 'default',
-              env: {},
-            },
-            undefined,
-            workspaceRoot,
-            true // noWait
-          );
-        }
-      } catch {
-        const errSettings = (await readChatSettings(chatId)) || {};
-        if (errSettings.subagents?.[id]) {
-          errSettings.subagents[id]!.status = 'failed';
-          await writeChatSettings(chatId, errSettings);
-        }
-      }
-    })();
+    executeSubagent(
+      chatId,
+      id,
+      agentId,
+      sessionId,
+      input.prompt,
+      input.async,
+      ctx.tokenPayload,
+      workspaceRoot
+    );
 
     return { id, depth };
   });
@@ -159,77 +194,42 @@ export const subagentSend = apiProcedure
     const workspaceRoot = getWorkspaceRoot(process.cwd());
 
     // Execute asynchronously
-    (async () => {
-      try {
-        await executeDirectMessage(
-          chatId,
-          {
-            messageId: randomUUID(),
-            message: input.prompt,
-            chatId,
-            agentId: sub.agentId || 'default',
-            sessionId: sub.sessionId || 'default',
-            env: {},
-          },
-          undefined, // settings
-          workspaceRoot,
-          false, // noWait
-          undefined, // userMessageContent
-          sub.id // subagentId
-        );
-
-        // Update status
-        const finalSettings = (await readChatSettings(chatId)) || {};
-        if (finalSettings.subagents?.[input.subagentId]) {
-          finalSettings.subagents[input.subagentId]!.status = 'completed';
-          await writeChatSettings(chatId, finalSettings);
-        }
-
-        if (input.async) {
-          // Notify parent
-          const logger = createChatLogger(chatId, input.subagentId);
-          const msgs = await logger.getMessages();
-          const lastLogMessage = msgs
-            .reverse()
-            .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
-          let outputContent = '';
-          if (lastLogMessage && 'content' in lastLogMessage) {
-            outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;
-          }
-
-          console.log(
-            'Notifying parent',
-            chatId,
-            ctx.tokenPayload?.agentId,
-            ctx.tokenPayload?.subagentId
-          );
-          await executeDirectMessage(
-            chatId,
-            {
-              messageId: randomUUID(),
-              message: `<notification>Message to subagent ${input.subagentId} completed.</notification>${outputContent}`,
-              chatId,
-              agentId: ctx.tokenPayload?.agentId || 'default',
-              ...(ctx.tokenPayload?.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
-              sessionId: ctx.tokenPayload?.sessionId || 'default',
-              env: {},
-            },
-            undefined,
-            workspaceRoot,
-            true // noWait
-          );
-        }
-      } catch {
-        const errSettings = (await readChatSettings(chatId)) || {};
-        if (errSettings.subagents?.[input.subagentId]) {
-          errSettings.subagents[input.subagentId]!.status = 'failed';
-          await writeChatSettings(chatId, errSettings);
-        }
-      }
-    })();
+    executeSubagent(
+      chatId,
+      sub.id,
+      sub.agentId || 'default',
+      sub.sessionId || 'default',
+      input.prompt,
+      input.async,
+      ctx.tokenPayload,
+      workspaceRoot
+    );
 
     return { success: true };
   });
+
+async function checkSubagentStatus(chatId: string, subagentId: string) {
+  const settings = await readChatSettings(chatId);
+  const sub = settings?.subagents?.[subagentId];
+  if (!sub) throw new TRPCError({ code: 'NOT_FOUND', message: 'Subagent not found' });
+
+  if (sub.status === 'completed' || sub.status === 'failed') {
+    let outputContent: string | undefined;
+    if (sub.status === 'completed') {
+      const logger = createChatLogger(chatId, subagentId);
+      // TODO: make it more efficient to get the resulting message from a run
+      const msgs = await logger.getMessages();
+      const lastLogMessage = msgs
+        .reverse()
+        .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
+      if (lastLogMessage && 'content' in lastLogMessage) {
+        outputContent = lastLogMessage.content;
+      }
+    }
+    return { status: sub.status, output: outputContent };
+  }
+  return null;
+}
 
 export const subagentWait = apiProcedure
   .input(z.object({ subagentId: z.string() }))
@@ -237,33 +237,32 @@ export const subagentWait = apiProcedure
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
 
-    let iterations = 0;
-    while (iterations < 60) {
-      const settings = await readChatSettings(chatId);
-      const sub = settings?.subagents?.[input.subagentId];
-      if (!sub) throw new TRPCError({ code: 'NOT_FOUND', message: 'Subagent not found' });
+    // Check status immediately before listening
+    const initialStatus = await checkSubagentStatus(chatId, input.subagentId);
+    if (initialStatus) return initialStatus;
 
-      if (sub.status === 'completed' || sub.status === 'failed') {
-        let outputContent: string | undefined;
-        if (sub.status === 'completed') {
-          const logger = createChatLogger(chatId, input.subagentId);
-          const msgs = await logger.getMessages();
-          const lastLogMessage = msgs
-            .reverse()
-            .find((m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router');
-          if (lastLogMessage && 'content' in lastLogMessage) {
-            outputContent = lastLogMessage.content;
+    const ac = new AbortController();
+    const timeout = setTimeout(() => ac.abort(), 60000);
+
+    try {
+      for await (const [event] of on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, { signal: ac.signal })) {
+        if (event.chatId === chatId) {
+          const status = await checkSubagentStatus(chatId, input.subagentId);
+          if (status) {
+            clearTimeout(timeout);
+            return status;
           }
-
-          return { status: 'completed' as const, output: outputContent };
         }
-        return { status: 'failed' as const };
       }
-
-      await new Promise((r) => setTimeout(r, 1000));
-      iterations++;
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return { status: 'active' as const, output: undefined };
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
     }
-
+    
     return { status: 'active' as const, output: undefined };
   });
 
@@ -279,6 +278,15 @@ export const subagentStop = apiProcedure
       if (sub) {
         sub.status = 'failed';
         await writeChatSettings(chatId, settings);
+
+        const session = await createAgentSession({
+          chatId,
+          agentId: sub.agentId || 'default',
+          sessionId: sub.sessionId || 'default',
+          subagentId: input.subagentId,
+          cwd: process.cwd(),
+        });
+        session.stop();
       }
     }
 
@@ -293,8 +301,19 @@ export const subagentDelete = apiProcedure
 
     const settings = await readChatSettings(chatId);
     if (settings?.subagents && settings.subagents[input.subagentId]) {
+      const sub = settings.subagents[input.subagentId]!;
       delete settings.subagents[input.subagentId];
       await writeChatSettings(chatId, settings);
+
+      const session = await createAgentSession({
+        chatId,
+        agentId: sub.agentId || 'default',
+        sessionId: sub.sessionId || 'default',
+        subagentId: input.subagentId,
+        cwd: process.cwd(),
+      });
+      session.stop();
+
       return { success: true, deleted: true };
     }
 

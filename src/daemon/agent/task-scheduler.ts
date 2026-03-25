@@ -34,7 +34,7 @@ class ResourceLock {
       return;
     }
 
-    if (res.activeWorkspace === workspaceId) {
+    if (res.activeWorkspace === workspaceId && res.waiters.length === 0) {
       res.count++;
       return;
     }
