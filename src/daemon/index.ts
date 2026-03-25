@@ -12,7 +12,10 @@ import {
   readEnvironment,
   getEnvironmentPath,
   getWorkspaceRoot,
+  readChatSettings,
+  writeChatSettings,
 } from '../shared/workspace.js';
+import { listChats } from '../shared/chats.js';
 import { cronManager } from './cron.js';
 import { SettingsSchema } from '../shared/config.js';
 import { validateToken, getApiContext } from './auth.js';
@@ -139,6 +142,30 @@ export async function initDaemon() {
       resolve();
     });
   });
+
+  const cleanOrphanedSubagents = async () => {
+    try {
+      const chats = await listChats();
+      for (const chatId of chats) {
+        const settings = await readChatSettings(chatId);
+        if (settings?.subagents) {
+          let updated = false;
+          for (const subagent of Object.values(settings.subagents)) {
+            if (subagent.status === 'active') {
+              subagent.status = 'failed';
+              updated = true;
+            }
+          }
+          if (updated) {
+            await writeChatSettings(chatId, settings);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to clean orphaned subagents:', err);
+    }
+  };
+  await cleanOrphanedSubagents();
 
   await runHooks('up');
 
