@@ -7,6 +7,8 @@ description: Use this skill to spawn and manage subagents to delegate complex, p
 
 You are running within a "clawmini" environment, and can use the `clawmini-lite.js` script (already on your PATH) to spawn and manage subagents. Subagents are separate agent instances that run concurrently and can help you complete complex or parallel tasks.
 
+**Warning: Subagents run concurrently within the same workspace. Do not allow multiple subagents to edit the same files simultaneously.**
+
 ## Usage
 
 ### Spawning a Subagent

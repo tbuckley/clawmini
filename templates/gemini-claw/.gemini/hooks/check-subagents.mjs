@@ -4,7 +4,7 @@ import { execSync } from 'node:child_process';
 
 
 try {
-  const output = execSync('npx clawmini-lite subagents list --json --blocking', { encoding: 'utf-8' });
+  const output = execSync('clawmini-lite.js subagents list --json --blocking', { encoding: 'utf-8' });
   const subagents = JSON.parse(output);
 
   if (subagents.length > 0) {
