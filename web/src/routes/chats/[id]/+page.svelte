@@ -8,6 +8,7 @@
   import { tick, onMount, onDestroy } from 'svelte';
   import { appState } from '$lib/app-state.svelte.js';
   import MarkdownRenderer from '$lib/components/app/markdown-renderer.svelte';
+  import MessageContent from '$lib/components/app/message-content.svelte';
 
   let { data } = $props<{ data: PageData }>();
 
@@ -341,6 +342,19 @@
 
   <div bind:this={chatContainer} onscroll={checkScroll} class="flex-1 overflow-y-auto p-4">
     <div class="w-full max-w-4xl mx-auto space-y-6 flex flex-col min-h-full">
+      {#if hasMoreMessages && liveMessages.length > 0}
+        <div class="flex justify-center py-2">
+          <Button variant="outline" size="sm" onclick={loadPreviousMessages} disabled={isLoadingPrevious}>
+            {#if isLoadingPrevious}
+              <span class="inline-block w-3 h-3 mr-2 rounded-full border-2 border-current border-t-transparent animate-spin"></span>
+              Loading...
+            {:else}
+              Load previous messages...
+            {/if}
+          </Button>
+        </div>
+      {/if}
+
       {#if liveMessages.length === 0}
         <div class="flex-1 flex items-center justify-center text-muted-foreground text-sm">
           No messages yet. Send a message to start the conversation!
@@ -355,11 +369,7 @@
               {#if msg.subagentId}
                 <div class="text-[10px] font-mono opacity-70 mb-1">[{msg.subagentId}]</div>
               {/if}
-              {#if appState.markdownEnabled}
-                <MarkdownRenderer content={msg.content} />
-              {:else}
-                <div class="whitespace-pre-wrap">{msg.content}</div>
-              {/if}
+              <MessageContent content={msg.content} />
             </div>
           {:else}
             <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm {msg.level === 'verbose' ? 'border-primary/50 bg-primary/5 shadow-md' : ''}" data-testid="log-message">
@@ -376,11 +386,7 @@
                 
                 {#if msg.content}
                   <div class="whitespace-normal">
-                    {#if appState.markdownEnabled}
-                      <MarkdownRenderer content={msg.content} />
-                    {:else}
-                      <div class="whitespace-pre-wrap">{msg.content}</div>
-                    {/if}
+                    <MessageContent content={msg.content} />
                   </div>
                 {:else if msg.stdout}
                   <div class="whitespace-pre-wrap font-mono text-xs mt-2">{msg.stdout}</div>
@@ -396,11 +402,7 @@
               {:else}
                 {#if msg.content}
                   <div class="whitespace-normal">
-                    {#if appState.markdownEnabled}
-                      <MarkdownRenderer content={msg.content} />
-                    {:else}
-                      <div class="whitespace-pre-wrap">{msg.content}</div>
-                    {/if}
+                    <MessageContent content={msg.content} />
                   </div>
                 {/if}
               {/if}

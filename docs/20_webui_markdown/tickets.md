@@ -41,3 +41,15 @@
 - Run `npm run test -w web` and `npm run check -w web`.
 - Run `npm run validate` from the root workspace.
 **Status**: complete
+
+## Ticket 5: Missing Pagination UI Button (High Priority)
+**Description**: The `loadPreviousMessages` function was added to `web/src/routes/chats/[id]/+page.svelte` but it is never called. A "Load previous messages..." button needs to be added to the top of the chat container to allow users to trigger it.
+**Status**: complete
+
+## Ticket 6: API Limit Parsing NaN Bug (Medium Priority)
+**Description**: In `src/cli/commands/web-api/chats.ts`, `limitParam` is parsed using `parseInt(limitParam, 10)` without checking for `NaN`. If a non-numeric string is provided, `NaN` is passed to `getMessages()`, which breaks the loop termination condition and causes the entire chat history file to be read instead of failing or using the default limit.
+**Status**: complete
+
+## Ticket 7: DRY Violation in Markdown Rendering (Low Priority)
+**Description**: The logic for conditionally rendering `<MarkdownRenderer>` or `<div class="whitespace-pre-wrap">` based on `appState.markdownEnabled` is duplicated three times in `web/src/routes/chats/[id]/+page.svelte`. This should be extracted into a Svelte 5 `#snippet` to improve maintainability and DRY compliance.
+**Status**: complete
