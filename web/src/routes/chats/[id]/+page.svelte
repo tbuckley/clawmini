@@ -41,6 +41,44 @@
   let isReconnecting = $state(false);
   let reconnectTimeout: ReturnType<typeof setTimeout>;
   let activeActionId = $state<string | null>(null);
+  let isLoadingPrevious = $state(false);
+  let hasMoreMessages = $state(true);
+
+  async function loadPreviousMessages() {
+    if (isLoadingPrevious || liveMessages.length === 0) return;
+    isLoadingPrevious = true;
+    const oldestMessageId = liveMessages[0].id;
+
+    try {
+      const res = await fetch(`/api/chats/${data.id}?limit=100&before=${oldestMessageId}`);
+      if (res.ok) {
+        const previousMessages: ChatMessage[] = await res.json();
+        if (previousMessages.length < 100) {
+          hasMoreMessages = false;
+        }
+        if (previousMessages.length > 0) {
+          const container = chatContainer;
+          if (container) {
+            const previousScrollHeight = container.scrollHeight;
+            const previousScrollTop = container.scrollTop;
+            
+            liveMessages = [...previousMessages, ...liveMessages];
+            
+            await tick();
+            
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = previousScrollTop + (newScrollHeight - previousScrollHeight);
+          } else {
+            liveMessages = [...previousMessages, ...liveMessages];
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load previous messages:', e);
+    } finally {
+      isLoadingPrevious = false;
+    }
+  }
 
   async function retryMessage(msgId: string) {
     const msgIndex = pendingMessages.findIndex(m => m.id === msgId);
@@ -102,7 +140,9 @@
 
   // We sync live messages with initial loaded data whenever the ID changes
   $effect(() => {
-    liveMessages = data.messages as ChatMessage[];
+    const initialMessages = data.messages as ChatMessage[];
+    liveMessages = initialMessages;
+    hasMoreMessages = initialMessages.length >= 100;
     
     // Load pending from local storage
     try {

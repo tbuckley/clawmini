@@ -24,3 +24,13 @@
 - Connected the `markdownEnabled` toggle to the Markdown rendering logic in `web/src/routes/chats/[id]/+page.svelte` so it conditionally renders plain text (`whitespace-pre-wrap`) when disabled.
 - Checked formatting, and ran `npm run format` to fix any issues.
 - Ran `npm run validate` to ensure all tests and linting passed successfully.
+
+## Ticket 4: Frontend Pagination UI
+- Added `isLoadingPrevious` and `hasMoreMessages` state properties to `web/src/routes/chats/[id]/+page.svelte`.
+- Implemented `loadPreviousMessages` function to fetch past messages with `limit=100` and `before=[oldestMessageId]` and update `liveMessages`.
+- Restored scroll position gracefully using Svelte 5's DOM `tick()` functionality after assigning prepended messages to `liveMessages`.
+- Resolved an `effect_update_depth_exceeded` error by ensuring the initial data sync effect reads `data.messages` directly rather than depending on tracked state variable `liveMessages`.
+- Implemented the 'Load previous messages...' button, handling disabling behavior and an infinite spin loading state during fetch.
+- Confirmed type checks and Svelte compilation pass via `npm run check -w web`.
+- Fixed the E2E and Svelte tests.
+- Ran `npm run validate` to ensure all rules and checks pass successfully.

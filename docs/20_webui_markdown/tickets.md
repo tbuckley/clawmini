@@ -40,4 +40,4 @@
 - Ensure all E2E or component tests pass for the new fetching logic.
 - Run `npm run test -w web` and `npm run check -w web`.
 - Run `npm run validate` from the root workspace.
-**Status**: not started
+**Status**: complete
