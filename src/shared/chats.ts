@@ -158,7 +158,8 @@ export async function getMessages(
   id: string,
   limit?: number,
   startDir = process.cwd(),
-  predicate?: (msg: ChatMessage) => boolean
+  predicate?: (msg: ChatMessage) => boolean,
+  before?: string
 ): Promise<ChatMessage[]> {
   assertValidChatId(id);
   const chatsDir = await getChatsDir(startDir);
@@ -167,11 +168,22 @@ export async function getMessages(
     throw new Error(`Chat directory or file for '${id}' not found.`);
   }
 
-  if (limit === undefined || limit <= 0) {
+  limit = limit ?? 100;
+
+  if (limit <= 0) {
     const content = await fs.readFile(chatFile, 'utf8');
     const lines = content.split('\n').filter((line) => line.trim() !== '');
 
     let messages = lines.map((line) => JSON.parse(line) as ChatMessage);
+
+    if (before) {
+      const beforeIndex = messages.findIndex((m) => m.id === before);
+      if (beforeIndex !== -1) {
+        messages = messages.slice(0, beforeIndex);
+      } else {
+        messages = [];
+      }
+    }
 
     if (predicate) {
       messages = messages.filter(predicate);
@@ -182,9 +194,19 @@ export async function getMessages(
 
   // We have a limit > 0, read backwards to avoid parsing the whole file
   const messages: ChatMessage[] = [];
+  let skipping = before !== undefined;
+
   for await (const line of readLinesBackwards(chatFile)) {
     try {
       const msg = JSON.parse(line) as ChatMessage;
+
+      if (skipping) {
+        if (msg.id === before) {
+          skipping = false;
+        }
+        continue;
+      }
+
       if (!predicate || predicate(msg)) {
         messages.push(msg);
         if (messages.length >= limit) {

@@ -52,8 +52,12 @@ export async function handleApiChats(
     try {
       const url = new URL(req.url || '', `http://${req.headers.host}`);
       const since = url.searchParams.get('since');
+      const before = url.searchParams.get('before');
+      const limitParam = url.searchParams.get('limit');
+      const parsedLimit = limitParam ? parseInt(limitParam, 10) : undefined;
+      const limit = Number.isNaN(parsedLimit) ? undefined : parsedLimit;
 
-      let messages = await getMessages(chatId);
+      let messages = await getMessages(chatId, limit, undefined, undefined, before || undefined);
 
       if (since) {
         const sinceIndex = messages.findIndex((m) => m.id === since);

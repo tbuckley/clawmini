@@ -7,6 +7,8 @@
   import { Textarea } from '$lib/components/ui/textarea/index.js';
   import { tick, onMount, onDestroy } from 'svelte';
   import { appState } from '$lib/app-state.svelte.js';
+  import MarkdownRenderer from '$lib/components/app/markdown-renderer.svelte';
+  import MessageContent from '$lib/components/app/message-content.svelte';
 
   let { data } = $props<{ data: PageData }>();
 
@@ -40,6 +42,44 @@
   let isReconnecting = $state(false);
   let reconnectTimeout: ReturnType<typeof setTimeout>;
   let activeActionId = $state<string | null>(null);
+  let isLoadingPrevious = $state(false);
+  let hasMoreMessages = $state(true);
+
+  async function loadPreviousMessages() {
+    if (isLoadingPrevious || liveMessages.length === 0) return;
+    isLoadingPrevious = true;
+    const oldestMessageId = liveMessages[0].id;
+
+    try {
+      const res = await fetch(`/api/chats/${data.id}?limit=100&before=${oldestMessageId}`);
+      if (res.ok) {
+        const previousMessages: ChatMessage[] = await res.json();
+        if (previousMessages.length < 100) {
+          hasMoreMessages = false;
+        }
+        if (previousMessages.length > 0) {
+          const container = chatContainer;
+          if (container) {
+            const previousScrollHeight = container.scrollHeight;
+            const previousScrollTop = container.scrollTop;
+            
+            liveMessages = [...previousMessages, ...liveMessages];
+            
+            await tick();
+            
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = previousScrollTop + (newScrollHeight - previousScrollHeight);
+          } else {
+            liveMessages = [...previousMessages, ...liveMessages];
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load previous messages:', e);
+    } finally {
+      isLoadingPrevious = false;
+    }
+  }
 
   async function retryMessage(msgId: string) {
     const msgIndex = pendingMessages.findIndex(m => m.id === msgId);
@@ -101,7 +141,9 @@
 
   // We sync live messages with initial loaded data whenever the ID changes
   $effect(() => {
-    liveMessages = data.messages as ChatMessage[];
+    const initialMessages = data.messages as ChatMessage[];
+    liveMessages = initialMessages;
+    hasMoreMessages = initialMessages.length >= 100;
     
     // Load pending from local storage
     try {
@@ -300,6 +342,19 @@
 
   <div bind:this={chatContainer} onscroll={checkScroll} class="flex-1 overflow-y-auto p-4">
     <div class="w-full max-w-4xl mx-auto space-y-6 flex flex-col min-h-full">
+      {#if hasMoreMessages && liveMessages.length > 0}
+        <div class="flex justify-center py-2">
+          <Button variant="outline" size="sm" onclick={loadPreviousMessages} disabled={isLoadingPrevious}>
+            {#if isLoadingPrevious}
+              <span class="inline-block w-3 h-3 mr-2 rounded-full border-2 border-current border-t-transparent animate-spin"></span>
+              Loading...
+            {:else}
+              Load previous messages...
+            {/if}
+          </Button>
+        </div>
+      {/if}
+
       {#if liveMessages.length === 0}
         <div class="flex-1 flex items-center justify-center text-muted-foreground text-sm">
           No messages yet. Send a message to start the conversation!
@@ -314,7 +369,7 @@
               {#if msg.subagentId}
                 <div class="text-[10px] font-mono opacity-70 mb-1">[{msg.subagentId}]</div>
               {/if}
-              {msg.content}
+              <MessageContent content={msg.content} />
             </div>
           {:else}
             <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm {msg.level === 'verbose' ? 'border-primary/50 bg-primary/5 shadow-md' : ''}" data-testid="log-message">
@@ -330,7 +385,9 @@
                 </div>
                 
                 {#if msg.content}
-                  <div class="whitespace-pre-wrap">{msg.content}</div>
+                  <div class="whitespace-normal">
+                    <MessageContent content={msg.content} />
+                  </div>
                 {:else if msg.stdout}
                   <div class="whitespace-pre-wrap font-mono text-xs mt-2">{msg.stdout}</div>
                 {:else}
@@ -344,7 +401,9 @@
                 {/if}
               {:else}
                 {#if msg.content}
-                  <div class="whitespace-pre-wrap">{msg.content}</div>
+                  <div class="whitespace-normal">
+                    <MessageContent content={msg.content} />
+                  </div>
                 {/if}
               {/if}
             </div>

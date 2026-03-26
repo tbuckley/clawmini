@@ -119,4 +119,54 @@ describe('chats utilities', () => {
     defaultId = await getDefaultChatId(TEST_DIR);
     expect(defaultId).toBe('my-chat');
   });
+
+  it('should support message pagination with before cursor and limits', async () => {
+    await createChat('chat1', TEST_DIR);
+
+    const msgs: UserMessage[] = Array.from({ length: 5 }, (_, i) => ({
+      id: `msg-${i + 1}`,
+      role: 'user',
+      content: `Message ${i + 1}`,
+      timestamp: new Date().toISOString(),
+    }));
+
+    for (const msg of msgs) {
+      await appendMessage('chat1', msg, TEST_DIR);
+    }
+
+    // Default limit should be 100, which returns all 5
+    const all = await getMessages('chat1', undefined, TEST_DIR);
+    expect(all.length).toBe(5);
+
+    // Limit to 2 should return the last 2
+    const lastTwo = await getMessages('chat1', 2, TEST_DIR);
+    expect(lastTwo.length).toBe(2);
+    expect(lastTwo[0]?.id).toBe('msg-4');
+    expect(lastTwo[1]?.id).toBe('msg-5');
+
+    // Before cursor with limit
+    const beforeCursor = await getMessages('chat1', 2, TEST_DIR, undefined, 'msg-4');
+    expect(beforeCursor.length).toBe(2);
+    expect(beforeCursor[0]?.id).toBe('msg-2');
+    expect(beforeCursor[1]?.id).toBe('msg-3');
+
+    // Before cursor reaching the start
+    const beforeCursorStart = await getMessages('chat1', 2, TEST_DIR, undefined, 'msg-2');
+    expect(beforeCursorStart.length).toBe(1);
+    expect(beforeCursorStart[0]?.id).toBe('msg-1');
+
+    // Before cursor that doesn't exist returns empty
+    const beforeCursorUnknown = await getMessages('chat1', 2, TEST_DIR, undefined, 'msg-unknown');
+    expect(beforeCursorUnknown.length).toBe(0);
+
+    // Limit 0 or negative should read all (Wait, limit 0 reads all?)
+    // Our implementation sets default to 100 if undefined. If 0 is explicitly passed, it hits `limit <= 0` and reads all.
+    const readAll = await getMessages('chat1', 0, TEST_DIR);
+    expect(readAll.length).toBe(5);
+
+    // Before cursor with limit <= 0
+    const readAllBefore = await getMessages('chat1', 0, TEST_DIR, undefined, 'msg-4');
+    expect(readAllBefore.length).toBe(3);
+    expect(readAllBefore[0]?.id).toBe('msg-1');
+  });
 });
