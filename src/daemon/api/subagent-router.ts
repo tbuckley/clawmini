@@ -148,10 +148,6 @@ export const subagentWait = apiProcedure
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
 
-    // Check status immediately before listening
-    const initialStatus = await checkSubagentStatus(chatId, input.subagentId);
-    if (initialStatus) return initialStatus;
-
     const ac = new AbortController();
     const timeout = setTimeout(() => ac.abort(), 60000);
 
@@ -164,10 +160,20 @@ export const subagentWait = apiProcedure
       signal.addEventListener('abort', onAbort);
     }
 
+    const eventIterator = on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, {
+      signal: ac.signal,
+    });
+
     try {
-      for await (const [event] of on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, {
-        signal: ac.signal,
-      })) {
+      // Check status immediately before listening, but after event iterator is buffering
+      const initialStatus = await checkSubagentStatus(chatId, input.subagentId);
+      if (initialStatus) {
+        clearTimeout(timeout);
+        if (signal) signal.removeEventListener('abort', onAbort);
+        return initialStatus;
+      }
+
+      for await (const [event] of eventIterator) {
         if (event.chatId === chatId && event.message?.subagentId === input.subagentId) {
           const msg = event.message;
           if (
