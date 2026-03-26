@@ -59,6 +59,8 @@ export const subagentSpawn = apiProcedure
 
     const workspaceRoot = getWorkspaceRoot(process.cwd());
 
+    const isAsync = input.async ?? (depth === 0);
+
     // Execute asynchronously
     executeSubagent(
       chatId,
@@ -66,12 +68,12 @@ export const subagentSpawn = apiProcedure
       agentId,
       sessionId,
       input.prompt,
-      input.async,
+      isAsync,
       ctx.tokenPayload,
       workspaceRoot
     );
 
-    return { id, depth };
+    return { id, depth, isAsync };
   });
 
 export const subagentSend = apiProcedure

@@ -177,7 +177,7 @@ export async function updateChatSettings(
   });
   chatSettingsLocks.set(
     chatId,
-    prevLock.then(() => nextLock)
+    prevLock.catch(() => {}).then(() => nextLock)
   );
 
   try {

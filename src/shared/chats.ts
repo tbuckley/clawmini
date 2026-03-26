@@ -188,36 +188,47 @@ export async function findLastMessage(
     const chunkSize = 64 * 1024;
     let position = stats.size;
     const buffer = Buffer.alloc(chunkSize);
-    let leftover = '';
+    let leftoverBuffer = Buffer.alloc(0);
 
     while (position > 0) {
       const readSize = Math.min(chunkSize, position);
       position -= readSize;
 
       const { bytesRead } = await fd.read(buffer, 0, readSize, position);
-      const chunk = buffer.toString('utf8', 0, bytesRead) + leftover;
+      
+      const currentChunk = buffer.subarray(0, bytesRead);
+      let combinedBuffer = Buffer.concat([currentChunk, leftoverBuffer]);
 
-      const lines = chunk.split('\n');
-      leftover = lines.shift() || '';
+      let lastNewlineIdx = combinedBuffer.lastIndexOf(0x0a);
+      
+      while (lastNewlineIdx !== -1) {
+        const lineBuffer = combinedBuffer.subarray(lastNewlineIdx + 1);
+        const line = lineBuffer.toString('utf8').trim();
+        
+        if (line) {
+          try {
+            const msg = JSON.parse(line) as ChatMessage;
+            if (predicate(msg)) return msg;
+          } catch {
+            // Ignore invalid JSON lines
+          }
+        }
+        
+        combinedBuffer = combinedBuffer.subarray(0, lastNewlineIdx);
+        lastNewlineIdx = combinedBuffer.lastIndexOf(0x0a);
+      }
+      leftoverBuffer = combinedBuffer;
+    }
 
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i]?.trim();
-        if (!line) continue;
+    if (leftoverBuffer.length > 0) {
+      const line = leftoverBuffer.toString('utf8').trim();
+      if (line) {
         try {
           const msg = JSON.parse(line) as ChatMessage;
           if (predicate(msg)) return msg;
         } catch {
           // Ignore invalid JSON lines
         }
-      }
-    }
-
-    if (leftover.trim()) {
-      try {
-        const msg = JSON.parse(leftover.trim()) as ChatMessage;
-        if (predicate(msg)) return msg;
-      } catch {
-        // Ignore invalid JSON lines
       }
     }
   } finally {

@@ -70,6 +70,9 @@ export async function executeSubagent(
         parentTokenPayload?.agentId,
         parentTokenPayload?.subagentId
       );
+      // TODO: We need to overhaul the log system in general, and should not try to do it in this PR.
+      // Currently, if the parent is the root agent, this notification is logged as a normal user message
+      // and appears in the chat UI, violating the PRD requirement to hide orchestration.
       await executeDirectMessage(
         chatId,
         {
@@ -87,6 +90,7 @@ export async function executeSubagent(
       );
     }
   } catch {
+    // TODO: Wrap this in a safe try-catch to prevent unhandled promise rejections crashing the daemon if disk errors occur
     await updateChatSettings(chatId, (errSettings) => {
       if (errSettings.subagents?.[subagentId]) {
         errSettings.subagents[subagentId]!.status = 'failed';

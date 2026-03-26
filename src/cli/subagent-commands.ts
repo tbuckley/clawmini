@@ -26,7 +26,7 @@ export function registerSubagentCommands(
         });
         console.log(`Subagent spawned successfully with ID: ${result.id}`);
 
-        if (!options.async) {
+        if (!result.isAsync) {
           console.log(`Waiting for subagent ${result.id} to complete...`);
           let waitResult;
           do {
