@@ -197,6 +197,7 @@ export const subagentWait = apiProcedure
     } finally {
       clearTimeout(timeout);
       if (signal) signal.removeEventListener('abort', onAbort);
+      ac.abort();
     }
 
     return { status: 'active' as const, output: undefined };

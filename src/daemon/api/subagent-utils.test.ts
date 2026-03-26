@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeSubagent } from './subagent-utils.js';
 import * as workspace from '../../shared/workspace.js';
-import * as message from '../message.js';
 import { taskScheduler } from '../agent/task-scheduler.js';
-import { randomUUID } from 'node:crypto';
 
 vi.mock('../../shared/workspace.js', () => ({
   updateChatSettings: vi.fn(),

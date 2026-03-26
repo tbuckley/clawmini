@@ -102,8 +102,8 @@ describe('chats utilities', () => {
 
     // Test predicate filtering combined with limit
     const msgSub = { ...msg2, id: 'sub-1', subagentId: 'sub-123' };
-    await appendMessage('chat1', msgSub as any, TEST_DIR);
-    
+    await appendMessage('chat1', msgSub as CommandLogMessage, TEST_DIR);
+
     // Total is now 4 messages (3 normal, 1 subagent)
     const withPredicate = await getMessages('chat1', 2, TEST_DIR, (m) => !m.subagentId);
     expect(withPredicate.length).toBe(2);

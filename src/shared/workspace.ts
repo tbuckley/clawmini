@@ -176,10 +176,7 @@ export async function updateChatSettings(
     release = resolve;
   });
   const nextLockPromise = prevLock.catch(() => {}).then(() => nextLock);
-  chatSettingsLocks.set(
-    chatId,
-    nextLockPromise
-  );
+  chatSettingsLocks.set(chatId, nextLockPromise);
 
   try {
     await prevLock;

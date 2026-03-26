@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { subagentWait } from './subagent-router.js';
+import { agentRouter } from './agent-router.js';
 import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
 import * as workspace from '../../shared/workspace.js';
-import * as chats from '../../shared/chats.js';
-import { randomUUID } from 'node:crypto';
-import { EventEmitter } from 'node:events';
 
 vi.mock('../../shared/workspace.js', () => ({
   readChatSettings: vi.fn(),
@@ -14,8 +11,8 @@ vi.mock('../../shared/workspace.js', () => ({
 
 vi.mock('../agent/chat-logger.js', () => ({
   createChatLogger: vi.fn(() => ({
-    findLastMessage: vi.fn().mockResolvedValue({ role: 'log', content: 'Mock output' })
-  }))
+    findLastMessage: vi.fn().mockResolvedValue({ role: 'log', content: 'Mock output' }),
+  })),
 }));
 
 describe('subagentWait', () => {
@@ -37,7 +34,7 @@ describe('subagentWait', () => {
 
     let firstCall = true;
 
-    vi.mocked(workspace.readChatSettings).mockImplementation(async (id: string) => {
+    vi.mocked(workspace.readChatSettings).mockImplementation(async (_id: string) => {
       if (firstCall) {
         firstCall = false;
         // Emit the event while the first check is "in flight"
@@ -46,48 +43,64 @@ describe('subagentWait', () => {
         setTimeout(() => {
           daemonEvents.emit(DAEMON_EVENT_MESSAGE_APPENDED, {
             chatId,
-            message: { role: 'log', content: 'Subagent completed', subagentId }
+            message: { role: 'log', content: 'Subagent completed', subagentId },
           });
         }, 10);
-        
-        await new Promise(r => setTimeout(r, 50));
+
+        await new Promise((r) => setTimeout(r, 50));
         return {
           subagents: {
-            [subagentId]: { status: 'active', id: subagentId }
-          }
+            [subagentId]: { status: 'active', id: subagentId, createdAt: '2023-01-01' },
+          },
         };
       } else {
         return {
           subagents: {
-            [subagentId]: { status: 'completed', id: subagentId }
-          }
+            [subagentId]: { status: 'completed', id: subagentId, createdAt: '2023-01-01' },
+          },
         };
       }
     });
 
     const ctx = {
-      tokenPayload: { chatId, agentId: 'agent', sessionId: 'session' }
+      tokenPayload: { chatId, agentId: 'agent', sessionId: 'session' },
     };
+    const caller = agentRouter.createCaller(ctx as any);
 
-    const caller = subagentWait._def.query ? subagentWait._def.query : subagentWait;
-    
-    // We need to call the procedure's resolve function or use createCaller.
-    // We'll directly invoke it as an internal test.
-    const resultPromise = subagentWait({
-      ctx,
-      input: { subagentId },
-      path: 'subagentWait',
-      type: 'mutation',
-      rawInput: { subagentId },
-      meta: undefined,
-      next: vi.fn(),
-      getRawInput: async () => ({ subagentId })
-    });
+    const resultPromise = caller.subagentWait({ subagentId });
 
     // We don't want the test to hang if the bug is present, so we use Promise.race
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout - event missed')), 500));
-    
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Timeout - event missed')), 500)
+    );
+
     const result = await Promise.race([resultPromise, timeoutPromise]);
     expect(result).toEqual({ status: 'completed', output: 'Mock output' });
+  });
+
+  it('should clean up the event listener if it returns early due to initial status check', async () => {
+    const subagentId = 'sub-2';
+    const chatId = 'chat-2';
+
+    // Mock an immediate completed status
+    vi.mocked(workspace.readChatSettings).mockResolvedValue({
+      subagents: {
+        [subagentId]: { status: 'completed', id: subagentId, createdAt: '2023-01-01' },
+      },
+    });
+
+    const ctx = {
+      tokenPayload: { chatId, agentId: 'agent', sessionId: 'session' },
+    };
+    const caller = agentRouter.createCaller(ctx as any);
+
+    const initialListeners = daemonEvents.listenerCount(DAEMON_EVENT_MESSAGE_APPENDED);
+
+    const result = await caller.subagentWait({ subagentId });
+
+    expect(result).toEqual({ status: 'completed', output: 'Mock output' });
+
+    const finalListeners = daemonEvents.listenerCount(DAEMON_EVENT_MESSAGE_APPENDED);
+    expect(finalListeners).toBe(initialListeners); // Should not leave any lingering listeners
   });
 });

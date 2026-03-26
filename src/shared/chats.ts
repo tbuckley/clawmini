@@ -107,6 +107,53 @@ export async function appendMessage(
   await fs.appendFile(chatFile, JSON.stringify(message) + '\n');
 }
 
+async function* readLinesBackwards(filePath: string): AsyncGenerator<string, void, unknown> {
+  const fd = await fs.open(filePath, 'r');
+  try {
+    const stats = await fd.stat();
+    if (stats.size === 0) return;
+
+    const chunkSize = 64 * 1024;
+    let position = stats.size;
+    const buffer = Buffer.alloc(chunkSize);
+    let leftoverBuffer = Buffer.alloc(0);
+
+    while (position > 0) {
+      const readSize = Math.min(chunkSize, position);
+      position -= readSize;
+
+      const { bytesRead } = await fd.read(buffer, 0, readSize, position);
+
+      const currentChunk = buffer.subarray(0, bytesRead);
+      let combinedBuffer = Buffer.concat([currentChunk, leftoverBuffer]);
+
+      let lastNewlineIdx = combinedBuffer.lastIndexOf(0x0a);
+
+      while (lastNewlineIdx !== -1) {
+        const lineBuffer = combinedBuffer.subarray(lastNewlineIdx + 1);
+        const line = lineBuffer.toString('utf8').trim();
+
+        if (line) {
+          yield line;
+        }
+
+        combinedBuffer = combinedBuffer.subarray(0, lastNewlineIdx);
+        lastNewlineIdx = combinedBuffer.lastIndexOf(0x0a);
+      }
+      leftoverBuffer = combinedBuffer;
+    }
+
+    if (leftoverBuffer.length > 0) {
+      const line = leftoverBuffer.toString('utf8').trim();
+      if (line) {
+        yield line;
+      }
+    }
+  } finally {
+    await fd.close();
+  }
+}
+
 export async function getMessages(
   id: string,
   limit?: number,
@@ -119,19 +166,37 @@ export async function getMessages(
   if (!existsSync(chatFile)) {
     throw new Error(`Chat directory or file for '${id}' not found.`);
   }
-  const content = await fs.readFile(chatFile, 'utf8');
-  const lines = content.split('\n').filter((line) => line.trim() !== '');
-  
-  let messages = lines.map((line) => JSON.parse(line) as ChatMessage);
 
-  if (predicate) {
-    messages = messages.filter(predicate);
+  if (limit === undefined || limit <= 0) {
+    const content = await fs.readFile(chatFile, 'utf8');
+    const lines = content.split('\n').filter((line) => line.trim() !== '');
+
+    let messages = lines.map((line) => JSON.parse(line) as ChatMessage);
+
+    if (predicate) {
+      messages = messages.filter(predicate);
+    }
+
+    return messages;
   }
 
-  if (limit !== undefined && limit > 0) {
-    return messages.slice(-limit);
+  // We have a limit > 0, read backwards to avoid parsing the whole file
+  const messages: ChatMessage[] = [];
+  for await (const line of readLinesBackwards(chatFile)) {
+    try {
+      const msg = JSON.parse(line) as ChatMessage;
+      if (!predicate || predicate(msg)) {
+        messages.push(msg);
+        if (messages.length >= limit) {
+          break;
+        }
+      }
+    } catch {
+      // Ignore invalid JSON lines
+    }
   }
-  return messages;
+
+  return messages.reverse();
 }
 
 export async function getDefaultChatId(startDir = process.cwd()): Promise<string> {
@@ -186,59 +251,13 @@ export async function findLastMessage(
     return null;
   }
 
-  const fd = await fs.open(chatFile, 'r');
-  try {
-    const stats = await fd.stat();
-    if (stats.size === 0) return null;
-
-    const chunkSize = 64 * 1024;
-    let position = stats.size;
-    const buffer = Buffer.alloc(chunkSize);
-    let leftoverBuffer = Buffer.alloc(0);
-
-    while (position > 0) {
-      const readSize = Math.min(chunkSize, position);
-      position -= readSize;
-
-      const { bytesRead } = await fd.read(buffer, 0, readSize, position);
-
-      const currentChunk = buffer.subarray(0, bytesRead);
-      let combinedBuffer = Buffer.concat([currentChunk, leftoverBuffer]);
-
-      let lastNewlineIdx = combinedBuffer.lastIndexOf(0x0a);
-
-      while (lastNewlineIdx !== -1) {
-        const lineBuffer = combinedBuffer.subarray(lastNewlineIdx + 1);
-        const line = lineBuffer.toString('utf8').trim();
-
-        if (line) {
-          try {
-            const msg = JSON.parse(line) as ChatMessage;
-            if (predicate(msg)) return msg;
-          } catch {
-            // Ignore invalid JSON lines
-          }
-        }
-
-        combinedBuffer = combinedBuffer.subarray(0, lastNewlineIdx);
-        lastNewlineIdx = combinedBuffer.lastIndexOf(0x0a);
-      }
-      leftoverBuffer = combinedBuffer;
+  for await (const line of readLinesBackwards(chatFile)) {
+    try {
+      const msg = JSON.parse(line) as ChatMessage;
+      if (predicate(msg)) return msg;
+    } catch {
+      // Ignore invalid JSON lines
     }
-
-    if (leftoverBuffer.length > 0) {
-      const line = leftoverBuffer.toString('utf8').trim();
-      if (line) {
-        try {
-          const msg = JSON.parse(line) as ChatMessage;
-          if (predicate(msg)) return msg;
-        } catch {
-          // Ignore invalid JSON lines
-        }
-      }
-    }
-  } finally {
-    await fd.close();
   }
 
   return null;
