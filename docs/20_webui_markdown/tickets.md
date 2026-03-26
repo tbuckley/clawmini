@@ -8,7 +8,7 @@
 **Verification**:
 - Add unit/integration tests to verify pagination logic for `getMessages` and the API route.
 - Run `npm run validate` to ensure all checks pass (`npm run format`, `npm run lint`, etc.).
-**Status**: not started
+**Status**: complete
 
 ## Ticket 2: Frontend Markdown Rendering 
 **Description**: Introduce Markdown rendering in the Svelte frontend.

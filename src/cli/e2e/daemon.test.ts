@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { ChatMessage } from '../../shared/chats.js';
 import { getSocketPath } from '../../shared/workspace.js';
 import { createE2EContext } from './utils.js';
 
@@ -104,10 +103,36 @@ describe('E2E Daemon and Web Tests', () => {
 
     const resHistory = await fetch(`http://127.0.0.1:${webPort}/api/chats/api-test-chat`);
     expect(resHistory.status).toBe(200);
-    const history = (await resHistory.json()) as ChatMessage[];
+    const history = (await resHistory.json()) as { id: string; role: string; content: string }[];
     expect(history.length).toBeGreaterThan(0);
     expect(history[0]?.role).toBe('user');
     expect(history[0]?.content).toBe('api test message');
+
+    const resPost2 = await fetch(`http://127.0.0.1:${webPort}/api/chats/api-test-chat/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'second message' }),
+    });
+    expect(resPost2.status).toBe(200);
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const resHistory2 = await fetch(`http://127.0.0.1:${webPort}/api/chats/api-test-chat`);
+    const history2 = (await resHistory2.json()) as { id: string; role: string; content: string }[];
+
+    // Test API pagination
+    if (history2.length > 1) {
+      const lastMsg = history2[history2.length - 1];
+      const paginatedRes = await fetch(
+        `http://127.0.0.1:${webPort}/api/chats/api-test-chat?limit=1&before=${lastMsg?.id}`
+      );
+      const paginated = (await paginatedRes.json()) as {
+        id: string;
+        role: string;
+        content: string;
+      }[];
+      expect(paginated.length).toBe(1);
+    }
 
     const sseResponse = await fetch(`http://127.0.0.1:${webPort}/api/chats/api-test-chat/stream`);
     expect(sseResponse.status).toBe(200);
