@@ -110,7 +110,8 @@ export async function appendMessage(
 export async function getMessages(
   id: string,
   limit?: number,
-  startDir = process.cwd()
+  startDir = process.cwd(),
+  predicate?: (msg: ChatMessage) => boolean
 ): Promise<ChatMessage[]> {
   assertValidChatId(id);
   const chatsDir = await getChatsDir(startDir);
@@ -120,7 +121,12 @@ export async function getMessages(
   }
   const content = await fs.readFile(chatFile, 'utf8');
   const lines = content.split('\n').filter((line) => line.trim() !== '');
-  const messages = lines.map((line) => JSON.parse(line) as ChatMessage);
+  
+  let messages = lines.map((line) => JSON.parse(line) as ChatMessage);
+
+  if (predicate) {
+    messages = messages.filter(predicate);
+  }
 
   if (limit !== undefined && limit > 0) {
     return messages.slice(-limit);
