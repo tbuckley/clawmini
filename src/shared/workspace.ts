@@ -163,7 +163,7 @@ export async function writeChatSettings(
   await writeJsonFile(getChatSettingsPath(chatId, startDir), data as Record<string, unknown>);
 }
 
-const chatSettingsLocks = new Map<string, Promise<void>>();
+export const chatSettingsLocks = new Map<string, Promise<void>>();
 
 export async function updateChatSettings(
   chatId: string,
@@ -175,9 +175,10 @@ export async function updateChatSettings(
   const nextLock = new Promise<void>((resolve) => {
     release = resolve;
   });
+  const nextLockPromise = prevLock.catch(() => {}).then(() => nextLock);
   chatSettingsLocks.set(
     chatId,
-    prevLock.catch(() => {}).then(() => nextLock)
+    nextLockPromise
   );
 
   try {
@@ -187,7 +188,7 @@ export async function updateChatSettings(
     await writeChatSettings(chatId, updated, startDir);
   } finally {
     release();
-    if (chatSettingsLocks.get(chatId) === nextLock) {
+    if (chatSettingsLocks.get(chatId) === nextLockPromise) {
       chatSettingsLocks.delete(chatId);
     }
   }

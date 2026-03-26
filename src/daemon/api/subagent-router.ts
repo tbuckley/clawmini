@@ -59,7 +59,7 @@ export const subagentSpawn = apiProcedure
 
     const workspaceRoot = getWorkspaceRoot(process.cwd());
 
-    const isAsync = input.async ?? (depth === 0);
+    const isAsync = input.async ?? depth === 0;
 
     // Execute asynchronously
     executeSubagent(

@@ -195,16 +195,16 @@ export async function findLastMessage(
       position -= readSize;
 
       const { bytesRead } = await fd.read(buffer, 0, readSize, position);
-      
+
       const currentChunk = buffer.subarray(0, bytesRead);
       let combinedBuffer = Buffer.concat([currentChunk, leftoverBuffer]);
 
       let lastNewlineIdx = combinedBuffer.lastIndexOf(0x0a);
-      
+
       while (lastNewlineIdx !== -1) {
         const lineBuffer = combinedBuffer.subarray(lastNewlineIdx + 1);
         const line = lineBuffer.toString('utf8').trim();
-        
+
         if (line) {
           try {
             const msg = JSON.parse(line) as ChatMessage;
@@ -213,7 +213,7 @@ export async function findLastMessage(
             // Ignore invalid JSON lines
           }
         }
-        
+
         combinedBuffer = combinedBuffer.subarray(0, lastNewlineIdx);
         lastNewlineIdx = combinedBuffer.lastIndexOf(0x0a);
       }
