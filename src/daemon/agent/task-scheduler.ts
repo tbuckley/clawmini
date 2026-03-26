@@ -209,6 +209,10 @@ class TaskQueue {
 
     return payloads;
   }
+
+  hasTasks(): boolean {
+    return this.activeTask !== null || this.queue.length > 0;
+  }
 }
 
 export class TaskScheduler {
@@ -229,6 +233,15 @@ export class TaskScheduler {
       this.queues.set(key, queue);
     }
     return queue.enqueue(task);
+  }
+
+  public hasTasks(sessionId: string): boolean {
+    for (const queue of this.queues.values()) {
+      if (queue.sessionId === sessionId && queue.hasTasks()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public extractPending(sessionId: string): string[] {

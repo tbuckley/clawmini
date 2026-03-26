@@ -3,6 +3,7 @@ import { updateChatSettings } from '../../shared/workspace.js';
 import { executeDirectMessage } from '../message.js';
 import { createChatLogger } from '../agent/chat-logger.js';
 import type { ChatSettings } from '../../shared/config.js';
+import { taskScheduler } from '../agent/task-scheduler.js';
 
 export function getSubagentDepth(settings: ChatSettings, parentId: string | undefined): number {
   let depth = 0;
@@ -41,6 +42,10 @@ export async function executeSubagent(
       undefined, // userMessageContent
       subagentId // subagentId
     );
+
+    if (taskScheduler.hasTasks(sessionId)) {
+      return;
+    }
 
     // Update status
     await updateChatSettings(chatId, (finalSettings) => {
