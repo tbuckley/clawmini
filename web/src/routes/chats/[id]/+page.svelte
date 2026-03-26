@@ -7,6 +7,7 @@
   import { Textarea } from '$lib/components/ui/textarea/index.js';
   import { tick, onMount, onDestroy } from 'svelte';
   import { appState } from '$lib/app-state.svelte.js';
+  import MarkdownRenderer from '$lib/components/app/markdown-renderer.svelte';
 
   let { data } = $props<{ data: PageData }>();
 
@@ -314,7 +315,7 @@
               {#if msg.subagentId}
                 <div class="text-[10px] font-mono opacity-70 mb-1">[{msg.subagentId}]</div>
               {/if}
-              {msg.content}
+              <MarkdownRenderer content={msg.content} />
             </div>
           {:else}
             <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm {msg.level === 'verbose' ? 'border-primary/50 bg-primary/5 shadow-md' : ''}" data-testid="log-message">
@@ -330,7 +331,7 @@
                 </div>
                 
                 {#if msg.content}
-                  <div class="whitespace-pre-wrap">{msg.content}</div>
+                  <div class="whitespace-normal"><MarkdownRenderer content={msg.content} /></div>
                 {:else if msg.stdout}
                   <div class="whitespace-pre-wrap font-mono text-xs mt-2">{msg.stdout}</div>
                 {:else}
@@ -344,7 +345,7 @@
                 {/if}
               {:else}
                 {#if msg.content}
-                  <div class="whitespace-pre-wrap">{msg.content}</div>
+                  <div class="whitespace-normal"><MarkdownRenderer content={msg.content} /></div>
                 {/if}
               {/if}
             </div>

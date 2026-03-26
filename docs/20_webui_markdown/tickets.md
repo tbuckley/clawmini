@@ -19,7 +19,7 @@
 - Write frontend unit tests for the `MarkdownRenderer` component to verify successful rendering and XSS sanitization.
 - Run `npm run test -w web` and `npm run check -w web`.
 - Run `npm run validate` from the root workspace.
-**Status**: not started
+**Status**: complete
 
 ## Ticket 3: Global Markdown Toggle Setting
 **Description**: Add a global setting to enable/disable Markdown rendering.
