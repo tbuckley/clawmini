@@ -16,3 +16,11 @@
 - Updated `web/src/routes/chats/[id]/+page.svelte` to substitute plain text with `<MarkdownRenderer>`.
 - Installed `@testing-library/svelte` and fixed Svelte 5 testing DOM collision issues via container querying.
 - Verified formatting and passed `npm run validate` checks.
+
+## Ticket 3: Global Markdown Toggle Setting
+- Added `markdownEnabled` property (default `true`) to the global `appState` in `web/src/lib/app-state.svelte.ts`.
+- Implemented localStorage persistence for `markdownEnabled` within the `web/src/routes/+layout.svelte` using an `$effect` block and initialization inside `onMount`.
+- Added a new UI toggle button in the header (`web/src/routes/+layout.svelte`) next to the verbosity toggle using `lucide-svelte`'s `Type` and `FileCode` icons.
+- Connected the `markdownEnabled` toggle to the Markdown rendering logic in `web/src/routes/chats/[id]/+page.svelte` so it conditionally renders plain text (`whitespace-pre-wrap`) when disabled.
+- Checked formatting, and ran `npm run format` to fix any issues.
+- Ran `npm run validate` to ensure all tests and linting passed successfully.

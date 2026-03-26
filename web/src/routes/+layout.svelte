@@ -4,9 +4,21 @@
   import { page } from '$app/state';
   import AppSidebar from '$lib/components/app/app-sidebar.svelte';
   import { appState } from '$lib/app-state.svelte.js';
-  import { Settings, MessageSquare, Bug, Terminal } from 'lucide-svelte';
+  import { Settings, MessageSquare, Bug, Terminal, Type, FileCode } from 'lucide-svelte';
+  import { onMount } from 'svelte';
 
   let { data, children } = $props();
+
+  onMount(() => {
+    const stored = localStorage.getItem('appState.markdownEnabled');
+    if (stored !== null) {
+      appState.markdownEnabled = stored === 'true';
+    }
+  });
+
+  $effect(() => {
+    localStorage.setItem('appState.markdownEnabled', String(appState.markdownEnabled));
+  });
 
   function toggleVerbosity() {
     if (appState.verbosityLevel === 'default') {
@@ -16,6 +28,10 @@
     } else {
       appState.verbosityLevel = 'default';
     }
+  }
+
+  function toggleMarkdown() {
+    appState.markdownEnabled = !appState.markdownEnabled;
   }
 </script>
 
@@ -40,6 +56,20 @@
             </a>
           {/if}
           <div class="flex items-center gap-2">
+            <button
+              id="markdown-toggle"
+              type="button"
+              class="flex items-center justify-center p-2 rounded-md hover:bg-muted transition-colors"
+              aria-label={`Markdown ${appState.markdownEnabled ? 'enabled' : 'disabled'}`}
+              onclick={toggleMarkdown}
+              title={`Markdown: ${appState.markdownEnabled ? 'On' : 'Off'}`}
+            >
+              {#if appState.markdownEnabled}
+                <FileCode class="w-5 h-5 text-muted-foreground" />
+              {:else}
+                <Type class="w-5 h-5 text-muted-foreground" />
+              {/if}
+            </button>
             <button
               id="verbosity-toggle"
               type="button"
