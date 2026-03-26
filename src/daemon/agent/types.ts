@@ -2,7 +2,13 @@ import type { ChatMessage, CommandLogMessage, UserMessage } from '../chats.js';
 
 export interface Logger {
   append<T extends ChatMessage>(msg: T): Promise<T>;
+  getMessages(limit?: number): Promise<ChatMessage[]>;
+  findLastMessage(predicate: (msg: ChatMessage) => boolean): Promise<ChatMessage | null>;
   logUserMessage(msg: string): Promise<UserMessage>;
+  logSystemEvent(options: {
+    content: string;
+    level?: 'default' | 'debug' | 'verbose';
+  }): Promise<CommandLogMessage>;
   logAutomaticReply(options: { messageId: string; content: string }): Promise<CommandLogMessage>;
   logCommandRetry(options: {
     messageId: string;

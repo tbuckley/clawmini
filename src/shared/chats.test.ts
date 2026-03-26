@@ -99,6 +99,16 @@ describe('chats utilities', () => {
     const limited = await getMessages('chat1', 1, TEST_DIR);
     expect(limited.length).toBe(1);
     expect(limited[0]).toEqual(msg3);
+
+    // Test predicate filtering combined with limit
+    const msgSub = { ...msg2, id: 'sub-1', subagentId: 'sub-123' };
+    await appendMessage('chat1', msgSub as CommandLogMessage, TEST_DIR);
+
+    // Total is now 4 messages (3 normal, 1 subagent)
+    const withPredicate = await getMessages('chat1', 2, TEST_DIR, (m) => !m.subagentId);
+    expect(withPredicate.length).toBe(2);
+    expect(withPredicate[0]).toEqual(msg2);
+    expect(withPredicate[1]).toEqual(msg3);
   });
 
   it('should manage default chat id in settings.json', async () => {

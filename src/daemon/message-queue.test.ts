@@ -42,14 +42,14 @@ describe('Daemon Execution Queue', () => {
 
     const p1 = handleUserMessage('chat1', 'msg1', settings as any, '/dir1', false);
 
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 50));
 
     const emitter1 = (mockSpawn as any).lastEmitter;
     expect(mockSpawn).toHaveBeenCalledTimes(1);
 
     const p2 = handleUserMessage('chat1', 'msg2', settings as any, '/dir1', false);
 
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 50));
 
     // spawn should still be 1 because p2 is queued
     expect(mockSpawn).toHaveBeenCalledTimes(1);
@@ -76,15 +76,20 @@ describe('Daemon Execution Queue', () => {
 
     const settings = { defaultAgent: { commands: { new: 'echo msg' } } };
 
-    handleUserMessage('chat1', 'msg1', settings as any, '/dir1', false);
-    await new Promise((r) => setTimeout(r, 0));
+    const p1 = handleUserMessage('chat1', 'msg1', settings as any, '/dir1', false);
+    await new Promise((r) => setTimeout(r, 50));
     expect(mockSpawn).toHaveBeenCalledTimes(1);
 
-    handleUserMessage('chat1', 'msg2', settings as any, '/dir2', false);
-    await new Promise((r) => setTimeout(r, 0));
+    const p2 = handleUserMessage('chat2', 'msg2', settings as any, '/dir2', false);
+    await new Promise((r) => setTimeout(r, 50));
 
-    // Since it's a different directory, it should spawn immediately
+    // Since it's a different directory and different chat, it should spawn immediately
     expect(mockSpawn).toHaveBeenCalledTimes(2);
+
+    // Finish processes so taskScheduler locks are released for next tests
+    (mockSpawn as any).emitters[0].finish(0);
+    (mockSpawn as any).emitters[1].finish(0);
+    await Promise.all([p1, p2]);
   });
 
   it('records failure logs without halting the queue', async () => {
@@ -94,7 +99,9 @@ describe('Daemon Execution Queue', () => {
     const settings = { defaultAgent: { commands: { new: 'echo msg' } } };
 
     const p1 = handleUserMessage('chat1', 'msg1', settings as any, '/dir-fail', false);
-    await new Promise((r) => setTimeout(r, 0));
+
+    // Wait for the first task to actually be scheduled and spawned
+    await new Promise((r) => setTimeout(r, 50));
 
     const p2 = handleUserMessage('chat1', 'msg2', settings as any, '/dir-fail', false);
 
@@ -111,7 +118,8 @@ describe('Daemon Execution Queue', () => {
       })
     );
 
-    await new Promise((r) => setTimeout(r, 0));
+    // Wait for the second task to spawn after the first finishes
+    await new Promise((r) => setTimeout(r, 50));
 
     expect(mockSpawn).toHaveBeenCalledTimes(2);
     const emitter2 = (mockSpawn as any).emitters[1];

@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { createTRPCClient, httpLink } from '@trpc/client';
 import type { AgentRouter as AppRouter } from '../daemon/api/index.js';
 import type { CronJob } from '../shared/config.js';
+import { registerSubagentCommands } from './subagent-commands.js';
 
 /**
  * clawmini-lite - A standalone client
@@ -271,5 +272,7 @@ program
       process.exit(1);
     }
   });
+
+registerSubagentCommands(program, getClient);
 
 program.parse(process.argv);

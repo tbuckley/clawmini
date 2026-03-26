@@ -4,18 +4,12 @@ import path from 'node:path';
 import { TRPCError } from '@trpc/server';
 import { appendMessage, type CommandLogMessage } from '../chats.js';
 import { executeSafe, generateRequestPreview, executeRequest } from '../policy-utils.js';
-import {
-  getWorkspaceRoot,
-  readPolicies,
-  getClawminiDir,
-  resolveAgentWorkDir,
-  getAgent,
-} from '../../shared/workspace.js';
+import { getWorkspaceRoot, readPolicies, getClawminiDir } from '../../shared/workspace.js';
 import { PolicyRequestService } from '../policy-request-service.js';
 import { RequestStore } from '../request-store.js';
 import { CronJobSchema } from '../../shared/config.js';
 import { apiProcedure, router } from './trpc.js';
-import { getMessageQueue } from '../queue.js';
+import { taskScheduler } from '../agent/task-scheduler.js';
 import { formatPendingMessages } from '../agent/utils.js';
 import {
   resolveAgentDir,
@@ -62,6 +56,7 @@ export const logMessage = apiProcedure
       command: `clawmini-lite log${filesArgStr}`,
       cwd: process.cwd(),
       exitCode: 0,
+      ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
       ...(filePaths.length > 0 ? { files: filePaths } : {}),
     };
 
@@ -158,7 +153,8 @@ export const createPolicyRequest = apiProcedure
       input.fileMappings,
       chatId,
       agentId,
-      isAutoApprove
+      isAutoApprove,
+      ctx.tokenPayload.subagentId
     );
 
     if (isAutoApprove) {
@@ -177,6 +173,7 @@ export const createPolicyRequest = apiProcedure
         messageId: randomUUID(),
         role: 'log' as const,
         source: 'router' as const,
+        level: 'verbose' as const, // Auto approvals do not need to be shown to the user
         content: `[Auto-approved] Policy ${input.commandName} was executed.`,
         stderr,
         stdout, // Adding stdout and stderr for execution context
@@ -184,7 +181,8 @@ export const createPolicyRequest = apiProcedure
         command: commandStr,
         cwd: getWorkspaceRoot(),
         exitCode,
-      };
+        ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
+      } satisfies CommandLogMessage;
 
       await appendMessage(chatId, logMsg);
       return request;
@@ -204,7 +202,8 @@ export const createPolicyRequest = apiProcedure
       command: 'policy-request',
       cwd: process.cwd(),
       exitCode: 0,
-    };
+      ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
+    } satisfies CommandLogMessage;
 
     await appendMessage(chatId, logMsg);
     return request;
@@ -216,17 +215,25 @@ export const fetchPendingMessages = apiProcedure.mutation(async ({ ctx }) => {
   if (!ctx.tokenPayload?.agentId) {
     throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing agent ID' });
   }
-  const agentSettings = await getAgent(ctx.tokenPayload?.agentId);
-  const agentDir = resolveAgentWorkDir(ctx.tokenPayload?.agentId, agentSettings?.directory);
-  const queue = getMessageQueue(agentDir);
   const targetSessionId = ctx.tokenPayload?.sessionId || 'default';
 
-  const extracted = queue.extractPending((p) => p.sessionId === targetSessionId);
+  const extracted = taskScheduler.extractPending(targetSessionId);
   if (extracted.length === 0) {
     return { messages: '' };
   }
-  return { messages: formatPendingMessages(extracted.map((p) => p.text)) };
+
+  return { messages: formatPendingMessages(extracted) };
 });
+
+import {
+  subagentSpawn,
+  subagentSend,
+  subagentWait,
+  subagentStop,
+  subagentDelete,
+  subagentList,
+  subagentTail,
+} from './subagent-router.js';
 
 export const agentRouter = router({
   logMessage,
@@ -238,6 +245,13 @@ export const agentRouter = router({
   createPolicyRequest,
   fetchPendingMessages,
   ping,
+  subagentSpawn,
+  subagentSend,
+  subagentWait,
+  subagentStop,
+  subagentDelete,
+  subagentList,
+  subagentTail,
 });
 
 export type AgentRouter = typeof agentRouter;

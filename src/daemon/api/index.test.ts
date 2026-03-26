@@ -6,7 +6,7 @@ import * as workspace from '../../shared/workspace.js';
 import * as chats from '../../shared/chats.js';
 import type { CronJob } from '../../shared/config.js';
 import * as message from '../message.js';
-import { getMessageQueue } from '../queue.js';
+import { taskScheduler } from '../agent/task-scheduler.js';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -393,10 +393,9 @@ describe('Daemon TRPC Router', () => {
   });
 
   describe('fetchPendingMessages', () => {
-    let queue: ReturnType<typeof getMessageQueue>;
     beforeEach(() => {
-      queue = getMessageQueue(path.join(process.cwd(), 'a1'));
-      queue.clear();
+      taskScheduler.abortTasks('s1');
+      taskScheduler.abortTasks('s2');
     });
 
     it('should extract pending messages from queue matching the session and format them', async () => {
@@ -406,21 +405,54 @@ describe('Daemon TRPC Router', () => {
       });
 
       // The first task will start and block, leaving the others in pending
-      queue.enqueue(
-        async () => {
+      taskScheduler.schedule({
+        id: 't1',
+        rootChatId: 'c1',
+        dirPath: 'd1',
+        sessionId: 's1',
+        execute: async () => {
           await firstTaskPromise;
         },
-        { text: 'Task 1', sessionId: 's1' }
-      );
+      });
 
       // These will stay in pending
-      const p2 = queue.enqueue(async () => {}, { text: 'Task 2', sessionId: 's1' });
-      const p3 = queue.enqueue(async () => {}, { text: 'Task 3', sessionId: 's1' });
-      const p4 = queue.enqueue(async () => {}, { text: 'Task 4', sessionId: 's2' });
+      const p2 = taskScheduler.schedule({
+        id: 't2',
+        rootChatId: 'c1', // force block
+        dirPath: 'd1',
+        sessionId: 's1',
+        text: 'Task 2',
+        execute: async () => {},
+      });
+      const p3 = taskScheduler.schedule({
+        id: 't3',
+        rootChatId: 'c1', // force block
+        dirPath: 'd1',
+        sessionId: 's1',
+        text: 'Task 3',
+        execute: async () => {},
+      });
+      const p3_5 = taskScheduler.schedule({
+        id: 't3_5',
+        rootChatId: 'c2', // force block
+        dirPath: 'd1',
+        sessionId: 's2',
+        text: 'Task 3.5',
+        execute: async () => {},
+      });
+      const p4 = taskScheduler.schedule({
+        id: 't4',
+        rootChatId: 'c2',
+        dirPath: 'd1',
+        sessionId: 's2',
+        text: 'Task 4',
+        execute: async () => {},
+      });
 
       // We expect them to throw AbortError when extracted
       p2.catch(() => {});
       p3.catch(() => {});
+      p3_5.catch(() => {});
       p4.catch(() => {});
 
       const caller = agentRouter.createCaller({
@@ -431,9 +463,7 @@ describe('Daemon TRPC Router', () => {
       expect(result.messages).toBe(
         '<message>\nTask 2\n</message>\n\n<message>\nTask 3\n</message>'
       );
-      expect(queue.extractPending((p) => p.sessionId === 's2')).toEqual([
-        { text: 'Task 4', sessionId: 's2' },
-      ]);
+      expect(taskScheduler.extractPending('s2')).toEqual(['Task 4']);
 
       resolveFirstTask!(); // cleanup
     });

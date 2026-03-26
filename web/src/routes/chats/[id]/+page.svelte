@@ -21,6 +21,11 @@
   let inputValue = $state('');
   let liveMessages = $state<ChatMessage[]>([]);
   let filteredMessages = $derived(liveMessages.filter((msg) => {
+    const isSubagentMsg = !!msg.subagentId;
+    if (isSubagentMsg && appState.verbosityLevel !== 'debug' && appState.verbosityLevel !== 'verbose') {
+      return false;
+    }
+
     if (msg.role === 'user') return true;
     if (appState.verbosityLevel === 'verbose') return true;
     if (appState.verbosityLevel === 'debug') {
@@ -306,10 +311,16 @@
         <div class="flex items-baseline gap-2 max-w-[80%] {msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}">
           {#if msg.role === 'user'}
             <div class="px-4 py-2 rounded-2xl bg-primary text-primary-foreground text-sm" data-testid="user-message">
+              {#if msg.subagentId}
+                <div class="text-[10px] font-mono opacity-70 mb-1">[{msg.subagentId}]</div>
+              {/if}
               {msg.content}
             </div>
           {:else}
             <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm {msg.level === 'verbose' ? 'border-primary/50 bg-primary/5 shadow-md' : ''}" data-testid="log-message">
+              {#if msg.subagentId}
+                <div class="text-[10px] font-mono text-muted-foreground mb-2">[{msg.subagentId}]</div>
+              {/if}
               {#if appState.verbosityLevel === 'verbose'}
                 <div class="font-mono text-xs text-muted-foreground mb-2 flex items-center gap-2">
                   <span>$ {msg.command}</span>

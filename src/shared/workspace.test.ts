@@ -97,7 +97,7 @@ describe('workspace utilities', () => {
     });
 
     it('should write and read chat settings', async () => {
-      const data = { theme: 'dark', notifications: true };
+      const data = { defaultAgent: 'agent-1' };
       await writeChatSettings('chat-1', data, testDir);
 
       const p = getChatSettingsPath('chat-1', testDir);
@@ -105,6 +105,16 @@ describe('workspace utilities', () => {
 
       const settings = await readChatSettings('chat-1', testDir);
       expect(settings).toEqual(data);
+    });
+
+    it('should clean up locks after updateChatSettings (no memory leak)', async () => {
+      const { chatSettingsLocks, updateChatSettings } = await import('./workspace.js');
+      expect(chatSettingsLocks.size).toBe(0);
+
+      await updateChatSettings('leak-chat', (settings) => settings, testDir);
+
+      expect(chatSettingsLocks.size).toBe(0);
+      expect(chatSettingsLocks.has('leak-chat')).toBe(false);
     });
 
     it('should return null if JSON is invalid', async () => {

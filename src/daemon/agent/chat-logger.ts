@@ -1,19 +1,38 @@
 import {
   appendMessage,
+  getMessages,
+  findLastMessage as findLastMessageFromStorage,
   type ChatMessage,
   type CommandLogMessage,
   type UserMessage,
 } from '../chats.js';
 import type { Logger } from './types.js';
 
-export function createChatLogger(chatId: string): Logger {
+export function createChatLogger(chatId: string, subagentId?: string): Logger {
   async function append<T extends ChatMessage>(msg: T): Promise<T> {
-    await appendMessage(chatId, msg);
-    return msg;
+    const finalMsg = subagentId ? { ...msg, subagentId } : msg;
+    await appendMessage(chatId, finalMsg);
+    return finalMsg as T;
   }
 
   return {
     append,
+
+    getMessages: async (limit?: number) => {
+      const msgs = await getMessages(chatId);
+      let filtered = msgs.filter((m) => m.subagentId === subagentId);
+      if (limit !== undefined && limit > 0) {
+        filtered = filtered.slice(-limit);
+      }
+      return filtered;
+    },
+
+    findLastMessage: async (predicate) => {
+      return findLastMessageFromStorage(chatId, (msg: ChatMessage) => {
+        if (msg.subagentId !== subagentId) return false;
+        return predicate(msg);
+      });
+    },
 
     logUserMessage: async (msg) =>
       append({
@@ -39,6 +58,23 @@ export function createChatLogger(chatId: string): Logger {
         stderr: result.stderr,
         exitCode: result.exitCode,
       }),
+
+    logSystemEvent: async ({ content, level }) =>
+      append({
+        id: crypto.randomUUID(),
+        role: 'log',
+        content,
+        timestamp: new Date().toISOString(),
+
+        messageId: crypto.randomUUID(),
+        source: 'router',
+        level: level || 'debug',
+
+        stderr: '',
+        command: '',
+        cwd: '',
+        exitCode: 0,
+      } satisfies CommandLogMessage),
 
     logAutomaticReply: async ({ messageId, content }) =>
       append({

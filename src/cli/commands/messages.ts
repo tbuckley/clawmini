@@ -76,7 +76,12 @@ messagesCmd
   .action(async (options) => {
     try {
       const chatId = options.chat ?? (await getDefaultChatId());
-      const messages = await getMessages(chatId, options.lines);
+      const messages = await getMessages(
+        chatId,
+        options.lines,
+        undefined,
+        (msg) => !msg.subagentId
+      );
 
       if (options.json) {
         messages.forEach((msg) => console.log(JSON.stringify(msg)));

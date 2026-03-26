@@ -1,5 +1,4 @@
 import type { Agent, Settings } from '../../shared/config.js';
-import { getMessageQueue } from '../queue.js';
 import { AgentRunner } from './agent-runner.js';
 import type { Logger, Message } from './types.js';
 import { runCommand } from '../utils/spawn.js';
@@ -16,11 +15,14 @@ import { createChatLogger } from './chat-logger.js';
 import { sandboxExecutionContext, type Fallback } from './agent-context.js';
 import { applyEnvOverrides, getActiveEnvKeys } from '../../shared/utils/env.js';
 import { getApiContext, generateToken } from '../auth.js';
+import { taskScheduler } from './task-scheduler.js';
+import { randomUUID } from 'node:crypto';
 
 export class AgentSession {
   public readonly agentId: string;
   public readonly sessionId: string;
   public readonly chatId: string;
+  public readonly subagentId: string | undefined;
   public readonly settings: Agent;
   public readonly workspaceRoot: string;
   public readonly globalSettings: Settings | undefined;
@@ -30,6 +32,7 @@ export class AgentSession {
     agentId: string;
     sessionId: string;
     chatId: string;
+    subagentId?: string;
     settings: Agent;
     workspaceRoot: string;
     globalSettings: Settings | undefined;
@@ -38,11 +41,12 @@ export class AgentSession {
     this.agentId = config.agentId;
     this.sessionId = config.sessionId;
     this.chatId = config.chatId;
+    this.subagentId = config.subagentId;
     this.settings = config.settings;
     this.workspaceRoot = config.workspaceRoot;
     this.globalSettings = config.globalSettings;
 
-    this.logger = config.logger ?? createChatLogger(this.chatId);
+    this.logger = config.logger ?? createChatLogger(this.chatId, this.subagentId);
   }
 
   async buildExecutionContext(
@@ -58,6 +62,7 @@ export class AgentSession {
       },
       env: {
         ...this.settings.env,
+        ...(this.subagentId && this.settings.subagentEnv ? this.settings.subagentEnv : {}),
         ...(fallback?.env || {}),
       },
     };
@@ -96,6 +101,7 @@ export class AgentSession {
         chatId: this.chatId,
         agentId: this.agentId,
         sessionId: this.sessionId,
+        ...(this.subagentId ? { subagentId: this.subagentId } : {}),
         timestamp: Date.now(),
       });
       env['CLAW_API_TOKEN'] = token;
@@ -122,27 +128,17 @@ export class AgentSession {
     return resolveAgentWorkDir(this.agentId, this.settings.directory, this.workspaceRoot);
   }
 
-  private getTaskQueue() {
-    return getMessageQueue(this.workDirectory);
-  }
-
   stop() {
-    const queue = this.getTaskQueue();
-    // FIXME: Only stop tasks for this agent session
-    queue.abortCurrent();
-    queue.clear();
+    taskScheduler.abortTasks(this.sessionId);
   }
 
   interrupt(message: Message): Message {
-    const queue = this.getTaskQueue();
-
-    const isMatchingSession = (p: { sessionId: string }) => p.sessionId === this.sessionId;
-    const payloads = queue.interrupt(isMatchingSession);
+    const payloads = taskScheduler.interruptTasks(this.sessionId);
 
     if (payloads.length > 0) {
       // TODO: Figure out how to handle merging payloads when they have different env settings or other config.
       // Currently, we only preserve the text content and drop any specific configuration attached to individual messages.
-      const pendingText = formatPendingMessages(payloads.map((p) => p.text));
+      const pendingText = formatPendingMessages(payloads);
       return {
         ...message,
         content: `${pendingText}\n\n<message>\n${message.content}\n</message>`.trim(),
@@ -156,9 +152,13 @@ export class AgentSession {
       return;
     }
 
-    const queue = this.getTaskQueue();
-    await queue.enqueue(
-      async (signal) => {
+    await taskScheduler.schedule({
+      id: `task-${this.agentId}-${randomUUID()}`,
+      rootChatId: this.chatId,
+      dirPath: this.workDirectory,
+      sessionId: this.sessionId,
+      text: message.content,
+      execute: async (signal) => {
         // Refresh sessionSettings immediately before execution
         const sessionSettings = await readAgentSessionSettings(
           this.agentId,
@@ -186,8 +186,7 @@ export class AgentSession {
 
         await this.logger.logCommandResult(result);
       },
-      { text: message.content, sessionId: this.sessionId }
-    );
+    });
   }
 }
 
@@ -195,6 +194,7 @@ export async function createAgentSession(options: {
   chatId: string;
   agentId: string;
   sessionId: string;
+  subagentId?: string;
   cwd: string;
   settings?: Settings | undefined;
   logger?: Logger;
@@ -208,6 +208,7 @@ export async function createAgentSession(options: {
     agentId: options.agentId,
     sessionId: options.sessionId,
     chatId: options.chatId,
+    ...(options.subagentId ? { subagentId: options.subagentId } : {}),
     settings: mergedAgent,
     workspaceRoot,
     globalSettings: settings,

@@ -3,6 +3,7 @@ export interface BaseMessage {
   role: string;
   content: string;
   timestamp: string;
+  subagentId?: string;
 }
 
 export interface UserMessage extends BaseMessage {

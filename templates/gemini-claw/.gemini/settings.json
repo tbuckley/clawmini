@@ -32,6 +32,19 @@
                     }
                 ]
             }
+        ],
+        "AfterAgent": [
+            {
+                "matcher": "*",
+                "hooks": [
+                    {
+                        "name": "check-subagents",
+                        "type": "command",
+                        "command": "node $GEMINI_PROJECT_DIR/.gemini/hooks/check-subagents.mjs",
+                        "timeout": 5000
+                    }
+                ]
+            }
         ]
     }
 }

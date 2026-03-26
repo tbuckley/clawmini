@@ -10,6 +10,9 @@
         "GEMINI_SYSTEM_MD": "true",
         "GEMINI_API_KEY": true
     },
+    "subagentEnv": {
+        "GEMINI_SYSTEM_MD": ".gemini/subagent-system.md"
+    },
     "skillsDir": ".gemini/skills/",
     "fallbacks": [
         {

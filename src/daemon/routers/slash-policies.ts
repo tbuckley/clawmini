@@ -76,6 +76,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       command: commandStr,
       cwd: getWorkspaceRoot(),
       exitCode,
+      ...(req.subagentId ? { subagentId: req.subagentId } : {}),
     };
 
     await appendMessage(state.chatId, logMsg);
@@ -85,6 +86,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       ...state,
       message: agentMessage,
       reply: `Approved request, running ${req.commandName}`,
+      ...(req.subagentId ? { subagentId: req.subagentId } : {}),
     };
   }
 
@@ -112,12 +114,17 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       command: `policy-request-reject ${id}`,
       cwd: getWorkspaceRoot(),
       exitCode: 1,
+      ...(req.subagentId ? { subagentId: req.subagentId } : {}),
     };
 
     await appendMessage(state.chatId, logMsg);
 
     const agentMessage = `Request ${id} rejected. Reason: ${reason}`;
-    return { ...state, message: agentMessage };
+    return {
+      ...state,
+      message: agentMessage,
+      ...(req.subagentId ? { subagentId: req.subagentId } : {}),
+    };
   }
 
   return state;
