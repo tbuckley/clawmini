@@ -106,6 +106,6 @@ export async function executeSubagent(
       return errSettings;
     });
     const logger = createChatLogger(chatId, subagentId);
-    await logger.logSystemEvent({ content: 'Subagent failed', level: 'debug' });
+    await logger.logSubagentStatus({ subagentId, status: 'failed' });
   }
 }

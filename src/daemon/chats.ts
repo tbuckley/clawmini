@@ -18,6 +18,7 @@ export {
   type AgentReplyMessage,
   type ToolMessage,
   type PolicyRequestMessage,
+  type SubagentStatusMessage,
   getChatsDir,
   isValidChatId,
   createChat,

@@ -9,6 +9,7 @@ import {
   type AgentReplyMessage,
   type ToolMessage,
   type PolicyRequestMessage,
+  type SubagentStatusMessage,
 } from '../chats.js';
 import type { Logger } from './types.js';
 
@@ -112,7 +113,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         exitCode: 0,
       } satisfies CommandLogMessage),
 
-    logSystemMessage: async ({ content, event, messageId }) => {
+    logSystemMessage: async ({ content, event, messageId, displayRole }) => {
       const msg: SystemMessage = {
         id: crypto.randomUUID(),
         role: 'system',
@@ -123,7 +124,22 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
       if (messageId !== undefined) {
         msg.messageId = messageId;
       }
+      if (displayRole !== undefined) {
+        msg.displayRole = displayRole;
+      }
       return append<SystemMessage>(msg);
+    },
+
+    logSubagentStatus: async ({ subagentId: targetSubagentId, status }) => {
+      const msg: SubagentStatusMessage = {
+        id: crypto.randomUUID(),
+        role: 'subagent_status',
+        content: `Subagent ${status}`,
+        subagentId: targetSubagentId,
+        status,
+        timestamp: new Date().toISOString(),
+      };
+      return append<SubagentStatusMessage>(msg);
     },
 
     logAgentReply: async ({ content, files }) => {

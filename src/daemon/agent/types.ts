@@ -6,6 +6,7 @@ import type {
   AgentReplyMessage,
   ToolMessage,
   PolicyRequestMessage,
+  SubagentStatusMessage,
 } from '../chats.js';
 
 export interface Logger {
@@ -28,7 +29,12 @@ export interface Logger {
     content: string;
     event: SystemMessage['event'];
     messageId?: string;
+    displayRole?: 'user' | 'agent';
   }): Promise<SystemMessage>;
+  logSubagentStatus(options: {
+    subagentId: string;
+    status: 'completed' | 'failed';
+  }): Promise<SubagentStatusMessage>;
   logAgentReply(options: { content: string; files?: string[] }): Promise<AgentReplyMessage>;
   logToolMessage(options: {
     content: string;

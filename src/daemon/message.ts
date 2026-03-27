@@ -23,7 +23,8 @@ export async function executeDirectMessage(
     | 'policy_rejected'
     | 'subagent_update'
     | 'router'
-    | 'other'
+    | 'other',
+  displayRole?: 'user' | 'agent'
 ) {
   const logger = createChatLogger(chatId, subagentId);
 
@@ -33,6 +34,7 @@ export async function executeDirectMessage(
       content: userMessageContent ?? state.message,
       event: systemEvent,
       messageId: state.messageId,
+      ...(displayRole ? { displayRole } : {}),
     });
     msgId = sysMsg.id;
   } else {

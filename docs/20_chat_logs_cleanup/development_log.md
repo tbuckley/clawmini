@@ -41,4 +41,4 @@
 - Preserved graceful degradation for `LegacyLogMessage`, checking the obsolete `level` property exclusively for those legacy types.
 - Updated unit tests in `web/src/routes/chats/[id]/page.svelte.spec.ts` with new mock data supporting the latest taxonomy, validating the UI renders accurately across verbosity levels.
 - Formatted, linted, and successfully passed all checks via `npm run validate`.
-- Marked Ticket 7 as complete.
+- Marked Ticket 7 as complete.\n- Added `displayRole` to `logSystemMessage` options in `src/daemon/agent/types.ts` and `src/daemon/agent/chat-logger.ts`.\n- Updated `executeDirectMessage` in `src/daemon/message.ts` to accept and pass `displayRole` properly to `logSystemMessage`.\n- Added `logSubagentStatus` method to emit `SubagentStatusMessage` logs.\n- Replaced `logSystemEvent` usages in `src/daemon/api/subagent-utils.ts` with `logSubagentStatus` for tracking completed and failed events.\n- Exported `SubagentStatusMessage` from `src/daemon/chats.ts`.\n- Validated all changes via `npm run validate`.\n- Marked Ticket 8 as complete.

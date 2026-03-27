@@ -55,7 +55,7 @@
 **Description**: Update `SystemMessage` in `src/shared/chats.ts` to properly inherit or explicitly set `displayRole?: 'user' | 'agent'`. Update `logSystemMessage` in `src/daemon/agent/chat-logger.ts` to accept `displayRole` as a parameter. Update any existing usages of `logSystemMessage` to pass the `displayRole` if necessary. Also, add `logSubagentStatus` to emit `SubagentStatusMessage` and replace `logSystemEvent` in `src/daemon/api/subagent-utils.ts` with this new method. Ensure subagent messages have no `displayRole`.
 **Verification**:
 - Run `npm run validate`.
-**Status**: Not Started
+**Status**: Completed
 
 ## Ticket 9: Update `logAutomaticReply` to Emit `SystemMessage`
 **Description**: Update `logAutomaticReply` in `src/daemon/agent/chat-logger.ts` to emit a `SystemMessage` with `event: 'router'` and `displayRole: 'agent'` instead of a `CommandLogMessage`. Update corresponding test cases. This ensures that responses from slash commands like `/pending`, `/new`, `/approve`, and `/reject` are correctly sent to users as system messages.
