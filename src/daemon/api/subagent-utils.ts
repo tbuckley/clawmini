@@ -58,12 +58,10 @@ export async function executeSubagent(
     const logger = createChatLogger(chatId, subagentId);
 
     // Emit debug message to wake up waiters
-    await logger.logSystemEvent({ content: 'Subagent completed', level: 'debug' });
+    await logger.logSubagentStatus({ subagentId, status: 'completed' });
 
     if (isAsync) {
-      const lastLogMessage = await logger.findLastMessage(
-        (m) => m.role === 'command' && m.command !== 'retry-delay' && m.command !== 'router'
-      );
+      const lastLogMessage = await logger.findLastMessage((m) => m.role === 'agent');
       let outputContent = '';
       if (lastLogMessage && 'content' in lastLogMessage) {
         outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;

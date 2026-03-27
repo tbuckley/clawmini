@@ -74,9 +74,9 @@ export async function startDaemonToGoogleChatForwarder(
                     message.role === 'legacy_log';
 
                   if (isAgentDisplay && !message.subagentId) {
-                    const logMessage = message as unknown as LegacyLogMessage;
+                    const logMessage = message;
 
-                    if (logMessage.level === 'verbose') {
+                    if ('level' in logMessage && logMessage.level === 'verbose') {
                       lastMessageId = logMessage.id;
                       await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
                         console.error
@@ -85,7 +85,9 @@ export async function startDaemonToGoogleChatForwarder(
                     }
 
                     const hasContent = !!logMessage.content?.trim();
-                    const hasFiles = Array.isArray(logMessage.files) && logMessage.files.length > 0;
+                    const files =
+                      'files' in logMessage ? (logMessage.files as string[]) : undefined;
+                    const hasFiles = Array.isArray(files) && files.length > 0;
 
                     if (!hasContent && !hasFiles) {
                       lastMessageId = logMessage.id;
@@ -119,8 +121,8 @@ export async function startDaemonToGoogleChatForwarder(
 
                       let text = logMessage.content || '';
 
-                      if (hasFiles) {
-                        const fileNames = logMessage.files?.map((f) => path.basename(f)).join(', ');
+                      if (hasFiles && files) {
+                        const fileNames = files.map((f) => path.basename(f)).join(', ');
 
                         if (
                           config.driveUploadEnabled !== false &&
@@ -160,7 +162,7 @@ export async function startDaemonToGoogleChatForwarder(
                               );
                             }
 
-                            const uploadPromises = logMessage.files!.map(async (fileRelPath) => {
+                            const uploadPromises = files.map(async (fileRelPath) => {
                               const filePath = path.resolve(workspaceRoot, fileRelPath);
                               if (!fs.existsSync(filePath)) return null;
 

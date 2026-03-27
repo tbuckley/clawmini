@@ -213,8 +213,6 @@ describe('chats utilities', () => {
     // Should map to legacy_log
     expect(messages[0]?.role).toBe('legacy_log');
     expect(messages[1]?.role).toBe('legacy_log');
-
-    // Should remain log
-    expect(messages[2]?.role).toBe('log');
+    expect(messages[2]?.role).toBe('legacy_log');
   });
 });

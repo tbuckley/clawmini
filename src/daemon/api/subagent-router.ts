@@ -126,13 +126,7 @@ async function checkSubagentStatus(chatId: string, subagentId: string) {
     let outputContent: string | undefined;
     if (sub.status === 'completed') {
       const logger = createChatLogger(chatId, subagentId);
-      const lastLogMessage = await logger.findLastMessage(
-        (m) =>
-          m.role === 'command' &&
-          m.command !== 'retry-delay' &&
-          m.command !== 'router' &&
-          m.content !== 'Subagent completed'
-      );
+      const lastLogMessage = await logger.findLastMessage((m) => m.role === 'agent');
       if (lastLogMessage && 'content' in lastLogMessage) {
         outputContent = lastLogMessage.content;
       }
@@ -176,10 +170,7 @@ export const subagentWait = apiProcedure
       for await (const [event] of eventIterator) {
         if (event.chatId === chatId && event.message?.subagentId === input.subagentId) {
           const msg = event.message;
-          if (
-            msg.role === 'log' &&
-            (msg.content === 'Subagent completed' || msg.content === 'Subagent failed')
-          ) {
+          if (msg.role === 'subagent_status') {
             const status = await checkSubagentStatus(chatId, input.subagentId);
             if (status) {
               clearTimeout(timeout);

@@ -79,7 +79,6 @@ export interface LegacyLogMessage extends BaseMessage {
 export type ChatMessage =
   | UserMessage
   | AgentReplyMessage
-  | LogMessage
   | CommandLogMessage
   | SystemMessage
   | ToolMessage

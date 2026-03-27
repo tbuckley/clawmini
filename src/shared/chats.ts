@@ -88,7 +88,6 @@ export interface LegacyLogMessage extends BaseMessage {
 export type ChatMessage =
   | UserMessage
   | AgentReplyMessage
-  | LogMessage
   | CommandLogMessage
   | SystemMessage
   | ToolMessage
@@ -217,19 +216,7 @@ async function* readLinesBackwards(filePath: string): AsyncGenerator<string, voi
 export function parseChatMessage(line: string): ChatMessage {
   const msg = JSON.parse(line);
   if (msg && msg.role === 'log') {
-    const isLegacy =
-      'level' in msg ||
-      'command' in msg ||
-      'cwd' in msg ||
-      'stdout' in msg ||
-      'stderr' in msg ||
-      'exitCode' in msg ||
-      'source' in msg ||
-      !('messageId' in msg);
-
-    if (isLegacy) {
-      msg.role = 'legacy_log';
-    }
+    msg.role = 'legacy_log';
   }
   return msg as ChatMessage;
 }
@@ -254,7 +241,7 @@ export async function getMessages(
     const content = await fs.readFile(chatFile, 'utf8');
     const lines = content.split('\n').filter((line) => line.trim() !== '');
 
-    let messages = lines.map((line) => JSON.parse(line) as ChatMessage);
+    let messages = lines.map((line) => parseChatMessage(line));
 
     if (before) {
       const beforeIndex = messages.findIndex((m) => m.id === before);

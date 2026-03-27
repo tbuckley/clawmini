@@ -43,7 +43,7 @@ describe('subagentWait', () => {
         setTimeout(() => {
           daemonEvents.emit(DAEMON_EVENT_MESSAGE_APPENDED, {
             chatId,
-            message: { role: 'log', content: 'Subagent completed', subagentId },
+            message: { role: 'subagent_status', status: 'completed', subagentId },
           });
         }, 10);
 
