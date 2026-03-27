@@ -146,10 +146,9 @@ describe('slashPolicies', () => {
     expect(appendMessage).toHaveBeenCalledWith(
       'chat-1',
       expect.objectContaining({
-        role: 'command',
+        role: 'policy',
         content: 'Request req-1 rejected. Reason: Not allowed',
-        command: 'policy-request-reject req-1',
-        exitCode: 1,
+        status: 'rejected',
       })
     );
     expect(result.action).toBeUndefined();

@@ -7,6 +7,7 @@ import {
   type CommandLogMessage,
   type AgentReplyMessage,
   type ToolMessage,
+  type PolicyRequestMessage,
 } from '../chats.js';
 import { executeSafe, generateRequestPreview, executeRequest } from '../policy-utils.js';
 import { getWorkspaceRoot, readPolicies, getClawminiDir } from '../../shared/workspace.js';
@@ -250,20 +251,19 @@ export const createPolicyRequest = apiProcedure
       request.executionResult = { stdout, stderr, exitCode };
       await store.save(request);
 
-      const logMsg = {
+      const logMsg: PolicyRequestMessage = {
         id: randomUUID(),
         // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
         messageId: randomUUID(),
-        role: 'command' as const,
-        content: `[Auto-approved] Policy ${input.commandName} was executed.`,
-        stderr,
-        stdout, // Adding stdout and stderr for execution context
+        role: 'policy',
+        requestId: request.id,
+        commandName: input.commandName,
+        args: input.args,
+        status: 'approved',
+        content: `[Auto-approved] Policy ${input.commandName} was executed.\n\nCommand: ${commandStr}\nExit Code: ${exitCode}\n\nStdout:\n${stdout}\n\nStderr:\n${stderr}`,
         timestamp: new Date().toISOString(),
-        command: commandStr,
-        cwd: getWorkspaceRoot(),
-        exitCode,
         ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
-      } satisfies CommandLogMessage;
+      };
 
       await appendMessage(chatId, logMsg);
       return request;
@@ -271,17 +271,20 @@ export const createPolicyRequest = apiProcedure
 
     const previewContent = await generateRequestPreview(request);
 
-    const logMsg = {
+    const logMsg: PolicyRequestMessage = {
       id: randomUUID(),
       // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
       messageId: randomUUID(),
-      role: 'system' as const,
-      event: 'router' as const,
-      displayRole: 'agent' as const,
+      role: 'policy',
+      requestId: request.id,
+      commandName: input.commandName,
+      args: input.args,
+      status: 'pending',
       content: previewContent,
       timestamp: new Date().toISOString(),
+      displayRole: 'agent',
       ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
-    } as any;
+    };
 
     await appendMessage(chatId, logMsg);
     return request;

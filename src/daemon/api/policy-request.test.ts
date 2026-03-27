@@ -109,7 +109,7 @@ describe('createPolicyRequest preview message', () => {
     const logMsg = callArgs[1] as any;
 
     expect(chatId).toBe('default-chat');
-    expect(logMsg.role).toBe('system');
+    expect(logMsg.role).toBe('policy');
 
     // Assert preview content format
     const content = logMsg.content;
@@ -144,6 +144,7 @@ describe('createPolicyRequest preview message', () => {
     const logMsg = callArgs[1] as any;
 
     expect(logMsg.content).toContain('[Auto-approved] Policy auto-cmd was executed.');
-    expect(logMsg.exitCode).toBeDefined();
+    expect(logMsg.role).toBe('policy');
+    expect(logMsg.status).toBe('approved');
   });
 });

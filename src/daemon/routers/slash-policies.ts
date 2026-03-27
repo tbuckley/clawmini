@@ -4,7 +4,7 @@ import { RequestStore } from '../request-store.js';
 import { readPolicies, getWorkspaceRoot } from '../../shared/workspace.js';
 import { executeRequest } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
-import type { CommandLogMessage } from '../../shared/chats.js';
+import type { CommandLogMessage, PolicyRequestMessage } from '../../shared/chats.js';
 
 async function loadAndValidateRequest(id: string, state: RouterState) {
   const store = new RequestStore(getWorkspaceRoot());
@@ -102,17 +102,16 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     req.rejectionReason = reason;
     await store.save(req);
 
-    const logMsg: CommandLogMessage = {
+    const logMsg: PolicyRequestMessage = {
       id: randomUUID(),
       messageId: state.messageId,
-      role: 'command',
+      role: 'policy',
+      requestId: id,
+      commandName: req.commandName,
+      args: req.args,
+      status: 'rejected',
       content: `Request ${id} rejected. Reason: ${reason}`,
-      stderr: '',
-      stdout: '',
       timestamp: new Date().toISOString(),
-      command: `policy-request-reject ${id}`,
-      cwd: getWorkspaceRoot(),
-      exitCode: 1,
       ...(req.subagentId ? { subagentId: req.subagentId } : {}),
     };
 

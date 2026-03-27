@@ -16,14 +16,34 @@ export async function executeDirectMessage(
   cwd: string,
   noWait: boolean = false,
   userMessageContent?: string,
-  subagentId?: string
+  subagentId?: string,
+  systemEvent?:
+    | 'cron'
+    | 'policy_approved'
+    | 'policy_rejected'
+    | 'subagent_update'
+    | 'router'
+    | 'other'
 ) {
   const logger = createChatLogger(chatId, subagentId);
 
-  const userMsg = await logger.logUserMessage(userMessageContent ?? state.message);
-  if (state.reply) {
-    await logger.logAutomaticReply({ messageId: userMsg.id, content: state.reply });
+  let msgId: string;
+  if (systemEvent) {
+    const sysMsg = await logger.logSystemMessage({
+      content: userMessageContent ?? state.message,
+      event: systemEvent,
+      messageId: state.messageId,
+    });
+    msgId = sysMsg.id;
+  } else {
+    const userMsg = await logger.logUserMessage(userMessageContent ?? state.message);
+    msgId = userMsg.id;
   }
+
+  if (state.reply) {
+    await logger.logAutomaticReply({ messageId: msgId, content: state.reply });
+  }
+
   if (!state.message.trim() && state.action !== 'stop' && state.action !== 'interrupt') {
     return;
   }

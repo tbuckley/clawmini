@@ -141,7 +141,9 @@ export class CronManager {
         globalSettings,
         process.cwd(),
         false,
-        job.message
+        job.message,
+        undefined,
+        'cron'
       );
 
       if (isOneOff) {

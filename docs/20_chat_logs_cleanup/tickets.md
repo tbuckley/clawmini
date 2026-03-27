@@ -34,7 +34,7 @@
 **Verification**:
 - Update existing unit and integration tests for routers to expect the new message types.
 - Run `npm run validate`.
-**Status**: Not Started
+**Status**: Completed
 
 ## Ticket 6: Update Adapters and Display Logic (Discord)
 **Description**: Update `src/adapter-discord/` (and any other relevant adapters) to parse the new `ChatMessage` union. Implement the message forwarding logic using the `displayRole` property and ensure internal subagent messages are properly filtered or threaded.

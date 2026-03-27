@@ -23,3 +23,11 @@
 - Wrote E2E tests for the new lite commands in `src/cli/e2e/export-lite-func.test.ts`.
 - Verified compilation and tests pass using `npm run validate`.
 - Marked Ticket 4 as complete.
+- Refactored `executeDirectMessage` in `src/daemon/message.ts` to accept an optional `systemEvent` parameter and use `logger.logSystemMessage` accordingly.
+- Updated cron jobs (`src/daemon/cron.ts`) and subagent notifications (`src/daemon/api/subagent-utils.ts`) to log events as `SystemMessage` ('cron' and 'subagent_update').
+- Refactored `createPolicyRequest` in `src/daemon/api/agent-router.ts` to log requests and auto-approvals as `PolicyRequestMessage`.
+- Refactored `/approve` and `/reject` branches in `src/daemon/routers/slash-policies.ts` to log outcomes as `PolicyRequestMessage`.
+- Updated failing tests in `src/daemon/api/policy-request.test.ts`, `src/daemon/routers/slash-policies.test.ts`, and E2E timeout tests to expect the new message formats.
+- Fixed a `no-useless-assignment` linting issue in `message.ts` and removed a trailing bracket syntax error in `slash-policies.test.ts`.
+- Validated all changes using `npm run validate`.
+- Marked Ticket 5 as complete.

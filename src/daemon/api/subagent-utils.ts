@@ -91,7 +91,10 @@ export async function executeSubagent(
         },
         undefined,
         workspaceRoot,
-        true // noWait
+        true,
+        undefined,
+        parentTokenPayload?.subagentId,
+        'subagent_update'
       );
     }
   } catch {
