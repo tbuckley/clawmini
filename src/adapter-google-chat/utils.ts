@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import type { Readable } from 'node:stream';
 
 let authClient: Awaited<ReturnType<typeof google.auth.getClient>> | null = null;
 
@@ -26,20 +27,35 @@ export async function downloadAttachment(
 
   const url = `https://chat.googleapis.com/v1/media/${resourceName}?alt=media`;
 
-  const response = await client.request<ArrayBuffer>({
+  const response = await client.request<Readable>({
     url,
     method: 'GET',
-    responseType: 'arraybuffer',
+    responseType: 'stream',
   });
 
-  const buffer = Buffer.from(response.data);
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    const maxSizeBytes = maxAttachmentSizeMB * 1024 * 1024;
 
-  const maxSizeBytes = maxAttachmentSizeMB * 1024 * 1024;
-  if (buffer.length > maxSizeBytes) {
-    throw new Error(
-      `Attachment exceeds maximum size of ${maxSizeBytes} bytes: ${buffer.length} bytes`
-    );
-  }
+    response.data.on('data', (chunk: Buffer) => {
+      totalBytes += chunk.length;
+      if (totalBytes > maxSizeBytes) {
+        response.data.destroy();
+        reject(
+          new Error(`Attachment exceeds maximum size of ${maxSizeBytes} bytes: ${totalBytes} bytes`)
+        );
+      } else {
+        chunks.push(chunk);
+      }
+    });
 
-  return buffer;
+    response.data.on('end', () => {
+      resolve(Buffer.concat(chunks));
+    });
+
+    response.data.on('error', (err: Error) => {
+      reject(err);
+    });
+  });
 }

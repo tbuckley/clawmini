@@ -89,7 +89,13 @@ export async function startDaemonToGoogleChatForwarder(
                     continue;
                   }
 
-                  if (!config.directMessageName) {
+                  let activeSpaceName = config.directMessageName;
+                  if (!activeSpaceName) {
+                    const currentState = await readGoogleChatState();
+                    activeSpaceName = currentState.activeSpaceName;
+                  }
+
+                  if (!activeSpaceName) {
                     console.warn(
                       'No active Google Chat space to reply to. Ignoring message:',
                       logMessage.content
@@ -199,13 +205,13 @@ export async function startDaemonToGoogleChatForwarder(
                       for (let i = 0; i < chunks.length; i++) {
                         if (signal?.aborted) break;
                         await chatApi.spaces.messages.create({
-                          parent: config.directMessageName,
+                          parent: activeSpaceName as string,
                           requestBody: { text: chunks[i] as string },
                         });
                       }
                     } else {
                       await chatApi.spaces.messages.create({
-                        parent: config.directMessageName,
+                        parent: activeSpaceName as string,
                         requestBody: { text },
                       });
                     }

@@ -7,6 +7,7 @@ export const GoogleChatStateSchema = z.object({
   lastSyncedMessageId: z.string().optional(),
   lastDriveCleanupMs: z.number().optional(),
   driveOauthTokens: z.any().optional(),
+  activeSpaceName: z.string().optional(),
 });
 
 export type GoogleChatState = z.infer<typeof GoogleChatStateSchema>;
@@ -26,6 +27,7 @@ export async function readGoogleChatState(startDir = process.cwd()): Promise<Goo
         lastSyncedMessageId: undefined,
         lastDriveCleanupMs: undefined,
         driveOauthTokens: undefined,
+        activeSpaceName: undefined,
       };
     }
     return result.data;
@@ -35,6 +37,7 @@ export async function readGoogleChatState(startDir = process.cwd()): Promise<Goo
       lastSyncedMessageId: undefined,
       lastDriveCleanupMs: undefined,
       driveOauthTokens: undefined,
+      activeSpaceName: undefined,
     };
   }
 }

@@ -10,7 +10,8 @@ import { getSocketPath, getClawminiDir } from '../shared/workspace.js';
 import { createUnixSocketFetch } from '../shared/fetch.js';
 import { createUnixSocketEventSource } from '../shared/event-source.js';
 import type { GoogleChatConfig } from './config.js';
-import { isAuthorized, updateGoogleChatConfig } from './config.js';
+import { isAuthorized } from './config.js';
+import { readGoogleChatState, updateGoogleChatState } from './state.js';
 import { downloadAttachment } from './utils.js';
 
 export function getTRPCClient(options: { socketPath?: string } = {}) {
@@ -83,9 +84,16 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      if (config.directMessageName !== spaceName) {
-        config.directMessageName = spaceName;
-        await updateGoogleChatConfig(config);
+      const state = await readGoogleChatState();
+      let activeSpaceName = config.directMessageName || state.activeSpaceName;
+
+      if (!activeSpaceName) {
+        activeSpaceName = spaceName;
+        await updateGoogleChatState({ activeSpaceName });
+      } else if (activeSpaceName !== spaceName) {
+        console.log(`Ignoring message from inactive space: ${spaceName}`);
+        message.ack();
+        return;
       }
 
       const downloadedFiles: string[] = [];
@@ -127,6 +135,8 @@ export function startGoogleChatIngestion(
       message.ack();
     } catch (error) {
       console.error('Error processing Pub/Sub message:', error);
+      // Add a brief artificial delay before nacking to avoid tight retry loops
+      await new Promise((resolve) => setTimeout(resolve, 2000));
       // Nack the message so it can be retried if it's a transient failure
       message.nack();
     }

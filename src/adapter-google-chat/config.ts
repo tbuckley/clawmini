@@ -75,5 +75,5 @@ export async function initGoogleChatConfig(startDir = process.cwd()): Promise<vo
 }
 
 export function isAuthorized(userIdOrEmail: string, authorizedUsers: string[]): boolean {
-  return authorizedUsers.includes(userIdOrEmail);
+  return authorizedUsers.some((u) => u.toLowerCase() === userIdOrEmail.toLowerCase());
 }
