@@ -65,6 +65,7 @@ describe('subagentWait', () => {
     const ctx = {
       tokenPayload: { chatId, agentId: 'agent', sessionId: 'session' },
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const caller = agentRouter.createCaller(ctx as any);
 
     const resultPromise = caller.subagentWait({ subagentId });

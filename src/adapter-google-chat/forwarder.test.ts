@@ -27,6 +27,7 @@ vi.mock('googleapis', () => {
     google: {
       auth: {
         getClient: vi.fn().mockResolvedValue({}),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         OAuth2: vi.fn().mockImplementation(function (this: any) {
           this.setCredentials = vi.fn();
           this.generateAuthUrl = vi.fn().mockReturnValue('http://mock-auth-url');
