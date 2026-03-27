@@ -29,11 +29,24 @@
     }
 
     if (msg.role === 'user') return true;
+    if (msg.role === 'agent') return true;
+    if (msg.displayRole === 'user' || msg.displayRole === 'agent') return true;
+    if (msg.role === 'policy') return true;
+
     if (appState.verbosityLevel === 'verbose') return true;
-    if (appState.verbosityLevel === 'debug') {
-      return !msg.level || msg.level === 'default' || msg.level === 'debug';
+    
+    // For legacy_log messages
+    if (msg.role === 'legacy_log') {
+      if (appState.verbosityLevel === 'debug') {
+        return !msg.level || msg.level === 'default' || msg.level === 'debug';
+      }
+      return !msg.level || msg.level === 'default';
     }
-    return !msg.level || msg.level === 'default';
+    
+    // For command, system, tool, etc., only show in debug/verbose
+    if (appState.verbosityLevel === 'debug') return true;
+
+    return false;
   }));
   let pendingMessages = $state<PendingMessage[]>([]);
   let chatContainer: HTMLElement | undefined = $state();
@@ -288,6 +301,38 @@
     clearTimeout(reconnectTimeout);
   });
 
+  async function handlePolicy(requestId: string, action: 'approve' | 'reject') {
+    const currentInput = `/${action} ${requestId}`;
+    
+    const pendingMsg: PendingMessage = {
+      id: `pending-${Date.now()}-${Math.random()}`,
+      content: currentInput,
+      timestamp: new Date().toISOString(),
+      status: navigator.onLine ? 'sending' : 'pending'
+    };
+    pendingMessages = [...pendingMessages, pendingMsg];
+    savePendingMessages(data.id, pendingMessages);
+
+    if (!navigator.onLine) {
+      return; // Offline, stays pending
+    }
+
+    try {
+      const res = await fetch(`/api/chats/${data.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: currentInput })
+      });
+      if (!res.ok) throw new Error('Failed to send');
+      
+      await invalidate(`app:chat:${data.id}`);
+    } catch (err) {
+      console.error('Failed to send message:', err);
+      pendingMessages = pendingMessages.map((m) => m.id === pendingMsg.id ? { ...m, status: 'failed' } : m);
+      savePendingMessages(data.id, pendingMessages);
+    }
+  }
+
   async function sendMessage(e: Event) {
     e.preventDefault();
     if (!inputValue.trim()) return;
@@ -371,30 +416,64 @@
               {/if}
               <MessageContent content={msg.content} />
             </div>
-          {:else}
-            <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm {msg.level === 'verbose' ? 'border-primary/50 bg-primary/5 shadow-md' : ''}" data-testid="log-message">
+          {:else if msg.role === 'agent'}
+            <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm" data-testid="agent-message">
               {#if msg.subagentId}
                 <div class="text-[10px] font-mono text-muted-foreground mb-2">[{msg.subagentId}]</div>
               {/if}
-              {#if appState.verbosityLevel === 'verbose'}
-                <div class="font-mono text-xs text-muted-foreground mb-2 flex items-center gap-2">
-                  <span>$ {msg.command}</span>
-                  {#if msg.exitCode !== 0}
-                    <span class="text-destructive font-bold">Exit: {msg.exitCode}</span>
-                  {/if}
+              <div class="whitespace-normal">
+                <MessageContent content={msg.content} />
+              </div>
+            </div>
+          {:else if msg.role === 'policy'}
+            <div class="px-4 py-3 rounded-2xl bg-card border border-warning/50 text-card-foreground text-sm shadow-sm" data-testid="policy-message">
+              <div class="font-semibold mb-1 text-yellow-600 dark:text-yellow-400">Policy Request: {msg.commandName}</div>
+              <div class="text-xs font-mono mb-2">{msg.args.join(' ')}</div>
+              <div class="mb-3 text-muted-foreground"><MessageContent content={msg.content} /></div>
+              {#if msg.status === 'pending'}
+                <div class="flex gap-2 mt-2">
+                  <Button size="sm" variant="default" onclick={() => handlePolicy(msg.requestId, 'approve')}>Approve</Button>
+                  <Button size="sm" variant="destructive" onclick={() => handlePolicy(msg.requestId, 'reject')}>Reject</Button>
                 </div>
+              {:else}
+                <div class="text-xs font-medium uppercase mt-2 {msg.status === 'approved' ? 'text-green-500' : 'text-red-500'}">
+                  {msg.status}
+                </div>
+              {/if}
+            </div>
+          {:else}
+            <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm {msg.role === 'legacy_log' && msg.level === 'verbose' ? 'border-primary/50 bg-primary/5 shadow-md' : ''}" data-testid="log-message">
+              {#if msg.subagentId}
+                <div class="text-[10px] font-mono text-muted-foreground mb-2">[{msg.subagentId}]</div>
+              {/if}
+              
+              {#if msg.role === 'system' || msg.role === 'tool'}
+                <div class="font-mono text-xs text-muted-foreground mb-2 flex items-center gap-2">
+                  <span>[{msg.role.toUpperCase()}] {msg.role === 'tool' ? msg.name : msg.event}</span>
+                </div>
+              {/if}
+
+              {#if appState.verbosityLevel === 'verbose' || msg.role === 'command'}
+                {#if 'command' in msg && msg.command}
+                  <div class="font-mono text-xs text-muted-foreground mb-2 flex items-center gap-2">
+                    <span>$ {msg.command}</span>
+                    {#if 'exitCode' in msg && msg.exitCode !== 0 && msg.exitCode !== undefined}
+                      <span class="text-destructive font-bold">Exit: {msg.exitCode}</span>
+                    {/if}
+                  </div>
+                {/if}
                 
                 {#if msg.content}
                   <div class="whitespace-normal">
                     <MessageContent content={msg.content} />
                   </div>
-                {:else if msg.stdout}
+                {:else if 'stdout' in msg && msg.stdout}
                   <div class="whitespace-pre-wrap font-mono text-xs mt-2">{msg.stdout}</div>
                 {:else}
                   <div class="whitespace-pre-wrap italic opacity-50 text-xs mt-2">No output</div>
                 {/if}
 
-                {#if msg.stderr}
+                {#if 'stderr' in msg && msg.stderr}
                   <div class="whitespace-pre-wrap font-mono text-xs mt-2 text-destructive border border-destructive/20 bg-destructive/5 p-2 rounded">
                     {msg.stderr}
                   </div>

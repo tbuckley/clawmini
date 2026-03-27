@@ -35,3 +35,10 @@
 - Updated mock test data in `src/adapter-discord/forwarder.test.ts` and `src/adapter-google-chat/forwarder.test.ts` to use `role: 'agent'` or `role: 'legacy_log'` (for verbose tests) instead of the obsolete `role: 'log'`.
 - Verified compilation and tests pass using `npm run validate`.
 - Marked Ticket 6 as complete.
+- Updated `web/src/lib/types.ts` to mirror the expanded `ChatMessage` union from `src/shared/chats.ts`.
+- Refactored message filtering and rendering logic in `web/src/routes/chats/[id]/+page.svelte` to gracefully handle the new message roles (`agent`, `policy`, `command`, `system`, `tool`).
+- Added interactive 'Approve' and 'Reject' UI elements for `PolicyRequestMessage`, wired to a new `handlePolicy` function that sends `/approve <id>` and `/reject <id>`.
+- Preserved graceful degradation for `LegacyLogMessage`, checking the obsolete `level` property exclusively for those legacy types.
+- Updated unit tests in `web/src/routes/chats/[id]/page.svelte.spec.ts` with new mock data supporting the latest taxonomy, validating the UI renders accurately across verbosity levels.
+- Formatted, linted, and successfully passed all checks via `npm run validate`.
+- Marked Ticket 7 as complete.

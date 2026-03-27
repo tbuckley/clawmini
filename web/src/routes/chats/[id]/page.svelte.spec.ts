@@ -19,7 +19,7 @@ const mockData = {
     {
       id: 'log-1',
       messageId: 'msg-1',
-      role: 'log',
+      role: 'legacy_log',
       content: 'I am the daemon',
       command: 'echo "I am the daemon"',
       cwd: '/tmp',
@@ -32,7 +32,7 @@ const mockData = {
     {
       id: 'log-2',
       messageId: 'msg-1',
-      role: 'log',
+      role: 'legacy_log',
       content: 'Debug message',
       command: 'debug-cmd',
       cwd: '/tmp',
@@ -45,7 +45,7 @@ const mockData = {
     {
       id: 'log-3',
       messageId: 'msg-1',
-      role: 'log',
+      role: 'legacy_log',
       content: '',
       command: 'exit 1',
       cwd: '/tmp',
@@ -54,6 +54,35 @@ const mockData = {
       stderr: 'Command failed',
       timestamp: new Date().toISOString(),
       level: 'verbose',
+    },
+    {
+      id: 'agent-1',
+      role: 'agent',
+      content: 'I am a new agent message',
+      timestamp: new Date().toISOString(),
+    },
+    {
+      id: 'cmd-1',
+      messageId: 'msg-1',
+      role: 'command',
+      content: '',
+      command: 'ls',
+      cwd: '/',
+      exitCode: 0,
+      stdout: 'files',
+      stderr: '',
+      timestamp: new Date().toISOString(),
+    },
+    {
+      id: 'policy-1',
+      messageId: 'msg-1',
+      role: 'policy',
+      requestId: 'req-1',
+      commandName: 'rm',
+      args: ['-rf', '/'],
+      status: 'pending',
+      content: 'Trying to run rm -rf /',
+      timestamp: new Date().toISOString(),
     },
   ] as ChatMessage[],
 };
@@ -68,9 +97,13 @@ describe('Chat Page', () => {
     render(ChatPage, { props: { data: mockData } });
 
     const userMsgs = page.getByTestId('user-message').all();
+    const agentMsgs = page.getByTestId('agent-message').all();
+    const policyMsgs = page.getByTestId('policy-message').all();
     const logMsgs = page.getByTestId('log-message').all();
 
     expect(userMsgs.length).toBe(1);
+    expect(agentMsgs.length).toBe(1);
+    expect(policyMsgs.length).toBe(1);
     expect(logMsgs.length).toBe(1);
     await expect.element(logMsgs[0]).toHaveTextContent('I am the daemon');
   });
@@ -80,7 +113,8 @@ describe('Chat Page', () => {
     render(ChatPage, { props: { data: mockData } });
 
     const logMsgs = page.getByTestId('log-message').all();
-    expect(logMsgs.length).toBe(2);
+    // command, legacy default, legacy debug
+    expect(logMsgs.length).toBe(3);
     await expect.element(logMsgs[0]).toHaveTextContent('I am the daemon');
     await expect.element(logMsgs[1]).toHaveTextContent('Debug message');
   });
@@ -90,9 +124,9 @@ describe('Chat Page', () => {
     render(ChatPage, { props: { data: mockData } });
 
     const logMsgs = page.getByTestId('log-message').all();
-    expect(logMsgs.length).toBe(3);
+    expect(logMsgs.length).toBe(4); // all logs + command log
 
-    // Check verbose distinct rendering
+    // Check verbose distinct rendering for legacy_log
     await expect.element(logMsgs[2]).toHaveClass(/bg-primary\/5/);
 
     const errorMsg = page.getByText('Command failed');
