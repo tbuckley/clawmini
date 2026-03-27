@@ -68,14 +68,15 @@ export async function startDaemonToDiscordForwarder(
 
                 const message = rawMessage as ChatMessage;
 
-                // Only forward logs (agent responses, system messages)
-                // Ignore any messages associated with subagents
-                if (
-                  (message.role === 'legacy_log' ||
-                    message.role === 'command' ||
-                    message.role === 'log') &&
-                  !message.subagentId
-                ) {
+                // Only forward messages that are explicitly marked for agent display,
+                // or are backwards-compatible agent replies / legacy logs.
+                // Ignore any messages associated with subagents.
+                const isAgentDisplay =
+                  message.displayRole === 'agent' ||
+                  message.role === 'agent' ||
+                  message.role === 'legacy_log';
+
+                if (isAgentDisplay && !message.subagentId) {
                   const logMessage = message as unknown as LegacyLogMessage;
 
                   if (logMessage.level === 'verbose') {

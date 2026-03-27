@@ -92,7 +92,7 @@ describe('Daemon to Discord Forwarder', () => {
     subscribeCallbacks.onData([
       {
         id: 'msg-2',
-        role: 'log',
+        role: 'agent',
         content: 'Agent response',
         timestamp: '',
         messageId: 'msg-1',
@@ -184,7 +184,7 @@ describe('Daemon to Discord Forwarder', () => {
     subscribeCallbacks.onData([
       {
         id: 'msg-1',
-        role: 'log',
+        role: 'legacy_log',
         level: 'verbose',
         content: 'I should be ignored because I am verbose',
         timestamp: '',
@@ -224,7 +224,7 @@ describe('Daemon to Discord Forwarder', () => {
     subscribeCallbacks.onData([
       {
         id: 'msg-1',
-        role: 'log',
+        role: 'agent',
         content: longContent,
         timestamp: '',
         messageId: 'msg-0',
@@ -262,7 +262,7 @@ describe('Daemon to Discord Forwarder', () => {
     subscribeCallbacks.onData([
       {
         id: 'msg-1',
-        role: 'log',
+        role: 'agent',
         content: 'Here is your file',
         timestamp: '',
         messageId: 'msg-0',
@@ -302,7 +302,7 @@ describe('Daemon to Discord Forwarder', () => {
     subscribeCallbacks.onData([
       {
         id: 'msg-1',
-        role: 'log',
+        role: 'agent',
         content: '',
         timestamp: '',
         messageId: 'msg-0',
@@ -342,7 +342,7 @@ describe('Daemon to Discord Forwarder', () => {
     subscribeCallbacks.onData([
       {
         id: 'msg-1',
-        role: 'log',
+        role: 'agent',
         content: longContent,
         timestamp: '',
         messageId: 'msg-0',
@@ -407,7 +407,7 @@ describe('Daemon to Discord Forwarder', () => {
     callbacks.onData([
       {
         id: 'msg-1',
-        role: 'log',
+        role: 'agent',
         content: 'Finally up',
         timestamp: '',
         messageId: 'msg-0',

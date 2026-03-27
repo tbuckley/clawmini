@@ -68,12 +68,12 @@ export async function startDaemonToGoogleChatForwarder(
 
                   const message = rawMessage as ChatMessage;
 
-                  if (
-                    (message.role === 'legacy_log' ||
-                      message.role === 'command' ||
-                      message.role === 'log') &&
-                    !message.subagentId
-                  ) {
+                  const isAgentDisplay =
+                    message.displayRole === 'agent' ||
+                    message.role === 'agent' ||
+                    message.role === 'legacy_log';
+
+                  if (isAgentDisplay && !message.subagentId) {
                     const logMessage = message as unknown as LegacyLogMessage;
 
                     if (logMessage.level === 'verbose') {

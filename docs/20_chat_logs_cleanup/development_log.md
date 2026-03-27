@@ -31,3 +31,7 @@
 - Fixed a `no-useless-assignment` linting issue in `message.ts` and removed a trailing bracket syntax error in `slash-policies.test.ts`.
 - Validated all changes using `npm run validate`.
 - Marked Ticket 5 as complete.
+- Updated `src/adapter-discord/forwarder.ts` and `src/adapter-google-chat/forwarder.ts` to filter messages based on `displayRole === 'agent'`, `role === 'agent'`, or `role === 'legacy_log'`, and ensuring `!subagentId`.
+- Updated mock test data in `src/adapter-discord/forwarder.test.ts` and `src/adapter-google-chat/forwarder.test.ts` to use `role: 'agent'` or `role: 'legacy_log'` (for verbose tests) instead of the obsolete `role: 'log'`.
+- Verified compilation and tests pass using `npm run validate`.
+- Marked Ticket 6 as complete.

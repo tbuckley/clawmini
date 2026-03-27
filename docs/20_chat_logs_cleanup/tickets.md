@@ -41,7 +41,7 @@
 **Verification**:
 - Add unit tests verifying adapter filtering logic (e.g., skipping messages without `displayRole: 'agent'` and properly handling `subagentId`).
 - Run `npm run validate`.
-**Status**: Not Started
+**Status**: Completed
 
 ## Ticket 7: Update Web UI to Handle New Message Types
 **Description**: Update the SvelteKit frontend in `web/` to accept and render the new message types appropriately. Ensure `LegacyLogMessage` degrades gracefully (e.g., rendered as a generic code block or text node) and add interactive UI elements for `PolicyRequestMessage`.
