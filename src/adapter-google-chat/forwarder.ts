@@ -116,7 +116,11 @@ export async function startDaemonToGoogleChatForwarder(
                     if (hasFiles) {
                       const fileNames = logMessage.files?.map((f) => path.basename(f)).join(', ');
 
-                      if (config.driveUploadEnabled !== false) {
+                      if (
+                        config.driveUploadEnabled !== false &&
+                        config.driveOauthClientId &&
+                        config.driveOauthClientSecret
+                      ) {
                         text += `\n\n`;
                         const driveClient = await getDriveAuthClient(config);
                         const driveApi = google.drive({ version: 'v3', auth: driveClient });

@@ -11,6 +11,7 @@ vi.mock('node:fs/promises', () => ({
   default: {
     mkdir: vi.fn().mockResolvedValue(undefined),
     writeFile: vi.fn().mockResolvedValue(undefined),
+    unlink: vi.fn().mockResolvedValue(undefined),
   },
 }));
 vi.mock('../shared/workspace.js');
@@ -239,7 +240,16 @@ describe('Google Chat Adapter Client', () => {
           JSON.stringify({
             type: 'MESSAGE',
             space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
-            message: { sender: { email: 'user@example.com' }, text: 'Hello' },
+            message: {
+              sender: { email: 'user@example.com' },
+              text: 'Hello with error',
+              attachment: [
+                {
+                  contentName: 'test.png',
+                  attachmentDataRef: { resourceName: 'spaces/123/messages/123/attachments/123' },
+                },
+              ],
+            },
           })
         ),
       };
@@ -248,6 +258,7 @@ describe('Google Chat Adapter Client', () => {
 
       expect(authorizedMockMsg.nack).toHaveBeenCalled();
       expect(authorizedMockMsg.ack).not.toHaveBeenCalled();
+      expect(fsPromises.unlink).toHaveBeenCalled();
     });
   });
 });

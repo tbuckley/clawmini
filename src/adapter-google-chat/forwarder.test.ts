@@ -191,4 +191,39 @@ describe('Daemon to Google Chat Forwarder', () => {
     controller.abort();
     await forwarderPromise;
   });
+
+  it('should fallback to local file output if drive upload is enabled but oauth secrets are missing', async () => {
+    const controller = new AbortController();
+
+    const forwarderPromise = startDaemonToGoogleChatForwarder(
+      mockTrpc,
+      { ...mockConfig, driveOauthClientId: undefined, driveOauthClientSecret: undefined },
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-3',
+        role: 'log',
+        content: 'Here are the files',
+        files: ['/tmp/file1.png', '/tmp/file2.txt'],
+      },
+    ]);
+
+    await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalled());
+
+    expect(mockDriveFilesCreate).not.toHaveBeenCalled();
+
+    expect(mockMessagesCreate).toHaveBeenCalledWith({
+      parent: 'spaces/test-space',
+      requestBody: {
+        text: 'Here are the files\n\n*(Files generated: file1.png, file2.txt)*',
+      },
+    });
+
+    controller.abort();
+    await forwarderPromise;
+  });
 });

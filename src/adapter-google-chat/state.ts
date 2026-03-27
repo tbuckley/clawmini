@@ -42,19 +42,26 @@ export async function readGoogleChatState(startDir = process.cwd()): Promise<Goo
   }
 }
 
-export async function updateGoogleChatState(
+let stateUpdatePromise = Promise.resolve();
+
+export function updateGoogleChatState(
   updates: Partial<GoogleChatState>,
   startDir = process.cwd()
 ): Promise<GoogleChatState> {
-  const currentState = await readGoogleChatState(startDir);
-  const newState = { ...currentState, ...updates };
-  const statePath = getGoogleChatStatePath(startDir);
-  const dir = path.dirname(statePath);
-  try {
-    await fsPromises.mkdir(dir, { recursive: true });
-    await fsPromises.writeFile(statePath, JSON.stringify(newState, null, 2), 'utf-8');
-  } catch (err) {
-    console.error(`Failed to write Google Chat state to ${statePath}:`, err);
-  }
-  return newState;
+  return new Promise((resolve, reject) => {
+    stateUpdatePromise = stateUpdatePromise.then(async () => {
+      try {
+        const currentState = await readGoogleChatState(startDir);
+        const newState = { ...currentState, ...updates };
+        const statePath = getGoogleChatStatePath(startDir);
+        const dir = path.dirname(statePath);
+        await fsPromises.mkdir(dir, { recursive: true });
+        await fsPromises.writeFile(statePath, JSON.stringify(newState, null, 2), 'utf-8');
+        resolve(newState);
+      } catch (err) {
+        console.error(`Failed to write Google Chat state:`, err);
+        reject(err);
+      }
+    });
+  });
 }

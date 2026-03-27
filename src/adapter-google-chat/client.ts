@@ -51,6 +51,7 @@ export function startGoogleChatIngestion(
   const subscription = pubsub.subscription(config.subscriptionName);
 
   subscription.on('message', async (message: Message) => {
+    const downloadedFiles: string[] = [];
     try {
       const dataString = message.data.toString('utf8');
       const event = JSON.parse(dataString);
@@ -96,7 +97,6 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      const downloadedFiles: string[] = [];
       const attachments = event.message?.attachment || [];
 
       if (attachments.length > 0) {
@@ -135,6 +135,13 @@ export function startGoogleChatIngestion(
       message.ack();
     } catch (error) {
       console.error('Error processing Pub/Sub message:', error);
+      for (const file of downloadedFiles) {
+        try {
+          await fsPromises.unlink(file);
+        } catch (unlinkErr) {
+          console.error(`Failed to delete downloaded file ${file} after error:`, unlinkErr);
+        }
+      }
       // Add a brief artificial delay before nacking to avoid tight retry loops
       await new Promise((resolve) => setTimeout(resolve, 2000));
       // Nack the message so it can be retried if it's a transient failure
