@@ -11,6 +11,8 @@ export const GoogleChatConfigSchema = z.looseObject({
   maxAttachmentSizeMB: z.number().default(25).optional(),
   chatId: z.string().default('default').optional(),
   directMessageName: z.string().optional(),
+  driveUploadEnabled: z.boolean().default(true).optional(),
+  driveRetentionDays: z.number().default(7).optional(),
 });
 
 export type GoogleChatConfig = z.infer<typeof GoogleChatConfigSchema>;

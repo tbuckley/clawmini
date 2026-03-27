@@ -4,15 +4,22 @@ import { startDaemonToGoogleChatForwarder } from './forwarder.js';
 const mockConfig = {
   projectId: 'test',
   subscriptionName: 'test',
-  authorizedUsers: [],
+  authorizedUsers: ['user@example.com'],
   chatId: 'default',
   directMessageName: 'spaces/test-space',
+  driveUploadEnabled: true,
+  driveRetentionDays: 7,
 };
 
 const mockMessagesCreate = vi.fn().mockResolvedValue({});
-const mockMediaUpload = vi.fn().mockResolvedValue({
-  data: { attachmentDataRef: { resourceName: 'mock-ref' } },
+const mockDriveFilesCreate = vi.fn().mockResolvedValue({
+  data: { id: 'file-123', webViewLink: 'https://drive.google.com/file/123' },
 });
+const mockDrivePermissionsCreate = vi.fn().mockResolvedValue({});
+const mockDriveFilesList = vi.fn().mockResolvedValue({
+  data: { files: [{ id: 'old-file-123', name: 'old.txt' }] },
+});
+const mockDriveFilesDelete = vi.fn().mockResolvedValue({});
 
 vi.mock('googleapis', () => {
   return {
@@ -27,18 +34,31 @@ vi.mock('googleapis', () => {
             create: (...args: any[]) => mockMessagesCreate(...args),
           },
         },
-        media: {
+      }),
+      drive: vi.fn().mockReturnValue({
+        files: {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          upload: (...args: any[]) => mockMediaUpload(...args),
+          create: (...args: any[]) => mockDriveFilesCreate(...args),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          list: (...args: any[]) => mockDriveFilesList(...args),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          delete: (...args: any[]) => mockDriveFilesDelete(...args),
+        },
+        permissions: {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          create: (...args: any[]) => mockDrivePermissionsCreate(...args),
         },
       }),
     },
   };
 });
 
+const mockReadState = vi.fn().mockResolvedValue({ lastDriveCleanupMs: Date.now() });
+const mockWriteState = vi.fn().mockResolvedValue(undefined);
+
 vi.mock('./state.js', () => ({
-  readGoogleChatState: vi.fn().mockResolvedValue({}),
-  writeGoogleChatState: vi.fn().mockResolvedValue(undefined),
+  readGoogleChatState: () => mockReadState(),
+  writeGoogleChatState: (state: any) => mockWriteState(state),
 }));
 
 vi.mock('node:fs', () => ({
@@ -76,6 +96,8 @@ describe('Daemon to Google Chat Forwarder', () => {
         }),
       },
     };
+
+    mockReadState.mockResolvedValue({ lastDriveCleanupMs: Date.now() });
   });
 
   it('should fetch initial messages and start observation loop', async () => {
@@ -119,7 +141,7 @@ describe('Daemon to Google Chat Forwarder', () => {
     await forwarderPromise;
   });
 
-  it('should format message with files if present', async () => {
+  it('should format message with Google Drive links if files present', async () => {
     const controller = new AbortController();
 
     const forwarderPromise = startDaemonToGoogleChatForwarder(
@@ -141,12 +163,42 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalled());
 
+    expect(mockDriveFilesCreate).toHaveBeenCalledTimes(2);
+    expect(mockDrivePermissionsCreate).toHaveBeenCalledTimes(2);
+    expect(mockDrivePermissionsCreate).toHaveBeenCalledWith({
+      fileId: 'file-123',
+      requestBody: { type: 'user', role: 'reader', emailAddress: 'user@example.com' },
+      sendNotificationEmail: false,
+    });
+
     expect(mockMessagesCreate).toHaveBeenCalledWith({
       parent: 'spaces/test-space',
       requestBody: {
-        text: 'Here are the files\n\n*(Files generated: file1.png, file2.txt)*',
+        text: 'Here are the files\n\n*(Files generated: file1.png, file2.txt)*\n- file1.png: https://drive.google.com/file/123\n- file2.txt: https://drive.google.com/file/123\n',
       },
     });
+
+    controller.abort();
+    await forwarderPromise;
+  });
+
+  it('should run Drive cleanup on startup if older than 1 day', async () => {
+    const controller = new AbortController();
+
+    // Simulate never cleaned up
+    mockReadState.mockResolvedValueOnce({ lastDriveCleanupMs: 0 });
+
+    const forwarderPromise = startDaemonToGoogleChatForwarder(
+      mockTrpc,
+      mockConfig,
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(mockDriveFilesList).toHaveBeenCalled());
+    expect(mockDriveFilesDelete).toHaveBeenCalledWith({ fileId: 'old-file-123' });
+    expect(mockWriteState).toHaveBeenCalledWith(
+      expect.objectContaining({ lastDriveCleanupMs: expect.any(Number) })
+    );
 
     controller.abort();
     await forwarderPromise;

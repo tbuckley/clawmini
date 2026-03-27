@@ -34,6 +34,8 @@ describe('Google Chat Adapter Configuration', () => {
           ...config,
           maxAttachmentSizeMB: 25,
           chatId: 'default',
+          driveUploadEnabled: true,
+          driveRetentionDays: 7,
         });
       }
     });
@@ -126,7 +128,13 @@ describe('Google Chat Adapter Configuration', () => {
       vi.mocked(fsPromises.readFile).mockResolvedValue(JSON.stringify(mockConfig));
 
       const config = await readGoogleChatConfig();
-      expect(config).toEqual({ ...mockConfig, maxAttachmentSizeMB: 25, chatId: 'default' });
+      expect(config).toEqual({
+        ...mockConfig,
+        maxAttachmentSizeMB: 25,
+        chatId: 'default',
+        driveUploadEnabled: true,
+        driveRetentionDays: 7,
+      });
       expect(fsPromises.readFile).toHaveBeenCalledWith(getGoogleChatConfigPath(), 'utf-8');
     });
 
