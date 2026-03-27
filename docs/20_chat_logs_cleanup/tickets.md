@@ -27,7 +27,7 @@
 - Add E2E tests for `clawmini-lite reply` and `clawmini-lite tool`, ensuring they run in an isolated sandbox temporary directory.
 - Verify the generated messages map to the correct roles.
 - Run `npm run validate`.
-**Status**: Not Started
+**Status**: Completed
 
 ## Ticket 5: Update Routers and Internal Hooks
 **Description**: Refactor existing routers (e.g., `slash-policies.ts`, `agent-router.ts`) and system hooks to use the new specialized logging methods. Update cron jobs, subagent notifications, and policy requests to use `SystemMessage` and `PolicyRequestMessage` instead of masquerading as `UserMessage` or `CommandLogMessage`.

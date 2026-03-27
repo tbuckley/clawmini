@@ -2,7 +2,12 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { TRPCError } from '@trpc/server';
-import { appendMessage, type CommandLogMessage } from '../chats.js';
+import {
+  appendMessage,
+  type CommandLogMessage,
+  type AgentReplyMessage,
+  type ToolMessage,
+} from '../chats.js';
 import { executeSafe, generateRequestPreview, executeRequest } from '../policy-utils.js';
 import { getWorkspaceRoot, readPolicies, getClawminiDir } from '../../shared/workspace.js';
 import { PolicyRequestService } from '../policy-request-service.js';
@@ -58,6 +63,84 @@ export const logMessage = apiProcedure
       exitCode: 0,
       ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
       ...(filePaths.length > 0 ? { files: filePaths } : {}),
+    };
+
+    await appendMessage(chatId, logMsg);
+    return { success: true };
+  });
+
+export const logReplyMessage = apiProcedure
+  .input(
+    z.object({
+      message: z.string(),
+      files: z.array(z.string()).optional(),
+    })
+  )
+  .mutation(async ({ input, ctx }) => {
+    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
+    const chatId = ctx.tokenPayload.chatId;
+    const timestamp = new Date().toISOString();
+    const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
+
+    const filePaths: string[] = [];
+    if (input.files && input.files.length > 0) {
+      const workspaceRoot = getWorkspaceRoot(process.cwd());
+      const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
+
+      for (const file of input.files) {
+        const validPath = await validateLogFile(file, agentDir, workspaceRoot);
+        filePaths.push(validPath);
+      }
+    }
+
+    const logMsg: AgentReplyMessage = {
+      id,
+      role: 'agent',
+      content: input.message,
+      timestamp,
+      ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
+      ...(filePaths.length > 0 ? { files: filePaths } : {}),
+    };
+
+    await appendMessage(chatId, logMsg);
+    return { success: true };
+  });
+
+export const logToolMessage = apiProcedure
+  .input(
+    z.object({
+      name: z.string(),
+      payload: z.any().optional(),
+    })
+  )
+  .mutation(async ({ input, ctx }) => {
+    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
+    const chatId = ctx.tokenPayload.chatId;
+    const timestamp = new Date().toISOString();
+    const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
+    const messageId = randomUUID();
+
+    const payloadObj = input.payload !== undefined ? input.payload : {};
+    let contentStr: string;
+    if (typeof payloadObj === 'string') {
+      contentStr = payloadObj;
+    } else {
+      try {
+        contentStr = JSON.stringify(payloadObj, null, 2);
+      } catch {
+        contentStr = String(payloadObj);
+      }
+    }
+
+    const logMsg: ToolMessage = {
+      id,
+      messageId,
+      role: 'tool',
+      name: input.name,
+      payload: payloadObj,
+      content: contentStr,
+      timestamp,
+      ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
     };
 
     await appendMessage(chatId, logMsg);
@@ -232,6 +315,8 @@ import {
 
 export const agentRouter = router({
   logMessage,
+  logReplyMessage,
+  logToolMessage,
   listCronJobs: agentListCronJobs,
   addCronJob: agentAddCronJob,
   deleteCronJob: agentDeleteCronJob,

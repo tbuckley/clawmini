@@ -102,6 +102,39 @@ describe('E2E Export Lite Functionality Tests', () => {
     expect(chatLogContentUpdated).toContain('hello with file');
     expect(chatLogContentUpdated).toContain('"files":["lite-env-dumper/env.txt"]');
 
+    // 1.6 Test reply
+    const replyProcess = spawn('node', [litePath, 'reply', 'hello reply'], {
+      env: { ...process.env, CLAW_API_URL: envUrl, CLAW_API_TOKEN: envToken },
+    });
+    let replyStdout = '';
+    replyProcess.stdout.on('data', (d) => (replyStdout += d.toString()));
+    replyProcess.stderr.on('data', (d) => (replyStdout += d.toString()));
+    await new Promise((resolve) => replyProcess.on('close', resolve));
+    expect(replyStdout).toContain('Reply message appended');
+
+    const chatLogContentReply = fs.readFileSync(chatLogPath, 'utf8');
+    expect(chatLogContentReply).toContain('hello reply');
+    expect(chatLogContentReply).toContain('"role":"agent"');
+
+    // 1.7 Test tool
+    const toolProcess = spawn(
+      'node',
+      [litePath, 'tool', 'mytool', JSON.stringify({ key: 'value' })],
+      {
+        env: { ...process.env, CLAW_API_URL: envUrl, CLAW_API_TOKEN: envToken },
+      }
+    );
+    let toolStdout = '';
+    toolProcess.stdout.on('data', (d) => (toolStdout += d.toString()));
+    toolProcess.stderr.on('data', (d) => (toolStdout += d.toString()));
+    await new Promise((resolve) => toolProcess.on('close', resolve));
+    expect(toolStdout).toContain('Tool message appended');
+
+    const chatLogContentTool = fs.readFileSync(chatLogPath, 'utf8');
+    expect(chatLogContentTool).toContain('"name":"mytool"');
+    expect(chatLogContentTool).toContain('"role":"tool"');
+    expect(chatLogContentTool).toContain('"payload":{"key":"value"}');
+
     // 2. Test jobs add
     const addProcess = spawn(
       'node',

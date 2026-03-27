@@ -66,6 +66,51 @@ program
   });
 
 program
+  .command('reply <message>')
+  .description('Emit an AgentReplyMessage')
+  .option(
+    '-f, --file <path>',
+    'File path(s) to attach (can specify multiple)',
+    (val: string, prev: string[]) => prev.concat([val]),
+    []
+  )
+  .action(async (message, options) => {
+    try {
+      const files = options.file.length > 0 ? options.file : undefined;
+      const payload: { message: string; files?: string[] } = { message };
+      if (files !== undefined) payload.files = files;
+
+      const client = getClient();
+      await client.logReplyMessage.mutate(payload);
+      console.log('Reply message appended.');
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('tool <name> <payload>')
+  .description('Emit a ToolMessage')
+  .action(async (name, payload) => {
+    try {
+      let parsedPayload: unknown;
+      try {
+        parsedPayload = JSON.parse(payload);
+      } catch {
+        parsedPayload = payload;
+      }
+
+      const client = getClient();
+      await client.logToolMessage.mutate({ name, payload: parsedPayload });
+      console.log('Tool message appended.');
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+program
   .command('fetch-pending')
   .description('Fetch pending messages and output them as formatted strings')
   .action(async () => {

@@ -18,3 +18,8 @@
 - Resolved TypeScript strictness issue (`exactOptionalPropertyTypes`) by conditionally assigning optional properties rather than initializing them as `undefined`.
 - Verified compilation and tests pass using `npm run validate`.
 - Marked Ticket 3 as complete.
+- Added `logReplyMessage` and `logToolMessage` trpc mutations to `src/daemon/api/agent-router.ts`.
+- Implemented `clawmini-lite reply` and `clawmini-lite tool <name> <payload>` commands in `src/cli/lite.ts`.
+- Wrote E2E tests for the new lite commands in `src/cli/e2e/export-lite-func.test.ts`.
+- Verified compilation and tests pass using `npm run validate`.
+- Marked Ticket 4 as complete.
