@@ -58,6 +58,7 @@ export async function getDriveAuthClient(config: GoogleChatConfig) {
     const authUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: ['https://www.googleapis.com/auth/drive.file'],
+      prompt: 'consent',
     });
 
     console.log('\n======================================================');
