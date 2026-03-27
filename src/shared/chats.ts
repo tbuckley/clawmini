@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -213,6 +214,26 @@ async function* readLinesBackwards(filePath: string): AsyncGenerator<string, voi
   }
 }
 
+export function parseChatMessage(line: string): ChatMessage {
+  const msg = JSON.parse(line);
+  if (msg && msg.role === 'log') {
+    const isLegacy =
+      'level' in msg ||
+      'command' in msg ||
+      'cwd' in msg ||
+      'stdout' in msg ||
+      'stderr' in msg ||
+      'exitCode' in msg ||
+      'source' in msg ||
+      !('messageId' in msg);
+
+    if (isLegacy) {
+      msg.role = 'legacy_log';
+    }
+  }
+  return msg as ChatMessage;
+}
+
 export async function getMessages(
   id: string,
   limit?: number,
@@ -257,7 +278,7 @@ export async function getMessages(
 
   for await (const line of readLinesBackwards(chatFile)) {
     try {
-      const msg = JSON.parse(line) as ChatMessage;
+      const msg = parseChatMessage(line);
 
       if (skipping) {
         if (msg.id === before) {
@@ -334,7 +355,7 @@ export async function findLastMessage(
 
   for await (const line of readLinesBackwards(chatFile)) {
     try {
-      const msg = JSON.parse(line) as ChatMessage;
+      const msg = parseChatMessage(line);
       if (predicate(msg)) return msg;
     } catch {
       // Ignore invalid JSON lines

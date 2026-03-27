@@ -170,4 +170,51 @@ describe('chats utilities', () => {
     expect(readAllBefore.length).toBe(3);
     expect(readAllBefore[0]?.id).toBe('msg-1');
   });
+
+  it('should parse legacy log messages gracefully', async () => {
+    await createChat('chat1', TEST_DIR);
+
+    // Old plain log missing messageId
+    const oldPlainLog = {
+      id: 'log-1',
+      role: 'log',
+      content: 'legacy content',
+      timestamp: new Date().toISOString(),
+    };
+
+    // Old command log with legacy properties
+    const oldCommandLog = {
+      id: 'log-2',
+      role: 'log',
+      messageId: 'msg-1',
+      content: 'output',
+      command: 'echo output',
+      timestamp: new Date().toISOString(),
+    };
+
+    // New generic log message without legacy properties
+    const newLogMsg = {
+      id: 'log-3',
+      role: 'log',
+      messageId: 'msg-1',
+      content: 'new log',
+      timestamp: new Date().toISOString(),
+      type: 'tool',
+    };
+
+    const chatFile = path.join(TEST_DIR, '.clawmini', 'chats', 'chat1', 'chat.jsonl');
+    await fs.appendFile(chatFile, JSON.stringify(oldPlainLog) + '\n');
+    await fs.appendFile(chatFile, JSON.stringify(oldCommandLog) + '\n');
+    await fs.appendFile(chatFile, JSON.stringify(newLogMsg) + '\n');
+
+    const messages = await getMessages('chat1', undefined, TEST_DIR);
+    expect(messages.length).toBe(3);
+
+    // Should map to legacy_log
+    expect(messages[0]?.role).toBe('legacy_log');
+    expect(messages[1]?.role).toBe('legacy_log');
+
+    // Should remain log
+    expect(messages[2]?.role).toBe('log');
+  });
 });

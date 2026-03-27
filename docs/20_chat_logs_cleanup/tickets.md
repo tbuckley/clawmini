@@ -12,7 +12,7 @@
 **Verification**:
 - Add unit tests verifying legacy chat logs are parsed correctly.
 - Run `npm run validate`.
-**Status**: Not Started
+**Status**: Completed
 
 ## Ticket 3: Update Chat Logger Methods
 **Description**: Update `src/daemon/agent/chat-logger.ts` to expose specific methods for the new message types (e.g., `logSystemMessage`, `logAgentReply`, `logToolMessage`, `logPolicyRequestMessage`).
