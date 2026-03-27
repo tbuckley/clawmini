@@ -10,6 +10,9 @@ const mockConfig = {
 };
 
 const mockMessagesCreate = vi.fn().mockResolvedValue({});
+const mockMediaUpload = vi.fn().mockResolvedValue({
+  data: { attachmentDataRef: { resourceName: 'mock-ref' } },
+});
 
 vi.mock('googleapis', () => {
   return {
@@ -24,10 +27,32 @@ vi.mock('googleapis', () => {
             create: (...args: any[]) => mockMessagesCreate(...args),
           },
         },
+        media: {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          upload: (...args: any[]) => mockMediaUpload(...args),
+        },
       }),
     },
   };
 });
+
+vi.mock('./state.js', () => ({
+  readGoogleChatState: vi.fn().mockResolvedValue({}),
+  writeGoogleChatState: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('node:fs', () => ({
+  default: {
+    existsSync: vi.fn().mockReturnValue(true),
+    createReadStream: vi.fn().mockReturnValue('mock-stream'),
+  },
+}));
+
+vi.mock('mime-types', () => ({
+  default: {
+    lookup: vi.fn().mockReturnValue('image/png'),
+  },
+}));
 
 describe('Daemon to Google Chat Forwarder', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -116,10 +141,16 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalled());
 
+    expect(mockMediaUpload).toHaveBeenCalledTimes(2);
+
     expect(mockMessagesCreate).toHaveBeenCalledWith({
       parent: 'spaces/test-space',
       requestBody: {
-        text: 'Here are the files\n\n*(Files generated: file1.png, file2.txt)*',
+        text: 'Here are the files',
+        attachment: [
+          { attachmentDataRef: { resourceName: 'mock-ref' } },
+          { attachmentDataRef: { resourceName: 'mock-ref' } },
+        ],
       },
     });
 

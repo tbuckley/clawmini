@@ -1,8 +1,12 @@
-import { google } from 'googleapis';
+import { google, type chat_v1 } from 'googleapis';
 import type { getTRPCClient } from './client.js';
 import type { ChatMessage, CommandLogMessage } from '../shared/chats.js';
 import path from 'node:path';
+import fs from 'node:fs';
+import mime from 'mime-types';
 import type { GoogleChatConfig } from './config.js';
+import { readGoogleChatState, writeGoogleChatState } from './state.js';
+import { getWorkspaceRoot } from '../shared/workspace.js';
 
 let authClient: Awaited<ReturnType<typeof google.auth.getClient>> | null = null;
 async function getAuthClient() {
@@ -19,23 +23,29 @@ export async function startDaemonToGoogleChatForwarder(
   config: GoogleChatConfig,
   signal?: AbortSignal
 ) {
-  let lastMessageId: string | undefined = undefined;
+  const state = await readGoogleChatState();
+  let lastMessageId = state.lastSyncedMessageId;
   const chatId = config.chatId || 'default';
 
-  try {
-    const messages = await trpc.getMessages.query({ chatId, limit: 1 });
-    if (Array.isArray(messages) && messages.length > 0) {
-      const lastMsg = messages[messages.length - 1];
-      if (lastMsg) {
-        lastMessageId = lastMsg.id;
+  if (!lastMessageId) {
+    try {
+      const messages = await trpc.getMessages.query({ chatId, limit: 1 });
+      if (Array.isArray(messages) && messages.length > 0) {
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg) {
+          lastMessageId = lastMsg.id;
+          await writeGoogleChatState({ lastSyncedMessageId: lastMessageId });
+        }
       }
+    } catch (error) {
+      if (signal?.aborted) return;
+      console.error('Failed to fetch initial messages from daemon:', error);
     }
-  } catch (error) {
-    if (signal?.aborted) return;
-    console.error('Failed to fetch initial messages from daemon:', error);
   }
 
-  console.log(`Starting daemon-to-google-chat forwarder for chat ${chatId}`);
+  console.log(
+    `Starting daemon-to-google-chat forwarder for chat ${chatId}, lastMessageId: ${lastMessageId}`
+  );
 
   let retryDelay = 1000;
   const maxRetryDelay = 30000;
@@ -66,11 +76,14 @@ export async function startDaemonToGoogleChatForwarder(
 
                 const message = rawMessage as ChatMessage;
 
-                if (message.role === 'log') {
+                if (message.role === 'log' && !message.subagentId) {
                   const logMessage = message as CommandLogMessage;
 
                   if (logMessage.level === 'verbose') {
                     lastMessageId = logMessage.id;
+                    await writeGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
+                      console.error
+                    );
                     continue;
                   }
 
@@ -79,6 +92,9 @@ export async function startDaemonToGoogleChatForwarder(
 
                   if (!hasContent && !hasFiles) {
                     lastMessageId = logMessage.id;
+                    await writeGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
+                      console.error
+                    );
                     continue;
                   }
 
@@ -88,6 +104,9 @@ export async function startDaemonToGoogleChatForwarder(
                       logMessage.content
                     );
                     lastMessageId = logMessage.id;
+                    await writeGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
+                      console.error
+                    );
                     continue;
                   }
 
@@ -95,26 +114,73 @@ export async function startDaemonToGoogleChatForwarder(
                     const client = await getAuthClient();
                     const chatApi = google.chat({ version: 'v1', auth: client });
 
-                    // Format message (Google Chat doesn't support file upload directly via API easily unless we use Drive or specific attachments endpoint, so we just mention the files for now, or use basic text)
                     let text = logMessage.content || '';
+                    const attachments: any[] = [];
+
                     if (hasFiles) {
-                      const fileNames = logMessage.files?.map((f) => path.basename(f)).join(', ');
-                      text += `\n\n*(Files generated: ${fileNames})*`;
+                      const workspaceRoot = getWorkspaceRoot(process.cwd());
+                      for (const fileRelPath of logMessage.files!) {
+                        const filePath = path.resolve(workspaceRoot, fileRelPath);
+                        if (!fs.existsSync(filePath)) continue;
+
+                        const fileName = path.basename(filePath);
+                        const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+
+                        try {
+                          const uploadRes = await chatApi.media.upload({
+                            parent: config.directMessageName,
+                            requestBody: { filename: fileName },
+                            media: {
+                              mimeType,
+                              body: fs.createReadStream(filePath),
+                            },
+                          });
+
+                          if (uploadRes.data.attachmentDataRef) {
+                            attachments.push({
+                              attachmentDataRef: uploadRes.data.attachmentDataRef,
+                            });
+                          }
+                        } catch (err) {
+                          console.error(`Failed to upload file ${fileName} to Google Chat`, err);
+                          text += `\n\n*(Failed to upload file: ${fileName})*`;
+                        }
+                      }
                     }
 
-                    const requestBody = { text };
+                    if (text.length > 4000) {
+                      const chunks = chunkString(text, 4000);
+                      for (let i = 0; i < chunks.length; i++) {
+                        if (signal?.aborted) break;
+                        const requestBody: any = { text: chunks[i] as string };
+                        if (i === chunks.length - 1 && attachments.length > 0) {
+                          requestBody.attachment = attachments;
+                        }
+                        await chatApi.spaces.messages.create({
+                          parent: config.directMessageName,
+                          requestBody,
+                        });
+                      }
+                    } else {
+                      const requestBody: chat_v1.Schema$Message = {};
+                      if (text) requestBody.text = text;
+                      if (attachments.length > 0) requestBody.attachment = attachments;
 
-                    await chatApi.spaces.messages.create({
-                      parent: config.directMessageName,
-                      requestBody,
-                    });
+                      await chatApi.spaces.messages.create({
+                        parent: config.directMessageName,
+                        requestBody,
+                      });
+                    }
                   } catch (error) {
                     console.error('Failed to send message to Google Chat:', error);
-                    break;
+                    break; // break early to avoid updating state if sending failed
                   }
                 }
 
                 lastMessageId = message.id;
+                await writeGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
+                  console.error
+                );
               }
             });
           },
@@ -155,4 +221,13 @@ export async function startDaemonToGoogleChatForwarder(
       resolve();
     });
   });
+}
+
+function chunkString(str: string, size: number): string[] {
+  const chunks: string[] = [];
+  const chars = Array.from(str);
+  for (let i = 0; i < chars.length; i += size) {
+    chunks.push(chars.slice(i, i + size).join(''));
+  }
+  return chunks;
 }
