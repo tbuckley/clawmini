@@ -136,38 +136,38 @@ The following details how existing logging flows will be migrated to the new tax
 
 4. **Agent Logs Background Info Silently**
    - _Current:_ Agent calls `clawmini-lite log "Note" --file ...`
-   - _New:_ Agent calls `clawmini-lite log "Note" --file ...`. This emits a `LogMessage` (`role: 'log'`).
+   - _New:_ Agent calls `clawmini-lite log "Note"`. This emits a `LogMessage` (`role: 'log'`). NOTE: this command no longer supports files.
 
 5. **Router Automatic Replies (e.g., `/new`, `/stop`)**
-   - _Current:_ `CommandLogMessage` with `source: 'router'` or `command: 'router'`.
-   - _New:_ `SystemMessage` (`role: 'system'`, `event: 'router'`, `displayRole: 'agent'`).
-
-6. **Policy Request is Pending**
-   - _Current:_ No dedicated chat message, just held in the request store.
-   - _New:_ `PolicyRequestMessage` (`role: 'policy'`, `status: 'pending'`). The UI renders "Approve / Reject" buttons.
-
-7. **Policy Request is Approved/Rejected**
+   - _Current:_ Sets `command: 'router'`, empty stderr, `cwd: process.cwd()`.
+   - _New:_ `logAutomaticReply` will emit a `SystemMessage` (`role: 'system'`, `event: 'router'`, `displayRole: 'agent'`). This handles user interactions like `/pending`, `/new`, `/stop` so the user receives a formatted system notification.
+   6. **Policy Request is Pending**
+   - _Current:_ No dedicated chat message, just held in the request store, and a message was sent to the user when the request was submitted.
+   - _New:_ `PolicyRequestMessage` (`role: 'policy'`, `status: 'pending'`, `displayRole: 'agent'`). The UI renders "Approve / Reject" buttons. This explicitly replaces any previous manual user-facing notification.
+   7. **Policy Request is Approved/Rejected**
    - _Current:_ Saves a `CommandLogMessage` describing the approval/rejection.
    - _New:_
-     - 1. Emits a `SystemMessage` (`role: 'system'`, `event: 'policy_approved'` or `policy_rejected`, `displayRole: 'user'`) sent to the agent to notify it of the action.
-     - 2. Emits a `SystemMessage` (`role: 'system'`, `event: 'router'`, `displayRole: 'agent'`) to confirm the action to the user in the UI.
+     - 1. Emits a `SystemMessage` (`role: 'system'`, `event: 'policy_approved'` or `policy_rejected`, `displayRole: 'user'`) sent to the agent to notify it of the action. This message MUST include the output of the policy command so the agent can see the results.
+     - 2. The router reply is emitted by `logAutomaticReply` as a `SystemMessage` (`role: 'system'`, `event: 'router'`, `displayRole: 'agent'`) to confirm the action to the user in the UI.
      - 3. Emits a `CommandLogMessage` (`role: 'command'`) recording the actual command execution of the policy.
-
-8. **Subagent Notifications / Lifecycle**
-   - _Current:_ Appends string to `executeDirectMessage` which saves as a `UserMessage`.
-   - _New:_ `SystemMessage` (`role: 'system'`, `event: 'subagent_update'`, `displayRole: 'user'`). Wakes up the parent agent without masquerading as the user.
-
-9. **Cron Job Triggers / Background Injections**
+   8. **Subagent Notifications / Lifecycle**
+   - _Current:_ `logSystemEvent` which saves as a `CommandLogMessage`.
+   - _New:_ Emits a `SubagentStatusMessage` (`role: 'subagent_status'`, `status: 'completed' | 'failed'`) with no `displayRole`.
+   9. **Cron Job Triggers / Background Injections**
    - _Current:_ Injected as `UserMessage` to wake up the agent.
    - _New:_ `SystemMessage` (`role: 'system'`, `event: 'cron'`, `displayRole: 'user'`). Wakes up the agent.
-
-10. **Command Retries (`retry-delay`)**
-    - _Current:_ `CommandLogMessage` with `command: 'retry-delay'`.
-    - _New:_ Emits a `CommandLogMessage` (`role: 'command'`) for the failed attempt, with `retryAttemptIndex: 0`. The fallback execution will then emit a subsequent `CommandLogMessage` for the retry with incremented indices.
-
-11. **Agent Decides to Call a Tool**
-    - _Current:_ Implicitly merged with the tool execution result or unrecorded outside the LLM context.
-    - _New:_ A system hook will detect the LLM's tool call and automatically execute `clawmini-lite tool <name> <payload>`. This ensures the intent is logged and an explicit `ToolMessage` (`role: 'tool'`) is emitted without requiring extra manual steps from the LLM.
+   10. **Command Retries (`retry-delay`)**
+   - _Current:_ `CommandLogMessage` with `command: 'retry-delay'`.
+   - _New:_ Emits a `CommandLogMessage` (`role: 'command'`) for the failed attempt, with `retryAttemptIndex: 0`. The fallback execution will then emit a subsequent `CommandLogMessage` for the retry with incremented indices.
+   11. **Agent Decides to Call a Tool**
+   - _Current:_ Implicitly merged with the tool execution result or unrecorded outside the LLM context.
+   - _New:_ A system hook will detect the LLM's tool call and automatically execute `clawmini-lite tool <name> <payload>`. This ensures the intent is logged and an explicit `ToolMessage` (`role: 'tool'`) is emitted without requiring extra manual steps from the LLM.
+   12. **Agent Command Final Output**
+   - _Current:_ The result of an executed command is logged via `logCommandResult` into a single `CommandLogMessage`.
+   - _New:_ When an agent runs a command, it should generate a `CommandLogMessage` (containing the raw command, stdin, stdout/stderr), and the extracted output (or raw output if no extraction) should *also* go into a separate `AgentReplyMessage` so that the user sees it (unless the output explicitly marks `NO_REPLY_NECESSARY`).
+   13. **`/pending` Request**
+   - _Current:_ Router string response handled by `logAutomaticReply`.
+   - _New:_ Because `logAutomaticReply` emits a `SystemMessage` with `displayRole: 'agent'`, the response to `/pending` will correctly be rendered as a system message displayed to the user.
 
 ### 3.3. Adapters & Display Logic
 
