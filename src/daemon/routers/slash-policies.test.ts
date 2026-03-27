@@ -106,11 +106,10 @@ describe('slashPolicies', () => {
     expect(appendMessage).toHaveBeenCalledWith(
       'chat-1',
       expect.objectContaining({
-        role: 'command',
-        content: 'Request req-1 approved and executed.',
-        command: 'echo hello world',
-        stdout: 'hello world',
-        exitCode: 0,
+        role: 'system',
+        event: 'policy_approved',
+        displayRole: 'user',
+        content: expect.stringContaining('Request req-1 approved.'),
       })
     );
     expect(result.action).toBeUndefined();
@@ -146,9 +145,10 @@ describe('slashPolicies', () => {
     expect(appendMessage).toHaveBeenCalledWith(
       'chat-1',
       expect.objectContaining({
-        role: 'policy',
+        role: 'system',
+        event: 'policy_rejected',
+        displayRole: 'user',
         content: 'Request req-1 rejected. Reason: Not allowed',
-        status: 'rejected',
       })
     );
     expect(result.action).toBeUndefined();

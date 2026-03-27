@@ -67,7 +67,7 @@
 **Description**: In `src/daemon/routers/slash-policies.ts`, when a policy is approved or rejected, emit a `SystemMessage` with `event: 'policy_approved'` or `policy_rejected` and `displayRole: 'user'` to notify the agent. For approvals, ensure the system message includes the command's output so the agent can see it. Continue returning the string `reply` so that `logAutomaticReply` handles the user-facing confirmation.
 **Verification**:
 - Run `npm run validate`.
-**Status**: Not Started
+**Status**: Completed
 
 ## Ticket 11: Agent Command Final Output
 **Description**: Implement logging the final output of agent commands to users. Update `logCommandResult` (or the place that calls it in `agent-session.ts`) to emit BOTH a `CommandLogMessage` (containing the raw command, stdout/stderr, etc.) AND an `AgentReplyMessage` containing the extracted (or raw) output. If the output strictly equals or contains `NO_REPLY_NECESSARY`, the `AgentReplyMessage` should be skipped. This ensures users see the results of agent actions natively in the UI.

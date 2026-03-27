@@ -4,7 +4,7 @@ import { RequestStore } from '../request-store.js';
 import { readPolicies, getWorkspaceRoot } from '../../shared/workspace.js';
 import { executeRequest } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
-import type { CommandLogMessage, PolicyRequestMessage } from '../../shared/chats.js';
+import type { SystemMessage } from '../../shared/chats.js';
 
 async function loadAndValidateRequest(id: string, state: RouterState) {
   const store = new RequestStore(getWorkspaceRoot());
@@ -55,32 +55,26 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
 
     req.state = 'Approved';
 
-    const { stdout, stderr, exitCode, commandStr } = await executeRequest(
-      req,
-      policy,
-      getWorkspaceRoot()
-    );
+    const { stdout, stderr, exitCode } = await executeRequest(req, policy, getWorkspaceRoot());
 
     req.executionResult = { stdout, stderr, exitCode };
     await store.save(req);
 
-    const logMsg: CommandLogMessage = {
+    const agentMessage = `Request ${id} approved.\n\n${wrapInHtml('stdout', stdout)}\n\n${wrapInHtml('stderr', stderr)}\n\nExit Code: ${exitCode}`;
+
+    const logMsg: SystemMessage = {
       id: randomUUID(),
       messageId: state.messageId,
-      role: 'command',
-      content: `Request ${id} approved and executed.`,
-      stderr,
-      stdout,
+      role: 'system',
+      event: 'policy_approved',
+      displayRole: 'user',
+      content: agentMessage,
       timestamp: new Date().toISOString(),
-      command: commandStr,
-      cwd: getWorkspaceRoot(),
-      exitCode,
       ...(req.subagentId ? { subagentId: req.subagentId } : {}),
     };
 
     await appendMessage(state.chatId, logMsg);
 
-    const agentMessage = `Request ${id} approved.\n\n${wrapInHtml('stdout', stdout)}\n\n${wrapInHtml('stderr', stderr)}\n\nExit Code: ${exitCode}`;
     return {
       ...state,
       message: agentMessage,
@@ -102,22 +96,21 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     req.rejectionReason = reason;
     await store.save(req);
 
-    const logMsg: PolicyRequestMessage = {
+    const agentMessage = `Request ${id} rejected. Reason: ${reason}`;
+
+    const logMsg: SystemMessage = {
       id: randomUUID(),
       messageId: state.messageId,
-      role: 'policy',
-      requestId: id,
-      commandName: req.commandName,
-      args: req.args,
-      status: 'rejected',
-      content: `Request ${id} rejected. Reason: ${reason}`,
+      role: 'system',
+      event: 'policy_rejected',
+      displayRole: 'user',
+      content: agentMessage,
       timestamp: new Date().toISOString(),
       ...(req.subagentId ? { subagentId: req.subagentId } : {}),
     };
 
     await appendMessage(state.chatId, logMsg);
 
-    const agentMessage = `Request ${id} rejected. Reason: ${reason}`;
     return {
       ...state,
       message: agentMessage,
