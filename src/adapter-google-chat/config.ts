@@ -65,6 +65,8 @@ export async function initGoogleChatConfig(startDir = process.cwd()): Promise<vo
     subscriptionName: 'YOUR_SUBSCRIPTION_NAME',
     authorizedUsers: ['user@example.com'],
     chatId: 'default',
+    driveOauthClientId: 'YOUR_OAUTH_CLIENT_ID',
+    driveOauthClientSecret: 'YOUR_OAUTH_CLIENT_SECRET',
   };
 
   await fsPromises.writeFile(configPath, JSON.stringify(templateConfig, null, 2), 'utf-8');
