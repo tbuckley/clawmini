@@ -141,16 +141,10 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalled());
 
-    expect(mockMediaUpload).toHaveBeenCalledTimes(2);
-
     expect(mockMessagesCreate).toHaveBeenCalledWith({
       parent: 'spaces/test-space',
       requestBody: {
-        text: 'Here are the files',
-        attachment: [
-          { attachmentDataRef: { resourceName: 'mock-ref' } },
-          { attachmentDataRef: { resourceName: 'mock-ref' } },
-        ],
+        text: 'Here are the files\n\n*(Files generated: file1.png, file2.txt)*',
       },
     });
 
