@@ -123,85 +123,101 @@ export async function startDaemonToGoogleChatForwarder(
                           config.driveOauthClientSecret
                         ) {
                           text += `\n\n`;
-                          const driveClient = await getDriveAuthClient(config);
-                          const driveApi = google.drive({ version: 'v3', auth: driveClient });
-                          const workspaceRoot = getWorkspaceRoot(process.cwd());
-
-                          let folderId: string | undefined;
                           try {
-                            const queryRes = await driveApi.files.list({
-                              q: "mimeType='application/vnd.google-apps.folder' and name='Clawmini Uploads' and trashed=false",
-                              fields: 'files(id)',
-                            });
-                            if (queryRes.data.files && queryRes.data.files.length > 0) {
-                              folderId = queryRes.data.files[0]!.id!;
-                            } else {
-                              const folderRes = await driveApi.files.create({
-                                requestBody: {
-                                  name: 'Clawmini Uploads',
-                                  mimeType: 'application/vnd.google-apps.folder',
-                                },
-                                fields: 'id',
-                              });
-                              if (folderRes.data.id) {
-                                folderId = folderRes.data.id;
-                              }
-                            }
-                          } catch (err) {
-                            console.error('Failed to create or find Clawmini Uploads folder', err);
-                          }
+                            const driveClient = await getDriveAuthClient(config);
+                            const driveApi = google.drive({ version: 'v3', auth: driveClient });
+                            const workspaceRoot = getWorkspaceRoot(process.cwd());
 
-                          const uploadPromises = logMessage.files!.map(async (fileRelPath) => {
-                            const filePath = path.resolve(workspaceRoot, fileRelPath);
-                            if (!fs.existsSync(filePath)) return null;
-
-                            const fileName = path.basename(filePath);
-                            const mimeType = mime.lookup(filePath) || 'application/octet-stream';
-
+                            let folderId: string | undefined;
                             try {
-                              const driveRes = await driveApi.files.create({
-                                requestBody: {
-                                  name: fileName,
-                                  ...(folderId ? { parents: [folderId] } : {}),
-                                },
-                                media: { mimeType, body: fs.createReadStream(filePath) },
-                                fields: 'id, webViewLink',
+                              const queryRes = await driveApi.files.list({
+                                q: "mimeType='application/vnd.google-apps.folder' and name='Clawmini Uploads' and trashed=false",
+                                fields: 'files(id)',
                               });
-
-                              if (driveRes.data.id && driveRes.data.webViewLink) {
-                                const fileId = driveRes.data.id;
-                                try {
-                                  await Promise.all(
-                                    config.authorizedUsers.map((email) =>
-                                      driveApi.permissions.create({
-                                        fileId,
-                                        requestBody: {
-                                          type: 'user',
-                                          role: 'reader',
-                                          emailAddress: email,
-                                        },
-                                        sendNotificationEmail: false,
-                                      })
-                                    )
-                                  );
-                                } catch (err) {
-                                  console.error(`Failed to grant permissions for ${fileName}`, err);
+                              if (queryRes.data.files && queryRes.data.files.length > 0) {
+                                folderId = queryRes.data.files[0]!.id!;
+                              } else {
+                                const folderRes = await driveApi.files.create({
+                                  requestBody: {
+                                    name: 'Clawmini Uploads',
+                                    mimeType: 'application/vnd.google-apps.folder',
+                                  },
+                                  fields: 'id',
+                                });
+                                if (folderRes.data.id) {
+                                  folderId = folderRes.data.id;
                                 }
-                                return driveRes.data.webViewLink;
                               }
-                              return null;
                             } catch (err) {
                               console.error(
-                                `Failed to upload file ${fileName} to Google Drive`,
+                                'Failed to create or find Clawmini Uploads folder',
                                 err
                               );
-                              return `(Failed to upload to Drive: ${fileName})`;
                             }
-                          });
 
-                          const uploadResults = await Promise.all(uploadPromises);
-                          for (const result of uploadResults) {
-                            if (result) text += `${result}\n`;
+                            const uploadPromises = logMessage.files!.map(async (fileRelPath) => {
+                              const filePath = path.resolve(workspaceRoot, fileRelPath);
+                              if (!fs.existsSync(filePath)) return null;
+
+                              const fileName = path.basename(filePath);
+                              const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+
+                              try {
+                                const driveRes = await driveApi.files.create({
+                                  requestBody: {
+                                    name: fileName,
+                                    ...(folderId ? { parents: [folderId] } : {}),
+                                  },
+                                  media: { mimeType, body: fs.createReadStream(filePath) },
+                                  fields: 'id, webViewLink',
+                                });
+
+                                if (driveRes.data.id && driveRes.data.webViewLink) {
+                                  const fileId = driveRes.data.id;
+                                  try {
+                                    await Promise.all(
+                                      config.authorizedUsers.map((email) =>
+                                        driveApi.permissions.create({
+                                          fileId,
+                                          requestBody: {
+                                            type: 'user',
+                                            role: 'reader',
+                                            emailAddress: email,
+                                          },
+                                          sendNotificationEmail: false,
+                                        })
+                                      )
+                                    );
+                                  } catch (err) {
+                                    console.error(
+                                      `Failed to grant permissions for ${fileName}`,
+                                      err
+                                    );
+                                  }
+                                  return driveRes.data.webViewLink;
+                                }
+                                return null;
+                              } catch (err) {
+                                console.error(
+                                  `Failed to upload file ${fileName} to Google Drive`,
+                                  err
+                                );
+                                return `*(Failed to upload to Drive: ${fileName})*`;
+                              }
+                            });
+
+                            const uploadResults = await Promise.all(uploadPromises);
+                            for (const result of uploadResults) {
+                              if (result) text += `${result}\n`;
+                            }
+                          } catch (driveAuthErr) {
+                            console.error(
+                              'Drive API/Auth Failed, degrading to local files output:',
+                              driveAuthErr
+                            );
+                            // We drop the drive upload process here so we do not throw out of the message loop.
+                            // This ensures transient or permanent auth failures don't block subsequent messages.
+                            text += `*(Files generated: ${fileNames})*`;
                           }
                         } else {
                           text += `\n\n*(Files generated: ${fileNames})*`;
@@ -225,7 +241,8 @@ export async function startDaemonToGoogleChatForwarder(
                       }
                     } catch (error) {
                       console.error('Failed to send message to Google Chat:', error);
-                      throw error; // throw early to trigger reconnect and avoid updating state
+                      // We drop the message here and do not throw so that a bad message (e.g. malformed or rejected by Google)
+                      // does not cause an infinite crash loop where the forwarder keeps retrying the exact same bad message forever.
                     }
                   }
 

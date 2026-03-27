@@ -227,7 +227,42 @@ describe('Daemon to Google Chat Forwarder', () => {
     await forwarderPromise;
   });
 
-  it('should reconnect and resync if message sending fails', async () => {
+  it('should gracefully degrade to text-only output if drive auth fails', async () => {
+    const controller = new AbortController();
+
+    const forwarderPromise = startDaemonToGoogleChatForwarder(
+      mockTrpc,
+      mockConfig,
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    mockDriveFilesCreate.mockRejectedValueOnce(new Error('Drive Auth Failed'));
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-drive-fail',
+        role: 'log',
+        content: 'Here are the files',
+        files: ['/tmp/file1.png'],
+      },
+    ]);
+
+    await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalled());
+
+    expect(mockMessagesCreate).toHaveBeenCalledWith({
+      parent: 'spaces/test-space',
+      requestBody: {
+        text: 'Here are the files\n\n*(Failed to upload to Drive: file1.png)*\n',
+      },
+    });
+
+    controller.abort();
+    await forwarderPromise;
+  });
+
+  it('should log and drop the message, updating state, if chat api fails', async () => {
     const controller = new AbortController();
 
     const forwarderPromise = startDaemonToGoogleChatForwarder(
@@ -242,23 +277,24 @@ describe('Daemon to Google Chat Forwarder', () => {
     mockMessagesCreate.mockImplementation(() => {
       callCount++;
       if (callCount === 1) {
-        throw new Error('Network error');
+        return Promise.reject(new Error('Network error'));
       }
       return Promise.resolve();
     });
-
-    const originalSubscribe = mockTrpc.waitForMessages.subscribe;
-    originalSubscribe.mockClear();
 
     subscribeCallbacks.onData([
       { id: 'msg-err-1', role: 'log', content: 'Agent response 1' },
       { id: 'msg-err-2', role: 'log', content: 'Agent response 2' },
     ]);
 
-    await vi.waitFor(() => expect(originalSubscribe).toHaveBeenCalled(), { timeout: 2000 });
+    // Wait for the second message to be processed, meaning the first one didn't break the loop
+    await vi.waitFor(() => expect(callCount).toBe(2));
 
-    expect(mockWriteState).not.toHaveBeenCalledWith(
+    expect(mockWriteState).toHaveBeenCalledWith(
       expect.objectContaining({ lastSyncedMessageId: 'msg-err-1' })
+    );
+    expect(mockWriteState).toHaveBeenCalledWith(
+      expect.objectContaining({ lastSyncedMessageId: 'msg-err-2' })
     );
 
     controller.abort();
