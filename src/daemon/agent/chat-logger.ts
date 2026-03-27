@@ -5,6 +5,10 @@ import {
   type ChatMessage,
   type CommandLogMessage,
   type UserMessage,
+  type SystemMessage,
+  type AgentReplyMessage,
+  type ToolMessage,
+  type PolicyRequestMessage,
 } from '../chats.js';
 import type { Logger } from './types.js';
 
@@ -107,5 +111,67 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         cwd,
         exitCode: 0,
       } satisfies CommandLogMessage),
+
+    logSystemMessage: async ({ content, event, messageId }) => {
+      const msg: SystemMessage = {
+        id: crypto.randomUUID(),
+        role: 'system',
+        content,
+        event,
+        timestamp: new Date().toISOString(),
+      };
+      if (messageId !== undefined) {
+        msg.messageId = messageId;
+      }
+      return append<SystemMessage>(msg);
+    },
+
+    logAgentReply: async ({ content, files }) => {
+      const msg: AgentReplyMessage = {
+        id: crypto.randomUUID(),
+        role: 'agent',
+        content,
+        timestamp: new Date().toISOString(),
+      };
+      if (files !== undefined) {
+        msg.files = files;
+      }
+      return append<AgentReplyMessage>(msg);
+    },
+
+    logToolMessage: async ({ content, messageId, name, payload }) => {
+      const msg: ToolMessage = {
+        id: crypto.randomUUID(),
+        role: 'tool',
+        content,
+        messageId,
+        name,
+        payload,
+        timestamp: new Date().toISOString(),
+      };
+      return append<ToolMessage>(msg);
+    },
+
+    logPolicyRequestMessage: async ({
+      content,
+      messageId,
+      requestId,
+      commandName,
+      args,
+      status,
+    }) => {
+      const msg: PolicyRequestMessage = {
+        id: crypto.randomUUID(),
+        role: 'policy',
+        content,
+        messageId,
+        requestId,
+        commandName,
+        args,
+        status,
+        timestamp: new Date().toISOString(),
+      };
+      return append<PolicyRequestMessage>(msg);
+    },
   };
 }

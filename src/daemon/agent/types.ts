@@ -1,4 +1,12 @@
-import type { ChatMessage, CommandLogMessage, UserMessage } from '../chats.js';
+import type {
+  ChatMessage,
+  CommandLogMessage,
+  UserMessage,
+  SystemMessage,
+  AgentReplyMessage,
+  ToolMessage,
+  PolicyRequestMessage,
+} from '../chats.js';
 
 export interface Logger {
   append<T extends ChatMessage>(msg: T): Promise<T>;
@@ -16,6 +24,26 @@ export interface Logger {
     cwd: string;
   }): Promise<CommandLogMessage>;
   logCommandResult(options: ExecutionResponse): Promise<CommandLogMessage>;
+  logSystemMessage(options: {
+    content: string;
+    event: SystemMessage['event'];
+    messageId?: string;
+  }): Promise<SystemMessage>;
+  logAgentReply(options: { content: string; files?: string[] }): Promise<AgentReplyMessage>;
+  logToolMessage(options: {
+    content: string;
+    messageId: string;
+    name: string;
+    payload: unknown;
+  }): Promise<ToolMessage>;
+  logPolicyRequestMessage(options: {
+    content: string;
+    messageId: string;
+    requestId: string;
+    commandName: string;
+    args: string[];
+    status: 'pending' | 'approved' | 'rejected';
+  }): Promise<PolicyRequestMessage>;
 }
 
 export interface Message {

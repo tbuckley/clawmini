@@ -19,7 +19,7 @@
 **Verification**:
 - Add unit tests for the new logging methods to verify the correct roles and structures are created.
 - Run `npm run validate`.
-**Status**: Not Started
+**Status**: Completed
 
 ## Ticket 4: Add `reply` and `tool` Commands to CLI
 **Description**: Implement `clawmini-lite reply` and `clawmini-lite tool <name> <payload>` commands to emit `AgentReplyMessage` and `ToolMessage` respectively. This replaces the overloaded use of `clawmini-lite log` for agent replies.

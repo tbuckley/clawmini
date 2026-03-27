@@ -11,3 +11,10 @@
 - Fixed an eslint `max-lines` error in `src/shared/chats.ts` caused by expanding the file.
 - Verified changes with `npm run validate`.
 - Marked Ticket 2 as complete.
+- Added `logSystemMessage`, `logAgentReply`, `logToolMessage`, and `logPolicyRequestMessage` methods to `Logger` in `src/daemon/agent/types.ts`.
+- Implemented these methods in `src/daemon/agent/chat-logger.ts` mapping properly to the updated `ChatMessage` taxonomy.
+- Exposed `SystemMessage`, `AgentReplyMessage`, `ToolMessage`, and `PolicyRequestMessage` from `src/daemon/chats.ts`.
+- Added unit tests for each new logging method in `src/daemon/agent/chat-logger.test.ts`.
+- Resolved TypeScript strictness issue (`exactOptionalPropertyTypes`) by conditionally assigning optional properties rather than initializing them as `undefined`.
+- Verified compilation and tests pass using `npm run validate`.
+- Marked Ticket 3 as complete.
