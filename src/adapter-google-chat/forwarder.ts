@@ -1,8 +1,8 @@
 import { google } from 'googleapis';
 import type { getTRPCClient } from './client.js';
-import { activeSpaceName } from './active-thread.js';
 import type { ChatMessage, CommandLogMessage } from '../shared/chats.js';
 import path from 'node:path';
+import type { GoogleChatConfig } from './config.js';
 
 let authClient: Awaited<ReturnType<typeof google.auth.getClient>> | null = null;
 async function getAuthClient() {
@@ -16,10 +16,11 @@ async function getAuthClient() {
 
 export async function startDaemonToGoogleChatForwarder(
   trpc: ReturnType<typeof getTRPCClient>,
-  chatId: string = 'default',
+  config: GoogleChatConfig,
   signal?: AbortSignal
 ) {
   let lastMessageId: string | undefined = undefined;
+  const chatId = config.chatId || 'default';
 
   try {
     const messages = await trpc.getMessages.query({ chatId, limit: 1 });
@@ -81,7 +82,7 @@ export async function startDaemonToGoogleChatForwarder(
                     continue;
                   }
 
-                  if (!activeSpaceName) {
+                  if (!config.directMessageName) {
                     console.warn(
                       'No active Google Chat space to reply to. Ignoring message:',
                       logMessage.content
@@ -104,7 +105,7 @@ export async function startDaemonToGoogleChatForwarder(
                     const requestBody = { text };
 
                     await chatApi.spaces.messages.create({
-                      parent: activeSpaceName,
+                      parent: config.directMessageName,
                       requestBody,
                     });
                   } catch (error) {

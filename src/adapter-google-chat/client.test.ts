@@ -77,6 +77,7 @@ describe('Google Chat Adapter Client', () => {
 
     beforeEach(() => {
       vi.mocked(workspace.getSocketPath).mockReturnValue('/tmp/test.sock');
+      vi.mocked(workspace.getClawminiDir).mockReturnValue('/mock/dir');
       vi.mocked(fs.existsSync).mockReturnValue(true);
       trpcClient = getTRPCClient();
 
@@ -86,6 +87,7 @@ describe('Google Chat Adapter Client', () => {
           subscriptionName: 'test-sub',
           authorizedUsers: ['user@example.com'],
           maxAttachmentSizeMB: 25,
+          directMessageName: 'spaces/123',
         },
         trpcClient
       );
@@ -163,8 +165,6 @@ describe('Google Chat Adapter Client', () => {
     });
 
     it('should process authorized messages with attachments', async () => {
-      vi.mocked(workspace.getClawminiDir).mockReturnValue('/mock/dir');
-
       const onMessage = mockSubscription.on.mock.calls.find(
         (c: unknown[]) => c[0] === 'message'
       )![1] as (msg: unknown) => Promise<void>;

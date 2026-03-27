@@ -10,9 +10,8 @@ import { getSocketPath, getClawminiDir } from '../shared/workspace.js';
 import { createUnixSocketFetch } from '../shared/fetch.js';
 import { createUnixSocketEventSource } from '../shared/event-source.js';
 import type { GoogleChatConfig } from './config.js';
-import { isAuthorized } from './config.js';
+import { isAuthorized, updateGoogleChatConfig } from './config.js';
 import { downloadAttachment } from './utils.js';
-import { setActiveSpace } from './active-thread.js';
 
 export function getTRPCClient(options: { socketPath?: string } = {}) {
   const socketPath = options.socketPath ?? getSocketPath();
@@ -69,7 +68,14 @@ export function startGoogleChatIngestion(
       }
 
       const text = event.message?.text || '';
-      const spaceName = event.space?.name || event.message?.space?.name;
+      const space = event.space || event.message?.space;
+      const spaceName = space?.name;
+
+      if (space?.type !== 'DIRECT_MESSAGE' && space?.singleUserBotDm !== true) {
+        console.log(`Ignoring message from unsupported space type: ${space?.type}`);
+        message.ack();
+        return;
+      }
 
       if (!spaceName) {
         console.log('Ignoring message: Could not determine space name.');
@@ -77,7 +83,10 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      setActiveSpace(spaceName);
+      if (config.directMessageName !== spaceName) {
+        config.directMessageName = spaceName;
+        await updateGoogleChatConfig(config);
+      }
 
       const downloadedFiles: string[] = [];
       const attachments = event.message?.attachment || [];

@@ -29,7 +29,7 @@ export async function main() {
   console.log(`Listening to Pub/Sub subscription: ${config.subscriptionName}`);
 
   // Start forwarding from daemon to Google Chat API
-  startDaemonToGoogleChatForwarder(trpc, config.chatId || 'default').catch((error) => {
+  startDaemonToGoogleChatForwarder(trpc, config).catch((error) => {
     console.error('Error in daemon-to-google-chat forwarder:', error);
   });
 }

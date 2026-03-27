@@ -10,6 +10,7 @@ export const GoogleChatConfigSchema = z.looseObject({
   authorizedUsers: z.array(z.string()).min(1, 'At least one Authorized User is required.'),
   maxAttachmentSizeMB: z.number().default(25).optional(),
   chatId: z.string().default('default').optional(),
+  directMessageName: z.string().optional(),
 });
 
 export type GoogleChatConfig = z.infer<typeof GoogleChatConfigSchema>;
@@ -35,6 +36,14 @@ export async function readGoogleChatConfig(
     // Return null if file doesn't exist or is invalid JSON
     return null;
   }
+}
+
+export async function updateGoogleChatConfig(
+  config: GoogleChatConfig,
+  startDir = process.cwd()
+): Promise<void> {
+  const configPath = getGoogleChatConfigPath(startDir);
+  await fsPromises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
 }
 
 export async function initGoogleChatConfig(startDir = process.cwd()): Promise<void> {

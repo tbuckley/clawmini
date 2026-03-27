@@ -49,7 +49,7 @@ describe('Google Chat Adapter Entry Point', () => {
     expect(client.startGoogleChatIngestion).toHaveBeenCalledWith(mockConfig, expect.any(Object));
     expect(forwarder.startDaemonToGoogleChatForwarder).toHaveBeenCalledWith(
       expect.any(Object),
-      'default'
+      mockConfig
     );
   });
 });

@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { startDaemonToGoogleChatForwarder } from './forwarder.js';
 
-vi.mock('./active-thread.js', () => ({
-  activeSpaceName: 'spaces/test-space',
-}));
+const mockConfig = {
+  projectId: 'test',
+  subscriptionName: 'test',
+  authorizedUsers: [],
+  chatId: 'default',
+  directMessageName: 'spaces/test-space',
+};
 
 const mockMessagesCreate = vi.fn().mockResolvedValue({});
 
@@ -58,7 +62,7 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     const forwarderPromise = startDaemonToGoogleChatForwarder(
       mockTrpc,
-      'default',
+      mockConfig,
       controller.signal
     );
 
@@ -95,7 +99,7 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     const forwarderPromise = startDaemonToGoogleChatForwarder(
       mockTrpc,
-      'default',
+      mockConfig,
       controller.signal
     );
 
