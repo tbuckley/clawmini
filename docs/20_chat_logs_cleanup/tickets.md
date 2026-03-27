@@ -61,7 +61,7 @@
 **Description**: Update `logAutomaticReply` in `src/daemon/agent/chat-logger.ts` to emit a `SystemMessage` with `event: 'router'` and `displayRole: 'agent'` instead of a `CommandLogMessage`. Update corresponding test cases. This ensures that responses from slash commands like `/pending`, `/new`, `/approve`, and `/reject` are correctly sent to users as system messages.
 **Verification**:
 - Run `npm run validate`.
-**Status**: Not Started
+**Status**: Completed
 
 ## Ticket 10: Update Policy Approval/Rejection Notifications
 **Description**: In `src/daemon/routers/slash-policies.ts`, when a policy is approved or rejected, emit a `SystemMessage` with `event: 'policy_approved'` or `policy_rejected` and `displayRole: 'user'` to notify the agent. For approvals, ensure the system message includes the command's output so the agent can see it. Continue returning the string `reply` so that `logAutomaticReply` handles the user-facing confirmation.

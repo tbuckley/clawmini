@@ -18,7 +18,7 @@ export interface Logger {
     content: string;
     level?: 'default' | 'debug' | 'verbose';
   }): Promise<CommandLogMessage>;
-  logAutomaticReply(options: { messageId: string; content: string }): Promise<CommandLogMessage>;
+  logAutomaticReply(options: { messageId: string; content: string }): Promise<SystemMessage>;
   logCommandRetry(options: {
     messageId: string;
     content: string;

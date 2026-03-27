@@ -82,19 +82,14 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
     logAutomaticReply: async ({ messageId, content }) =>
       append({
         id: crypto.randomUUID(),
-        role: 'command',
-        content: content,
+        role: 'system',
+        content,
         timestamp: new Date().toISOString(),
 
         messageId,
-
-        // TODO remove these
-        stderr: '',
-        stdout: '',
-        command: 'router',
-        cwd: process.cwd(),
-        exitCode: 0,
-      } satisfies CommandLogMessage),
+        event: 'router',
+        displayRole: 'agent',
+      } satisfies SystemMessage),
 
     logCommandRetry: async ({ messageId, content, cwd }) =>
       append({
