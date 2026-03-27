@@ -8,12 +8,12 @@ export function resetAuthClient(): void {
 
 /**
  * Downloads a file attachment securely using Application Default Credentials (ADC).
- * @param downloadUri The URI of the attachment to download.
+ * @param resourceName The resourceName of the attachment data to download.
  * @param maxAttachmentSizeMB The maximum allowed attachment size in MB (defaults to 25).
  * @returns A Buffer containing the file data.
  */
 export async function downloadAttachment(
-  downloadUri: string,
+  resourceName: string,
   maxAttachmentSizeMB: number = 25
 ): Promise<Buffer> {
   // Use ADC to authenticate
@@ -24,8 +24,10 @@ export async function downloadAttachment(
   }
   const client = authClient;
 
+  const url = `https://chat.googleapis.com/v1/media/${resourceName}?alt=media`;
+
   const response = await client.request<ArrayBuffer>({
-    url: downloadUri,
+    url,
     method: 'GET',
     responseType: 'arraybuffer',
   });

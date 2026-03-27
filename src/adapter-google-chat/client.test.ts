@@ -180,7 +180,7 @@ describe('Google Chat Adapter Client', () => {
               attachment: [
                 {
                   contentName: 'test.png',
-                  attachmentDataRef: { downloadUri: 'http://example.com/test.png' },
+                  attachmentDataRef: { resourceName: 'spaces/123/messages/123/attachments/123' },
                 },
               ],
             },
@@ -191,7 +191,10 @@ describe('Google Chat Adapter Client', () => {
       };
       await onMessage(mockMsg);
 
-      expect(utils.downloadAttachment).toHaveBeenCalledWith('http://example.com/test.png', 25);
+      expect(utils.downloadAttachment).toHaveBeenCalledWith(
+        'spaces/123/messages/123/attachments/123',
+        25
+      );
       expect(fsPromises.mkdir).toHaveBeenCalledWith('/mock/dir/tmp/google-chat', {
         recursive: true,
       });

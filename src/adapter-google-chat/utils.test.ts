@@ -28,13 +28,13 @@ describe('downloadAttachment', () => {
       request: mockRequest,
     });
 
-    const buffer = await downloadAttachment('https://example.com/download');
+    const buffer = await downloadAttachment('spaces/123/messages/456/attachments/789');
 
     expect(google.auth.getClient).toHaveBeenCalledWith({
       scopes: ['https://www.googleapis.com/auth/chat.bot'],
     });
     expect(mockRequest).toHaveBeenCalledWith({
-      url: 'https://example.com/download',
+      url: 'https://chat.googleapis.com/v1/media/spaces/123/messages/456/attachments/789?alt=media',
       method: 'GET',
       responseType: 'arraybuffer',
     });
@@ -53,7 +53,7 @@ describe('downloadAttachment', () => {
       request: mockRequest,
     });
 
-    await expect(downloadAttachment('https://example.com/download-large')).rejects.toThrow(
+    await expect(downloadAttachment('spaces/123/messages/456/attachments/789')).rejects.toThrow(
       'Attachment exceeds maximum size'
     );
   });
@@ -69,7 +69,7 @@ describe('downloadAttachment', () => {
       request: mockRequest,
     });
 
-    await expect(downloadAttachment('https://example.com/download-large', 10)).rejects.toThrow(
+    await expect(downloadAttachment('spaces/123/messages/456/attachments/789', 10)).rejects.toThrow(
       'Attachment exceeds maximum size'
     );
   });

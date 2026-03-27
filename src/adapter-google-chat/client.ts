@@ -96,10 +96,10 @@ export function startGoogleChatIngestion(
         await fsPromises.mkdir(tmpDir, { recursive: true });
 
         for (const att of attachments) {
-          const downloadUri = att.attachmentDataRef?.downloadUri;
-          if (downloadUri) {
+          const resourceName = att.attachmentDataRef?.resourceName;
+          if (resourceName) {
             try {
-              const buffer = await downloadAttachment(downloadUri, config.maxAttachmentSizeMB);
+              const buffer = await downloadAttachment(resourceName, config.maxAttachmentSizeMB);
               const uniqueName = `${crypto.randomUUID()}-${att.contentName || 'attachment'}`;
               const filePath = path.join(tmpDir, uniqueName);
               await fsPromises.writeFile(filePath, buffer);
