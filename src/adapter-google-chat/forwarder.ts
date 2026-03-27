@@ -6,7 +6,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import mime from 'mime-types';
 import type { GoogleChatConfig } from './config.js';
-import { readGoogleChatState, writeGoogleChatState } from './state.js';
+import { readGoogleChatState, updateGoogleChatState } from './state.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
 
 export async function startDaemonToGoogleChatForwarder(
@@ -25,7 +25,7 @@ export async function startDaemonToGoogleChatForwarder(
         const lastMsg = messages[messages.length - 1];
         if (lastMsg) {
           lastMessageId = lastMsg.id;
-          await writeGoogleChatState({ lastSyncedMessageId: lastMessageId });
+          await updateGoogleChatState({ lastSyncedMessageId: lastMessageId });
         }
       }
     } catch (error) {
@@ -72,7 +72,7 @@ export async function startDaemonToGoogleChatForwarder(
 
                   if (logMessage.level === 'verbose') {
                     lastMessageId = logMessage.id;
-                    await writeGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
+                    await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
                       console.error
                     );
                     continue;
@@ -83,7 +83,7 @@ export async function startDaemonToGoogleChatForwarder(
 
                   if (!hasContent && !hasFiles) {
                     lastMessageId = logMessage.id;
-                    await writeGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
+                    await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
                       console.error
                     );
                     continue;
@@ -95,7 +95,7 @@ export async function startDaemonToGoogleChatForwarder(
                       logMessage.content
                     );
                     lastMessageId = logMessage.id;
-                    await writeGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
+                    await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
                       console.error
                     );
                     continue;
@@ -216,7 +216,7 @@ export async function startDaemonToGoogleChatForwarder(
                 }
 
                 lastMessageId = message.id;
-                await writeGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
+                await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
                   console.error
                 );
               }

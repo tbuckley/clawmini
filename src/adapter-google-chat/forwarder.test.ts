@@ -66,7 +66,7 @@ const mockWriteState = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('./state.js', () => ({
   readGoogleChatState: () => mockReadState(),
-  writeGoogleChatState: (state: any) => mockWriteState(state),
+  updateGoogleChatState: (state: any) => mockWriteState(state),
 }));
 
 vi.mock('node:fs', () => ({
