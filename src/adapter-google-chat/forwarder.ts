@@ -12,7 +12,10 @@ let authClient: Awaited<ReturnType<typeof google.auth.getClient>> | null = null;
 async function getAuthClient() {
   if (!authClient) {
     authClient = await google.auth.getClient({
-      scopes: ['https://www.googleapis.com/auth/chat.bot'],
+      scopes: [
+        'https://www.googleapis.com/auth/chat.bot',
+        'https://www.googleapis.com/auth/chat.messages.create',
+      ],
     });
   }
   return authClient;
