@@ -66,6 +66,7 @@ const mockWriteState = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('./state.js', () => ({
   readGoogleChatState: () => mockReadState(),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   updateGoogleChatState: (state: any) => mockWriteState(state),
 }));
 
