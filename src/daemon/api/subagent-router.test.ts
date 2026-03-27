@@ -92,6 +92,7 @@ describe('subagentWait', () => {
     const ctx = {
       tokenPayload: { chatId, agentId: 'agent', sessionId: 'session' },
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const caller = agentRouter.createCaller(ctx as any);
 
     const initialListeners = daemonEvents.listenerCount(DAEMON_EVENT_MESSAGE_APPENDED);
