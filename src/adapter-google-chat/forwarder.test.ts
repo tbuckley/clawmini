@@ -226,4 +226,42 @@ describe('Daemon to Google Chat Forwarder', () => {
     controller.abort();
     await forwarderPromise;
   });
+
+  it('should reconnect and resync if message sending fails', async () => {
+    const controller = new AbortController();
+
+    const forwarderPromise = startDaemonToGoogleChatForwarder(
+      mockTrpc,
+      mockConfig,
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    let callCount = 0;
+    mockMessagesCreate.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        throw new Error('Network error');
+      }
+      return Promise.resolve();
+    });
+
+    const originalSubscribe = mockTrpc.waitForMessages.subscribe;
+    originalSubscribe.mockClear();
+
+    subscribeCallbacks.onData([
+      { id: 'msg-err-1', role: 'log', content: 'Agent response 1' },
+      { id: 'msg-err-2', role: 'log', content: 'Agent response 2' },
+    ]);
+
+    await vi.waitFor(() => expect(originalSubscribe).toHaveBeenCalled(), { timeout: 2000 });
+
+    expect(mockWriteState).not.toHaveBeenCalledWith(
+      expect.objectContaining({ lastSyncedMessageId: 'msg-err-1' })
+    );
+
+    controller.abort();
+    await forwarderPromise;
+  });
 });

@@ -36,11 +36,12 @@ export async function getDriveAuthClient(config: GoogleChatConfig) {
     oauth2Client.on('tokens', async (tokens) => {
       try {
         const currentState = await readGoogleChatState();
-        currentState.driveOauthTokens = {
-          ...currentState.driveOauthTokens,
-          ...tokens,
-        };
-        await updateGoogleChatState(currentState);
+        await updateGoogleChatState({
+          driveOauthTokens: {
+            ...currentState.driveOauthTokens,
+            ...tokens,
+          },
+        });
       } catch (err) {
         console.error('Failed to save refreshed Google Drive tokens', err);
       }
@@ -80,9 +81,7 @@ export async function getDriveAuthClient(config: GoogleChatConfig) {
               const { tokens } = await oauth2Client.getToken(code);
               oauth2Client.setCredentials(tokens);
 
-              const currentState = await readGoogleChatState();
-              currentState.driveOauthTokens = tokens;
-              await updateGoogleChatState(currentState);
+              await updateGoogleChatState({ driveOauthTokens: tokens });
 
               console.log('Google Drive authorization successful!');
               driveAuthClient = oauth2Client;
