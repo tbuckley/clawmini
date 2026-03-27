@@ -53,7 +53,7 @@ The adapter authenticates using Google's Application Default Credentials.
    ```
 2. Follow the browser prompts to authenticate. This generates a local credentials file that the adapter will use automatically.
 
-## Step 4: Configure the Adapter
+## Step 5: Configure the Adapter
 
 The adapter requires a configuration file containing your GCP Project ID, Subscription Name, and authorized users. You can generate a template configuration file by running the `init` command:
 
@@ -61,7 +61,20 @@ The adapter requires a configuration file containing your GCP Project ID, Subscr
 npx clawmini-adapter-google-chat init
 ```
 
-This will create a `config.json` file at `.clawmini/adapters/google-chat/config.json`. Open this file and replace the placeholders:
+This will create a `config.json` file at `.clawmini/adapters/google-chat/config.json`. Open this file and update it with your settings.
+
+### File Uploads (Google Drive)
+
+To allow the adapter to upload files (like images or documents) from Clawmini to Google Chat, the adapter temporarily stores them in Google Drive. This requires an OAuth 2.0 Client ID:
+
+1. In the Google Cloud Console, enable the **Google Drive API**.
+2. Go to **APIs & Services > Credentials**.
+3. Click **Create Credentials** and select **OAuth client ID** (you may need to configure the OAuth consent screen first).
+4. Choose **Web application** as the application type.
+5. Add `http://localhost:31337/oauth2callback` to the **Authorized redirect URIs**.
+6. Copy the **Client ID** and **Client Secret**.
+
+Add these to your `config.json` file:
 
 ```json
 {
@@ -69,11 +82,29 @@ This will create a `config.json` file at `.clawmini/adapters/google-chat/config.
   "subscriptionName": "YOUR_SUBSCRIPTION_NAME",
   "authorizedUsers": ["your.email@example.com"],
   "maxAttachmentSizeMB": 25,
-  "chatId": "default"
+  "chatId": "default",
+  "driveOauthClientId": "YOUR_CLIENT_ID",
+  "driveOauthClientSecret": "YOUR_CLIENT_SECRET"
 }
 ```
 
-## Step 5: Start the Adapter
+*Note: The first time you start the adapter, you will be prompted in the terminal to visit a URL to authorize Google Drive access. The credentials will then be saved locally.*
+
+**Disabling File Uploads:**
+If you do not want to set up Google Drive and don't need file upload support, you can disable it by adding `"driveUploadEnabled": false` to your configuration instead:
+
+```json
+{
+  "projectId": "YOUR_PROJECT_ID",
+  "subscriptionName": "YOUR_SUBSCRIPTION_NAME",
+  "authorizedUsers": ["your.email@example.com"],
+  "maxAttachmentSizeMB": 25,
+  "chatId": "default",
+  "driveUploadEnabled": false
+}
+```
+
+## Step 6: Start the Adapter
 
 Ensure the Clawmini daemon is running, then start the Google Chat adapter:
 
