@@ -38,64 +38,6 @@ export async function startDaemonToGoogleChatForwarder(
     `Starting daemon-to-google-chat forwarder for chat ${chatId}, lastMessageId: ${lastMessageId}`
   );
 
-  let cleanupInterval: NodeJS.Timeout | undefined;
-
-  if (config.driveUploadEnabled !== false) {
-    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-
-    const runCleanup = async () => {
-      try {
-        const currentState = await readGoogleChatState();
-        const client = await getDriveAuthClient(config);
-        const driveApi = google.drive({ version: 'v3', auth: client });
-        const retentionDays = config.driveRetentionDays ?? 7;
-        const cutoffTime = new Date(Date.now() - retentionDays * ONE_DAY_MS).toISOString();
-
-        console.log(`Running Google Drive cleanup for files older than ${retentionDays} days...`);
-        let pageToken: string | undefined = undefined;
-        let count = 0;
-
-        do {
-          const listParams: any = {
-            q: `'me' in owners and createdTime < '${cutoffTime}' and trashed = false`,
-            fields: 'nextPageToken, files(id, name)',
-          };
-          if (pageToken) listParams.pageToken = pageToken;
-
-          const res = await driveApi.files.list(listParams);
-
-          if (res.data.files) {
-            for (const file of res.data.files) {
-              if (file.id && !signal?.aborted) {
-                console.log(`Cleaning up old Google Drive file: ${file.name} (${file.id})`);
-                await driveApi.files.delete({ fileId: file.id }).catch((err) => {
-                  console.error(`Failed to delete old Drive file ${file.id}`, err);
-                });
-                count++;
-              }
-            }
-          }
-          pageToken = res.data.nextPageToken || undefined;
-        } while (pageToken && !signal?.aborted);
-
-        console.log(`Google Drive cleanup completed. Deleted ${count} files.`);
-        currentState.lastDriveCleanupMs = Date.now();
-        await writeGoogleChatState(currentState);
-      } catch (err) {
-        console.error('Failed to run Google Drive cleanup:', err);
-      }
-    };
-
-    const lastCleanup = state.lastDriveCleanupMs || 0;
-    if (Date.now() - lastCleanup > ONE_DAY_MS) {
-      runCleanup(); // Run immediately if due
-    }
-
-    cleanupInterval = setInterval(() => {
-      if (!signal?.aborted) runCleanup();
-    }, ONE_DAY_MS);
-  }
-
   let retryDelay = 1000;
   const maxRetryDelay = 30000;
 
@@ -169,7 +111,7 @@ export async function startDaemonToGoogleChatForwarder(
                       const fileNames = logMessage.files?.map((f) => path.basename(f)).join(', ');
 
                       if (config.driveUploadEnabled !== false) {
-                        text += `\n\n*(Files generated: ${fileNames})*\n`;
+                        text += `\n\n`;
                         const driveClient = await getDriveAuthClient(config);
                         const driveApi = google.drive({ version: 'v3', auth: driveClient });
                         const workspaceRoot = getWorkspaceRoot(process.cwd());
@@ -202,11 +144,11 @@ export async function startDaemonToGoogleChatForwarder(
                                   sendNotificationEmail: false,
                                 });
                               }
-                              text += `- ${fileName}: ${driveRes.data.webViewLink}\n`;
+                              text += `${driveRes.data.webViewLink}\n`;
                             }
                           } catch (err) {
                             console.error(`Failed to upload file ${fileName} to Google Drive`, err);
-                            text += `- (Failed to upload to Drive: ${fileName})\n`;
+                            text += `(Failed to upload to Drive: ${fileName})\n`;
                           }
                         }
                       } else {
@@ -276,7 +218,6 @@ export async function startDaemonToGoogleChatForwarder(
 
     signal?.addEventListener('abort', () => {
       subscription?.unsubscribe();
-      if (cleanupInterval) clearInterval(cleanupInterval);
       resolve();
     });
   });

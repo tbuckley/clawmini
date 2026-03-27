@@ -35,7 +35,6 @@ describe('Google Chat Adapter Configuration', () => {
           maxAttachmentSizeMB: 25,
           chatId: 'default',
           driveUploadEnabled: true,
-          driveRetentionDays: 7,
         });
       }
     });
@@ -133,7 +132,6 @@ describe('Google Chat Adapter Configuration', () => {
         maxAttachmentSizeMB: 25,
         chatId: 'default',
         driveUploadEnabled: true,
-        driveRetentionDays: 7,
       });
       expect(fsPromises.readFile).toHaveBeenCalledWith(getGoogleChatConfigPath(), 'utf-8');
     });

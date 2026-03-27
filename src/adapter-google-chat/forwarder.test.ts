@@ -8,7 +8,6 @@ const mockConfig = {
   chatId: 'default',
   directMessageName: 'spaces/test-space',
   driveUploadEnabled: true,
-  driveRetentionDays: 7,
   driveOauthClientId: 'mock-client-id',
   driveOauthClientSecret: 'mock-client-secret',
 };
@@ -59,7 +58,9 @@ vi.mock('googleapis', () => {
   };
 });
 
-const mockReadState = vi.fn().mockResolvedValue({ lastDriveCleanupMs: Date.now() });
+const mockReadState = vi
+  .fn()
+  .mockResolvedValue({ driveOauthTokens: { access_token: 'mock-token' } });
 const mockWriteState = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('./state.js', () => ({
@@ -104,7 +105,6 @@ describe('Daemon to Google Chat Forwarder', () => {
     };
 
     mockReadState.mockResolvedValue({
-      lastDriveCleanupMs: Date.now(),
       driveOauthTokens: { access_token: 'mock-token' },
     });
   });
@@ -183,34 +183,9 @@ describe('Daemon to Google Chat Forwarder', () => {
     expect(mockMessagesCreate).toHaveBeenCalledWith({
       parent: 'spaces/test-space',
       requestBody: {
-        text: 'Here are the files\n\n*(Files generated: file1.png, file2.txt)*\n- file1.png: https://drive.google.com/file/123\n- file2.txt: https://drive.google.com/file/123\n',
+        text: 'Here are the files\n\nhttps://drive.google.com/file/123\nhttps://drive.google.com/file/123\n',
       },
     });
-
-    controller.abort();
-    await forwarderPromise;
-  });
-
-  it('should run Drive cleanup on startup if older than 1 day', async () => {
-    const controller = new AbortController();
-
-    // Simulate never cleaned up
-    mockReadState.mockResolvedValueOnce({
-      lastDriveCleanupMs: 0,
-      driveOauthTokens: { access_token: 'mock-token' },
-    });
-
-    const forwarderPromise = startDaemonToGoogleChatForwarder(
-      mockTrpc,
-      mockConfig,
-      controller.signal
-    );
-
-    await vi.waitFor(() => expect(mockDriveFilesList).toHaveBeenCalled());
-    expect(mockDriveFilesDelete).toHaveBeenCalledWith({ fileId: 'old-file-123' });
-    expect(mockWriteState).toHaveBeenCalledWith(
-      expect.objectContaining({ lastDriveCleanupMs: expect.any(Number) })
-    );
 
     controller.abort();
     await forwarderPromise;

@@ -12,7 +12,6 @@ export const GoogleChatConfigSchema = z.looseObject({
   chatId: z.string().default('default').optional(),
   directMessageName: z.string().optional(),
   driveUploadEnabled: z.boolean().default(true).optional(),
-  driveRetentionDays: z.number().default(7).optional(),
   driveOauthClientId: z.string().optional(),
   driveOauthClientSecret: z.string().optional(),
 });
