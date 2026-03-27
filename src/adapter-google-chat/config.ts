@@ -13,6 +13,8 @@ export const GoogleChatConfigSchema = z.looseObject({
   directMessageName: z.string().optional(),
   driveUploadEnabled: z.boolean().default(true).optional(),
   driveRetentionDays: z.number().default(7).optional(),
+  driveOauthClientId: z.string().optional(),
+  driveOauthClientSecret: z.string().optional(),
 });
 
 export type GoogleChatConfig = z.infer<typeof GoogleChatConfigSchema>;

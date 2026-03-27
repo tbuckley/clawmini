@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { getAuthClient, getDriveAuthClient } from './auth.js';
 import type { getTRPCClient } from './client.js';
 import type { ChatMessage, CommandLogMessage } from '../shared/chats.js';
 import path from 'node:path';
@@ -7,20 +8,6 @@ import mime from 'mime-types';
 import type { GoogleChatConfig } from './config.js';
 import { readGoogleChatState, writeGoogleChatState } from './state.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
-
-let authClient: Awaited<ReturnType<typeof google.auth.getClient>> | null = null;
-async function getAuthClient() {
-  if (!authClient) {
-    authClient = await google.auth.getClient({
-      scopes: [
-        'https://www.googleapis.com/auth/chat.bot',
-        'https://www.googleapis.com/auth/chat.messages.create',
-        'https://www.googleapis.com/auth/drive',
-      ],
-    });
-  }
-  return authClient;
-}
 
 export async function startDaemonToGoogleChatForwarder(
   trpc: ReturnType<typeof getTRPCClient>,
@@ -59,7 +46,7 @@ export async function startDaemonToGoogleChatForwarder(
     const runCleanup = async () => {
       try {
         const currentState = await readGoogleChatState();
-        const client = await getAuthClient();
+        const client = await getDriveAuthClient(config);
         const driveApi = google.drive({ version: 'v3', auth: client });
         const retentionDays = config.driveRetentionDays ?? 7;
         const cutoffTime = new Date(Date.now() - retentionDays * ONE_DAY_MS).toISOString();
@@ -183,12 +170,15 @@ export async function startDaemonToGoogleChatForwarder(
 
                       if (config.driveUploadEnabled !== false) {
                         text += `\n\n*(Files generated: ${fileNames})*\n`;
-                        const driveApi = google.drive({ version: 'v3', auth: client });
+                        const driveClient = await getDriveAuthClient(config);
+                        const driveApi = google.drive({ version: 'v3', auth: driveClient });
                         const workspaceRoot = getWorkspaceRoot(process.cwd());
 
                         for (const fileRelPath of logMessage.files!) {
                           const filePath = path.resolve(workspaceRoot, fileRelPath);
-                          if (!fs.existsSync(filePath)) continue;
+                          if (!fs.existsSync(filePath)) {
+                            continue;
+                          }
 
                           const fileName = path.basename(filePath);
                           const mimeType = mime.lookup(filePath) || 'application/octet-stream';

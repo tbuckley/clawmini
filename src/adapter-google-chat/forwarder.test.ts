@@ -9,6 +9,8 @@ const mockConfig = {
   directMessageName: 'spaces/test-space',
   driveUploadEnabled: true,
   driveRetentionDays: 7,
+  driveOauthClientId: 'mock-client-id',
+  driveOauthClientSecret: 'mock-client-secret',
 };
 
 const mockMessagesCreate = vi.fn().mockResolvedValue({});
@@ -26,6 +28,10 @@ vi.mock('googleapis', () => {
     google: {
       auth: {
         getClient: vi.fn().mockResolvedValue({}),
+        OAuth2: vi.fn().mockImplementation(function (this: any) {
+          this.setCredentials = vi.fn();
+          this.generateAuthUrl = vi.fn().mockReturnValue('http://mock-auth-url');
+        }),
       },
       chat: vi.fn().mockReturnValue({
         spaces: {
@@ -97,7 +103,10 @@ describe('Daemon to Google Chat Forwarder', () => {
       },
     };
 
-    mockReadState.mockResolvedValue({ lastDriveCleanupMs: Date.now() });
+    mockReadState.mockResolvedValue({
+      lastDriveCleanupMs: Date.now(),
+      driveOauthTokens: { access_token: 'mock-token' },
+    });
   });
 
   it('should fetch initial messages and start observation loop', async () => {
@@ -186,7 +195,10 @@ describe('Daemon to Google Chat Forwarder', () => {
     const controller = new AbortController();
 
     // Simulate never cleaned up
-    mockReadState.mockResolvedValueOnce({ lastDriveCleanupMs: 0 });
+    mockReadState.mockResolvedValueOnce({
+      lastDriveCleanupMs: 0,
+      driveOauthTokens: { access_token: 'mock-token' },
+    });
 
     const forwarderPromise = startDaemonToGoogleChatForwarder(
       mockTrpc,

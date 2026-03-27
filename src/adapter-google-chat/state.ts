@@ -6,6 +6,7 @@ import { getClawminiDir } from '../shared/workspace.js';
 export const GoogleChatStateSchema = z.object({
   lastSyncedMessageId: z.string().optional(),
   lastDriveCleanupMs: z.number().optional(),
+  driveOauthTokens: z.any().optional(),
 });
 
 export type GoogleChatState = z.infer<typeof GoogleChatStateSchema>;
@@ -21,12 +22,20 @@ export async function readGoogleChatState(startDir = process.cwd()): Promise<Goo
     const parsed = JSON.parse(data);
     const result = GoogleChatStateSchema.safeParse(parsed);
     if (!result.success) {
-      return { lastSyncedMessageId: undefined, lastDriveCleanupMs: undefined };
+      return {
+        lastSyncedMessageId: undefined,
+        lastDriveCleanupMs: undefined,
+        driveOauthTokens: undefined,
+      };
     }
     return result.data;
   } catch {
     // Return default state if file doesn't exist or is invalid JSON
-    return { lastSyncedMessageId: undefined, lastDriveCleanupMs: undefined };
+    return {
+      lastSyncedMessageId: undefined,
+      lastDriveCleanupMs: undefined,
+      driveOauthTokens: undefined,
+    };
   }
 }
 
