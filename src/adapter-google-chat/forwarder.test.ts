@@ -30,6 +30,7 @@ vi.mock('googleapis', () => {
         OAuth2: vi.fn().mockImplementation(function (this: any) {
           this.setCredentials = vi.fn();
           this.generateAuthUrl = vi.fn().mockReturnValue('http://mock-auth-url');
+          this.on = vi.fn();
         }),
       },
       chat: vi.fn().mockReturnValue({
