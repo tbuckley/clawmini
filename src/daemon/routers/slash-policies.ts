@@ -67,8 +67,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     const logMsg: CommandLogMessage = {
       id: randomUUID(),
       messageId: state.messageId,
-      role: 'log',
-      source: 'router',
+      role: 'command',
       content: `Request ${id} approved and executed.`,
       stderr,
       stdout,
@@ -106,10 +105,10 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     const logMsg: CommandLogMessage = {
       id: randomUUID(),
       messageId: state.messageId,
-      role: 'log',
-      source: 'router',
+      role: 'command',
       content: `Request ${id} rejected. Reason: ${reason}`,
       stderr: '',
+      stdout: '',
       timestamp: new Date().toISOString(),
       command: `policy-request-reject ${id}`,
       cwd: getWorkspaceRoot(),

@@ -125,7 +125,7 @@ describe('Message Fallbacks & Retries', () => {
     expect(chats.appendMessage).toHaveBeenCalledWith(
       'chat-fallback',
       expect.objectContaining({
-        role: 'log',
+        role: 'command',
         content: 'output 2',
         exitCode: 0,
       }),
@@ -280,7 +280,7 @@ describe('Message Fallbacks & Retries', () => {
     expect(chats.appendMessage).toHaveBeenCalledWith(
       'chat-log-retry',
       expect.objectContaining({
-        role: 'log',
+        role: 'command',
         content: 'Error running agent, retrying in 1 seconds...',
         command: 'retry-delay',
       }),

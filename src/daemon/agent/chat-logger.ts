@@ -45,12 +45,11 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
     logCommandResult: async ({ messageId, content, command, cwd, result }) =>
       append({
         id: crypto.randomUUID(),
-        role: 'log',
+        role: 'command',
         content,
         timestamp: new Date().toISOString(),
 
         messageId,
-        ...getLogLevel(content),
 
         command,
         cwd,
@@ -59,36 +58,34 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         exitCode: result.exitCode,
       }),
 
-    logSystemEvent: async ({ content, level }) =>
+    logSystemEvent: async ({ content }) =>
       append({
         id: crypto.randomUUID(),
-        role: 'log',
+        role: 'command',
         content,
         timestamp: new Date().toISOString(),
 
         messageId: crypto.randomUUID(),
-        source: 'router',
-        level: level || 'debug',
 
         stderr: '',
         command: '',
         cwd: '',
+        stdout: '',
         exitCode: 0,
       } satisfies CommandLogMessage),
 
     logAutomaticReply: async ({ messageId, content }) =>
       append({
         id: crypto.randomUUID(),
-        role: 'log',
+        role: 'command',
         content: content,
         timestamp: new Date().toISOString(),
 
         messageId,
-        source: 'router',
-        ...getLogLevel(content),
 
         // TODO remove these
         stderr: '',
+        stdout: '',
         command: 'router',
         cwd: process.cwd(),
         exitCode: 0,
@@ -97,7 +94,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
     logCommandRetry: async ({ messageId, content, cwd }) =>
       append({
         id: crypto.randomUUID(),
-        role: 'log',
+        role: 'command',
         content,
         timestamp: new Date().toISOString(),
 
@@ -106,15 +103,9 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         // TODO remove these? Or include the actual command that was run?
         command: 'retry-delay',
         stderr: '',
+        stdout: '',
         cwd,
         exitCode: 0,
       } satisfies CommandLogMessage),
   };
-}
-
-function getLogLevel(content: string): { level?: 'default' | 'debug' | 'verbose' } {
-  if (content.includes('NO_REPLY_NECESSARY')) {
-    return { level: 'verbose' as const };
-  }
-  return {};
 }

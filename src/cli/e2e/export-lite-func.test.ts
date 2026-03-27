@@ -80,7 +80,7 @@ describe('E2E Export Lite Functionality Tests', () => {
     const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/lite-chat/chat.jsonl');
     const chatLogContent = fs.readFileSync(chatLogPath, 'utf8');
     expect(chatLogContent).toContain('hello from lite client');
-    expect(chatLogContent).toContain('"role":"log"');
+    expect(chatLogContent).toContain('"role":"command"');
 
     // 1.5 Test log with file
     const logFileProcess = spawn(

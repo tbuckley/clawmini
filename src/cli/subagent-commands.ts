@@ -188,10 +188,14 @@ export function registerSubagentCommands(
           messages.forEach((msg) => {
             if (msg.role === 'user') {
               console.log(`[USER] ${msg.content}`);
-            } else if (msg.role === 'log') {
+            } else if (msg.role === 'log' || msg.role === 'system') {
               if (msg.content) {
                 console.log(`[LOG] ${msg.content.trim()}`);
-              } else if ('stderr' in msg && msg.stderr) {
+              }
+            } else if (msg.role === 'command' || msg.role === 'legacy_log') {
+              if (msg.content) {
+                console.log(`[LOG] ${msg.content.trim()}`);
+              } else if (msg.stderr) {
                 console.error(`[STDERR] ${msg.stderr.trim()}`);
               }
             }

@@ -210,9 +210,9 @@ describe('E2E Messages Tests', () => {
     expect(lines[0].content).toBe('first');
     expect(lines[1].role).toBe('user');
     expect(lines[1].content).toBe('second');
-    expect(lines[2].role).toBe('log');
+    expect(lines[2].role).toBe('command');
     expect(lines[2].content.trim()).toBe('first');
-    expect(lines[3].role).toBe('log');
+    expect(lines[3].role).toBe('command');
     expect(lines[3].content.trim()).toBe('second');
   });
 

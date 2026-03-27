@@ -109,8 +109,7 @@ describe('createPolicyRequest preview message', () => {
     const logMsg = callArgs[1] as any;
 
     expect(chatId).toBe('default-chat');
-    expect(logMsg.role).toBe('log');
-    expect(logMsg.command).toBe('policy-request');
+    expect(logMsg.role).toBe('system');
 
     // Assert preview content format
     const content = logMsg.content;

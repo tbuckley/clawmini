@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { getAuthClient, getDriveAuthClient } from './auth.js';
 import type { getTRPCClient } from './client.js';
-import type { ChatMessage, CommandLogMessage } from '../shared/chats.js';
+import type { ChatMessage, LegacyLogMessage } from '../shared/chats.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import mime from 'mime-types';
@@ -68,8 +68,13 @@ export async function startDaemonToGoogleChatForwarder(
 
                   const message = rawMessage as ChatMessage;
 
-                  if (message.role === 'log' && !message.subagentId) {
-                    const logMessage = message as CommandLogMessage;
+                  if (
+                    (message.role === 'legacy_log' ||
+                      message.role === 'command' ||
+                      message.role === 'log') &&
+                    !message.subagentId
+                  ) {
+                    const logMessage = message as unknown as LegacyLogMessage;
 
                     if (logMessage.level === 'verbose') {
                       lastMessageId = logMessage.id;

@@ -5,7 +5,7 @@
 **Verification**: 
 - Ensure TypeScript compiles successfully.
 - Run `npm run validate`.
-**Status**: Not Started
+**Status**: Completed
 
 ## Ticket 2: Implement Legacy-Aware Parsing
 **Description**: Update the chat history loading logic (likely in `src/shared/chats.ts` or `src/daemon/agent/chat-logger.ts`) to handle legacy messages gracefully. Map older `role: 'log'` messages to `role: 'legacy_log'` to ensure backwards compatibility. 

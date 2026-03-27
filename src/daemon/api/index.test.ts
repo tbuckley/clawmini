@@ -300,7 +300,7 @@ describe('Daemon TRPC Router', () => {
       expect(chats.appendMessage).toHaveBeenCalledWith(
         'default-chat',
         expect.objectContaining({
-          role: 'log',
+          role: 'command',
           content: 'Test log',
         }),
         expect.any(String)
@@ -325,7 +325,7 @@ describe('Daemon TRPC Router', () => {
       expect(chats.appendMessage).toHaveBeenCalledWith(
         'default-chat',
         expect.objectContaining({
-          role: 'log',
+          role: 'command',
           content: 'Test log with file',
           files: [path.normalize('attachments/discord/image.png')],
         }),

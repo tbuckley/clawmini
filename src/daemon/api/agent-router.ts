@@ -48,9 +48,9 @@ export const logMessage = apiProcedure
     const logMsg: CommandLogMessage = {
       id,
       messageId: id,
-      role: 'log',
-      source: 'router',
+      role: 'command',
       content: messageStr,
+      stdout: '',
       stderr: '',
       timestamp,
       command: `clawmini-lite log${filesArgStr}`,
@@ -171,9 +171,7 @@ export const createPolicyRequest = apiProcedure
         id: randomUUID(),
         // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
         messageId: randomUUID(),
-        role: 'log' as const,
-        source: 'router' as const,
-        level: 'verbose' as const, // Auto approvals do not need to be shown to the user
+        role: 'command' as const,
         content: `[Auto-approved] Policy ${input.commandName} was executed.`,
         stderr,
         stdout, // Adding stdout and stderr for execution context
@@ -194,16 +192,13 @@ export const createPolicyRequest = apiProcedure
       id: randomUUID(),
       // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
       messageId: randomUUID(),
-      role: 'log' as const,
-      source: 'router' as const,
+      role: 'system' as const,
+      event: 'router' as const,
+      displayRole: 'agent' as const,
       content: previewContent,
-      stderr: '',
       timestamp: new Date().toISOString(),
-      command: 'policy-request',
-      cwd: process.cwd(),
-      exitCode: 0,
       ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
-    } satisfies CommandLogMessage;
+    } as any;
 
     await appendMessage(chatId, logMsg);
     return request;

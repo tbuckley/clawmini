@@ -62,7 +62,7 @@ export async function executeSubagent(
 
     if (isAsync) {
       const lastLogMessage = await logger.findLastMessage(
-        (m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router'
+        (m) => m.role === 'command' && m.command !== 'retry-delay' && m.command !== 'router'
       );
       let outputContent = '';
       if (lastLogMessage && 'content' in lastLogMessage) {

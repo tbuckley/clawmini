@@ -128,9 +128,9 @@ async function checkSubagentStatus(chatId: string, subagentId: string) {
       const logger = createChatLogger(chatId, subagentId);
       const lastLogMessage = await logger.findLastMessage(
         (m) =>
-          m.role === 'log' &&
+          m.role === 'command' &&
           m.command !== 'retry-delay' &&
-          m.source !== 'router' &&
+          m.command !== 'router' &&
           m.content !== 'Subagent completed'
       );
       if (lastLogMessage && 'content' in lastLogMessage) {

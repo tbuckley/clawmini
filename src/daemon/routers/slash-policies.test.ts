@@ -106,7 +106,7 @@ describe('slashPolicies', () => {
     expect(appendMessage).toHaveBeenCalledWith(
       'chat-1',
       expect.objectContaining({
-        role: 'log',
+        role: 'command',
         content: 'Request req-1 approved and executed.',
         command: 'echo hello world',
         stdout: 'hello world',
@@ -146,7 +146,7 @@ describe('slashPolicies', () => {
     expect(appendMessage).toHaveBeenCalledWith(
       'chat-1',
       expect.objectContaining({
-        role: 'log',
+        role: 'command',
         content: 'Request req-1 rejected. Reason: Not allowed',
         command: 'policy-request-reject req-1',
         exitCode: 1,

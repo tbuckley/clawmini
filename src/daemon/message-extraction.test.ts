@@ -148,7 +148,7 @@ describe('Extraction Logic', () => {
     expect(chats.appendMessage).toHaveBeenCalledWith(
       'chat1',
       expect.objectContaining({
-        role: 'log',
+        role: 'command',
         content: 'extracted message content',
         stdout: 'main_output',
       })

@@ -78,8 +78,8 @@ describe('Router Pipeline Execution', () => {
     expect(chats.appendMessage).toHaveBeenCalledWith(
       'chat-router',
       expect.objectContaining({
-        role: 'log',
-        source: 'router',
+        role: 'command',
+        command: 'router',
         content: 'I routed this for you.',
       })
     );
