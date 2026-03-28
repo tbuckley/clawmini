@@ -1,4 +1,4 @@
-import { executeRouterPipeline } from './routers.js';
+import { executeRouterPipeline, resolveRouters } from './routers.js';
 import type { RouterState } from './routers/types.js';
 import { type ChatSettings, type Settings } from '../shared/config.js';
 import { readChatSettings, writeChatSettings } from '../shared/workspace.js';
@@ -141,7 +141,8 @@ export async function handleUserMessage(
   );
 
   const routers = chatSettings.routers ?? settings?.routers ?? [];
-  const finalState = await executeRouterPipeline(initialState, routers);
+  const resolvedRouters = resolveRouters(routers, true);
+  const finalState = await executeRouterPipeline(initialState, resolvedRouters);
 
   await applyRouterStateUpdates(chatId, cwd, finalState, chatSettings, initialState.agentId);
 
