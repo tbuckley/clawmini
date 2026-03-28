@@ -1,0 +1,4 @@
+# Questions
+
+1. **Session Timeout Configuration**: Since `session-timeout` is moving to `GLOBAL_ROUTERS` and we are considering ignoring `@clawmini` imports in the `routers` array, how should users configure its parameters (like `timeout` and `prompt`)? Should we introduce a dedicated `sessionTimeout` property to the `SettingsSchema`, or should the built-in router still extract its configuration from `@clawmini/session-timeout` if it happens to be present in their `routers` list?
+   - *Answer / Recommendation*: We should keep configuration inside the `routers` array to maintain backwards compatibility and avoid schema bloat. When building the `GLOBAL_ROUTERS` pipeline, we scan the user's `routers` list for `@clawmini/session-timeout` and extract its `with` configuration. Then, when building the `USER_ROUTERS` pipeline, we filter out all `@clawmini/*` entries so they don't run twice.
