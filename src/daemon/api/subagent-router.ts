@@ -12,6 +12,7 @@ import {
   getSubagentDepth,
   resolveSubagentEnvironments,
   handleSubagentPolicyRequest,
+  waitForPolicyRequest,
 } from './subagent-utils.js';
 import type { SubagentTracker } from '../../shared/config.js';
 
@@ -69,11 +70,25 @@ export const subagentSpawn = apiProcedure
       agentId,
       workspaceRoot
     );
-    // TODO: Ticket 3 - Use sourceEnv and targetEnv for policy evaluation
-    void sourceEnv;
-    void targetEnv;
 
     const isAsync = input.async ?? depth === 0;
+
+    const policyResult = await handleSubagentPolicyRequest(
+      sourceEnv,
+      targetEnv,
+      chatId,
+      parentAgentId || 'default',
+      parentId,
+      'spawn',
+      agentId,
+      id,
+      input.prompt,
+      workspaceRoot
+    );
+
+    if (!isAsync && policyResult?.status === 'pending') {
+      await waitForPolicyRequest(policyResult.request.id, workspaceRoot);
+    }
 
     // Execute asynchronously
     executeSubagent(
@@ -122,7 +137,9 @@ export const subagentSend = apiProcedure
       workspaceRoot
     );
 
-    await handleSubagentPolicyRequest(
+    const isAsync = input.async ?? false; // or undefined, but we should match the previous behavior
+
+    const policyResult = await handleSubagentPolicyRequest(
       sourceEnv,
       targetEnv,
       chatId,
@@ -134,6 +151,10 @@ export const subagentSend = apiProcedure
       input.prompt,
       workspaceRoot
     );
+
+    if (!isAsync && policyResult?.status === 'pending') {
+      await waitForPolicyRequest(policyResult.request.id, workspaceRoot);
+    }
 
     // Execute asynchronously
     executeSubagent(

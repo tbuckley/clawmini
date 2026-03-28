@@ -20,3 +20,10 @@
 - Wrote extensive unit tests in `src/daemon/api/subagent-policy-request.test.ts` to ensure behavior is correct.
 - Fixed a string literal formatting bug during development.
 - Verified changes successfully with `npm run validate`.
+
+## Ticket 4
+- Implemented `waitForPolicyRequest` utility in `src/daemon/api/subagent-utils.ts` to poll or wait via `daemonEvents` for policy request updates.
+- Integrated `waitForPolicyRequest` into `subagentSpawn` and `subagentSend` inside `src/daemon/api/subagent-router.ts`.
+- Subagents now wait correctly if `async: false` and the policy is `pending`, blocking until it is either `Approved` or `Rejected`.
+- Wrote extensive tests for `waitForPolicyRequest` inside `src/daemon/api/subagent-utils.test.ts`. Fixed a mocking issue with `RequestStore` class mock.
+- Verified changes with `npm run validate`.

@@ -16,6 +16,66 @@ import { createChatLogger } from '../agent/chat-logger.js';
 import type { ChatSettings } from '../../shared/config.js';
 import { taskScheduler } from '../agent/task-scheduler.js';
 import { resolveAgentDir } from './router-utils.js';
+import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
+
+export async function waitForPolicyRequest(
+  requestId: string,
+  workspaceRoot: string
+): Promise<void> {
+  const store = new RequestStore(workspaceRoot);
+
+  return new Promise((resolve, reject) => {
+    let resolved = false;
+    const cleanup = () => {
+      daemonEvents.removeListener(DAEMON_EVENT_MESSAGE_APPENDED, onMessage);
+    };
+
+    const checkState = async () => {
+      if (resolved) return;
+      try {
+        const req = await store.load(requestId);
+        if (!req) {
+          resolved = true;
+          cleanup();
+          reject(new TRPCError({ code: 'NOT_FOUND', message: 'Policy request not found' }));
+          return;
+        }
+        if (req.state === 'Approved') {
+          resolved = true;
+          cleanup();
+          resolve();
+        } else if (req.state === 'Rejected') {
+          resolved = true;
+          cleanup();
+          reject(new TRPCError({ code: 'FORBIDDEN', message: 'Policy request rejected' }));
+        }
+      } catch (e) {
+        resolved = true;
+        cleanup();
+        reject(e);
+      }
+    };
+
+    const onMessage = async (data: { message?: { role?: string; event?: string } }) => {
+      if (resolved) return;
+      const message = data?.message;
+      if (
+        message &&
+        message.role === 'system' &&
+        (message.event === 'policy_approved' || message.event === 'policy_rejected')
+      ) {
+        await checkState();
+      }
+    };
+
+    daemonEvents.on(DAEMON_EVENT_MESSAGE_APPENDED, onMessage);
+    checkState().catch((e) => {
+      resolved = true;
+      cleanup();
+      reject(e);
+    });
+  });
+}
 
 export async function resolveSubagentEnvironments(
   sourceAgentId: string,

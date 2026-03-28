@@ -1,8 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { executeSubagent, resolveSubagentEnvironments } from './subagent-utils.js';
+import {
+  executeSubagent,
+  resolveSubagentEnvironments,
+  waitForPolicyRequest,
+} from './subagent-utils.js';
 import * as workspace from '../../shared/workspace.js';
 import { taskScheduler } from '../agent/task-scheduler.js';
 import * as routerUtils from './router-utils.js';
+import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
+import type { PolicyRequest } from '../../shared/policies.js';
+
+const mockLoad = vi.fn();
+
+vi.mock('../request-store.js', () => ({
+  RequestStore: class {
+    load = mockLoad;
+  },
+}));
 
 vi.mock('./router-utils.js', () => ({
   resolveAgentDir: vi.fn(),
@@ -20,7 +34,7 @@ vi.mock('../message.js', () => ({
 vi.mock('../agent/chat-logger.js', () => ({
   createChatLogger: vi.fn(() => ({
     findLastMessage: vi.fn().mockResolvedValue(null),
-    logSystemEvent: vi.fn(),
+    logSubagentStatus: vi.fn(),
   })),
 }));
 
@@ -29,6 +43,62 @@ vi.mock('../agent/task-scheduler.js', () => ({
     hasTasks: vi.fn(),
   },
 }));
+
+describe('waitForPolicyRequest', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should resolve immediately if request is already approved', async () => {
+    mockLoad.mockResolvedValue({ state: 'Approved' } as unknown as PolicyRequest);
+
+    await expect(waitForPolicyRequest('req-1', '/workspace')).resolves.toBeUndefined();
+  });
+
+  it('should reject immediately if request is already rejected', async () => {
+    mockLoad.mockResolvedValue({ state: 'Rejected' } as unknown as PolicyRequest);
+
+    await expect(waitForPolicyRequest('req-1', '/workspace')).rejects.toThrow(
+      /Policy request rejected/
+    );
+  });
+
+  it('should resolve when policy_approved event is emitted', async () => {
+    // First it's pending, then after event it's approved
+    let isApproved = false;
+    mockLoad.mockImplementation(async () => {
+      return { state: isApproved ? 'Approved' : 'Pending' } as unknown as PolicyRequest;
+    });
+
+    const promise = waitForPolicyRequest('req-1', '/workspace');
+
+    // Simulate event
+    isApproved = true;
+    daemonEvents.emit(DAEMON_EVENT_MESSAGE_APPENDED, {
+      message: { role: 'system', event: 'policy_approved' },
+    });
+
+    await expect(promise).resolves.toBeUndefined();
+  });
+
+  it('should reject when policy_rejected event is emitted', async () => {
+    // First it's pending, then after event it's rejected
+    let isRejected = false;
+    mockLoad.mockImplementation(async () => {
+      return { state: isRejected ? 'Rejected' : 'Pending' } as unknown as PolicyRequest;
+    });
+
+    const promise = waitForPolicyRequest('req-1', '/workspace');
+
+    // Simulate event
+    isRejected = true;
+    daemonEvents.emit(DAEMON_EVENT_MESSAGE_APPENDED, {
+      message: { role: 'system', event: 'policy_rejected' },
+    });
+
+    await expect(promise).rejects.toThrow(/Policy request rejected/);
+  });
+});
 
 describe('executeSubagent', () => {
   beforeEach(() => {

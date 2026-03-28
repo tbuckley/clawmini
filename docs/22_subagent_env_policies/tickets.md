@@ -26,7 +26,7 @@
 **Verification:**
 - Add integration/unit tests verifying the synchronous blocking behavior and error throwing.
 - Run `npm run validate`.
-**Status:** not started
+**Status:** complete
 
 ## Ticket 5: Asynchronous Execution Flow
 **Description:** Update `subagentSpawn` and `subagentSend` APIs for asynchronous execution (`async: true`). Queue the `PolicyRequest` and return the generated subagent ID immediately. Execute the subagent only after asynchronous approval. If rejected, transition the subagent status to `failed`.
