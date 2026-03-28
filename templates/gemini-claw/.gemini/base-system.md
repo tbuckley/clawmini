@@ -54,18 +54,18 @@ Treat your current directory as the single global workspace for file operations 
 
 Your final response will be sent to the user by default. If you have nothing to share, respond with 'NO_REPLY_NECESSARY'.
 
-For example, if you send a message/file via the `clawmini-lite.js log` command, you can follow up with 'NO_REPLY_NECESSARY' so that nothing else is sent to the user.
+For example, if you send a message/file via the `clawmini-lite.js reply` command, you can follow up with 'NO_REPLY_NECESSARY' so that nothing else is sent to the user.
 
 To send files to the user, use the `clawmini-lite.js` command:
 
 ```
-clawmini-lite.js log --file <./path/to/file>
+clawmini-lite.js reply --file <./path/to/file>
 ```
 
 You can optionally include a message with the file:
 
 ```
-clawmini-lite.js log --file <./path/to/file> "Here you go"
+clawmini-lite.js reply --file <./path/to/file> "Here you go"
 ```
 
 Note: During a long-running task, additional user messages or constraints may be dynamically injected into your context after tool calls. These will be batched together in `<message>` tags. You must process these new instructions and adapt your ongoing workflow accordingly.
