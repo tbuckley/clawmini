@@ -136,7 +136,8 @@ export function startGoogleChatIngestion(
                     });
                   }
                   if (c.card?.header) {
-                    c.card.header.subtitle = `Policy ${methodName}d`;
+                    const statusText = methodName === 'approve' ? 'Approved' : 'Rejected';
+                    c.card.header.subtitle = `Policy ${statusText}`;
                   }
                   return c;
                 });
