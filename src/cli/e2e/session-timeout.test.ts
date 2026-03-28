@@ -14,16 +14,13 @@ describe('Session Timeout E2E', () => {
     const settingsPath = path.join(e2eDir, '.clawmini', 'settings.json');
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
 
-    // Replace the default string config with an object config
-    settings.routers = settings.routers.map((router: unknown) => {
-      if (router === '@clawmini/session-timeout') {
-        return {
-          use: '@clawmini/session-timeout',
-          with: { timeout: '2s' },
-        };
-      }
-      return router;
-    });
+    // Explicitly add the custom configured router
+    settings.routers = [
+      {
+        use: '@clawmini/session-timeout',
+        with: { timeout: '2s' },
+      },
+    ];
 
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   }, 30000);
