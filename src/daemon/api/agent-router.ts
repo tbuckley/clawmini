@@ -193,7 +193,10 @@ export const executePolicyHelp = apiProcedure
     }
 
     if (!policy.command) {
-      return { stdout: '', stderr: 'This pseudo-command does not support --help\n', exitCode: 1 };
+      if (input.commandName.startsWith('@clawmini/')) {
+        return { stdout: '', stderr: 'This pseudo-command does not support --help\n', exitCode: 1 };
+      }
+      return { stdout: '', stderr: `Policy ${input.commandName} is missing a required 'command' field.\n`, exitCode: 1 };
     }
 
     const fullArgs = [...(policy.args || []), '--help'];
