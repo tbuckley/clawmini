@@ -34,7 +34,12 @@ export async function main() {
   const trpc = getTRPCClient();
 
   const client = new Client({
-    intents: [GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent],
+    intents: [
+      GatewayIntentBits.DirectMessages,
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+    ],
     partials: [Partials.Channel],
   });
 
