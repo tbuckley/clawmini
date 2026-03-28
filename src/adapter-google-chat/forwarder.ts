@@ -287,8 +287,8 @@ export async function startDaemonToGoogleChatForwarder(
     // Update local copy of last message IDs
     if (state.lastSyncedMessageIds) {
       currentLastSyncedMessageIds = {
-        ...currentLastSyncedMessageIds,
         ...state.lastSyncedMessageIds,
+        ...currentLastSyncedMessageIds,
       };
     }
 

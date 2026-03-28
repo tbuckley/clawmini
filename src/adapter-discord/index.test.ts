@@ -83,6 +83,8 @@ describe('Discord Adapter Entry Point', () => {
       botToken: 'test-token',
       authorizedUserId: 'user-123',
       chatId: 'default',
+      maxAttachmentSizeMB: 25,
+      requireMention: false,
     });
 
     // Reset the mock implementation to return the instance
