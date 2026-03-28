@@ -11,6 +11,7 @@ import {
   executeSubagent,
   getSubagentDepth,
   resolveSubagentEnvironments,
+  handleSubagentPolicyRequest,
 } from './subagent-utils.js';
 import type { SubagentTracker } from '../../shared/config.js';
 
@@ -120,9 +121,19 @@ export const subagentSend = apiProcedure
       sub!.agentId || 'default',
       workspaceRoot
     );
-    // TODO: Ticket 3 - Use sourceEnv and targetEnv for policy evaluation
-    void sourceEnv;
-    void targetEnv;
+
+    await handleSubagentPolicyRequest(
+      sourceEnv,
+      targetEnv,
+      chatId,
+      ctx.tokenPayload.agentId || 'default',
+      ctx.tokenPayload.subagentId,
+      'send',
+      sub!.agentId || 'default',
+      sub!.id,
+      input.prompt,
+      workspaceRoot
+    );
 
     // Execute asynchronously
     executeSubagent(

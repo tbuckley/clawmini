@@ -19,7 +19,7 @@
 **Verification:**
 - Add unit tests for `PolicyRequest` generation and the auto-approval logic matching subagent pseudo-commands.
 - Run `npm run validate`.
-**Status:** not started
+**Status:** complete
 
 ## Ticket 4: Synchronous Execution Flow (Blocking)
 **Description:** Update `subagentSpawn` and `subagentSend` APIs to handle synchronous execution (`async: false`). If a policy request is generated, block the API call until it is approved or rejected. Throw a clear error (e.g., `TRPCError('FORBIDDEN')`) if rejected. If approved, commence execution and return the subagent ID.
