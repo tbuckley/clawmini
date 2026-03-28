@@ -12,6 +12,43 @@ import {
   type FilteringConfig,
 } from '../shared/adapters/filtering.js';
 
+async function resolveDiscordDestination(
+  client: Client,
+  discordUserId: string,
+  chatId: string
+): Promise<{
+  send: (options: MessageCreateOptions | { content: string }) => Promise<any>;
+  sendTyping?: () => Promise<any>;
+}> {
+  const state = await readDiscordState();
+  const channelChatMap = state.channelChatMap || {};
+
+  let targetDiscordChannelId: string | undefined;
+  for (const [channelId, mappedChatId] of Object.entries(channelChatMap)) {
+    if (mappedChatId === chatId) {
+      targetDiscordChannelId = channelId;
+      break;
+    }
+  }
+
+  if (targetDiscordChannelId) {
+    try {
+      const channel = await client.channels.fetch(targetDiscordChannelId);
+      if (channel && channel.isTextBased()) {
+        return channel as any;
+      }
+    } catch (error) {
+      console.warn(
+        `Failed to fetch mapped channel ${targetDiscordChannelId} for chat ${chatId}, falling back to DM.`,
+        error
+      );
+    }
+  }
+
+  const user = await client.users.fetch(discordUserId);
+  return user.createDM();
+}
+
 export async function startDaemonToDiscordForwarder(
   client: Client,
   trpc: ReturnType<typeof getTRPCClient>,
@@ -99,8 +136,7 @@ export async function startDaemonToDiscordForwarder(
 
                   if (isPolicyRequest) {
                     try {
-                      const user = await client.users.fetch(discordUserId);
-                      const dm = await user.createDM();
+                      const dm = await resolveDiscordDestination(client, discordUserId, chatId);
 
                       const embed = new EmbedBuilder()
                         .setTitle('Action Required: Policy Request')
@@ -173,8 +209,7 @@ export async function startDaemonToDiscordForwarder(
                   }
 
                   try {
-                    const user = await client.users.fetch(discordUserId);
-                    const dm = await user.createDM();
+                    const dm = await resolveDiscordDestination(client, discordUserId, chatId);
                     const formattedContent = formatMessage(message);
 
                     if (formattedContent && formattedContent.length > 2000) {
@@ -254,9 +289,10 @@ export async function startDaemonToDiscordForwarder(
             if (!event) return;
 
             try {
-              const user = await client.users.fetch(discordUserId);
-              const dm = await user.createDM();
-              await dm.sendTyping();
+              const dm = await resolveDiscordDestination(client, discordUserId, chatId);
+              if (dm.sendTyping) {
+                await dm.sendTyping();
+              }
             } catch (error) {
               console.error(
                 `Failed to send typing indicator to Discord user ${discordUserId}:`,
