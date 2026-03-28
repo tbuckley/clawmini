@@ -58,9 +58,9 @@ describe('handleSubagentPolicyRequest', () => {
   });
 
   it('throws an error if no policy matches the pseudo-command', async () => {
-    vi.mocked(workspace.readPolicies).mockResolvedValue({ policies: {} } as unknown as {
-      policies: Record<string, any>;
-    });
+    vi.mocked(workspace.readPolicies).mockResolvedValue({
+      policies: {},
+    } as unknown as import('../../shared/policies.js').PolicyConfig);
 
     await expect(
       handleSubagentPolicyRequest(
@@ -85,7 +85,7 @@ describe('handleSubagentPolicyRequest', () => {
           autoApprove: false,
         },
       },
-    } as unknown as { policies: Record<string, any> });
+    } as unknown as import('../../shared/policies.js').PolicyConfig);
 
     const result = await handleSubagentPolicyRequest(
       'env-a',
@@ -113,7 +113,7 @@ describe('handleSubagentPolicyRequest', () => {
           autoApprove: true,
         },
       },
-    } as unknown as { policies: Record<string, any> });
+    } as unknown as import('../../shared/policies.js').PolicyConfig);
 
     vi.mocked(policyUtils.executeRequest).mockResolvedValue({
       stdout: 'ok',

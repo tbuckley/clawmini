@@ -27,3 +27,12 @@
 - Subagents now wait correctly if `async: false` and the policy is `pending`, blocking until it is either `Approved` or `Rejected`.
 - Wrote extensive tests for `waitForPolicyRequest` inside `src/daemon/api/subagent-utils.test.ts`. Fixed a mocking issue with `RequestStore` class mock.
 - Verified changes with `npm run validate`.
+
+## Ticket 5
+- Added `handleSubagentExecution` to `src/daemon/api/subagent-execution.ts` to coordinate synchronous vs asynchronous policy request handling.
+- Integrated `handleSubagentExecution` into `subagentSpawn` and `subagentSend` in `src/daemon/api/subagent-router.ts`.
+- When `isAsync: true`, subagent execution is now queued as a floating promise and only executes after `waitForPolicyRequest` resolves.
+- If rejected, the subagent state safely transitions to `failed` using `updateChatSettings`.
+- Extracted logic from `src/daemon/api/subagent-utils.ts` to `src/daemon/api/subagent-execution.ts` to avoid file size lint limits (`max-lines`).
+- Updated types in `src/daemon/api/subagent-policy-request.test.ts` to use `import('../../shared/policies.js').PolicyConfig` resolving TS compilation errors.
+- Verified all code changes using `npm run validate`.

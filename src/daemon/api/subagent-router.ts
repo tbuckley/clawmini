@@ -8,12 +8,11 @@ import { on } from 'node:events';
 import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
 import { createAgentSession } from '../agent/agent-session.js';
 import {
-  executeSubagent,
   getSubagentDepth,
   resolveSubagentEnvironments,
   handleSubagentPolicyRequest,
-  waitForPolicyRequest,
 } from './subagent-utils.js';
+import { handleSubagentExecution } from './subagent-execution.js';
 import type { SubagentTracker } from '../../shared/config.js';
 
 const MAX_SUBAGENT_DEPTH = 2;
@@ -86,18 +85,14 @@ export const subagentSpawn = apiProcedure
       workspaceRoot
     );
 
-    if (!isAsync && policyResult?.status === 'pending') {
-      await waitForPolicyRequest(policyResult.request.id, workspaceRoot);
-    }
-
-    // Execute asynchronously
-    executeSubagent(
+    await handleSubagentExecution(
+      policyResult,
+      isAsync,
       chatId,
       id,
       agentId,
       sessionId,
       input.prompt,
-      isAsync,
       ctx.tokenPayload,
       workspaceRoot
     );
@@ -152,18 +147,14 @@ export const subagentSend = apiProcedure
       workspaceRoot
     );
 
-    if (!isAsync && policyResult?.status === 'pending') {
-      await waitForPolicyRequest(policyResult.request.id, workspaceRoot);
-    }
-
-    // Execute asynchronously
-    executeSubagent(
+    await handleSubagentExecution(
+      policyResult,
+      isAsync,
       chatId,
       sub!.id,
       sub!.agentId || 'default',
       sub!.sessionId || 'default',
       input.prompt,
-      input.async,
       ctx.tokenPayload,
       workspaceRoot
     );
