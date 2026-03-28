@@ -1,10 +1,16 @@
 #!/usr/bin/env node
 
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
-import { readDiscordConfig, isAuthorized, initDiscordConfig } from './config.js';
+import {
+  readDiscordConfig,
+  isAuthorized,
+  initDiscordConfig,
+  getDiscordConfigPath,
+} from './config.js';
 import { getTRPCClient } from './client.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
 import { getClawminiDir } from '../shared/workspace.js';
+import { handleAdapterCommand } from '../shared/adapters/commands.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -37,11 +43,16 @@ export async function main() {
     console.log(`Ready! Logged in as ${readyClient.user.tag}`);
 
     // Start forwarding from daemon to Discord
-    startDaemonToDiscordForwarder(readyClient, trpc, config.authorizedUserId, config.chatId).catch(
-      (error) => {
-        console.error('Error in daemon-to-discord forwarder:', error);
-      }
-    );
+    startDaemonToDiscordForwarder(
+      readyClient,
+      trpc,
+      config.authorizedUserId,
+      config.chatId,
+      undefined,
+      config
+    ).catch((error) => {
+      console.error('Error in daemon-to-discord forwarder:', error);
+    });
   });
 
   client.on(Events.MessageCreate, async (message) => {
@@ -60,6 +71,19 @@ export async function main() {
     }
 
     console.log(`Received message from ${message.author.tag}: ${message.content}`);
+
+    const commandResult = await handleAdapterCommand(
+      message.content,
+      config,
+      getDiscordConfigPath(process.cwd()),
+      trpc as any,
+      config.chatId
+    );
+
+    if (commandResult) {
+      await message.reply(commandResult);
+      return;
+    }
 
     const downloadedFiles: string[] = [];
     if (message.attachments.size > 0) {

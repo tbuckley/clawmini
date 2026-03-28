@@ -38,6 +38,7 @@ vi.mock('./config.js', () => ({
   readDiscordConfig: vi.fn(),
   initDiscordConfig: vi.fn(),
   isAuthorized: vi.fn(),
+  getDiscordConfigPath: vi.fn(),
 }));
 
 vi.mock('./client.js', () => ({

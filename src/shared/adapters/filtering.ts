@@ -1,7 +1,7 @@
 import type { ChatMessage } from '../chats.js';
 
 export interface FilteringConfig {
-  messages?: Record<string, boolean>;
+  messages?: Record<string, boolean> | undefined;
 }
 
 export function shouldDisplayMessage(message: ChatMessage, config: FilteringConfig): boolean {

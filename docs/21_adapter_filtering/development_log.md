@@ -17,3 +17,13 @@
 - Configured `/debug <N>` logic to fetch messages and filter backward to find ignored messages.
 - Fixed typing issues and formatted code. Tests are passing cleanly via `npm run validate`.
 - Completed Ticket 3.
+
+- Started working on Ticket 4: Integrate with Discord Adapter.
+- Updated `src/adapter-discord/index.ts` to intercept commands via `handleAdapterCommand` before they reach the daemon.
+- Passed config down to `startDaemonToDiscordForwarder`.
+- Updated `src/adapter-discord/forwarder.ts` to use `shouldDisplayMessage` and `formatMessage` from the shared filtering module.
+- Resolved TypeScript `exactOptionalPropertyTypes` issue by explicitly allowing `messages?: Record<string, boolean> | undefined` in `FilteringConfig` inside `src/shared/adapters/filtering.ts`.
+- Resolved TypeScript `CommandTrpcClient` inference mismatch by casting `trpc as any` in `index.ts`.
+- Updated unit tests in `src/adapter-discord/index.test.ts` to mock `getDiscordConfigPath`.
+- Verified changes with `npm run validate` and all tests passed.
+- Completed Ticket 4.

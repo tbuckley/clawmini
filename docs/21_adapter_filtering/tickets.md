@@ -24,7 +24,7 @@
 - Run `npm run validate`.
 
 ## Ticket 4: Integrate with Discord Adapter
-**Status:** Not Started
+**Status:** Complete
 **Description:** Update the Discord adapter (`src/adapter-discord/index.ts` and `src/adapter-discord/forwarder.ts`) to intercept the new commands before they reach the daemon, pass them to the shared command handler, and use the new shared `shouldDisplayMessage` and `formatMessage` functions for all outbound daemon messages.
 **Verification:**
 - Read the modified files to ensure the command interception logic is placed correctly.

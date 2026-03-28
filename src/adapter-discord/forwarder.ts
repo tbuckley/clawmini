@@ -4,13 +4,19 @@ import type { getTRPCClient } from './client.js';
 import { readDiscordState, writeDiscordState } from './state.js';
 import type { ChatMessage } from '../shared/chats.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
+import {
+  shouldDisplayMessage,
+  formatMessage,
+  type FilteringConfig,
+} from '../shared/adapters/filtering.js';
 
 export async function startDaemonToDiscordForwarder(
   client: Client,
   trpc: ReturnType<typeof getTRPCClient>,
   discordUserId: string,
   chatId: string = 'default',
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  config: FilteringConfig = {}
 ) {
   const state = await readDiscordState();
   let lastMessageId = state.lastSyncedMessageId;
@@ -68,15 +74,9 @@ export async function startDaemonToDiscordForwarder(
 
                 const message = rawMessage as ChatMessage;
 
-                // Only forward messages that are explicitly marked for agent display,
-                // or are backwards-compatible agent replies / legacy logs.
-                // Ignore any messages associated with subagents.
-                const isAgentDisplay =
-                  message.displayRole === 'agent' ||
-                  message.role === 'agent' ||
-                  message.role === 'legacy_log';
+                const isDisplayed = shouldDisplayMessage(message, config);
 
-                if (isAgentDisplay && !message.subagentId) {
+                if (isDisplayed) {
                   const logMessage = message;
 
                   if ('level' in logMessage && logMessage.level === 'verbose') {
@@ -111,10 +111,11 @@ export async function startDaemonToDiscordForwarder(
                   try {
                     const user = await client.users.fetch(discordUserId);
                     const dm = await user.createDM();
+                    const formattedContent = formatMessage(message);
 
                     // Discord has a 2000 character limit for messages.
-                    if (hasContent && logMessage.content.length > 2000) {
-                      const chunks = chunkString(logMessage.content, 2000);
+                    if (formattedContent && formattedContent.length > 2000) {
+                      const chunks = chunkString(formattedContent, 2000);
                       for (let i = 0; i < chunks.length; i++) {
                         if (signal?.aborted) break;
                         const chunkOptions: MessageCreateOptions = { content: chunks[i] as string };
@@ -125,8 +126,8 @@ export async function startDaemonToDiscordForwarder(
                       }
                     } else {
                       const options: MessageCreateOptions = {};
-                      if (hasContent) {
-                        options.content = logMessage.content;
+                      if (formattedContent) {
+                        options.content = formattedContent;
                       }
                       if (hasFiles) {
                         options.files = absoluteFiles;
