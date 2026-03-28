@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { getAuthClient, getDriveAuthClient } from './auth.js';
 import type { getTRPCClient } from './client.js';
-import type { ChatMessage, LegacyLogMessage } from '../shared/chats.js';
+import type { ChatMessage } from '../shared/chats.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import mime from 'mime-types';

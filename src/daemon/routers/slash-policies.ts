@@ -109,7 +109,19 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       ...(req.subagentId ? { subagentId: req.subagentId } : {}),
     };
 
+    const userNotificationMsg: SystemMessage = {
+      id: randomUUID(),
+      messageId: state.messageId,
+      role: 'system',
+      event: 'policy_rejected',
+      displayRole: 'agent',
+      content: agentMessage,
+      timestamp: new Date().toISOString(),
+      ...(req.subagentId ? { subagentId: req.subagentId } : {}),
+    };
+
     await appendMessage(state.chatId, logMsg);
+    await appendMessage(state.chatId, userNotificationMsg);
 
     return {
       ...state,

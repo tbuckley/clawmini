@@ -2,7 +2,7 @@ import type { Client, MessageCreateOptions } from 'discord.js';
 import path from 'node:path';
 import type { getTRPCClient } from './client.js';
 import { readDiscordState, writeDiscordState } from './state.js';
-import type { ChatMessage, LegacyLogMessage } from '../shared/chats.js';
+import type { ChatMessage } from '../shared/chats.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
 
 export async function startDaemonToDiscordForwarder(
