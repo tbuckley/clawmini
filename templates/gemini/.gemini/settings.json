@@ -1,0 +1,50 @@
+{
+    "$schema": "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/schemas/settings.schema.json",
+    "tools": {
+        "exclude": [
+            "ask_user",
+            "save_memory"
+        ]
+    },
+    "hooks": {
+        "BeforeTool": [
+            {
+                "matcher": "*",
+                "hooks": [
+                    {
+                        "name": "clawmini-logging",
+                        "type": "command",
+                        "command": "$GEMINI_PROJECT_DIR/.gemini/hooks/clawmini-logging.sh",
+                        "timeout": 5000
+                    }
+                ]
+            }
+        ],
+        "AfterTool": [
+            {
+                "matcher": "*",
+                "hooks": [
+                    {
+                        "name": "insert-pending",
+                        "type": "command",
+                        "command": "$GEMINI_PROJECT_DIR/.gemini/hooks/insert-pending.sh",
+                        "timeout": 5000
+                    }
+                ]
+            }
+        ],
+        "AfterAgent": [
+            {
+                "matcher": "*",
+                "hooks": [
+                    {
+                        "name": "check-subagents",
+                        "type": "command",
+                        "command": "node $GEMINI_PROJECT_DIR/.gemini/hooks/check-subagents.mjs",
+                        "timeout": 5000
+                    }
+                ]
+            }
+        ]
+    }
+}
