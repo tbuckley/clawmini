@@ -8,7 +8,7 @@
 - Run `npm run validate` to ensure type checks and linting pass.
 
 ## Ticket 2: Implement Shared Filtering Logic
-**Status:** Not Started
+**Status:** Complete
 **Description:** Create a shared module (e.g., `src/shared/adapters/filtering.ts`) to centralize message visibility and formatting logic. Implement a `shouldDisplayMessage(message, config)` function that respects the new configuration rules (e.g., `all`, `subagent`, specific overrides) and the default agent rules. Implement a `formatMessage(message)` function to prepend `[To:<id>]` and `[From:<id>]`/`[<id>]` strings for subagent messages.
 **Verification:**
 - Write comprehensive unit tests for `shouldDisplayMessage` testing different rules (default, specific allows, `all: true`).
