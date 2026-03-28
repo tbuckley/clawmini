@@ -230,6 +230,9 @@ export const userRouter = router({
   listCronJobs: userListCronJobs,
   addCronJob: userAddCronJob,
   deleteCronJob: userDeleteCronJob,
+  getChats,
+  getAgents,
+  createChat: userCreateChat,
 });
 
 export type UserRouter = typeof userRouter;
