@@ -118,11 +118,12 @@ export function startGoogleChatIngestion(
 
         if (routingResult) {
           if (routingResult.type === 'mapped') {
-            const newMap = {
-              ...currentState.channelChatMap,
-              [externalContextId]: routingResult.newChatId,
-            };
-            await updateGoogleChatState({ channelChatMap: newMap });
+            await updateGoogleChatState((latestState) => ({
+              channelChatMap: {
+                ...latestState.channelChatMap,
+                [externalContextId]: routingResult.newChatId,
+              },
+            }));
           }
 
           try {
@@ -159,7 +160,7 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      const targetChatId = mappedChatId || config.chatId || 'default';
+      const targetChatId = mappedChatId as string;
 
       if (event.type === 'CARD_CLICKED') {
         const action = event.action;
