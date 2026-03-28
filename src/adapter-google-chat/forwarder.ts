@@ -94,16 +94,21 @@ export async function startDaemonToGoogleChatForwarder(
                   if (isDisplayed) {
                     const logMessage = message;
 
+                    const currentState = await readGoogleChatState();
+                    let activeSpaceName = config.directMessageName;
+                    if (!activeSpaceName && currentState.channelChatMap) {
+                      const entry = Object.entries(currentState.channelChatMap).find(
+                        ([_, mapChatId]) => mapChatId === chatId
+                      );
+                      if (entry) {
+                        activeSpaceName = entry[0];
+                      }
+                    }
+
                     const isPolicyRequest =
                       logMessage.role === 'policy' && logMessage.status === 'pending';
 
                     if (isPolicyRequest) {
-                      let activeSpaceName = config.directMessageName;
-                      if (!activeSpaceName) {
-                        const currentState = await readGoogleChatState();
-                        activeSpaceName = currentState.activeSpaceName;
-                      }
-
                       if (!activeSpaceName) {
                         console.warn(
                           'No active Google Chat space to reply to. Ignoring policy request:',
@@ -164,12 +169,6 @@ export async function startDaemonToGoogleChatForwarder(
                       await saveLastMessageId(chatId, logMessage.id).catch(console.error);
                       lastMessageId = logMessage.id;
                       continue;
-                    }
-
-                    let activeSpaceName = config.directMessageName;
-                    if (!activeSpaceName) {
-                      const currentState = await readGoogleChatState();
-                      activeSpaceName = currentState.activeSpaceName;
                     }
 
                     if (!activeSpaceName) {
