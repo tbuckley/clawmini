@@ -61,7 +61,9 @@ export async function executeSubagent(
     await logger.logSubagentStatus({ subagentId, status: 'completed' });
 
     if (isAsync) {
-      const lastLogMessage = await logger.findLastMessage((m) => m.role === 'agent');
+      const lastLogMessage = await logger.findLastMessage(
+        (m) => m.role === 'agent' || m.displayRole === 'agent'
+      );
       let outputContent = '';
       if (lastLogMessage && 'content' in lastLogMessage) {
         outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;
