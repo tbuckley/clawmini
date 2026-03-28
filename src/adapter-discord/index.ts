@@ -114,7 +114,7 @@ export async function main() {
         if (routingResult.type === 'mapped') {
           await updateDiscordState((latestState) => ({
             channelChatMap: {
-              ...latestState.channelChatMap,
+              ...(latestState.channelChatMap || {}),
               [externalContextId]: routingResult.newChatId,
             },
           }));
@@ -137,7 +137,7 @@ export async function main() {
         );
         await updateDiscordState((latestState) => ({
           channelChatMap: {
-            ...latestState.channelChatMap,
+            ...(latestState.channelChatMap || {}),
             [externalContextId]: targetChatId as string,
           },
         }));
