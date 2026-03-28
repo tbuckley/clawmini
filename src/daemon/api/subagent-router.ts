@@ -13,6 +13,7 @@ import {
   handleSubagentPolicyRequest,
 } from './subagent-utils.js';
 import { handleSubagentExecution } from './subagent-execution.js';
+import { cancelPendingSubagentRequests } from '../cleanup.js';
 import type { SubagentTracker } from '../../shared/config.js';
 
 const MAX_SUBAGENT_DEPTH = 2;
@@ -259,6 +260,8 @@ export const subagentStop = apiProcedure
     });
 
     if (subToStop) {
+      await cancelPendingSubagentRequests(input.subagentId, 'Subagent stopped');
+
       const session = await createAgentSession({
         chatId,
         agentId: subToStop.agentId || 'default',
@@ -289,6 +292,8 @@ export const subagentDelete = apiProcedure
     });
 
     if (subToDelete) {
+      await cancelPendingSubagentRequests(input.subagentId, 'Subagent deleted');
+
       const session = await createAgentSession({
         chatId,
         agentId: subToDelete.agentId || 'default',

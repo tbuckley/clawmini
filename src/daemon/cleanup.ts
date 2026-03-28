@@ -55,3 +55,37 @@ export async function cleanPendingRequests() {
     console.warn('Failed to clean pending policy requests:', err);
   }
 }
+
+export async function cancelPendingSubagentRequests(subagentId: string, reason: string) {
+  try {
+    const workspaceRoot = getWorkspaceRoot();
+    const store = new RequestStore(workspaceRoot);
+    const requests = await store.list();
+
+    for (const req of requests) {
+      if (req.state === 'Pending' && req.subagentId === subagentId) {
+        req.state = 'Rejected';
+        req.rejectionReason = reason;
+        await store.save(req);
+
+        const msg: PolicyRequestMessage = {
+          id: randomUUID(),
+          messageId: randomUUID(),
+          role: 'policy',
+          requestId: req.id,
+          commandName: req.commandName,
+          args: req.args,
+          status: 'rejected',
+          content: `Request ${req.id} rejected. Reason: ${reason}`,
+          timestamp: new Date().toISOString(),
+          displayRole: 'agent',
+          subagentId,
+        };
+
+        await appendMessage(req.chatId, { ...msg, role: 'system', event: 'policy_rejected' });
+      }
+    }
+  } catch (err) {
+    console.warn(`Failed to cancel pending requests for subagent ${subagentId}:`, err);
+  }
+}
