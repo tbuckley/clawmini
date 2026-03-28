@@ -82,6 +82,18 @@ export class RequestStore {
     }
     return requests.sort((a, b) => b.createdAt - a.createdAt);
   }
+
+  async delete(id: string): Promise<void> {
+    const normalizedId = normalizePolicyId(id);
+    const filePath = this.getFilePath(normalizedId);
+    try {
+      await fs.unlink(filePath);
+    } catch (err: unknown) {
+      if (!isENOENT(err)) {
+        throw err;
+      }
+    }
+  }
 }
 
 export function generateRandomAlphaNumericString(length: number): string {
