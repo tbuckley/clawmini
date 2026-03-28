@@ -14,10 +14,16 @@ export async function startDaemonToDiscordForwarder(
   client: Client,
   trpc: ReturnType<typeof getTRPCClient>,
   discordUserId: string,
-  chatId: string = 'default',
-  signal?: AbortSignal,
-  config: FilteringConfig = {}
+  options: {
+    chatId?: string;
+    signal?: AbortSignal;
+    config?: FilteringConfig;
+  } = {}
 ) {
+  const chatId = options.chatId ?? 'default';
+  const signal = options.signal;
+  const config = options.config ?? {};
+
   const state = await readDiscordState();
   let lastMessageId = state.lastSyncedMessageId;
 

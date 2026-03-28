@@ -43,14 +43,10 @@ export async function main() {
     console.log(`Ready! Logged in as ${readyClient.user.tag}`);
 
     // Start forwarding from daemon to Discord
-    startDaemonToDiscordForwarder(
-      readyClient,
-      trpc,
-      config.authorizedUserId,
-      config.chatId,
-      undefined,
-      config
-    ).catch((error) => {
+    startDaemonToDiscordForwarder(readyClient, trpc, config.authorizedUserId, {
+      chatId: config.chatId,
+      config: config,
+    }).catch((error) => {
       console.error('Error in daemon-to-discord forwarder:', error);
     });
   });
@@ -76,7 +72,7 @@ export async function main() {
       message.content,
       config,
       getDiscordConfigPath(process.cwd()),
-      trpc as any,
+      trpc,
       config.chatId
     );
 

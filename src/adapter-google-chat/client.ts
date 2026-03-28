@@ -10,9 +10,12 @@ import { getSocketPath, getClawminiDir } from '../shared/workspace.js';
 import { createUnixSocketFetch } from '../shared/fetch.js';
 import { createUnixSocketEventSource } from '../shared/event-source.js';
 import type { GoogleChatConfig } from './config.js';
-import { isAuthorized } from './config.js';
+import { isAuthorized, getGoogleChatConfigPath } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
 import { downloadAttachment } from './utils.js';
+import { handleAdapterCommand } from '../shared/adapters/commands.js';
+import { google } from 'googleapis';
+import { getAuthClient } from './auth.js';
 
 export function getTRPCClient(options: { socketPath?: string } = {}) {
   const socketPath = options.socketPath ?? getSocketPath();
@@ -93,6 +96,25 @@ export function startGoogleChatIngestion(
         await updateGoogleChatState({ activeSpaceName });
       } else if (activeSpaceName !== spaceName) {
         console.log(`Ignoring message from inactive space: ${spaceName}`);
+        message.ack();
+        return;
+      }
+
+      const commandResult = await handleAdapterCommand(
+        text,
+        config,
+        getGoogleChatConfigPath(process.cwd()),
+        trpc,
+        config.chatId || 'default'
+      );
+
+      if (commandResult) {
+        const authClient = await getAuthClient();
+        const chatApi = google.chat({ version: 'v1', auth: authClient });
+        await chatApi.spaces.messages.create({
+          parent: activeSpaceName as string,
+          requestBody: { text: commandResult },
+        });
         message.ack();
         return;
       }

@@ -8,6 +8,7 @@ import mime from 'mime-types';
 import type { GoogleChatConfig } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
+import { shouldDisplayMessage, formatMessage } from '../shared/adapters/filtering.js';
 
 export async function startDaemonToGoogleChatForwarder(
   trpc: ReturnType<typeof getTRPCClient>,
@@ -68,12 +69,9 @@ export async function startDaemonToGoogleChatForwarder(
 
                   const message = rawMessage as ChatMessage;
 
-                  const isAgentDisplay =
-                    message.displayRole === 'agent' ||
-                    message.role === 'agent' ||
-                    message.role === 'legacy_log';
+                  const isDisplayed = shouldDisplayMessage(message, config);
 
-                  if (isAgentDisplay && !message.subagentId) {
+                  if (isDisplayed) {
                     const logMessage = message;
 
                     if ('level' in logMessage && logMessage.level === 'verbose') {
@@ -119,7 +117,7 @@ export async function startDaemonToGoogleChatForwarder(
                       const client = await getAuthClient();
                       const chatApi = google.chat({ version: 'v1', auth: client });
 
-                      let text = logMessage.content || '';
+                      let text = formatMessage(logMessage) || '';
 
                       if (hasFiles && files) {
                         const fileNames = files.map((f) => path.basename(f)).join(', ');

@@ -8,6 +8,19 @@ export interface CommandTrpcClient {
   };
 }
 
+const VALID_ROLES = new Set([
+  'all',
+  'subagent',
+  'user',
+  'agent',
+  'command',
+  'system',
+  'tool',
+  'policy',
+  'subagent_status',
+  'legacy_log',
+]);
+
 export async function handleAdapterCommand(
   content: string,
   config: FilteringConfig,
@@ -31,6 +44,9 @@ export async function handleAdapterCommand(
 
   if (trimmed.startsWith('/show ')) {
     const role = trimmed.slice(6).trim();
+    if (!VALID_ROLES.has(role)) {
+      return `Error: '${role}' is not a valid message role or special value. Valid options: ${Array.from(VALID_ROLES).join(', ')}`;
+    }
     if (!config.messages) config.messages = {};
     config.messages[role] = true;
     await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
@@ -39,13 +55,16 @@ export async function handleAdapterCommand(
 
   if (trimmed.startsWith('/hide ')) {
     const role = trimmed.slice(6).trim();
+    if (!VALID_ROLES.has(role)) {
+      return `Error: '${role}' is not a valid message role or special value. Valid options: ${Array.from(VALID_ROLES).join(', ')}`;
+    }
     if (!config.messages) config.messages = {};
     config.messages[role] = false;
     await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
     return `Configuration updated: Hiding messages for '${role}'.`;
   }
 
-  if (trimmed.startsWith('/debug')) {
+  if (trimmed === '/debug' || trimmed.startsWith('/debug ')) {
     const match = trimmed.match(/^\/debug\s+(\d+)$/);
     const limit = match ? parseInt(match[1] as string, 10) : 5;
 
