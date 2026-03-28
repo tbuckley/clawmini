@@ -11,4 +11,9 @@
 - Implemented `shouldDisplayMessage` to handle default agent rules, specific overrides, and the `all` keyword.
 - Implemented `formatMessage` to prefix messages with `[To:<id>]` and `[From:<id>]` for subagents.
 - Ran `npm run validate` and confirmed all checks pass.
-- Completed Ticket 2.
+- Completed Ticket 2.- Started working on Ticket 3: Implement Command Parsing & Configuration State.
+- Created `src/shared/adapters/commands.ts` and `src/shared/adapters/commands.test.ts`.
+- Implemented `handleAdapterCommand` to parse `/show`, `/hide`, and `/debug` commands.
+- Configured `/debug <N>` logic to fetch messages and filter backward to find ignored messages.
+- Fixed typing issues and formatted code. Tests are passing cleanly via `npm run validate`.
+- Completed Ticket 3.

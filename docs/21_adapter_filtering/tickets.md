@@ -16,7 +16,7 @@
 - Run `npm run validate`.
 
 ## Ticket 3: Implement Command Parsing & Configuration State
-**Status:** Not Started
+**Status:** Complete
 **Description:** Create a shared module to handle `/show`, `/hide`, and `/debug` commands. This module should parse the commands, update the configuration file (`config.json`), update the in-memory configuration reference, and handle the `/debug <N>` logic. Note that `/show all` must replace the `messages` configuration with `{"all": true}` and `/hide all` must replace it with `{}`. The debug logic must fetch recent messages using the daemon API (`trpc.getMessages.query`), filter backwards using `shouldDisplayMessage` to find ignored messages (excluding user messages without subagentIds), and format the output.
 **Verification:**
 - Write unit tests mocking the filesystem (to verify `config.json` updates).
