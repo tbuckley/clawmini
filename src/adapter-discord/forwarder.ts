@@ -17,7 +17,9 @@ async function resolveDiscordDestination(
   discordUserId: string,
   chatId: string
 ): Promise<{
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   send: (options: MessageCreateOptions | { content: string }) => Promise<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sendTyping?: () => Promise<any>;
 }> {
   const state = await readDiscordState();
@@ -35,6 +37,7 @@ async function resolveDiscordDestination(
     try {
       const channel = await client.channels.fetch(targetDiscordChannelId);
       if (channel && channel.isTextBased()) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return channel as any;
       }
     } catch (error) {

@@ -2,7 +2,7 @@ export type RoutingTrpcClient = {
   getChats: { query: () => Promise<string[]> };
   getAgents: { query: () => Promise<string[]> };
   createChat: {
-    mutation: (args: {
+    mutate: (args: {
       chatId: string;
       agent?: string;
     }) => Promise<{ success: boolean; chatId: string }>;
@@ -96,7 +96,7 @@ export async function handleRoutingCommand(
       counter++;
     }
 
-    await trpcClient.createChat.mutation({ chatId: newChatId, agent: agentId });
+    await trpcClient.createChat.mutate({ chatId: newChatId, agent: agentId });
 
     return {
       type: 'mapped',
