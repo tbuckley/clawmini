@@ -298,10 +298,10 @@ describe('Daemon to Google Chat Forwarder', () => {
     await vi.waitFor(() => expect(callCount).toBe(2));
 
     expect(mockWriteState).toHaveBeenCalledWith(
-      expect.objectContaining({ lastSyncedMessageId: 'msg-err-1' })
+      expect.objectContaining({ lastSyncedMessageIds: { default: 'msg-err-1' } })
     );
     expect(mockWriteState).toHaveBeenCalledWith(
-      expect.objectContaining({ lastSyncedMessageId: 'msg-err-2' })
+      expect.objectContaining({ lastSyncedMessageIds: { default: 'msg-err-2' } })
     );
 
     controller.abort();

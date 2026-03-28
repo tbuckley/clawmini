@@ -1,7 +1,7 @@
 # Tickets for Adapter Multi-Chat Support
 
 ## Ticket 1: Update State and Config Schemas for Multi-Chat Support
-**Status**: Not Started
+**Status**: Completed
 
 **Description**: 
 Update the state and configuration schemas for both the Discord and Google Chat adapters to prepare for multi-chat mapping and independent state tracking.

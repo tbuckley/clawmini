@@ -2,7 +2,7 @@ import type { Client, MessageCreateOptions } from 'discord.js';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Colors } from 'discord.js';
 import path from 'node:path';
 import type { getTRPCClient } from './client.js';
-import { readDiscordState, writeDiscordState } from './state.js';
+import { readDiscordState, updateDiscordState } from './state.js';
 import type { ChatMessage } from '../shared/chats.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
 import {
@@ -26,7 +26,14 @@ export async function startDaemonToDiscordForwarder(
   const config = options.config ?? {};
 
   const state = await readDiscordState();
-  let lastMessageId = state.lastSyncedMessageId;
+  let lastMessageId = state.lastSyncedMessageIds?.[chatId];
+  let currentLastSyncedMessageIds = state.lastSyncedMessageIds || {};
+
+  const saveLastMessageId = async (id: string) => {
+    lastMessageId = id;
+    currentLastSyncedMessageIds = { ...currentLastSyncedMessageIds, [chatId]: id };
+    return updateDiscordState({ lastSyncedMessageIds: currentLastSyncedMessageIds });
+  };
 
   // 1. If we don't have a lastMessageId, get the most recent one from the daemon
   // to avoid sending the entire chat history on first run.
@@ -36,8 +43,7 @@ export async function startDaemonToDiscordForwarder(
       if (Array.isArray(messages) && messages.length > 0) {
         const lastMsg = messages[messages.length - 1];
         if (lastMsg) {
-          lastMessageId = lastMsg.id;
-          await writeDiscordState({ lastSyncedMessageId: lastMessageId });
+          await saveLastMessageId(lastMsg.id);
         }
       }
     } catch (error) {
@@ -136,18 +142,12 @@ export async function startDaemonToDiscordForwarder(
                       );
                     }
 
-                    lastMessageId = logMessage.id;
-                    await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
-                      console.error
-                    );
+                    await saveLastMessageId(logMessage.id).catch(console.error);
                     continue;
                   }
 
                   if ('level' in logMessage && logMessage.level === 'verbose') {
-                    lastMessageId = logMessage.id;
-                    await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
-                      console.error
-                    );
+                    await saveLastMessageId(logMessage.id).catch(console.error);
                     continue;
                   }
 
@@ -165,10 +165,7 @@ export async function startDaemonToDiscordForwarder(
                   }
 
                   if (!hasContent && !hasFiles) {
-                    lastMessageId = logMessage.id;
-                    await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
-                      console.error
-                    );
+                    await saveLastMessageId(logMessage.id).catch(console.error);
                     continue;
                   }
 
@@ -208,10 +205,7 @@ export async function startDaemonToDiscordForwarder(
                   }
                 }
 
-                lastMessageId = message.id;
-                await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
-                  console.error
-                );
+                await saveLastMessageId(message.id).catch(console.error);
               }
             });
           },

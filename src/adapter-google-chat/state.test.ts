@@ -41,7 +41,7 @@ describe('Google Chat State Updates', () => {
     });
 
     // Fire two concurrent updates
-    const update1 = updateGoogleChatState({ lastSyncedMessageId: 'B' });
+    const update1 = updateGoogleChatState({ lastSyncedMessageIds: { default: 'B' } });
     const update2 = updateGoogleChatState({ activeSpaceName: 'Space2' });
 
     await Promise.all([update1, update2]);
@@ -54,7 +54,7 @@ describe('Google Chat State Updates', () => {
     // { lastSyncedMessageId: 'A', activeSpaceName: 'Space2' }
     // Because they are serialized, it should safely contain BOTH updates.
     expect(finalState).toEqual({
-      lastSyncedMessageId: 'B',
+      lastSyncedMessageIds: { default: 'B' },
       activeSpaceName: 'Space2',
     });
   });
