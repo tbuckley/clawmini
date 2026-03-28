@@ -8,7 +8,7 @@ describe('handleRoutingCommand', () => {
     mockTrpcClient = {
       getChats: { query: vi.fn().mockResolvedValue(['chat-1', 'chat-2']) },
       getAgents: { query: vi.fn().mockResolvedValue(['agent-1', 'agent-2']) },
-      createChat: { mutation: vi.fn().mockResolvedValue({ success: true, chatId: 'new-chat' }) },
+      createChat: { mutate: vi.fn().mockResolvedValue({ success: true, chatId: 'new-chat' }) },
       sendMessage: { mutate: vi.fn().mockResolvedValue({ success: true }) },
     };
   });
@@ -99,7 +99,7 @@ describe('handleRoutingCommand', () => {
         mockTrpcClient
       );
 
-      expect(mockTrpcClient.createChat.mutation).toHaveBeenCalledWith({
+      expect(mockTrpcClient.createChat.mutate).toHaveBeenCalledWith({
         chatId: 'agent-1-discord',
         agent: 'agent-1',
       });
@@ -124,7 +124,7 @@ describe('handleRoutingCommand', () => {
         mockTrpcClient
       );
 
-      expect(mockTrpcClient.createChat.mutation).toHaveBeenCalledWith({
+      expect(mockTrpcClient.createChat.mutate).toHaveBeenCalledWith({
         chatId: 'agent-1-discord-2',
         agent: 'agent-1',
       });
