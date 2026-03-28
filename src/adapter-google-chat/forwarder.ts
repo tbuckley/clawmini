@@ -20,8 +20,15 @@ export async function startDaemonToGoogleChatForwarder(
   signal?: AbortSignal
 ) {
   const state = await readGoogleChatState();
-  let lastMessageId = state.lastSyncedMessageId;
   const chatId = config.chatId || 'default';
+  let lastMessageId = state.lastSyncedMessageIds?.[chatId];
+  let currentLastSyncedMessageIds = state.lastSyncedMessageIds || {};
+
+  const saveLastMessageId = async (id: string) => {
+    lastMessageId = id;
+    currentLastSyncedMessageIds = { ...currentLastSyncedMessageIds, [chatId]: id };
+    return updateGoogleChatState({ lastSyncedMessageIds: currentLastSyncedMessageIds });
+  };
 
   if (!lastMessageId) {
     try {
@@ -29,8 +36,7 @@ export async function startDaemonToGoogleChatForwarder(
       if (Array.isArray(messages) && messages.length > 0) {
         const lastMsg = messages[messages.length - 1];
         if (lastMsg) {
-          lastMessageId = lastMsg.id;
-          await updateGoogleChatState({ lastSyncedMessageId: lastMessageId });
+          await saveLastMessageId(lastMsg.id);
         }
       }
     } catch (error) {
@@ -93,10 +99,7 @@ export async function startDaemonToGoogleChatForwarder(
                           'No active Google Chat space to reply to. Ignoring policy request:',
                           logMessage.content
                         );
-                        lastMessageId = logMessage.id;
-                        await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
-                          console.error
-                        );
+                        await saveLastMessageId(logMessage.id).catch(console.error);
                         continue;
                       }
 
@@ -130,18 +133,12 @@ export async function startDaemonToGoogleChatForwarder(
                         console.error('Failed to send policy request to Google Chat:', error);
                       }
 
-                      lastMessageId = logMessage.id;
-                      await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
-                        console.error
-                      );
+                      await saveLastMessageId(logMessage.id).catch(console.error);
                       continue;
                     }
 
                     if ('level' in logMessage && logMessage.level === 'verbose') {
-                      lastMessageId = logMessage.id;
-                      await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
-                        console.error
-                      );
+                      await saveLastMessageId(logMessage.id).catch(console.error);
                       continue;
                     }
 
@@ -151,10 +148,7 @@ export async function startDaemonToGoogleChatForwarder(
                     const hasFiles = Array.isArray(files) && files.length > 0;
 
                     if (!hasContent && !hasFiles) {
-                      lastMessageId = logMessage.id;
-                      await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
-                        console.error
-                      );
+                      await saveLastMessageId(logMessage.id).catch(console.error);
                       continue;
                     }
 
@@ -169,10 +163,7 @@ export async function startDaemonToGoogleChatForwarder(
                         'No active Google Chat space to reply to. Ignoring message:',
                         logMessage.content
                       );
-                      lastMessageId = logMessage.id;
-                      await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
-                        console.error
-                      );
+                      await saveLastMessageId(logMessage.id).catch(console.error);
                       continue;
                     }
 
@@ -232,10 +223,7 @@ export async function startDaemonToGoogleChatForwarder(
                     }
                   }
 
-                  lastMessageId = message.id;
-                  await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
-                    console.error
-                  );
+                  await saveLastMessageId(message.id).catch(console.error);
                 }
               })
               .catch((error) => {

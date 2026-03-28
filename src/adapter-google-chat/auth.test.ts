@@ -35,7 +35,7 @@ describe('auth.ts', () => {
 
   it('should only update driveOauthTokens when new tokens are emitted to prevent overwriting state', async () => {
     const mockState = {
-      lastSyncedMessageId: '123',
+      lastSyncedMessageIds: { default: '123' },
       activeSpaceName: 'Space1',
       driveOauthTokens: { access_token: 'old_token' },
     };
@@ -77,7 +77,7 @@ describe('auth.ts', () => {
 
     expect(state.updateGoogleChatState).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        lastSyncedMessageId: '123',
+        lastSyncedMessageIds: { default: '123' },
         activeSpaceName: 'Space1',
       })
     );
