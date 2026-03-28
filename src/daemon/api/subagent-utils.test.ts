@@ -15,6 +15,7 @@ vi.mock('../routers.js', () => ({
 
 vi.mock('../message.js', () => ({
   executeDirectMessage: vi.fn(),
+  applyRouterStateUpdates: vi.fn(),
 }));
 
 vi.mock('../agent/chat-logger.js', () => ({

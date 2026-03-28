@@ -8,13 +8,14 @@ import { slashPolicies } from './routers/slash-policies.js';
 import { createSessionTimeoutRouter } from './routers/session-timeout.js';
 import type { RouterConfig } from '../shared/config.js';
 
-export const GLOBAL_ROUTERS: RouterConfig[] = [
+export const GLOBAL_ROUTERS: RouterConfig[] = ['@clawmini/session-timeout'];
+
+export const USER_ROUTERS: RouterConfig[] = [
   '@clawmini/slash-new',
   '@clawmini/slash-command',
   '@clawmini/slash-stop',
   '@clawmini/slash-interrupt',
   '@clawmini/slash-policies',
-  '@clawmini/session-timeout',
 ];
 
 export function resolveRouters(
@@ -24,7 +25,7 @@ export function resolveRouters(
   const resolvedGlobals: RouterConfig[] = [];
   const resolvedUsers: RouterConfig[] = [];
 
-  const userConfigMap = new Map<string, any>();
+  const userConfigMap = new Map<string, unknown>();
   for (const r of userRouters) {
     const name = typeof r === 'string' ? r : r.use;
     const config = typeof r === 'string' ? {} : r.with || {};
@@ -45,8 +46,18 @@ export function resolveRouters(
     resolvedGlobals.push({ use: name, with: mergedConfig });
   }
 
+  const defaultUserRouters: RouterConfig[] = [];
+  for (const defaultUserRouter of USER_ROUTERS) {
+    const name = typeof defaultUserRouter === 'string' ? defaultUserRouter : defaultUserRouter.use;
+    const baseConfig = typeof defaultUserRouter === 'string' ? {} : defaultUserRouter.with || {};
+    const userConfig = userConfigMap.get(name) || {};
+    const mergedConfig = { ...baseConfig, ...userConfig };
+
+    defaultUserRouters.push({ use: name, with: mergedConfig });
+  }
+
   if (isUserMessage) {
-    return [...resolvedGlobals, ...resolvedUsers];
+    return [...resolvedGlobals, ...defaultUserRouters, ...resolvedUsers];
   } else {
     return resolvedGlobals;
   }

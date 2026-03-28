@@ -31,6 +31,10 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
     'This chat session has ended. Save any important details from it to your memory. When finished, reply with NO_REPLY_NECESSARY.';
 
   return function (state: RouterState): RouterState {
+    if (state.env?.__SESSION_TIMEOUT__ === 'true') {
+      return state;
+    }
+
     const jobId = state.sessionId ? `__session_timeout__${state.sessionId}` : '__session_timeout__';
 
     const jobs = {
@@ -53,6 +57,7 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
             reply: '[@clawmini/session-timeout] Starting a fresh session...',
             nextSessionId: randomUUID(),
             ...(state.sessionId ? { session: { type: 'existing', id: state.sessionId } } : {}),
+            env: { __SESSION_TIMEOUT__: 'true' },
             jobs: {
               remove: [jobId],
             },

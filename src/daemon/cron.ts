@@ -2,7 +2,7 @@
 import schedule from 'node-schedule';
 import { listChats } from '../shared/chats.js';
 import { readChatSettings, writeChatSettings } from '../shared/workspace.js';
-import { executeDirectMessage, getInitialRouterState } from './message.js';
+import { executeDirectMessage, getInitialRouterState, applyRouterStateUpdates } from './message.js';
 import { executeRouterPipeline, resolveRouters } from './routers.js';
 import type { CronJob, Settings } from '../shared/config.js';
 import fs from 'node:fs/promises';
@@ -138,7 +138,16 @@ export class CronManager {
 
       const routers = chatSettings.routers ?? globalSettings?.routers ?? [];
       const resolvedRouters = resolveRouters(routers, false);
+      const initialState = { ...routerState };
       routerState = await executeRouterPipeline(routerState, resolvedRouters);
+
+      await applyRouterStateUpdates(
+        chatId,
+        process.cwd(),
+        routerState,
+        chatSettings,
+        initialState.agentId
+      );
 
       await executeDirectMessage(
         chatId,
