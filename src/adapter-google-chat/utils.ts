@@ -1,10 +1,81 @@
 import { google } from 'googleapis';
 import type { Readable } from 'node:stream';
+import type { ChatMessage } from '../shared/chats.js';
 
 let authClient: Awaited<ReturnType<typeof google.auth.getClient>> | null = null;
 
 export function resetAuthClient(): void {
   authClient = null;
+}
+
+export function buildPolicyCard(logMessage: ChatMessage) {
+  return [
+    {
+      cardId: logMessage.id,
+      card: {
+        header: {
+          title: 'Action Required: Policy Approval',
+          subtitle: 'A request needs your review.',
+        },
+        sections: [
+          {
+            widgets: [
+              {
+                textParagraph: {
+                  text: logMessage.content || 'Please review this request.',
+                },
+              },
+              {
+                buttonList: {
+                  buttons: [
+                    {
+                      text: 'Approve',
+                      color: {
+                        red: 0,
+                        green: 0.5,
+                        blue: 0,
+                        alpha: 1,
+                      },
+                      onClick: {
+                        action: {
+                          function: 'approve',
+                          parameters: [{ key: 'policyId', value: logMessage.id }],
+                        },
+                      },
+                    },
+                    {
+                      text: 'Reject',
+                      color: {
+                        red: 0.8,
+                        green: 0,
+                        blue: 0,
+                        alpha: 1,
+                      },
+                      onClick: {
+                        action: {
+                          function: 'reject',
+                          parameters: [{ key: 'policyId', value: logMessage.id }],
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ];
+}
+
+export function chunkString(str: string, size: number): string[] {
+  const chunks: string[] = [];
+  const chars = Array.from(str);
+  for (let i = 0; i < chars.length; i += size) {
+    chunks.push(chars.slice(i, i + size).join(''));
+  }
+  return chunks;
 }
 
 /**

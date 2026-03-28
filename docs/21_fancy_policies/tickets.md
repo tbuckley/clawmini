@@ -30,7 +30,7 @@ Update `src/adapter-discord/index.ts` (or related interaction handler) to listen
 - Run `npm run validate`.
 
 ## Ticket 4: Implement Google Chat Adapter Forwarding for Policies
-**Status**: not started
+**Status**: completed
 **Description**: 
 Modify `src/adapter-google-chat/forwarder.ts` to format pending policy requests (`role: 'policy'`, `status: 'pending'`) using Google Chat Card V2. The card should include the request information and a `ButtonList` with "Approve" and "Reject" buttons. The `action` property on these buttons should be configured to trigger a `CARD_CLICKED` event.
 **Verification Steps**:

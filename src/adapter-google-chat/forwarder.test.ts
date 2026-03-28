@@ -333,7 +333,57 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     expect(mockMessagesCreate).toHaveBeenCalledWith({
       parent: 'spaces/test-space',
-      requestBody: { text: 'Please approve this action' },
+      requestBody: {
+        text: '',
+        cardsV2: [
+          {
+            cardId: 'msg-2',
+            card: {
+              header: {
+                title: 'Action Required: Policy Approval',
+                subtitle: 'A request needs your review.',
+              },
+              sections: [
+                {
+                  widgets: [
+                    {
+                      textParagraph: {
+                        text: 'Please approve this action',
+                      },
+                    },
+                    {
+                      buttonList: {
+                        buttons: [
+                          {
+                            text: 'Approve',
+                            color: { red: 0, green: 0.5, blue: 0, alpha: 1 },
+                            onClick: {
+                              action: {
+                                function: 'approve',
+                                parameters: [{ key: 'policyId', value: 'msg-2' }],
+                              },
+                            },
+                          },
+                          {
+                            text: 'Reject',
+                            color: { red: 0.8, green: 0, blue: 0, alpha: 1 },
+                            onClick: {
+                              action: {
+                                function: 'reject',
+                                parameters: [{ key: 'policyId', value: 'msg-2' }],
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
     });
 
     controller.abort();

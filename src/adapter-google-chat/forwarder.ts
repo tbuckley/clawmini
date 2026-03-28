@@ -1,10 +1,8 @@
 import { google } from 'googleapis';
-import { getAuthClient, getDriveAuthClient } from './auth.js';
+import { getAuthClient } from './auth.js';
 import type { getTRPCClient } from './client.js';
 import type { ChatMessage } from '../shared/chats.js';
 import path from 'node:path';
-import fs from 'node:fs';
-import mime from 'mime-types';
 import type { GoogleChatConfig } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
@@ -13,6 +11,8 @@ import {
   formatMessage,
   type FilteringConfig,
 } from '../shared/adapters/filtering.js';
+import { buildPolicyCard, chunkString } from './utils.js';
+import { uploadFilesToDrive } from './upload.js';
 
 export async function startDaemonToGoogleChatForwarder(
   trpc: ReturnType<typeof getTRPCClient>,
@@ -79,6 +79,50 @@ export async function startDaemonToGoogleChatForwarder(
                   if (isDisplayed) {
                     const logMessage = message;
 
+                    const isPolicyRequest =
+                      logMessage.role === 'policy' && logMessage.status === 'pending';
+
+                    if (isPolicyRequest) {
+                      let activeSpaceName = config.directMessageName;
+                      if (!activeSpaceName) {
+                        const currentState = await readGoogleChatState();
+                        activeSpaceName = currentState.activeSpaceName;
+                      }
+
+                      if (!activeSpaceName) {
+                        console.warn(
+                          'No active Google Chat space to reply to. Ignoring policy request:',
+                          logMessage.content
+                        );
+                        lastMessageId = logMessage.id;
+                        await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
+                          console.error
+                        );
+                        continue;
+                      }
+
+                      try {
+                        const client = await getAuthClient();
+                        const chatApi = google.chat({ version: 'v1', auth: client });
+
+                        await chatApi.spaces.messages.create({
+                          parent: activeSpaceName as string,
+                          requestBody: {
+                            text: '',
+                            cardsV2: buildPolicyCard(logMessage),
+                          },
+                        });
+                      } catch (error) {
+                        console.error('Failed to send policy request to Google Chat:', error);
+                      }
+
+                      lastMessageId = logMessage.id;
+                      await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
+                        console.error
+                      );
+                      continue;
+                    }
+
                     if ('level' in logMessage && logMessage.level === 'verbose') {
                       lastMessageId = logMessage.id;
                       await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
@@ -134,91 +178,9 @@ export async function startDaemonToGoogleChatForwarder(
                         ) {
                           text += `\n\n`;
                           try {
-                            const driveClient = await getDriveAuthClient(config);
-                            const driveApi = google.drive({ version: 'v3', auth: driveClient });
-                            const workspaceRoot = getWorkspaceRoot(process.cwd());
-
-                            let folderId: string | undefined;
-                            try {
-                              const queryRes = await driveApi.files.list({
-                                q: "mimeType='application/vnd.google-apps.folder' and name='Clawmini Uploads' and trashed=false",
-                                fields: 'files(id)',
-                              });
-                              if (queryRes.data.files && queryRes.data.files.length > 0) {
-                                folderId = queryRes.data.files[0]!.id!;
-                              } else {
-                                const folderRes = await driveApi.files.create({
-                                  requestBody: {
-                                    name: 'Clawmini Uploads',
-                                    mimeType: 'application/vnd.google-apps.folder',
-                                  },
-                                  fields: 'id',
-                                });
-                                if (folderRes.data.id) {
-                                  folderId = folderRes.data.id;
-                                }
-                              }
-                            } catch (err) {
-                              console.error(
-                                'Failed to create or find Clawmini Uploads folder',
-                                err
-                              );
-                            }
-
-                            const uploadPromises = files.map(async (fileRelPath) => {
-                              const filePath = path.resolve(workspaceRoot, fileRelPath);
-                              if (!fs.existsSync(filePath)) return null;
-
-                              const fileName = path.basename(filePath);
-                              const mimeType = mime.lookup(filePath) || 'application/octet-stream';
-
-                              try {
-                                const driveRes = await driveApi.files.create({
-                                  requestBody: {
-                                    name: fileName,
-                                    ...(folderId ? { parents: [folderId] } : {}),
-                                  },
-                                  media: { mimeType, body: fs.createReadStream(filePath) },
-                                  fields: 'id, webViewLink',
-                                });
-
-                                if (driveRes.data.id && driveRes.data.webViewLink) {
-                                  const fileId = driveRes.data.id;
-                                  try {
-                                    await Promise.all(
-                                      config.authorizedUsers.map((email) =>
-                                        driveApi.permissions.create({
-                                          fileId,
-                                          requestBody: {
-                                            type: 'user',
-                                            role: 'reader',
-                                            emailAddress: email,
-                                          },
-                                          sendNotificationEmail: false,
-                                        })
-                                      )
-                                    );
-                                  } catch (err) {
-                                    console.error(
-                                      `Failed to grant permissions for ${fileName}`,
-                                      err
-                                    );
-                                  }
-                                  return driveRes.data.webViewLink;
-                                }
-                                return null;
-                              } catch (err) {
-                                console.error(
-                                  `Failed to upload file ${fileName} to Google Drive`,
-                                  err
-                                );
-                                return `*(Failed to upload to Drive: ${fileName})*`;
-                              }
-                            });
-
-                            const uploadResults = await Promise.all(uploadPromises);
+                            const uploadResults = await uploadFilesToDrive(files, config);
                             for (const result of uploadResults) {
-                              if (result) text += `${result}\n`;
+                              text += `${result}\n`;
                             }
                           } catch (driveAuthErr) {
                             console.error(
@@ -313,14 +275,4 @@ export async function startDaemonToGoogleChatForwarder(
       resolve();
     });
   });
-}
-
-// TODO: Consider adding a slight buffer and splitting on newlines `\n` closest to the 4000 limit when possible, ensuring that markdown blocks are less likely to be cleanly sheared in half.
-function chunkString(str: string, size: number): string[] {
-  const chunks: string[] = [];
-  const chars = Array.from(str);
-  for (let i = 0; i < chars.length; i += size) {
-    chunks.push(chars.slice(i, i + size).join(''));
-  }
-  return chunks;
 }
