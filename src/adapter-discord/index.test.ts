@@ -502,10 +502,12 @@ describe('Discord Adapter Entry Point', () => {
         isModalSubmit: () => false,
         user: { id: 'user-123' },
         customId: 'approve_123',
-        reply: vi.fn(),
+        update: vi.fn(),
+        followUp: vi.fn(),
       };
       if (interactionHandler) await interactionHandler(mockInteraction);
-      expect(mockInteraction.reply).toHaveBeenCalledWith({
+      expect(mockInteraction.update).toHaveBeenCalledWith({ components: [] });
+      expect(mockInteraction.followUp).toHaveBeenCalledWith({
         content: 'Approving policy 123...',
         ephemeral: true,
       });

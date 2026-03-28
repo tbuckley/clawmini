@@ -105,13 +105,28 @@ export async function startDaemonToGoogleChatForwarder(
                         const client = await getAuthClient();
                         const chatApi = google.chat({ version: 'v1', auth: client });
 
-                        await chatApi.spaces.messages.create({
-                          parent: activeSpaceName as string,
-                          requestBody: {
-                            text: '',
-                            cardsV2: buildPolicyCard(logMessage),
-                          },
-                        });
+                        try {
+                          await chatApi.spaces.messages.create({
+                            parent: activeSpaceName as string,
+                            requestBody: {
+                              text: '',
+                              cardsV2: buildPolicyCard(logMessage),
+                            },
+                          });
+                        } catch (richError) {
+                          console.warn(
+                            'Failed to send rich policy request to Google Chat, falling back to plain text:',
+                            richError
+                          );
+                          const policyId =
+                            ('requestId' in logMessage && logMessage.requestId) || logMessage.id;
+                          await chatApi.spaces.messages.create({
+                            parent: activeSpaceName as string,
+                            requestBody: {
+                              text: `Action Required: Policy Request\n\n${logMessage.content || 'A pending policy request requires your attention.'}\n\nApprove: \`/approve ${policyId}\`\nReject: \`/reject ${policyId} <optional_rationale>\``,
+                            },
+                          });
+                        }
                       } catch (error) {
                         console.error('Failed to send policy request to Google Chat:', error);
                       }

@@ -191,7 +191,8 @@ export async function main() {
     if (interaction.isButton()) {
       if (interaction.customId.startsWith('approve_')) {
         const policyId = interaction.customId.replace('approve_', '');
-        await interaction.reply({ content: `Approving policy ${policyId}...`, ephemeral: true });
+        await interaction.update({ components: [] });
+        await interaction.followUp({ content: `Approving policy ${policyId}...`, ephemeral: true });
         try {
           await trpc.sendMessage.mutate({
             type: 'send-message',
@@ -205,7 +206,10 @@ export async function main() {
           });
         } catch (error) {
           console.error('Failed to send approve command to daemon:', error);
-          await interaction.editReply({ content: `Failed to approve policy ${policyId}.` });
+          await interaction.followUp({
+            content: `Failed to approve policy ${policyId}.`,
+            ephemeral: true,
+          });
         }
       } else if (interaction.customId.startsWith('reject_')) {
         const policyId = interaction.customId.replace('reject_', '');

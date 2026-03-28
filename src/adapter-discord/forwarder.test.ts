@@ -505,12 +505,15 @@ describe('Daemon to Discord Forwarder', () => {
     await forwarderPromise;
   });
 
-  it('should update lastMessageId and continue if DM fails for policy request', async () => {
+  it('should fallback to plain text if rich message fails for policy request', async () => {
     const controller = new AbortController();
     vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
 
-    // Mock DM failure
-    mockDm.send = vi.fn().mockRejectedValue(new Error('Cannot send messages to this user'));
+    // Mock DM failure for first call (embeds), success for second (plain text)
+    mockDm.send = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Cannot send embeds'))
+      .mockResolvedValueOnce({});
 
     const forwarderPromise = startDaemonToDiscordForwarder(
       mockClient,
@@ -537,7 +540,12 @@ describe('Daemon to Discord Forwarder', () => {
       },
     ]);
 
-    await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalled());
+    await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalledTimes(2));
+
+    expect(mockDm.send).toHaveBeenNthCalledWith(2, {
+      content:
+        'Action Required: Policy Request\n\nPlease approve this\n\nApprove: `/approve msg-1`\nReject: `/reject msg-1 <optional_rationale>`',
+    });
 
     // Should still update state to avoid infinite loop
     expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' });

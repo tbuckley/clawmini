@@ -118,7 +118,17 @@ export async function startDaemonToDiscordForwarder(
                         components: [row],
                       };
 
-                      await dm.send(options);
+                      try {
+                        await dm.send(options);
+                      } catch (richError) {
+                        console.warn(
+                          `Failed to send rich message to Discord user ${discordUserId}, falling back to plain text:`,
+                          richError
+                        );
+                        await dm.send({
+                          content: `Action Required: Policy Request\n\n${logMessage.content || 'A pending policy request requires your attention.'}\n\nApprove: \`/approve ${policyId}\`\nReject: \`/reject ${policyId} <optional_rationale>\``,
+                        });
+                      }
                     } catch (error) {
                       console.error(
                         `Failed to send message to Discord user ${discordUserId}:`,

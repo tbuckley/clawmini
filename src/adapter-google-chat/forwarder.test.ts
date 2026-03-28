@@ -389,4 +389,41 @@ describe('Daemon to Google Chat Forwarder', () => {
     controller.abort();
     await forwarderPromise;
   });
+
+  it('should fallback to plain text if rich message fails for policy request', async () => {
+    const controller = new AbortController();
+
+    const forwarderPromise = startDaemonToGoogleChatForwarder(
+      mockTrpc,
+      mockConfig,
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    mockMessagesCreate
+      .mockRejectedValueOnce(new Error('Cannot send cardsV2'))
+      .mockResolvedValueOnce({});
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-2',
+        role: 'policy',
+        status: 'pending',
+        content: 'Please approve this action',
+      },
+    ]);
+
+    await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalledTimes(2));
+
+    expect(mockMessagesCreate).toHaveBeenNthCalledWith(2, {
+      parent: 'spaces/test-space',
+      requestBody: {
+        text: 'Action Required: Policy Request\n\nPlease approve this action\n\nApprove: `/approve msg-2`\nReject: `/reject msg-2 <optional_rationale>`',
+      },
+    });
+
+    controller.abort();
+    await forwarderPromise;
+  });
 });
