@@ -78,12 +78,6 @@ export function startGoogleChatIngestion(
       const space = event.space || event.message?.space;
       const spaceName = space?.name;
 
-      if (space?.type !== 'DIRECT_MESSAGE' && space?.singleUserBotDm !== true) {
-        console.log(`Ignoring message from unsupported space type: ${space?.type}`);
-        message.ack();
-        return;
-      }
-
       if (!spaceName) {
         console.log('Ignoring message: Could not determine space name.');
         message.ack();
@@ -91,16 +85,6 @@ export function startGoogleChatIngestion(
       }
 
       const currentState = await readGoogleChatState();
-      let activeSpaceName = config.directMessageName || currentState.activeSpaceName;
-
-      if (!activeSpaceName) {
-        activeSpaceName = spaceName;
-        await updateGoogleChatState({ activeSpaceName });
-      } else if (activeSpaceName !== spaceName) {
-        console.log(`Ignoring message from inactive space: ${spaceName}`);
-        message.ack();
-        return;
-      }
 
       const externalContextId = spaceName;
       const mappedChatId = currentState.channelChatMap?.[externalContextId];
@@ -272,7 +256,7 @@ export function startGoogleChatIngestion(
         const authClient = await getAuthClient();
         const chatApi = google.chat({ version: 'v1', auth: authClient });
         await chatApi.spaces.messages.create({
-          parent: activeSpaceName as string,
+          parent: spaceName as string,
           requestBody: { text: resultText },
         });
         message.ack();
