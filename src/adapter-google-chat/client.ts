@@ -13,15 +13,10 @@ import type { GoogleChatConfig } from './config.js';
 import { isAuthorized } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
 import { downloadAttachment } from './utils.js';
-<<<<<<< HEAD
 import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 import { google } from 'googleapis';
 import { getAuthClient } from './auth.js';
-=======
-import { getAuthClient } from './auth.js';
-import { google } from 'googleapis';
->>>>>>> 8b27be9 (feat: update adapter interactions to visually reflect policy request cleanup)
 
 export function getTRPCClient(options: { socketPath?: string } = {}) {
   const socketPath = options.socketPath ?? getSocketPath();

@@ -5,7 +5,6 @@ import type { ChatMessage } from '../shared/chats.js';
 import path from 'node:path';
 import type { GoogleChatConfig } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
-import { getWorkspaceRoot } from '../shared/workspace.js';
 import {
   shouldDisplayMessage,
   formatMessage,

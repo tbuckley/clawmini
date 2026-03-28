@@ -396,6 +396,7 @@ describe('Daemon to Google Chat Forwarder', () => {
     const forwarderPromise = startDaemonToGoogleChatForwarder(
       mockTrpc,
       mockConfig,
+      {},
       controller.signal
     );
 

@@ -515,13 +515,10 @@ describe('Daemon to Discord Forwarder', () => {
       .mockRejectedValueOnce(new Error('Cannot send embeds'))
       .mockResolvedValueOnce({});
 
-    const forwarderPromise = startDaemonToDiscordForwarder(
-      mockClient,
-      mockTrpc,
-      'user-123',
-      'default',
-      controller.signal
-    );
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
 
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
 
