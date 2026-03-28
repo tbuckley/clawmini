@@ -100,13 +100,15 @@ export async function startDaemonToDiscordForwarder(
                         )
                         .setColor(Colors.Yellow);
 
+                      const policyId =
+                        ('requestId' in logMessage && logMessage.requestId) || logMessage.id;
                       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
                         new ButtonBuilder()
-                          .setCustomId(`approve_${logMessage.id}`)
+                          .setCustomId(`approve_${policyId}`)
                           .setLabel('Approve')
                           .setStyle(ButtonStyle.Success),
                         new ButtonBuilder()
-                          .setCustomId(`reject_${logMessage.id}`)
+                          .setCustomId(`reject_${policyId}`)
                           .setLabel('Reject')
                           .setStyle(ButtonStyle.Danger)
                       );

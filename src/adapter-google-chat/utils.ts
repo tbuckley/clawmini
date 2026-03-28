@@ -9,6 +9,7 @@ export function resetAuthClient(): void {
 }
 
 export function buildPolicyCard(logMessage: ChatMessage) {
+  const policyId = ('requestId' in logMessage && logMessage.requestId) || logMessage.id;
   return [
     {
       cardId: logMessage.id,
@@ -39,7 +40,7 @@ export function buildPolicyCard(logMessage: ChatMessage) {
                       onClick: {
                         action: {
                           function: 'approve',
-                          parameters: [{ key: 'policyId', value: logMessage.id }],
+                          parameters: [{ key: 'policyId', value: policyId }],
                         },
                       },
                     },
@@ -54,7 +55,7 @@ export function buildPolicyCard(logMessage: ChatMessage) {
                       onClick: {
                         action: {
                           function: 'reject',
-                          parameters: [{ key: 'policyId', value: logMessage.id }],
+                          parameters: [{ key: 'policyId', value: policyId }],
                         },
                       },
                     },
