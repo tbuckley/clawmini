@@ -13,7 +13,11 @@ export function shouldDisplayMessage(message: ChatMessage, config: FilteringConf
   }
 
   // Then check if it's a standard agent message (via role/displayRole) and always return true if so.
-  const isStandardAgent = message.role === 'agent' || message.displayRole === 'agent';
+  const isStandardAgent =
+    message.displayRole === 'agent' ||
+    message.role === 'agent' ||
+    message.role === 'legacy_log' ||
+    (message.role === 'policy' && message.status === 'pending');
 
   if (isStandardAgent) {
     return true;

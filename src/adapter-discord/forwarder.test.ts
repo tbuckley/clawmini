@@ -457,4 +457,97 @@ describe('Daemon to Discord Forwarder', () => {
     await forwarderPromise;
     vi.useRealTimers();
   });
+
+  it('should format and forward pending policy requests', async () => {
+    const controller = new AbortController();
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-1',
+        role: 'policy',
+        status: 'pending',
+        content: 'Please approve this',
+        timestamp: '',
+        messageId: 'msg-0',
+        command: 'test',
+        cwd: '',
+        exitCode: 0,
+        stderr: '',
+      },
+    ]);
+
+    await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalled());
+
+    expect(mockDm.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: expect.any(Array),
+        components: expect.any(Array),
+      })
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const callArgs = vi.mocked(mockDm.send).mock.calls[0]?.[0] as any;
+    expect(callArgs.embeds[0].data.title).toBe('Action Required: Policy Request');
+    expect(callArgs.embeds[0].data.description).toBe('Please approve this');
+    expect(callArgs.components[0].components[0].data.custom_id).toBe('approve_msg-1');
+    expect(callArgs.components[0].components[1].data.custom_id).toBe('reject_msg-1');
+
+    expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' });
+
+    controller.abort();
+    await forwarderPromise;
+  });
+
+  it('should fallback to plain text if rich message fails for policy request', async () => {
+    const controller = new AbortController();
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+
+    // Mock DM failure for first call (embeds), success for second (plain text)
+    mockDm.send = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Cannot send embeds'))
+      .mockResolvedValueOnce({});
+
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-1',
+        role: 'policy',
+        status: 'pending',
+        content: 'Please approve this',
+        timestamp: '',
+        messageId: 'msg-0',
+        command: 'test',
+        cwd: '',
+        exitCode: 0,
+        stderr: '',
+      },
+    ]);
+
+    await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalledTimes(2));
+
+    expect(mockDm.send).toHaveBeenNthCalledWith(2, {
+      content:
+        'Action Required: Policy Request\n\nPlease approve this\n\nApprove: `/approve msg-1`\nReject: `/reject msg-1 <optional_rationale>`',
+    });
+
+    // Should still update state to avoid infinite loop
+    expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' });
+
+    controller.abort();
+    await forwarderPromise;
+  });
 });

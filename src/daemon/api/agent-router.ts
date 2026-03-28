@@ -283,7 +283,6 @@ export const createPolicyRequest = apiProcedure
       content: previewContent,
       timestamp: new Date().toISOString(),
       displayRole: 'agent',
-      ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
     };
 
     await appendMessage(chatId, logMsg);

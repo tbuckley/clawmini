@@ -1,4 +1,5 @@
 import type { Client, MessageCreateOptions } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Colors } from 'discord.js';
 import path from 'node:path';
 import type { getTRPCClient } from './client.js';
 import { readDiscordState, writeDiscordState } from './state.js';
@@ -84,6 +85,63 @@ export async function startDaemonToDiscordForwarder(
 
                 if (isDisplayed) {
                   const logMessage = message;
+                  const isPolicyRequest =
+                    logMessage.role === 'policy' && logMessage.status === 'pending';
+
+                  if (isPolicyRequest) {
+                    try {
+                      const user = await client.users.fetch(discordUserId);
+                      const dm = await user.createDM();
+
+                      const embed = new EmbedBuilder()
+                        .setTitle('Action Required: Policy Request')
+                        .setDescription(
+                          logMessage.content || 'A pending policy request requires your attention.'
+                        )
+                        .setColor(Colors.Yellow);
+
+                      const policyId =
+                        ('requestId' in logMessage && logMessage.requestId) || logMessage.id;
+                      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                        new ButtonBuilder()
+                          .setCustomId(`approve_${policyId}`)
+                          .setLabel('Approve')
+                          .setStyle(ButtonStyle.Success),
+                        new ButtonBuilder()
+                          .setCustomId(`reject_${policyId}`)
+                          .setLabel('Reject')
+                          .setStyle(ButtonStyle.Danger)
+                      );
+
+                      const options: MessageCreateOptions = {
+                        embeds: [embed],
+                        components: [row],
+                      };
+
+                      try {
+                        await dm.send(options);
+                      } catch (richError) {
+                        console.warn(
+                          `Failed to send rich message to Discord user ${discordUserId}, falling back to plain text:`,
+                          richError
+                        );
+                        await dm.send({
+                          content: `Action Required: Policy Request\n\n${logMessage.content || 'A pending policy request requires your attention.'}\n\nApprove: \`/approve ${policyId}\`\nReject: \`/reject ${policyId} <optional_rationale>\``,
+                        });
+                      }
+                    } catch (error) {
+                      console.error(
+                        `Failed to send message to Discord user ${discordUserId}:`,
+                        error
+                      );
+                    }
+
+                    lastMessageId = logMessage.id;
+                    await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
+                      console.error
+                    );
+                    continue;
+                  }
 
                   if ('level' in logMessage && logMessage.level === 'verbose') {
                     lastMessageId = logMessage.id;
