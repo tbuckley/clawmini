@@ -49,6 +49,19 @@ describe('Discord Adapter Configuration', () => {
       }
     });
 
+    it('should validate messages property', () => {
+      const config = {
+        botToken: 'my-bot-token',
+        authorizedUserId: '1234567890',
+        messages: { all: true, test: false },
+      };
+      const result = DiscordConfigSchema.safeParse(config);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.messages).toEqual({ all: true, test: false });
+      }
+    });
+
     it('should fail validation if fields are missing', () => {
       const result = DiscordConfigSchema.safeParse({});
       expect(result.success).toBe(false);

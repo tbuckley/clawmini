@@ -1,0 +1,12 @@
+# Questions
+
+1.  **Config Reloading**: Since `/show` and `/hide` will update `config.json`, how should the forwarder pick up the changes? Should the forwarder re-read `config.json` on a regular interval/per-message, or should the command handler update an in-memory configuration reference shared with the forwarder?
+    *   **Answer**: We should write to `config.json` so settings apply to future sessions, but for the current session it's acceptable to modify an in-memory configuration reference shared between the client and forwarder.
+2.  **Ignored Messages Storage**: For the `/debug <N>` command, where should the ignored messages be stored? Is an in-memory circular buffer (e.g., keeping the last 100 ignored messages) acceptable, or do they need to be persisted to the adapter's state file?
+    *   **Answer**: No, we should use something like the `trpc.getMessages.query()` (the equivalent of `clawmini messages tail`) endpoint to fetch the messages from the chat log, and keep applying the filters in reverse until we have collected `N` ignored messages.
+3.  **Debug Scope**: Should `/debug <N>` show *all* messages ignored by the adapter (including ones ignored due to the existing `!message.subagentId` rule or because they aren't agent logs), or only messages specifically filtered out by the new user-defined rules in `config.messages`?
+    *   **Answer**: Only show messages that are currently ignored because they don't match the new filtering rules. We should never include `[role=user][subagentId=undefined]` messages, since they were sent by the user and are already present in the chat.
+4.  **Shared Code Location**: Should we extract the new shared configuration and filtering logic into `src/shared/adapter-filtering.ts` or a similar shared directory to prevent duplication between Discord and Google Chat adapters?
+    *   **Answer**: Yes, place shared logic in a new directory like `src/shared/adapters/` (e.g., `src/shared/adapters/filtering.ts`), as we may add more shared adapter logic over time.
+5.  **Subagent Formatting**: The prompt suggests prefixing subagent messages with `[To:<id>]` and `[From:<id>]`. Should this prefixing apply to the actual Discord/Google Chat message content, and should it be applied inside the shared formatting logic before sending?
+    *   **Answer**: Yes, the prefixing should only apply to the actual message text sent to Discord/Google Chat. It should be encapsulated within a shared formatting function in the `src/shared/adapters/` logic.
