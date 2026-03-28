@@ -9,6 +9,7 @@ import { EventEmitter } from 'node:events';
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 vi.mock('./chats.js', () => ({ appendMessage: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('./routers.js', () => ({
+  resolveRouters: vi.fn((routers) => routers),
   executeRouterPipeline: vi.fn().mockImplementation((state) => Promise.resolve(state)),
 }));
 vi.mock('../shared/workspace.js', () => ({

@@ -5,6 +5,12 @@ import { taskScheduler } from '../agent/task-scheduler.js';
 
 vi.mock('../../shared/workspace.js', () => ({
   updateChatSettings: vi.fn(),
+  readChatSettings: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock('../routers.js', () => ({
+  executeRouterPipeline: vi.fn().mockImplementation((state) => Promise.resolve(state)),
+  resolveRouters: vi.fn((routers) => routers),
 }));
 
 vi.mock('../message.js', () => ({
