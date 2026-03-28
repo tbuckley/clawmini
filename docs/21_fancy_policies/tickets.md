@@ -18,7 +18,7 @@ Modify `src/adapter-discord/forwarder.ts` to format pending policy requests (`ro
 - Run `npm run validate` to ensure tests and type checks pass.
 
 ## Ticket 3: Implement Discord Adapter Interaction Handling
-**Status**: not started
+**Status**: completed
 **Description**: 
 Update `src/adapter-discord/index.ts` (or related interaction handler) to listen for `interactionCreate` events. 
 - For button interactions matching `approve_<id>`, ingest the `/approve <id>` command to the daemon.

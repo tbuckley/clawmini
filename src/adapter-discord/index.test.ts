@@ -22,6 +22,24 @@ vi.mock('discord.js', () => {
     Events: {
       ClientReady: 'ready',
       MessageCreate: 'messageCreate',
+      InteractionCreate: 'interactionCreate',
+    },
+    ActionRowBuilder: class {
+      addComponents = vi.fn().mockReturnThis();
+    },
+    ModalBuilder: class {
+      setCustomId = vi.fn().mockReturnThis();
+      setTitle = vi.fn().mockReturnThis();
+      addComponents = vi.fn().mockReturnThis();
+    },
+    TextInputBuilder: class {
+      setCustomId = vi.fn().mockReturnThis();
+      setLabel = vi.fn().mockReturnThis();
+      setStyle = vi.fn().mockReturnThis();
+      setRequired = vi.fn().mockReturnThis();
+    },
+    TextInputStyle: {
+      Paragraph: 2,
     },
     GatewayIntentBits: {
       Guilds: 1,
@@ -428,5 +446,116 @@ describe('Discord Adapter Entry Point', () => {
       },
     });
     vi.useRealTimers();
+  });
+
+  describe('Interaction Handling', () => {
+    let interactionHandler: ((interaction: any) => Promise<void>) | undefined;
+
+    beforeEach(async () => {
+      vi.mocked(mockClientInstance.on).mockImplementation(
+        (event: string, cb: (...args: unknown[]) => void) => {
+          if (event === 'interactionCreate') {
+            interactionHandler = cb as any;
+          }
+          return mockClientInstance as any;
+        }
+      );
+      const { main } = await import('./index.js');
+      await main();
+      const { isAuthorized } = await import('./config.js');
+      vi.mocked(isAuthorized).mockReturnValue(true);
+    });
+
+    it('should ignore non-button and non-modal interactions', async () => {
+      const mockInteraction = {
+        isButton: () => false,
+        isModalSubmit: () => false,
+      };
+      if (interactionHandler) await interactionHandler(mockInteraction);
+      expect(mockTrpc.sendMessage.mutate).not.toHaveBeenCalled();
+    });
+
+    it('should ignore unauthorized interactions', async () => {
+      const { isAuthorized } = await import('./config.js');
+      vi.mocked(isAuthorized).mockReturnValue(false);
+      const mockInteraction = {
+        isButton: () => true,
+        isModalSubmit: () => false,
+        isRepliable: () => true,
+        user: { id: 'unauth' },
+        reply: vi.fn(),
+      };
+      if (interactionHandler) await interactionHandler(mockInteraction);
+      expect(mockInteraction.reply).toHaveBeenCalledWith({
+        content: 'You are not authorized to perform this action.',
+        ephemeral: true,
+      });
+      expect(mockTrpc.sendMessage.mutate).not.toHaveBeenCalled();
+    });
+
+    it('should handle approve button interaction', async () => {
+      const mockInteraction = {
+        isButton: () => true,
+        isModalSubmit: () => false,
+        user: { id: 'user-123' },
+        customId: 'approve_123',
+        reply: vi.fn(),
+      };
+      if (interactionHandler) await interactionHandler(mockInteraction);
+      expect(mockInteraction.reply).toHaveBeenCalledWith({
+        content: 'Approving policy 123...',
+        ephemeral: true,
+      });
+      expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith({
+        type: 'send-message',
+        client: 'cli',
+        data: {
+          message: '/approve 123',
+          chatId: 'default',
+          adapter: 'discord',
+          noWait: true,
+        },
+      });
+    });
+
+    it('should handle reject button interaction by showing a modal', async () => {
+      const mockInteraction = {
+        isButton: () => true,
+        isModalSubmit: () => false,
+        user: { id: 'user-123' },
+        customId: 'reject_123',
+        showModal: vi.fn(),
+      };
+      if (interactionHandler) await interactionHandler(mockInteraction);
+      expect(mockInteraction.showModal).toHaveBeenCalled();
+    });
+
+    it('should handle reject modal submit interaction', async () => {
+      const mockInteraction = {
+        isButton: () => false,
+        isModalSubmit: () => true,
+        user: { id: 'user-123' },
+        customId: 'modal_reject_123',
+        fields: {
+          getTextInputValue: vi.fn().mockReturnValue('bad policy'),
+        },
+        reply: vi.fn(),
+      };
+      if (interactionHandler) await interactionHandler(mockInteraction);
+      expect(mockInteraction.reply).toHaveBeenCalledWith({
+        content: 'Rejecting policy 123...',
+        ephemeral: true,
+      });
+      expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith({
+        type: 'send-message',
+        client: 'cli',
+        data: {
+          message: '/reject 123 bad policy',
+          chatId: 'default',
+          adapter: 'discord',
+          noWait: true,
+        },
+      });
+    });
   });
 });
