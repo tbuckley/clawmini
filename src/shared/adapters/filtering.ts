@@ -22,12 +22,18 @@ export function shouldDisplayMessage(message: ChatMessage, config: FilteringConf
     return false;
   }
 
+  const isSubagentAllowed = overrides['subagent'] === true;
+
   // Specific overrides
   if (overrides[message.role] === true) {
-    return true;
+    if (!message.subagentId || isSubagentAllowed) {
+      return true;
+    }
   }
   if (message.displayRole && overrides[message.displayRole] === true) {
-    return true;
+    if (!message.subagentId || isSubagentAllowed) {
+      return true;
+    }
   }
   if (message.subagentId && overrides['subagent'] === true) {
     return true;

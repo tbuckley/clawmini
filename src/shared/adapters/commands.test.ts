@@ -82,14 +82,14 @@ describe('Adapter Commands', () => {
   it('should handle /show <role>', async () => {
     const config = { messages: {} };
     const result = await handleAdapterCommand(
-      '/show agent',
+      '/show tool',
       config,
       'config.json',
       mockTrpcClient,
       'chat-1'
     );
-    expect(result).toBe("Configuration updated: Showing messages for 'agent'.");
-    expect(config.messages).toEqual({ agent: true });
+    expect(result).toBe("Configuration updated: Showing messages for 'tool'.");
+    expect(config.messages).toEqual({ tool: true });
   });
 
   it('should handle /hide <role>', async () => {

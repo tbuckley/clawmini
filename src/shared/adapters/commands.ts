@@ -11,8 +11,6 @@ export interface CommandTrpcClient {
 const VALID_ROLES = new Set([
   'all',
   'subagent',
-  'user',
-  'agent',
   'command',
   'system',
   'tool',
