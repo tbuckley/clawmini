@@ -191,7 +191,9 @@ describe('E2E Messages Tests', () => {
     await runCli(['messages', 'send', 'first', '--chat', 'order-chat', '--no-wait']);
     await runCli(['messages', 'send', 'second', '--chat', 'order-chat', '--no-wait']);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let commandLogs: any[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let lines: any[] = [];
 
     await vi.waitFor(
@@ -242,6 +244,7 @@ describe('E2E Messages Tests', () => {
 
     await runCli(['messages', 'send', 'msg-1', '--chat', 'workflow-chat']);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let commandLogs: any[] = [];
     await vi.waitFor(
       () => {
@@ -272,6 +275,7 @@ describe('E2E Messages Tests', () => {
 
     await runCli(['messages', 'send', 'msg-2', '--chat', 'workflow-chat']);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let commandLogs2: any[] = [];
     await vi.waitFor(
       () => {
@@ -299,6 +303,7 @@ describe('E2E Messages Tests', () => {
 
     await runCli(['messages', 'send', 'msg-3', '--chat', 'workflow-chat']);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let commandLogs3: any[] = [];
     await vi.waitFor(
       () => {
