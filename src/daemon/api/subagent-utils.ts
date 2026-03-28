@@ -1,9 +1,27 @@
 import { randomUUID } from 'node:crypto';
-import { updateChatSettings } from '../../shared/workspace.js';
+import { updateChatSettings, getActiveEnvironmentName } from '../../shared/workspace.js';
 import { executeDirectMessage } from '../message.js';
 import { createChatLogger } from '../agent/chat-logger.js';
 import type { ChatSettings } from '../../shared/config.js';
 import { taskScheduler } from '../agent/task-scheduler.js';
+import { resolveAgentDir } from './router-utils.js';
+
+export async function resolveSubagentEnvironments(
+  sourceAgentId: string,
+  targetAgentId: string,
+  workspaceRoot: string
+): Promise<{ sourceEnv: string; targetEnv: string }> {
+  const sourceDir = await resolveAgentDir(sourceAgentId, workspaceRoot);
+  const targetDir = await resolveAgentDir(targetAgentId, workspaceRoot);
+
+  const sourceEnvRaw = await getActiveEnvironmentName(sourceDir, workspaceRoot);
+  const targetEnvRaw = await getActiveEnvironmentName(targetDir, workspaceRoot);
+
+  return {
+    sourceEnv: sourceEnvRaw || 'host',
+    targetEnv: targetEnvRaw || 'host',
+  };
+}
 
 export function getSubagentDepth(settings: ChatSettings, parentId: string | undefined): number {
   let depth = 0;

@@ -5,3 +5,9 @@
 - Updated `src/cli/propose-policy.ts` to omit the empty `command: ""` initialization.
 - Fixed `getPolicyHelp` query in `src/daemon/api/agent-router.ts` to correctly handle missing `policy.command`.
 - Verified changes by running `npm run validate`.
+
+## Ticket 2
+- Implemented `resolveSubagentEnvironments` in `src/daemon/api/subagent-utils.ts` to extract environment names of both source and target agents, defaulting to `'host'` if `null` or `undefined`.
+- Wrote unit tests for `resolveSubagentEnvironments` in `src/daemon/api/subagent-utils.test.ts`.
+- Integrated `resolveSubagentEnvironments` into `subagentSpawn` and `subagentSend` inside `src/daemon/api/subagent-router.ts`.
+- Verified changes using `npm run validate`.

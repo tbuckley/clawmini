@@ -7,7 +7,11 @@ import { createChatLogger } from '../agent/chat-logger.js';
 import { on } from 'node:events';
 import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
 import { createAgentSession } from '../agent/agent-session.js';
-import { executeSubagent, getSubagentDepth } from './subagent-utils.js';
+import {
+  executeSubagent,
+  getSubagentDepth,
+  resolveSubagentEnvironments,
+} from './subagent-utils.js';
 import type { SubagentTracker } from '../../shared/config.js';
 
 const MAX_SUBAGENT_DEPTH = 2;
@@ -59,6 +63,15 @@ export const subagentSpawn = apiProcedure
 
     const workspaceRoot = getWorkspaceRoot(process.cwd());
 
+    const { sourceEnv, targetEnv } = await resolveSubagentEnvironments(
+      parentAgentId || 'default',
+      agentId,
+      workspaceRoot
+    );
+    // TODO: Ticket 3 - Use sourceEnv and targetEnv for policy evaluation
+    void sourceEnv;
+    void targetEnv;
+
     const isAsync = input.async ?? depth === 0;
 
     // Execute asynchronously
@@ -101,6 +114,15 @@ export const subagentSend = apiProcedure
     });
 
     const workspaceRoot = getWorkspaceRoot(process.cwd());
+
+    const { sourceEnv, targetEnv } = await resolveSubagentEnvironments(
+      ctx.tokenPayload.agentId || 'default',
+      sub!.agentId || 'default',
+      workspaceRoot
+    );
+    // TODO: Ticket 3 - Use sourceEnv and targetEnv for policy evaluation
+    void sourceEnv;
+    void targetEnv;
 
     // Execute asynchronously
     executeSubagent(

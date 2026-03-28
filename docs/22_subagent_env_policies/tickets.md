@@ -12,7 +12,7 @@
 **Verification:**
 - Add unit tests verifying the correct environment resolution and mapping.
 - Run `npm run validate` to ensure all automated checks pass.
-**Status:** not started
+**Status:** complete
 
 ## Ticket 3: Policy Request Generation & Auto-Approval
 **Description:** Intercept `subagentSpawn` and `subagentSend` when the source and target environments differ. Generate a `PolicyRequest` using the pseudo-command `@clawmini/subagent:<sourceEnv>:<targetEnv>`. Encapsulate the payload in `args` (e.g., `["spawn", targetAgentId, targetSubagentId, prompt]`). Integrate with `policies.json` auto-approval logic for these pseudo-commands.
