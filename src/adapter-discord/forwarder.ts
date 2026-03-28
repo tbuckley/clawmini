@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import type { Client, MessageCreateOptions } from 'discord.js';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Colors } from 'discord.js';
 import path from 'node:path';
@@ -21,52 +22,54 @@ export async function startDaemonToDiscordForwarder(
     config?: FilteringConfig;
   } = {}
 ) {
-  const chatId = options.chatId ?? 'default';
+  const defaultChatId = options.chatId ?? 'default';
   const signal = options.signal;
   const config = options.config ?? {};
 
-  const state = await readDiscordState();
-  let lastMessageId = state.lastSyncedMessageIds?.[chatId];
-  let currentLastSyncedMessageIds = state.lastSyncedMessageIds || {};
+  const activeSubscriptions = new Map<string, { unsubscribe: () => void }>();
+  const activeTypingSubscriptions = new Map<string, { unsubscribe: () => void }>();
+  let statePollInterval: NodeJS.Timeout;
+  let currentLastSyncedMessageIds = (await readDiscordState()).lastSyncedMessageIds || {};
 
-  const saveLastMessageId = async (id: string) => {
-    lastMessageId = id;
+  const saveLastMessageId = async (chatId: string, id: string) => {
     currentLastSyncedMessageIds = { ...currentLastSyncedMessageIds, [chatId]: id };
     return updateDiscordState({ lastSyncedMessageIds: currentLastSyncedMessageIds });
   };
 
-  // 1. If we don't have a lastMessageId, get the most recent one from the daemon
-  // to avoid sending the entire chat history on first run.
-  if (!lastMessageId) {
-    try {
-      const messages = await trpc.getMessages.query({ chatId, limit: 1 });
-      if (Array.isArray(messages) && messages.length > 0) {
-        const lastMsg = messages[messages.length - 1];
-        if (lastMsg) {
-          await saveLastMessageId(lastMsg.id);
+  const startSubscriptionForChat = async (chatId: string) => {
+    if (activeSubscriptions.has(chatId)) return;
+    if (signal?.aborted) return;
+
+    let lastMessageId = currentLastSyncedMessageIds[chatId];
+
+    if (!lastMessageId) {
+      try {
+        const messages = await trpc.getMessages.query({ chatId, limit: 1 });
+        if (Array.isArray(messages) && messages.length > 0) {
+          const lastMsg = messages[messages.length - 1];
+          if (lastMsg) {
+            await saveLastMessageId(chatId, lastMsg.id);
+            lastMessageId = lastMsg.id;
+          }
         }
+      } catch (error) {
+        if (signal?.aborted) return;
+        console.error(`Failed to fetch initial messages from daemon for ${chatId}:`, error);
       }
-    } catch (error) {
-      if (signal?.aborted) return;
-      console.error('Failed to fetch initial messages from daemon:', error);
     }
-  }
 
-  console.log(
-    `Starting daemon-to-discord forwarder for chat ${chatId}, lastMessageId: ${lastMessageId}`
-  );
+    console.log(
+      `Starting daemon-to-discord forwarder for chat ${chatId}, lastMessageId: ${lastMessageId}`
+    );
 
-  let retryDelay = 1000;
-  const maxRetryDelay = 30000;
+    let retryDelay = 1000;
+    const maxRetryDelay = 30000;
 
-  // 2. Start the observation loop using tRPC subscription
-  return new Promise<void>((resolve) => {
     let subscription: { unsubscribe: () => void } | null = null;
     let messageQueue = Promise.resolve();
 
     const connect = () => {
-      if (signal?.aborted) {
-        resolve();
+      if (signal?.aborted || !activeSubscriptions.has(chatId)) {
         return;
       }
 
@@ -83,7 +86,7 @@ export async function startDaemonToDiscordForwarder(
             // Queue processing to ensure sequential execution
             messageQueue = messageQueue.then(async () => {
               for (const rawMessage of messages) {
-                if (signal?.aborted) break;
+                if (signal?.aborted || !activeSubscriptions.has(chatId)) break;
 
                 const message = rawMessage as ChatMessage;
 
@@ -119,13 +122,13 @@ export async function startDaemonToDiscordForwarder(
                           .setStyle(ButtonStyle.Danger)
                       );
 
-                      const options: MessageCreateOptions = {
+                      const optionsMsg: MessageCreateOptions = {
                         embeds: [embed],
                         components: [row],
                       };
 
                       try {
-                        await dm.send(options);
+                        await dm.send(optionsMsg);
                       } catch (richError) {
                         console.warn(
                           `Failed to send rich message to Discord user ${discordUserId}, falling back to plain text:`,
@@ -142,12 +145,14 @@ export async function startDaemonToDiscordForwarder(
                       );
                     }
 
-                    await saveLastMessageId(logMessage.id).catch(console.error);
+                    await saveLastMessageId(chatId, logMessage.id).catch(console.error);
+                    lastMessageId = logMessage.id;
                     continue;
                   }
 
                   if ('level' in logMessage && logMessage.level === 'verbose') {
-                    await saveLastMessageId(logMessage.id).catch(console.error);
+                    await saveLastMessageId(chatId, logMessage.id).catch(console.error);
+                    lastMessageId = logMessage.id;
                     continue;
                   }
 
@@ -155,9 +160,6 @@ export async function startDaemonToDiscordForwarder(
                   const files = 'files' in logMessage ? (logMessage.files as string[]) : undefined;
                   const hasFiles = Array.isArray(files) && files.length > 0;
 
-                  // The daemon stores logMessage.files as paths relative to the WORKSPACE directory
-                  // (the directory containing .clawmini). We must resolve these against the current
-                  // workspace root so discord.js can successfully locate and read the files.
                   let absoluteFiles: string[] = [];
                   if (hasFiles && files) {
                     const workspaceRoot = getWorkspaceRoot(process.cwd());
@@ -165,7 +167,8 @@ export async function startDaemonToDiscordForwarder(
                   }
 
                   if (!hasContent && !hasFiles) {
-                    await saveLastMessageId(logMessage.id).catch(console.error);
+                    await saveLastMessageId(chatId, logMessage.id).catch(console.error);
+                    lastMessageId = logMessage.id;
                     continue;
                   }
 
@@ -174,11 +177,10 @@ export async function startDaemonToDiscordForwarder(
                     const dm = await user.createDM();
                     const formattedContent = formatMessage(message);
 
-                    // Discord has a 2000 character limit for messages.
                     if (formattedContent && formattedContent.length > 2000) {
                       const chunks = chunkString(formattedContent, 2000);
                       for (let i = 0; i < chunks.length; i++) {
-                        if (signal?.aborted) break;
+                        if (signal?.aborted || !activeSubscriptions.has(chatId)) break;
                         const chunkOptions: MessageCreateOptions = { content: chunks[i] as string };
                         if (i === chunks.length - 1 && hasFiles) {
                           chunkOptions.files = absoluteFiles;
@@ -186,39 +188,38 @@ export async function startDaemonToDiscordForwarder(
                         await dm.send(chunkOptions);
                       }
                     } else {
-                      const options: MessageCreateOptions = {};
+                      const optionsMsg: MessageCreateOptions = {};
                       if (formattedContent) {
-                        options.content = formattedContent;
+                        optionsMsg.content = formattedContent;
                       }
                       if (hasFiles) {
-                        options.files = absoluteFiles;
+                        optionsMsg.files = absoluteFiles;
                       }
-                      await dm.send(options);
+                      await dm.send(optionsMsg);
                     }
                   } catch (error) {
                     console.error(
                       `Failed to send message to Discord user ${discordUserId}:`,
                       error
                     );
-                    // We don't advance lastMessageId if sending failed
-                    break;
+                    break; // don't advance lastMessageId
                   }
                 }
 
-                await saveLastMessageId(message.id).catch(console.error);
+                await saveLastMessageId(chatId, message.id).catch(console.error);
+                lastMessageId = message.id;
               }
             });
           },
           onError: (error) => {
             console.error(
-              `Error in daemon-to-discord forwarder subscription. Retrying in ${retryDelay}ms.`,
+              `Error in daemon-to-discord forwarder subscription for ${chatId}. Retrying in ${retryDelay}ms.`,
               error
             );
             subscription?.unsubscribe();
             subscription = null;
 
-            if (signal?.aborted) {
-              resolve();
+            if (signal?.aborted || !activeSubscriptions.has(chatId)) {
               return;
             }
 
@@ -229,10 +230,8 @@ export async function startDaemonToDiscordForwarder(
           },
           onComplete: () => {
             subscription = null;
-            if (!signal?.aborted) {
+            if (!signal?.aborted && activeSubscriptions.has(chatId)) {
               setTimeout(() => connect(), retryDelay);
-            } else {
-              resolve();
             }
           },
         }
@@ -243,7 +242,7 @@ export async function startDaemonToDiscordForwarder(
     let typingRetryDelay = 1000;
 
     const connectTyping = () => {
-      if (signal?.aborted) {
+      if (signal?.aborted || !activeSubscriptions.has(chatId)) {
         return;
       }
 
@@ -267,13 +266,13 @@ export async function startDaemonToDiscordForwarder(
           },
           onError: (error) => {
             console.error(
-              `Error in daemon-to-discord typing forwarder subscription. Retrying in ${typingRetryDelay}ms.`,
+              `Error in daemon-to-discord typing forwarder subscription for ${chatId}. Retrying in ${typingRetryDelay}ms.`,
               error
             );
             typingSubscription?.unsubscribe();
             typingSubscription = null;
 
-            if (signal?.aborted) {
+            if (signal?.aborted || !activeSubscriptions.has(chatId)) {
               return;
             }
 
@@ -284,7 +283,7 @@ export async function startDaemonToDiscordForwarder(
           },
           onComplete: () => {
             typingSubscription = null;
-            if (!signal?.aborted) {
+            if (!signal?.aborted && activeSubscriptions.has(chatId)) {
               setTimeout(() => connectTyping(), typingRetryDelay);
             }
           },
@@ -292,12 +291,68 @@ export async function startDaemonToDiscordForwarder(
       );
     };
 
+    activeSubscriptions.set(chatId, {
+      unsubscribe: () => subscription?.unsubscribe(),
+    });
+    activeTypingSubscriptions.set(chatId, {
+      unsubscribe: () => typingSubscription?.unsubscribe(),
+    });
+
     connect();
     connectTyping();
+  };
+
+  const syncSubscriptions = async () => {
+    if (signal?.aborted) return;
+    const state = await readDiscordState();
+
+    // Update local copy of last message IDs
+    if (state.lastSyncedMessageIds) {
+      currentLastSyncedMessageIds = {
+        ...currentLastSyncedMessageIds,
+        ...state.lastSyncedMessageIds,
+      };
+    }
+
+    const targetChatIds = new Set<string>();
+    targetChatIds.add(defaultChatId);
+
+    if (state.channelChatMap) {
+      for (const mappedChatId of Object.values(state.channelChatMap)) {
+        targetChatIds.add(mappedChatId);
+      }
+    }
+
+    // Start new subscriptions
+    for (const targetChatId of targetChatIds) {
+      if (!activeSubscriptions.has(targetChatId)) {
+        startSubscriptionForChat(targetChatId);
+      }
+    }
+
+    // Teardown old subscriptions
+    for (const [activeChatId, sub] of activeSubscriptions.entries()) {
+      if (!targetChatIds.has(activeChatId)) {
+        sub.unsubscribe();
+        activeSubscriptions.delete(activeChatId);
+        activeTypingSubscriptions.get(activeChatId)?.unsubscribe();
+        activeTypingSubscriptions.delete(activeChatId);
+      }
+    }
+  };
+
+  return new Promise<void>((resolve) => {
+    syncSubscriptions().catch(console.error);
+
+    // Poll for state changes
+    statePollInterval = setInterval(() => {
+      syncSubscriptions().catch(console.error);
+    }, 5000);
 
     signal?.addEventListener('abort', () => {
-      subscription?.unsubscribe();
-      typingSubscription?.unsubscribe();
+      clearInterval(statePollInterval);
+      for (const sub of activeSubscriptions.values()) sub.unsubscribe();
+      for (const sub of activeTypingSubscriptions.values()) sub.unsubscribe();
       resolve();
     });
   });

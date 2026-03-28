@@ -366,7 +366,7 @@ describe('Daemon to Discord Forwarder', () => {
 
     // First error
     callbacks.onError(new Error('Daemon down'));
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(30000);
 
     // Should have resubscribed
     expect(subscribeCallbacks).toBeTruthy();
@@ -375,7 +375,7 @@ describe('Daemon to Discord Forwarder', () => {
 
     // Second error
     callbacks.onError(new Error('Still down'));
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(30000);
 
     // Should have resubscribed
     expect(subscribeCallbacks).toBeTruthy();
@@ -398,7 +398,7 @@ describe('Daemon to Discord Forwarder', () => {
     ]);
 
     // allow microtasks
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(30000);
 
     expect(mockTrpc.waitForMessages.subscribe).toHaveBeenCalledTimes(3);
     expect(mockDm.send).toHaveBeenCalledWith({ content: 'Finally up' });
@@ -448,14 +448,14 @@ describe('Daemon to Discord Forwarder', () => {
     typingSubscribeCallbacks = null;
 
     callbacks.onError(new Error('Daemon down'));
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(30000);
 
     expect(typingSubscribeCallbacks).toBeTruthy();
     callbacks = typingSubscribeCallbacks;
     typingSubscribeCallbacks = null;
 
     callbacks.onError(new Error('Still down'));
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(30000);
 
     expect(typingSubscribeCallbacks).toBeTruthy();
 
