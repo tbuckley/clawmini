@@ -62,6 +62,22 @@ const mockData = {
       timestamp: new Date().toISOString(),
     },
     {
+      id: 'system-user-role',
+      role: 'system',
+      event: 'other',
+      displayRole: 'user',
+      content: 'I am a system message displayed as user',
+      timestamp: new Date().toISOString(),
+    },
+    {
+      id: 'system-agent-role',
+      role: 'system',
+      event: 'other',
+      displayRole: 'agent',
+      content: 'I am a system message displayed as agent',
+      timestamp: new Date().toISOString(),
+    },
+    {
       id: 'cmd-1',
       messageId: 'msg-1',
       role: 'command',
@@ -77,6 +93,7 @@ const mockData = {
       id: 'policy-1',
       messageId: 'msg-1',
       role: 'policy',
+      displayRole: 'user',
       requestId: 'req-1',
       commandName: 'rm',
       args: ['-rf', '/'],
@@ -101,8 +118,8 @@ describe('Chat Page', () => {
     const policyMsgs = page.getByTestId('policy-message').all();
     const logMsgs = page.getByTestId('log-message').all();
 
-    expect(userMsgs.length).toBe(1);
-    expect(agentMsgs.length).toBe(1);
+    expect(userMsgs.length).toBe(2);
+    expect(agentMsgs.length).toBe(2);
     expect(policyMsgs.length).toBe(1);
     expect(logMsgs.length).toBe(1);
     await expect.element(logMsgs[0]).toHaveTextContent('I am the daemon');

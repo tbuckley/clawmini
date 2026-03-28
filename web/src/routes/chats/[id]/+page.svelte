@@ -407,25 +407,9 @@
       {/if}
 
     {#each filteredMessages as msg (msg.id)}
-      <div class="flex flex-col gap-1 {msg.role === 'user' ? 'items-end' : 'items-start'}">
-        <div class="flex items-baseline gap-2 max-w-[80%] {msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}">
-          {#if msg.role === 'user'}
-            <div class="px-4 py-2 rounded-2xl bg-primary text-primary-foreground text-sm" data-testid="user-message">
-              {#if msg.subagentId}
-                <div class="text-[10px] font-mono opacity-70 mb-1">[{msg.subagentId}]</div>
-              {/if}
-              <MessageContent content={msg.content} />
-            </div>
-          {:else if msg.role === 'agent'}
-            <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm" data-testid="agent-message">
-              {#if msg.subagentId}
-                <div class="text-[10px] font-mono text-muted-foreground mb-2">[{msg.subagentId}]</div>
-              {/if}
-              <div class="whitespace-normal">
-                <MessageContent content={msg.content} />
-              </div>
-            </div>
-          {:else if msg.role === 'policy'}
+      <div class="flex flex-col gap-1 {msg.role === 'user' || msg.displayRole === 'user' ? 'items-end' : 'items-start'}">
+        <div class="flex items-baseline gap-2 max-w-[80%] {msg.role === 'user' || msg.displayRole === 'user' ? 'flex-row-reverse' : 'flex-row'}">
+          {#if msg.role === 'policy'}
             <div class="px-4 py-3 rounded-2xl bg-card border border-warning/50 text-card-foreground text-sm shadow-sm" data-testid="policy-message">
               <div class="font-semibold mb-1 text-yellow-600 dark:text-yellow-400">Policy Request: {msg.commandName}</div>
               <div class="text-xs font-mono mb-2">{msg.args.join(' ')}</div>
@@ -440,6 +424,22 @@
                   {msg.status}
                 </div>
               {/if}
+            </div>
+          {:else if msg.role === 'user' || msg.displayRole === 'user'}
+            <div class="px-4 py-2 rounded-2xl bg-primary text-primary-foreground text-sm" data-testid="user-message">
+              {#if msg.subagentId}
+                <div class="text-[10px] font-mono opacity-70 mb-1">[{msg.subagentId}]</div>
+              {/if}
+              <MessageContent content={msg.content} />
+            </div>
+          {:else if msg.role === 'agent' || msg.displayRole === 'agent'}
+            <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm" data-testid="agent-message">
+              {#if msg.subagentId}
+                <div class="text-[10px] font-mono text-muted-foreground mb-2">[{msg.subagentId}]</div>
+              {/if}
+              <div class="whitespace-normal">
+                <MessageContent content={msg.content} />
+              </div>
             </div>
           {:else}
             <div class="px-4 py-3 rounded-2xl bg-card border text-card-foreground text-sm shadow-sm {msg.role === 'legacy_log' && msg.level === 'verbose' ? 'border-primary/50 bg-primary/5 shadow-md' : ''}" data-testid="log-message">

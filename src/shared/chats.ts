@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -212,12 +213,16 @@ async function* readLinesBackwards(filePath: string): AsyncGenerator<string, voi
   }
 }
 
-export function parseChatMessage(line: string): ChatMessage {
-  const msg = JSON.parse(line);
-  if (msg && msg.role === 'log') {
-    msg.role = 'legacy_log';
+export function parseChatMessage(line: string): ChatMessage | null {
+  try {
+    const msg = JSON.parse(line);
+    if (msg && msg.role === 'log') {
+      msg.role = 'legacy_log';
+    }
+    return msg as ChatMessage;
+  } catch {
+    return null;
   }
-  return msg as ChatMessage;
 }
 
 export async function getMessages(
@@ -240,7 +245,9 @@ export async function getMessages(
     const content = await fs.readFile(chatFile, 'utf8');
     const lines = content.split('\n').filter((line) => line.trim() !== '');
 
-    let messages = lines.map((line) => parseChatMessage(line));
+    let messages = lines
+      .map((line) => parseChatMessage(line))
+      .filter((msg): msg is ChatMessage => msg !== null);
 
     if (before) {
       const beforeIndex = messages.findIndex((m) => m.id === before);
@@ -265,6 +272,7 @@ export async function getMessages(
   for await (const line of readLinesBackwards(chatFile)) {
     try {
       const msg = parseChatMessage(line);
+      if (!msg) continue;
 
       if (skipping) {
         if (msg.id === before) {
@@ -342,6 +350,7 @@ export async function findLastMessage(
   for await (const line of readLinesBackwards(chatFile)) {
     try {
       const msg = parseChatMessage(line);
+      if (!msg) continue;
       if (predicate(msg)) return msg;
     } catch {
       // Ignore invalid JSON lines
