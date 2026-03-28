@@ -307,4 +307,36 @@ describe('Daemon to Google Chat Forwarder', () => {
     controller.abort();
     await forwarderPromise;
   });
+
+  it('should forward pending policy requests', async () => {
+    const controller = new AbortController();
+
+    const forwarderPromise = startDaemonToGoogleChatForwarder(
+      mockTrpc,
+      mockConfig,
+      {},
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-2',
+        role: 'policy',
+        status: 'pending',
+        content: 'Please approve this action',
+      },
+    ]);
+
+    await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalled());
+
+    expect(mockMessagesCreate).toHaveBeenCalledWith({
+      parent: 'spaces/test-space',
+      requestBody: { text: 'Please approve this action' },
+    });
+
+    controller.abort();
+    await forwarderPromise;
+  });
 });

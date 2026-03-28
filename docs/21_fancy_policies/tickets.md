@@ -1,7 +1,7 @@
 # Tickets for Fancy Policies
 
 ## Ticket 1: Update forwarders to pass through policy requests
-**Status**: not started
+**Status**: completed
 **Description**: 
 Update the message filtering logic in `src/adapter-discord/forwarder.ts` and `src/adapter-google-chat/forwarder.ts` to ensure that messages with `role: 'policy'` and `status: 'pending'` are passed through to the adapters' formatting logic, rather than being filtered out.
 **Verification Steps**:

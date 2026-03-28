@@ -457,4 +457,39 @@ describe('Daemon to Discord Forwarder', () => {
     await forwarderPromise;
     vi.useRealTimers();
   });
+
+  it('should forward pending policy requests', async () => {
+    const controller = new AbortController();
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-1',
+        role: 'policy',
+        status: 'pending',
+        content: 'Please approve this',
+        timestamp: '',
+        messageId: 'msg-0',
+        command: 'test',
+        cwd: '',
+        exitCode: 0,
+        stderr: '',
+      },
+    ]);
+
+    await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalled());
+
+    expect(mockDm.send).toHaveBeenCalledWith({ content: 'Please approve this' });
+    expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' });
+
+    controller.abort();
+    await forwarderPromise;
+  });
 });
