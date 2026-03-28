@@ -54,14 +54,15 @@ export async function writeDiscordState(
 let stateUpdatePromise = Promise.resolve();
 
 export function updateDiscordState(
-  updates: Partial<DiscordState>,
+  updates: Partial<DiscordState> | ((state: DiscordState) => Partial<DiscordState>),
   startDir = process.cwd()
 ): Promise<DiscordState> {
   return new Promise((resolve, reject) => {
     stateUpdatePromise = stateUpdatePromise.then(async () => {
       try {
         const currentState = await readDiscordState(startDir);
-        const newState = { ...currentState, ...updates };
+        const resolvedUpdates = typeof updates === 'function' ? updates(currentState) : updates;
+        const newState = { ...currentState, ...resolvedUpdates };
         await writeDiscordState(newState, startDir);
         resolve(newState);
       } catch (err) {

@@ -1,17 +1,9 @@
 #!/usr/bin/env node
 
-import {
-  Client,
-  Events,
-  GatewayIntentBits,
-  Partials,
-  ActionRowBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-} from 'discord.js';
+import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import { readDiscordConfig, isAuthorized, initDiscordConfig } from './config.js';
 import { readDiscordState, updateDiscordState } from './state.js';
+import { handleDiscordInteraction } from './interactions.js';
 import { getTRPCClient } from './client.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
 import { getClawminiDir } from '../shared/workspace.js';
@@ -115,26 +107,46 @@ export async function main() {
 
       if (routingResult) {
         if (routingResult.type === 'mapped') {
-          const newMap = {
-            ...currentState.channelChatMap,
-            [externalContextId]: routingResult.newChatId,
-          };
-          await updateDiscordState({ channelChatMap: newMap });
+          await updateDiscordState((latestState) => ({
+            channelChatMap: {
+              ...latestState.channelChatMap,
+              [externalContextId]: routingResult.newChatId,
+            },
+          }));
         }
         await message.reply(routingResult.text);
         return;
       }
     }
 
-    if (!mappedChatId && !isRoutingCommand) {
-      console.log(`Unmapped channel ${externalContextId}, sending first contact warning.`);
-      await message.reply(
-        'This channel/space is not currently mapped to a daemon chat. Please use `/chat [chat-id]` or `/agent [agent-id]` to map it.'
-      );
-      return;
+    let targetChatId = mappedChatId;
+
+    if (!targetChatId && !isRoutingCommand) {
+      const isFirstEverMessage =
+        !currentState.channelChatMap || Object.keys(currentState.channelChatMap).length === 0;
+
+      if (isFirstEverMessage) {
+        targetChatId = config.chatId || 'default';
+        console.log(
+          `First contact detected. Automatically mapping channel ${externalContextId} to chat ${targetChatId}.`
+        );
+        await updateDiscordState((latestState) => ({
+          channelChatMap: {
+            ...latestState.channelChatMap,
+            [externalContextId]: targetChatId as string,
+          },
+        }));
+      } else {
+        console.log(`Unmapped channel ${externalContextId}, sending first contact warning.`);
+        await message.reply(
+          'This channel/space is not currently mapped to a daemon chat. Please use `/chat [chat-id]` or `/agent [agent-id]` to map it.'
+        );
+        return;
+      }
     }
 
-    const targetChatId = mappedChatId || config.chatId;
+    // Fallback typing safeguard
+    if (!targetChatId) targetChatId = config.chatId || 'default';
 
     const commandResult = await handleAdapterCommand(
       message.content,
@@ -234,100 +246,7 @@ export async function main() {
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
-    if (!interaction.isButton() && !interaction.isModalSubmit()) return;
-
-    if (!isAuthorized(interaction.user.id, config.authorizedUserId)) {
-      if (interaction.isRepliable()) {
-        await interaction.reply({
-          content: 'You are not authorized to perform this action.',
-          ephemeral: true,
-        });
-      }
-      return;
-    }
-
-    if (interaction.isButton()) {
-      if (interaction.customId.startsWith('approve_')) {
-        const policyId = interaction.customId.replace('approve_', '');
-        await interaction.update({ components: [] });
-        await interaction.followUp({ content: `Approving policy ${policyId}...`, ephemeral: true });
-        try {
-          const currentState = await readDiscordState();
-          const targetChatId = interaction.channelId
-            ? currentState.channelChatMap?.[interaction.channelId] || config.chatId
-            : config.chatId;
-          await trpc.sendMessage.mutate({
-            type: 'send-message',
-            client: 'cli',
-            data: {
-              message: `/approve ${policyId}`,
-              chatId: targetChatId,
-              adapter: 'discord',
-              noWait: true,
-            },
-          });
-        } catch (error) {
-          console.error('Failed to send approve command to daemon:', error);
-          await interaction.followUp({
-            content: `Failed to approve policy ${policyId}.`,
-            ephemeral: true,
-          });
-        }
-      } else if (interaction.customId.startsWith('reject_')) {
-        const policyId = interaction.customId.replace('reject_', '');
-
-        const modal = new ModalBuilder()
-          .setCustomId(`modal_reject_${policyId}`)
-          .setTitle('Reject Policy');
-
-        const rationaleInput = new TextInputBuilder()
-          .setCustomId('rationale')
-          .setLabel('Rationale (optional)')
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(false);
-
-        const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(rationaleInput);
-        modal.addComponents(actionRow);
-
-        await interaction.showModal(modal);
-      }
-    } else if (interaction.isModalSubmit()) {
-      if (interaction.customId.startsWith('modal_reject_')) {
-        const policyId = interaction.customId.replace('modal_reject_', '');
-        const rationale = interaction.fields.getTextInputValue('rationale');
-
-        const command = rationale ? `/reject ${policyId} ${rationale}` : `/reject ${policyId}`;
-
-        if (interaction.isFromMessage()) {
-          await interaction.update({ components: [] });
-          await interaction.followUp({
-            content: `Rejecting policy ${policyId}...`,
-            ephemeral: true,
-          });
-        } else {
-          await interaction.reply({ content: `Rejecting policy ${policyId}...`, ephemeral: true });
-        }
-
-        try {
-          await trpc.sendMessage.mutate({
-            type: 'send-message',
-            client: 'cli',
-            data: {
-              message: command,
-              chatId: config.chatId,
-              adapter: 'discord',
-              noWait: true,
-            },
-          });
-        } catch (error) {
-          console.error('Failed to send reject command to daemon:', error);
-          await interaction.followUp({
-            content: `Failed to reject policy ${policyId}.`,
-            ephemeral: true,
-          });
-        }
-      }
-    }
+    await handleDiscordInteraction(interaction, config, trpc as unknown as CommandTrpcClient);
   });
 
   try {

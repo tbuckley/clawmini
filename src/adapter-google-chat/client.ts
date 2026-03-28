@@ -142,25 +142,44 @@ export function startGoogleChatIngestion(
         }
       }
 
-      if (!mappedChatId && !isRoutingCommand) {
-        console.log(`Unmapped space ${externalContextId}, sending first contact warning.`);
-        try {
-          const authClient = await getAuthClient();
-          const chatApi = google.chat({ version: 'v1', auth: authClient });
-          await chatApi.spaces.messages.create({
-            parent: externalContextId,
-            requestBody: {
-              text: 'This channel/space is not currently mapped to a daemon chat. Please use `/chat [chat-id]` or `/agent [agent-id]` to map it.',
+      let targetChatId = mappedChatId;
+
+      if (!targetChatId && !isRoutingCommand) {
+        const isFirstEverMessage =
+          !currentState.channelChatMap || Object.keys(currentState.channelChatMap).length === 0;
+
+        if (isFirstEverMessage) {
+          targetChatId = config.chatId || 'default';
+          console.log(
+            `First contact detected. Automatically mapping space ${externalContextId} to chat ${targetChatId}.`
+          );
+          await updateGoogleChatState((latestState) => ({
+            channelChatMap: {
+              ...latestState.channelChatMap,
+              [externalContextId]: targetChatId as string,
             },
-          });
-        } catch (err) {
-          console.error('Failed to send first contact warning:', err);
+          }));
+        } else {
+          console.log(`Unmapped space ${externalContextId}, sending first contact warning.`);
+          try {
+            const authClient = await getAuthClient();
+            const chatApi = google.chat({ version: 'v1', auth: authClient });
+            await chatApi.spaces.messages.create({
+              parent: externalContextId,
+              requestBody: {
+                text: 'This channel/space is not currently mapped to a daemon chat. Please use `/chat [chat-id]` or `/agent [agent-id]` to map it.',
+              },
+            });
+          } catch (err) {
+            console.error('Failed to send first contact warning:', err);
+          }
+          message.ack();
+          return;
         }
-        message.ack();
-        return;
       }
 
-      const targetChatId = mappedChatId as string;
+      // Fallback typing safeguard
+      if (!targetChatId) targetChatId = config.chatId || 'default';
 
       if (event.type === 'CARD_CLICKED') {
         const action = event.action;
