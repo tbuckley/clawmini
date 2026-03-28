@@ -1,9 +1,19 @@
 /* eslint-disable max-lines */
-import type { Client, MessageCreateOptions } from 'discord.js';
+import type {
+  Client,
+  MessageCreateOptions,
+  TextChannel,
+  DMChannel,
+  NewsChannel,
+  ThreadChannel,
+  VoiceChannel,
+  StageChannel,
+} from 'discord.js';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Colors } from 'discord.js';
 import path from 'node:path';
+import fs from 'node:fs';
 import type { getTRPCClient } from './client.js';
-import { readDiscordState, updateDiscordState } from './state.js';
+import { readDiscordState, updateDiscordState, getDiscordStatePath } from './state.js';
 import type { ChatMessage } from '../shared/chats.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
 import {
@@ -16,12 +26,7 @@ async function resolveDiscordDestination(
   client: Client,
   discordUserId: string,
   chatId: string
-): Promise<{
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  send: (options: MessageCreateOptions | { content: string }) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sendTyping?: () => Promise<any>;
-}> {
+): Promise<TextChannel | DMChannel | NewsChannel | ThreadChannel | VoiceChannel | StageChannel> {
   const state = await readDiscordState();
   const channelChatMap = state.channelChatMap || {};
 
@@ -36,9 +41,8 @@ async function resolveDiscordDestination(
   if (targetDiscordChannelId) {
     try {
       const channel = await client.channels.fetch(targetDiscordChannelId);
-      if (channel && channel.isTextBased()) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return channel as any;
+      if (channel && channel.isTextBased() && !channel.isDMBased()) {
+        return channel as TextChannel | NewsChannel | ThreadChannel | VoiceChannel | StageChannel;
       }
     } catch (error) {
       console.warn(
@@ -68,12 +72,16 @@ export async function startDaemonToDiscordForwarder(
 
   const activeSubscriptions = new Map<string, { unsubscribe: () => void }>();
   const activeTypingSubscriptions = new Map<string, { unsubscribe: () => void }>();
-  let statePollInterval: NodeJS.Timeout;
   let currentLastSyncedMessageIds = (await readDiscordState()).lastSyncedMessageIds || {};
 
   const saveLastMessageId = async (chatId: string, id: string) => {
     currentLastSyncedMessageIds = { ...currentLastSyncedMessageIds, [chatId]: id };
-    return updateDiscordState({ lastSyncedMessageIds: currentLastSyncedMessageIds });
+    return updateDiscordState((state) => ({
+      lastSyncedMessageIds: {
+        ...state.lastSyncedMessageIds,
+        ...currentLastSyncedMessageIds,
+      },
+    }));
   };
 
   const startSubscriptionForChat = async (chatId: string) => {
@@ -152,11 +160,11 @@ export async function startDaemonToDiscordForwarder(
                         ('requestId' in logMessage && logMessage.requestId) || logMessage.id;
                       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
                         new ButtonBuilder()
-                          .setCustomId(`approve_${policyId}`)
+                          .setCustomId(`approve|${policyId}|${chatId}`)
                           .setLabel('Approve')
                           .setStyle(ButtonStyle.Success),
                         new ButtonBuilder()
-                          .setCustomId(`reject_${policyId}`)
+                          .setCustomId(`reject|${policyId}|${chatId}`)
                           .setLabel('Reject')
                           .setStyle(ButtonStyle.Danger)
                       );
@@ -383,13 +391,19 @@ export async function startDaemonToDiscordForwarder(
   return new Promise<void>((resolve) => {
     syncSubscriptions().catch(console.error);
 
-    // Poll for state changes
-    statePollInterval = setInterval(() => {
-      syncSubscriptions().catch(console.error);
-    }, 5000);
+    const statePath = getDiscordStatePath();
+    const stateDir = path.dirname(statePath);
+    if (!fs.existsSync(stateDir)) {
+      fs.mkdirSync(stateDir, { recursive: true });
+    }
+    const watcher = fs.watch(stateDir, (eventType: string, filename: string | null) => {
+      if (filename === path.basename(statePath)) {
+        syncSubscriptions().catch(console.error);
+      }
+    });
 
     signal?.addEventListener('abort', () => {
-      clearInterval(statePollInterval);
+      watcher.close();
       for (const sub of activeSubscriptions.values()) sub.unsubscribe();
       for (const sub of activeTypingSubscriptions.values()) sub.unsubscribe();
       resolve();

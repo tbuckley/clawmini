@@ -120,7 +120,7 @@ export function startGoogleChatIngestion(
           if (routingResult.type === 'mapped') {
             await updateGoogleChatState((latestState) => ({
               channelChatMap: {
-                ...latestState.channelChatMap,
+                ...(latestState.channelChatMap || {}),
                 [externalContextId]: routingResult.newChatId,
               },
             }));
@@ -155,7 +155,7 @@ export function startGoogleChatIngestion(
           );
           await updateGoogleChatState((latestState) => ({
             channelChatMap: {
-              ...latestState.channelChatMap,
+              ...(latestState.channelChatMap || {}),
               [externalContextId]: targetChatId as string,
             },
           }));

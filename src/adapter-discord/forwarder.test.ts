@@ -5,6 +5,15 @@ import { readDiscordState, updateDiscordState } from './state.js';
 vi.mock('./state.js', () => ({
   readDiscordState: vi.fn(),
   updateDiscordState: vi.fn(),
+  getDiscordStatePath: vi.fn().mockReturnValue('./.tmp-mock-discord/state.json'),
+}));
+
+vi.mock('node:fs', () => ({
+  default: {
+    existsSync: vi.fn().mockReturnValue(true),
+    mkdirSync: vi.fn(),
+    watch: vi.fn().mockReturnValue({ close: vi.fn() }),
+  },
 }));
 
 describe('Daemon to Discord Forwarder', () => {
@@ -17,9 +26,21 @@ describe('Daemon to Discord Forwarder', () => {
   let subscribeCallbacks: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let typingSubscribeCallbacks: any;
+  let mockUpdateDiscordState: import('vitest').Mock;
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mockUpdateDiscordState = vi.fn();
+    vi.mocked(updateDiscordState).mockImplementation(async (updates) => {
+      const result =
+        typeof updates === 'function'
+          ? updates({ lastSyncedMessageIds: {} } as import('./state.js').DiscordState)
+          : updates;
+      mockUpdateDiscordState(result);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return result as any;
+    });
 
     mockDm = {
       send: vi.fn().mockResolvedValue({}),
@@ -58,7 +79,6 @@ describe('Daemon to Discord Forwarder', () => {
     };
 
     vi.mocked(readDiscordState).mockResolvedValue({});
-    vi.mocked(updateDiscordState).mockResolvedValue({});
   });
 
   it('should fetch initial messages if no state exists and start observation loop', async () => {
@@ -79,7 +99,9 @@ describe('Daemon to Discord Forwarder', () => {
 
     expect(readDiscordState).toHaveBeenCalled();
     expect(mockTrpc.getMessages.query).toHaveBeenCalledWith({ chatId: 'default', limit: 1 });
-    expect(updateDiscordState).toHaveBeenCalledWith({ lastSyncedMessageIds: { default: 'msg-1' } });
+    expect(mockUpdateDiscordState).toHaveBeenCalledWith({
+      lastSyncedMessageIds: { default: 'msg-1' },
+    });
     expect(mockTrpc.waitForMessages.subscribe).toHaveBeenCalledWith(
       { chatId: 'default', lastMessageId: 'msg-1' },
       expect.any(Object)
@@ -106,7 +128,9 @@ describe('Daemon to Discord Forwarder', () => {
     expect(mockClient.users.fetch).toHaveBeenCalledWith('user-123');
     expect(mockUser.createDM).toHaveBeenCalled();
     expect(mockDm.send).toHaveBeenCalledWith({ content: 'Agent response' });
-    expect(updateDiscordState).toHaveBeenCalledWith({ lastSyncedMessageIds: { default: 'msg-1' } });
+    expect(mockUpdateDiscordState).toHaveBeenCalledWith({
+      lastSyncedMessageIds: { default: 'msg-1' },
+    });
 
     controller.abort();
     await forwarderPromise;
@@ -151,7 +175,7 @@ describe('Daemon to Discord Forwarder', () => {
     ]);
 
     await vi.waitFor(() =>
-      expect(updateDiscordState).toHaveBeenCalledWith({
+      expect(mockUpdateDiscordState).toHaveBeenCalledWith({
         lastSyncedMessageIds: { default: 'msg-1' },
       })
     );
@@ -189,7 +213,7 @@ describe('Daemon to Discord Forwarder', () => {
     ]);
 
     await vi.waitFor(() =>
-      expect(updateDiscordState).toHaveBeenCalledWith({
+      expect(mockUpdateDiscordState).toHaveBeenCalledWith({
         lastSyncedMessageIds: { default: 'msg-1' },
       })
     );
@@ -230,7 +254,9 @@ describe('Daemon to Discord Forwarder', () => {
 
     expect(mockDm.send).toHaveBeenNthCalledWith(1, { content: 'a'.repeat(2000) });
     expect(mockDm.send).toHaveBeenNthCalledWith(2, { content: 'a'.repeat(500) });
-    expect(updateDiscordState).toHaveBeenCalledWith({ lastSyncedMessageIds: { default: 'msg-1' } });
+    expect(mockUpdateDiscordState).toHaveBeenCalledWith({
+      lastSyncedMessageIds: { default: 'msg-1' },
+    });
 
     controller.abort();
     await forwarderPromise;
@@ -502,10 +528,12 @@ describe('Daemon to Discord Forwarder', () => {
     const callArgs = vi.mocked(mockDm.send).mock.calls[0]?.[0] as any;
     expect(callArgs.embeds[0].data.title).toBe('Action Required: Policy Request');
     expect(callArgs.embeds[0].data.description).toBe('Please approve this');
-    expect(callArgs.components[0].components[0].data.custom_id).toBe('approve_msg-1');
-    expect(callArgs.components[0].components[1].data.custom_id).toBe('reject_msg-1');
+    expect(callArgs.components[0].components[0].data.custom_id).toBe('approve|msg-1|default');
+    expect(callArgs.components[0].components[1].data.custom_id).toBe('reject|msg-1|default');
 
-    expect(updateDiscordState).toHaveBeenCalledWith({ lastSyncedMessageIds: { default: 'msg-1' } });
+    expect(mockUpdateDiscordState).toHaveBeenCalledWith({
+      lastSyncedMessageIds: { default: 'msg-1' },
+    });
 
     controller.abort();
     await forwarderPromise;
@@ -551,8 +579,69 @@ describe('Daemon to Discord Forwarder', () => {
     });
 
     // Should still update state to avoid infinite loop
-    expect(updateDiscordState).toHaveBeenCalledWith({ lastSyncedMessageIds: { default: 'msg-1' } });
+    expect(mockUpdateDiscordState).toHaveBeenCalledWith({
+      lastSyncedMessageIds: { default: 'msg-1' },
+    });
 
+    controller.abort();
+    await forwarderPromise;
+  });
+
+  it('should prioritize local memory over disk state during syncSubscriptions polling', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
+
+    // Initial sync is called immediately without timers
+    await vi.runAllTicks();
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy(), { timeout: 1000 });
+
+    // Send a message, this updates the local memory cache to msg-local
+    subscribeCallbacks.onData([
+      { id: 'msg-local', role: 'agent', content: 'Agent response', timestamp: '' },
+    ]);
+
+    await vi.waitFor(
+      () =>
+        expect(mockUpdateDiscordState).toHaveBeenCalledWith(
+          expect.objectContaining({ lastSyncedMessageIds: { default: 'msg-local' } })
+        ),
+      { timeout: 1000 }
+    );
+
+    // Simulate disk change where read state returns an older message ID
+    vi.mocked(readDiscordState).mockResolvedValueOnce({
+      lastSyncedMessageIds: { default: 'msg-stale', otherChat: 'msg-other' },
+    });
+
+    // Trigger fs.watch callback
+    const fsWatchMock = (await import('node:fs')).default.watch as import('vitest').Mock;
+    const watchCallback = fsWatchMock.mock.calls[0]![1];
+    watchCallback('change', 'state.json');
+
+    // Wait for the async syncSubscriptions to finish
+    await vi.runAllTicks();
+
+    subscribeCallbacks.onData([
+      { id: 'msg-latest', role: 'agent', content: 'Agent response 2', timestamp: '' },
+    ]);
+
+    await vi.waitFor(
+      () =>
+        expect(mockUpdateDiscordState).toHaveBeenCalledWith(
+          expect.objectContaining({
+            lastSyncedMessageIds: { default: 'msg-latest', otherChat: 'msg-other' },
+          })
+        ),
+      { timeout: 1000 }
+    );
+
+    vi.useRealTimers();
     controller.abort();
     await forwarderPromise;
   });

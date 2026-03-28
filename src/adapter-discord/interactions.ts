@@ -31,15 +31,28 @@ export async function handleDiscordInteraction(
   }
 
   if (interaction.isButton()) {
-    if (interaction.customId.startsWith('approve_')) {
-      const policyId = interaction.customId.replace('approve_', '');
+    if (
+      interaction.customId.startsWith('approve_') ||
+      interaction.customId.startsWith('approve|')
+    ) {
+      let policyId, explicitChatId;
+      if (interaction.customId.startsWith('approve|')) {
+        const parts = interaction.customId.split('|');
+        policyId = parts[1];
+        explicitChatId = parts[2];
+      } else {
+        policyId = interaction.customId.replace('approve_', '');
+      }
+
       await interaction.update({ components: [] });
       await interaction.followUp({ content: `Approving policy ${policyId}...`, ephemeral: true });
       try {
         const currentState = await readDiscordState();
-        const targetChatId = interaction.channelId
-          ? currentState.channelChatMap?.[interaction.channelId] || config.chatId
-          : config.chatId;
+        const targetChatId =
+          explicitChatId ||
+          (interaction.channelId
+            ? currentState.channelChatMap?.[interaction.channelId] || config.chatId
+            : config.chatId);
         await trpc.sendMessage.mutate({
           type: 'send-message',
           client: 'cli',
@@ -57,11 +70,22 @@ export async function handleDiscordInteraction(
           ephemeral: true,
         });
       }
-    } else if (interaction.customId.startsWith('reject_')) {
-      const policyId = interaction.customId.replace('reject_', '');
+    } else if (
+      interaction.customId.startsWith('reject_') ||
+      interaction.customId.startsWith('reject|')
+    ) {
+      let policyId, explicitChatId;
+      if (interaction.customId.startsWith('reject|')) {
+        const parts = interaction.customId.split('|');
+        policyId = parts[1];
+        explicitChatId = parts[2] || '';
+      } else {
+        policyId = interaction.customId.replace('reject_', '');
+        explicitChatId = '';
+      }
 
       const modal = new ModalBuilder()
-        .setCustomId(`modal_reject_${policyId}`)
+        .setCustomId(`modal_reject|${policyId}|${explicitChatId}`)
         .setTitle('Reject Policy');
 
       const rationaleInput = new TextInputBuilder()
@@ -76,8 +100,18 @@ export async function handleDiscordInteraction(
       await interaction.showModal(modal);
     }
   } else if (interaction.isModalSubmit()) {
-    if (interaction.customId.startsWith('modal_reject_')) {
-      const policyId = interaction.customId.replace('modal_reject_', '');
+    if (
+      interaction.customId.startsWith('modal_reject_') ||
+      interaction.customId.startsWith('modal_reject|')
+    ) {
+      let policyId, explicitChatId;
+      if (interaction.customId.startsWith('modal_reject|')) {
+        const parts = interaction.customId.split('|');
+        policyId = parts[1];
+        explicitChatId = parts[2];
+      } else {
+        policyId = interaction.customId.replace('modal_reject_', '');
+      }
       const rationale = interaction.fields.getTextInputValue('rationale');
 
       const command = rationale ? `/reject ${policyId} ${rationale}` : `/reject ${policyId}`;
@@ -93,12 +127,19 @@ export async function handleDiscordInteraction(
       }
 
       try {
+        const currentState = await readDiscordState();
+        const targetChatId =
+          explicitChatId ||
+          (interaction.channelId
+            ? currentState.channelChatMap?.[interaction.channelId] || config.chatId
+            : config.chatId);
+
         await trpc.sendMessage.mutate({
           type: 'send-message',
           client: 'cli',
           data: {
             message: command,
-            chatId: config.chatId,
+            chatId: targetChatId,
             adapter: 'discord',
             noWait: true,
           },

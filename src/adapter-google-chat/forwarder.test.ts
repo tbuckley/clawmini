@@ -68,13 +68,24 @@ const mockWriteState = vi.fn().mockResolvedValue(undefined);
 vi.mock('./state.js', () => ({
   readGoogleChatState: () => mockReadState(),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  updateGoogleChatState: (state: any) => mockWriteState(state),
+  updateGoogleChatState: (updates: any) => {
+    const currentState = { lastSyncedMessageIds: { otherChat: 'msg-other' } };
+    const result =
+      typeof updates === 'function'
+        ? updates(currentState as import('./state.js').GoogleChatState)
+        : updates;
+    mockWriteState(result);
+    return Promise.resolve(result);
+  },
+  getGoogleChatStatePath: vi.fn().mockReturnValue('./.tmp-mock-google/state.json'),
 }));
 
 vi.mock('node:fs', () => ({
   default: {
     existsSync: vi.fn().mockReturnValue(true),
     createReadStream: vi.fn().mockReturnValue('mock-stream'),
+    mkdirSync: vi.fn(),
+    watch: vi.fn().mockReturnValue({ close: vi.fn() }),
   },
 }));
 
@@ -298,10 +309,14 @@ describe('Daemon to Google Chat Forwarder', () => {
     await vi.waitFor(() => expect(callCount).toBe(2));
 
     expect(mockWriteState).toHaveBeenCalledWith(
-      expect.objectContaining({ lastSyncedMessageIds: { default: 'msg-err-1' } })
+      expect.objectContaining({
+        lastSyncedMessageIds: expect.objectContaining({ default: 'msg-err-1' }),
+      })
     );
     expect(mockWriteState).toHaveBeenCalledWith(
-      expect.objectContaining({ lastSyncedMessageIds: { default: 'msg-err-2' } })
+      expect.objectContaining({
+        lastSyncedMessageIds: expect.objectContaining({ default: 'msg-err-2' }),
+      })
     );
 
     controller.abort();
@@ -450,7 +465,9 @@ describe('Daemon to Google Chat Forwarder', () => {
     await vi.waitFor(
       () =>
         expect(mockWriteState).toHaveBeenCalledWith(
-          expect.objectContaining({ lastSyncedMessageIds: { default: 'msg-local' } })
+          expect.objectContaining({
+            lastSyncedMessageIds: expect.objectContaining({ default: 'msg-local' }),
+          })
         ),
       { timeout: 1000 }
     );
@@ -461,8 +478,13 @@ describe('Daemon to Google Chat Forwarder', () => {
       lastSyncedMessageIds: { default: 'msg-stale' },
     });
 
-    // Advance timers by 6 seconds to trigger syncSubscriptions polling
-    await vi.advanceTimersByTimeAsync(6000);
+    // Trigger fs.watch callback
+    const fsWatchMock = (await import('node:fs')).default.watch as import('vitest').Mock;
+    const watchCallback = fsWatchMock.mock.calls[0]![1];
+    watchCallback('change', 'state.json');
+
+    // Wait for the async syncSubscriptions to finish
+    await vi.runAllTicks();
 
     // Send another message to verify what the local cache holds
     subscribeCallbacks.onData([{ id: 'msg-latest', role: 'agent', content: 'Agent response 2' }]);

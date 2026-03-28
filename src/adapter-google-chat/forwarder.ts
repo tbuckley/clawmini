@@ -3,8 +3,9 @@ import { getAuthClient } from './auth.js';
 import type { getTRPCClient } from './client.js';
 import type { ChatMessage } from '../shared/chats.js';
 import path from 'node:path';
+import fs from 'node:fs';
 import type { GoogleChatConfig } from './config.js';
-import { readGoogleChatState, updateGoogleChatState } from './state.js';
+import { readGoogleChatState, updateGoogleChatState, getGoogleChatStatePath } from './state.js';
 import {
   shouldDisplayMessage,
   formatMessage,
@@ -22,12 +23,16 @@ export async function startDaemonToGoogleChatForwarder(
   const defaultChatId = config.chatId || 'default';
 
   const activeSubscriptions = new Map<string, { unsubscribe: () => void }>();
-  let statePollInterval: NodeJS.Timeout;
   let currentLastSyncedMessageIds = (await readGoogleChatState()).lastSyncedMessageIds || {};
 
   const saveLastMessageId = async (chatId: string, id: string) => {
     currentLastSyncedMessageIds = { ...currentLastSyncedMessageIds, [chatId]: id };
-    return updateGoogleChatState({ lastSyncedMessageIds: currentLastSyncedMessageIds });
+    return updateGoogleChatState((state) => ({
+      lastSyncedMessageIds: {
+        ...state.lastSyncedMessageIds,
+        ...currentLastSyncedMessageIds,
+      },
+    }));
   };
 
   const startSubscriptionForChat = async (chatId: string) => {
@@ -314,16 +319,22 @@ export async function startDaemonToGoogleChatForwarder(
       }
     }
   };
-
   return new Promise<void>((resolve) => {
     syncSubscriptions().catch(console.error);
 
-    statePollInterval = setInterval(() => {
-      syncSubscriptions().catch(console.error);
-    }, 5000);
+    const statePath = getGoogleChatStatePath();
+    const stateDir = path.dirname(statePath);
+    if (!fs.existsSync(stateDir)) {
+      fs.mkdirSync(stateDir, { recursive: true });
+    }
+    const watcher = fs.watch(stateDir, (eventType, filename) => {
+      if (filename === path.basename(statePath)) {
+        syncSubscriptions().catch(console.error);
+      }
+    });
 
     signal?.addEventListener('abort', () => {
-      clearInterval(statePollInterval);
+      watcher.close();
       for (const sub of activeSubscriptions.values()) sub.unsubscribe();
       resolve();
     });
