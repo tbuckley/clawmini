@@ -122,6 +122,7 @@ describe('Daemon to Google Chat Forwarder', () => {
     const forwarderPromise = startDaemonToGoogleChatForwarder(
       mockTrpc,
       mockConfig,
+      {},
       controller.signal
     );
 
@@ -159,6 +160,7 @@ describe('Daemon to Google Chat Forwarder', () => {
     const forwarderPromise = startDaemonToGoogleChatForwarder(
       mockTrpc,
       mockConfig,
+      {},
       controller.signal
     );
 
@@ -200,6 +202,7 @@ describe('Daemon to Google Chat Forwarder', () => {
     const forwarderPromise = startDaemonToGoogleChatForwarder(
       mockTrpc,
       { ...mockConfig, driveOauthClientId: undefined, driveOauthClientSecret: undefined },
+      {},
       controller.signal
     );
 
@@ -235,6 +238,7 @@ describe('Daemon to Google Chat Forwarder', () => {
     const forwarderPromise = startDaemonToGoogleChatForwarder(
       mockTrpc,
       mockConfig,
+      {},
       controller.signal
     );
 
@@ -270,6 +274,7 @@ describe('Daemon to Google Chat Forwarder', () => {
     const forwarderPromise = startDaemonToGoogleChatForwarder(
       mockTrpc,
       mockConfig,
+      {},
       controller.signal
     );
 

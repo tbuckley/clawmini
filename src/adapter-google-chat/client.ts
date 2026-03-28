@@ -13,6 +13,10 @@ import type { GoogleChatConfig } from './config.js';
 import { isAuthorized } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
 import { downloadAttachment } from './utils.js';
+import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
+import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
+import { google } from 'googleapis';
+import { getAuthClient } from './auth.js';
 
 export function getTRPCClient(options: { socketPath?: string } = {}) {
   const socketPath = options.socketPath ?? getSocketPath();
@@ -45,7 +49,8 @@ export function getTRPCClient(options: { socketPath?: string } = {}) {
 
 export function startGoogleChatIngestion(
   config: GoogleChatConfig,
-  trpc: ReturnType<typeof getTRPCClient>
+  trpc: ReturnType<typeof getTRPCClient>,
+  filteringConfig: FilteringConfig
 ) {
   const pubsub = new PubSub({ projectId: config.projectId });
   const subscription = pubsub.subscription(config.subscriptionName);
@@ -93,6 +98,39 @@ export function startGoogleChatIngestion(
         await updateGoogleChatState({ activeSpaceName });
       } else if (activeSpaceName !== spaceName) {
         console.log(`Ignoring message from inactive space: ${spaceName}`);
+        message.ack();
+        return;
+      }
+
+      const commandResult = await handleAdapterCommand(
+        text,
+        filteringConfig,
+        trpc as unknown as CommandTrpcClient,
+        config.chatId || 'default'
+      );
+
+      if (commandResult) {
+        let resultText = '';
+        if (commandResult.type === 'text') {
+          if (commandResult.newConfig) {
+            filteringConfig.filters = commandResult.newConfig.filters;
+            await updateGoogleChatState({ filters: filteringConfig.filters });
+          }
+          resultText = commandResult.text;
+        } else if (commandResult.type === 'debug') {
+          resultText =
+            commandResult.messages.length === 0
+              ? 'No ignored background messages found.'
+              : `**Debug Output (${commandResult.messages.length} ignored messages):**\n\n` +
+                commandResult.messages.map((msg) => formatMessage(msg)).join('\n\n---\n\n');
+        }
+
+        const authClient = await getAuthClient();
+        const chatApi = google.chat({ version: 'v1', auth: authClient });
+        await chatApi.spaces.messages.create({
+          parent: activeSpaceName as string,
+          requestBody: { text: resultText },
+        });
         message.ack();
         return;
       }

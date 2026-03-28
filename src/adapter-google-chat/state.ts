@@ -7,6 +7,7 @@ export const GoogleChatStateSchema = z.object({
   lastSyncedMessageId: z.string().optional(),
   driveOauthTokens: z.any().optional(),
   activeSpaceName: z.string().optional(),
+  filters: z.record(z.string(), z.boolean()).optional(),
 });
 
 export type GoogleChatState = z.infer<typeof GoogleChatStateSchema>;

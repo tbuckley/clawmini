@@ -53,6 +53,20 @@ describe('Google Chat Adapter Configuration', () => {
       }
     });
 
+    it('should validate messages property', () => {
+      const config = {
+        projectId: 'test-project',
+        subscriptionName: 'test-sub',
+        authorizedUsers: ['test@example.com'],
+        messages: { all: true, test: false },
+      };
+      const result = GoogleChatConfigSchema.safeParse(config);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.messages).toEqual({ all: true, test: false });
+      }
+    });
+
     it('should fail validation if fields are missing', () => {
       const result = GoogleChatConfigSchema.safeParse({});
       expect(result.success).toBe(false);

@@ -69,13 +69,10 @@ describe('Daemon to Discord Forwarder', () => {
       { id: 'msg-1', role: 'user', content: 'hello', timestamp: '' },
     ]);
 
-    const forwarderPromise = startDaemonToDiscordForwarder(
-      mockClient,
-      mockTrpc,
-      'user-123',
-      'default',
-      controller.signal
-    );
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
 
     // Wait for the subscribe call
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
@@ -119,13 +116,10 @@ describe('Daemon to Discord Forwarder', () => {
     const controller = new AbortController();
     vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-stored' });
 
-    const forwarderPromise = startDaemonToDiscordForwarder(
-      mockClient,
-      mockTrpc,
-      'user-123',
-      'default',
-      controller.signal
-    );
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
 
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
 
@@ -143,13 +137,10 @@ describe('Daemon to Discord Forwarder', () => {
     const controller = new AbortController();
     vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
 
-    const forwarderPromise = startDaemonToDiscordForwarder(
-      mockClient,
-      mockTrpc,
-      'user-123',
-      'default',
-      controller.signal
-    );
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
 
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
 
@@ -171,13 +162,10 @@ describe('Daemon to Discord Forwarder', () => {
     const controller = new AbortController();
     vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
 
-    const forwarderPromise = startDaemonToDiscordForwarder(
-      mockClient,
-      mockTrpc,
-      'user-123',
-      'default',
-      controller.signal
-    );
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
 
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
 
@@ -211,13 +199,10 @@ describe('Daemon to Discord Forwarder', () => {
     const longContent = 'a'.repeat(2500);
     vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
 
-    const forwarderPromise = startDaemonToDiscordForwarder(
-      mockClient,
-      mockTrpc,
-      'user-123',
-      'default',
-      controller.signal
-    );
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
 
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
 
@@ -249,13 +234,10 @@ describe('Daemon to Discord Forwarder', () => {
     const controller = new AbortController();
     vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
 
-    const forwarderPromise = startDaemonToDiscordForwarder(
-      mockClient,
-      mockTrpc,
-      'user-123',
-      'default',
-      controller.signal
-    );
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
 
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
 
@@ -289,13 +271,10 @@ describe('Daemon to Discord Forwarder', () => {
     const controller = new AbortController();
     vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
 
-    const forwarderPromise = startDaemonToDiscordForwarder(
-      mockClient,
-      mockTrpc,
-      'user-123',
-      'default',
-      controller.signal
-    );
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
 
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
 
@@ -329,13 +308,10 @@ describe('Daemon to Discord Forwarder', () => {
     const longContent = 'a'.repeat(2500);
     vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
 
-    const forwarderPromise = startDaemonToDiscordForwarder(
-      mockClient,
-      mockTrpc,
-      'user-123',
-      'default',
-      controller.signal
-    );
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
 
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
 
@@ -371,13 +347,10 @@ describe('Daemon to Discord Forwarder', () => {
     const controller = new AbortController();
     vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
 
-    const forwarderPromise = startDaemonToDiscordForwarder(
-      mockClient,
-      mockTrpc,
-      'user-123',
-      'default',
-      controller.signal
-    );
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
 
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
 
@@ -432,13 +405,10 @@ describe('Daemon to Discord Forwarder', () => {
   it('should start waitForTyping subscription and call dm.sendTyping on data', async () => {
     const controller = new AbortController();
 
-    const forwarderPromise = startDaemonToDiscordForwarder(
-      mockClient,
-      mockTrpc,
-      'user-123',
-      'default',
-      controller.signal
-    );
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
 
     await vi.waitFor(() => expect(typingSubscribeCallbacks).toBeTruthy());
 
@@ -461,13 +431,10 @@ describe('Daemon to Discord Forwarder', () => {
     vi.useFakeTimers();
     const controller = new AbortController();
 
-    const forwarderPromise = startDaemonToDiscordForwarder(
-      mockClient,
-      mockTrpc,
-      'user-123',
-      'default',
-      controller.signal
-    );
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
 
     await vi.waitFor(() => expect(typingSubscribeCallbacks).toBeTruthy());
 

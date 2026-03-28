@@ -2,9 +2,12 @@
 
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import { readDiscordConfig, isAuthorized, initDiscordConfig } from './config.js';
+import { readDiscordState, updateDiscordState } from './state.js';
 import { getTRPCClient } from './client.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
 import { getClawminiDir } from '../shared/workspace.js';
+import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
+import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -33,20 +36,25 @@ export async function main() {
     partials: [Partials.Channel],
   });
 
+  const state = await readDiscordState();
+  const filteringConfig: FilteringConfig = { filters: state.filters };
+
   client.once(Events.ClientReady, (readyClient) => {
     console.log(`Ready! Logged in as ${readyClient.user.tag}`);
 
     // Start forwarding from daemon to Discord
-    startDaemonToDiscordForwarder(readyClient, trpc, config.authorizedUserId, config.chatId).catch(
-      (error) => {
-        console.error('Error in daemon-to-discord forwarder:', error);
-      }
-    );
+    startDaemonToDiscordForwarder(readyClient, trpc, config.authorizedUserId, {
+      chatId: config.chatId,
+      config: filteringConfig,
+    }).catch((error) => {
+      console.error('Error in daemon-to-discord forwarder:', error);
+    });
   });
 
   client.on(Events.MessageCreate, async (message) => {
     // Ignore messages from the bot itself
     if (message.author.id === client.user?.id) return;
+    if (message.author.bot) return;
 
     // Only handle DM messages
     if (message.guild) return;
@@ -60,6 +68,31 @@ export async function main() {
     }
 
     console.log(`Received message from ${message.author.tag}: ${message.content}`);
+
+    const commandResult = await handleAdapterCommand(
+      message.content,
+      filteringConfig,
+      trpc as unknown as CommandTrpcClient,
+      config.chatId
+    );
+
+    if (commandResult) {
+      if (commandResult.type === 'text') {
+        if (commandResult.newConfig) {
+          filteringConfig.filters = commandResult.newConfig.filters;
+          await updateDiscordState({ filters: filteringConfig.filters });
+        }
+        await message.reply(commandResult.text);
+      } else if (commandResult.type === 'debug') {
+        const formatted =
+          commandResult.messages.length === 0
+            ? 'No ignored background messages found.'
+            : `**Debug Output (${commandResult.messages.length} ignored messages):**\n\n` +
+              commandResult.messages.map((msg) => formatMessage(msg)).join('\n\n---\n\n');
+        await message.reply(formatted);
+      }
+      return;
+    }
 
     const downloadedFiles: string[] = [];
     if (message.attachments.size > 0) {

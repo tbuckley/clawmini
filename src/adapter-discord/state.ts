@@ -5,6 +5,7 @@ import { getClawminiDir } from '../shared/workspace.js';
 
 export const DiscordStateSchema = z.object({
   lastSyncedMessageId: z.string().optional(),
+  filters: z.record(z.string(), z.boolean()).optional(),
 });
 
 export type DiscordState = z.infer<typeof DiscordStateSchema>;
@@ -41,4 +42,25 @@ export async function writeDiscordState(
   } catch (err) {
     console.error(`Failed to write Discord state to ${statePath}:`, err);
   }
+}
+
+let stateUpdatePromise = Promise.resolve();
+
+export function updateDiscordState(
+  updates: Partial<DiscordState>,
+  startDir = process.cwd()
+): Promise<DiscordState> {
+  return new Promise((resolve, reject) => {
+    stateUpdatePromise = stateUpdatePromise.then(async () => {
+      try {
+        const currentState = await readDiscordState(startDir);
+        const newState = { ...currentState, ...updates };
+        await writeDiscordState(newState, startDir);
+        resolve(newState);
+      } catch (err) {
+        console.error(`Failed to write Discord state:`, err);
+        reject(err);
+      }
+    });
+  });
 }
