@@ -504,4 +504,45 @@ describe('Daemon to Discord Forwarder', () => {
     controller.abort();
     await forwarderPromise;
   });
+
+  it('should update lastMessageId and continue if DM fails for policy request', async () => {
+    const controller = new AbortController();
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+
+    // Mock DM failure
+    mockDm.send = vi.fn().mockRejectedValue(new Error('Cannot send messages to this user'));
+
+    const forwarderPromise = startDaemonToDiscordForwarder(
+      mockClient,
+      mockTrpc,
+      'user-123',
+      'default',
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-1',
+        role: 'policy',
+        status: 'pending',
+        content: 'Please approve this',
+        timestamp: '',
+        messageId: 'msg-0',
+        command: 'test',
+        cwd: '',
+        exitCode: 0,
+        stderr: '',
+      },
+    ]);
+
+    await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalled());
+
+    // Should still update state to avoid infinite loop
+    expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' });
+
+    controller.abort();
+    await forwarderPromise;
+  });
 });

@@ -124,7 +124,6 @@ export async function startDaemonToDiscordForwarder(
                         `Failed to send message to Discord user ${discordUserId}:`,
                         error
                       );
-                      break;
                     }
 
                     lastMessageId = logMessage.id;

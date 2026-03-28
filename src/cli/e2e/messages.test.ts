@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
 import { createE2EContext } from './utils.js';
@@ -191,22 +191,30 @@ describe('E2E Messages Tests', () => {
     await runCli(['messages', 'send', 'first', '--chat', 'order-chat', '--no-wait']);
     await runCli(['messages', 'send', 'second', '--chat', 'order-chat', '--no-wait']);
 
-    await new Promise((resolve) => setTimeout(resolve, 3500));
+    let commandLogs: any[] = [];
+    let lines: any[] = [];
+
+    await vi.waitFor(
+      () => {
+        const chatLog = fs.readFileSync(
+          path.resolve(e2eDir, '.clawmini/chats/order-chat/chat.jsonl'),
+          'utf8'
+        );
+        lines = chatLog
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .map((l) => JSON.parse(l));
+
+        commandLogs = lines.filter((l) => l.role === 'command');
+        expect(commandLogs).toHaveLength(2);
+      },
+      { timeout: 10000, interval: 200 }
+    );
 
     settings.defaultAgent.commands.new = oldCmd;
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 
-    const chatLog = fs.readFileSync(
-      path.resolve(e2eDir, '.clawmini/chats/order-chat/chat.jsonl'),
-      'utf8'
-    );
-    const lines = chatLog
-      .trim()
-      .split('\n')
-      .map((l) => JSON.parse(l));
-
-    const commandLogs = lines.filter((l) => l.role === 'command');
-    expect(commandLogs).toHaveLength(2);
     expect(lines[0].role).toBe('user');
     expect(lines[0].content).toBe('first');
     expect(lines[1].role).toBe('user');
@@ -230,19 +238,25 @@ describe('E2E Messages Tests', () => {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 
     await runCli(['chats', 'add', 'workflow-chat']);
+    const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/workflow-chat/chat.jsonl');
 
     await runCli(['messages', 'send', 'msg-1', '--chat', 'workflow-chat']);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/workflow-chat/chat.jsonl');
-    let chatLog = fs.readFileSync(chatLogPath, 'utf8');
-    let lines = chatLog
-      .trim()
-      .split('\n')
-      .map((l) => JSON.parse(l));
+    let commandLogs: any[] = [];
+    await vi.waitFor(
+      () => {
+        const chatLog = fs.readFileSync(chatLogPath, 'utf8');
+        const lines = chatLog
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .map((l) => JSON.parse(l));
+        commandLogs = lines.filter((l) => l.role === 'command');
+        expect(commandLogs).toHaveLength(1);
+      },
+      { timeout: 10000, interval: 200 }
+    );
 
-    const commandLogs = lines.filter((l) => l.role === 'command');
-    expect(commandLogs).toHaveLength(1);
     expect(commandLogs[0].command).toBe('echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2');
     expect(commandLogs[0].content).toContain('EXTRACTED-NEW msg-1');
     expect(commandLogs[0].stderr).toContain('ERR NEW');
@@ -257,16 +271,22 @@ describe('E2E Messages Tests', () => {
     expect(sessionSettings.env.SESSION_ID).toBe('session-123');
 
     await runCli(['messages', 'send', 'msg-2', '--chat', 'workflow-chat']);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    chatLog = fs.readFileSync(chatLogPath, 'utf8');
-    lines = chatLog
-      .trim()
-      .split('\n')
-      .map((l) => JSON.parse(l));
+    let commandLogs2: any[] = [];
+    await vi.waitFor(
+      () => {
+        const chatLog = fs.readFileSync(chatLogPath, 'utf8');
+        const lines = chatLog
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .map((l) => JSON.parse(l));
+        commandLogs2 = lines.filter((l) => l.role === 'command');
+        expect(commandLogs2).toHaveLength(2);
+      },
+      { timeout: 10000, interval: 200 }
+    );
 
-    const commandLogs2 = lines.filter((l) => l.role === 'command');
-    expect(commandLogs2).toHaveLength(2);
     expect(commandLogs2[1].command).toBe(
       'echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2'
     );
@@ -278,16 +298,22 @@ describe('E2E Messages Tests', () => {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 
     await runCli(['messages', 'send', 'msg-3', '--chat', 'workflow-chat']);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    chatLog = fs.readFileSync(chatLogPath, 'utf8');
-    lines = chatLog
-      .trim()
-      .split('\n')
-      .map((l) => JSON.parse(l));
+    let commandLogs3: any[] = [];
+    await vi.waitFor(
+      () => {
+        const chatLog = fs.readFileSync(chatLogPath, 'utf8');
+        const lines = chatLog
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .map((l) => JSON.parse(l));
+        commandLogs3 = lines.filter((l) => l.role === 'command');
+        expect(commandLogs3).toHaveLength(3);
+      },
+      { timeout: 10000, interval: 200 }
+    );
 
-    const commandLogs3 = lines.filter((l) => l.role === 'command');
-    expect(commandLogs3).toHaveLength(3);
     expect(commandLogs3[2].stdout).toContain('APPEND msg-3');
     expect(commandLogs3[2].stderr).toContain('ERR APPEND');
     expect(commandLogs3[2].stderr).toContain('getMessageContent failed: EXTRACTION_FAIL');
