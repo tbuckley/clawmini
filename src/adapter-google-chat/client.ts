@@ -112,6 +112,10 @@ export function startGoogleChatIngestion(
       if (commandResult) {
         let resultText = '';
         if (commandResult.type === 'text') {
+          if (commandResult.newConfig) {
+            filteringConfig.filters = commandResult.newConfig.filters;
+            await updateGoogleChatState({ filters: filteringConfig.filters });
+          }
           resultText = commandResult.text;
         } else if (commandResult.type === 'debug') {
           resultText =

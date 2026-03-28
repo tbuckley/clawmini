@@ -1,11 +1,11 @@
 import type { ChatMessage } from '../chats.js';
 
 export interface FilteringConfig {
-  messages?: Record<string, boolean> | undefined;
+  filters?: Record<string, boolean> | undefined;
 }
 
 export function shouldDisplayMessage(message: ChatMessage, config: FilteringConfig): boolean {
-  const overrides = config.messages || {};
+  const overrides = config.filters || {};
 
   // If the message has a subagentId, return false immediately unless subagent messages are allowed.
   if (message.subagentId && overrides['subagent'] !== true) {
@@ -16,6 +16,15 @@ export function shouldDisplayMessage(message: ChatMessage, config: FilteringConf
   const isStandardAgent = message.role === 'agent' || message.displayRole === 'agent';
 
   if (isStandardAgent) {
+    return true;
+  }
+
+  // Then check if it's a user message directed to a subagent, if subagent messages are allowed
+  if (
+    message.subagentId &&
+    overrides['subagent'] === true &&
+    (message.role === 'user' || message.displayRole === 'user')
+  ) {
     return true;
   }
 

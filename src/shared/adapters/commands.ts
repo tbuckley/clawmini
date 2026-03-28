@@ -18,7 +18,7 @@ const VALID_ROLES = new Set([
 ]);
 
 export type AdapterCommandResult =
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; newConfig?: FilteringConfig }
   | { type: 'debug'; messages: ChatMessage[] }
   | null;
 
@@ -31,16 +31,19 @@ export async function handleAdapterCommand(
   const trimmed = content.trim();
 
   if (trimmed === '/show all') {
-    if (!config.messages) config.messages = {};
+    const newConfig: FilteringConfig = { filters: { ...config.filters } };
     for (const role of VALID_ROLES) {
-      config.messages[role] = true;
+      newConfig.filters![role] = true;
     }
-    return { type: 'text', text: 'Configuration updated: Showing all messages.' };
+    return { type: 'text', text: 'Configuration updated: Showing all messages.', newConfig };
   }
 
   if (trimmed === '/hide all') {
-    config.messages = {};
-    return { type: 'text', text: 'Configuration updated: Hidden all overrides (using defaults).' };
+    return {
+      type: 'text',
+      text: 'Configuration updated: Hidden all overrides (using defaults).',
+      newConfig: { filters: {} },
+    };
   }
 
   if (trimmed === '/show' || trimmed === '/hide') {
@@ -58,9 +61,11 @@ export async function handleAdapterCommand(
         text: `Error: '${role}' is not a valid message role or special value. Valid options: ${Array.from(VALID_ROLES).join(', ')}`,
       };
     }
-    if (!config.messages) config.messages = {};
-    config.messages[role] = true;
-    return { type: 'text', text: `Configuration updated: Showing messages for '${role}'.` };
+    return {
+      type: 'text',
+      text: `Configuration updated: Showing messages for '${role}'.`,
+      newConfig: { filters: { ...config.filters, [role]: true } },
+    };
   }
 
   if (trimmed.startsWith('/hide ')) {
@@ -71,9 +76,11 @@ export async function handleAdapterCommand(
         text: `Error: '${role}' is not a valid message role or special value. Valid options: ${Array.from(VALID_ROLES).join(', ')}`,
       };
     }
-    if (!config.messages) config.messages = {};
-    config.messages[role] = false;
-    return { type: 'text', text: `Configuration updated: Hiding messages for '${role}'.` };
+    return {
+      type: 'text',
+      text: `Configuration updated: Hiding messages for '${role}'.`,
+      newConfig: { filters: { ...config.filters, [role]: false } },
+    };
   }
 
   if (trimmed === '/debug' || trimmed.startsWith('/debug ')) {

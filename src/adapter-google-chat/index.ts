@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { initGoogleChatConfig, readGoogleChatConfig } from './config.js';
+import { readGoogleChatState } from './state.js';
 import { getTRPCClient, startGoogleChatIngestion } from './client.js';
 import { startDaemonToGoogleChatForwarder } from './forwarder.js';
 import { getDriveAuthClient } from './auth.js';
@@ -39,7 +40,8 @@ export async function main() {
   }
 
   const trpc = getTRPCClient();
-  const filteringConfig: FilteringConfig = {};
+  const state = await readGoogleChatState();
+  const filteringConfig: FilteringConfig = { filters: state.filters };
 
   // Start ingestion from Pub/Sub
   startGoogleChatIngestion(config, trpc, filteringConfig);

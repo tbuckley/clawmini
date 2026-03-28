@@ -50,7 +50,18 @@ describe('shouldDisplayMessage', () => {
       subagentId: 'sub1',
       timestamp: '',
     };
-    expect(shouldDisplayMessage(msg, { messages: { subagent: true } })).toBe(true);
+    expect(shouldDisplayMessage(msg, { filters: { subagent: true } })).toBe(true);
+  });
+
+  it('displays user messages with subagentId if subagent: true', () => {
+    const msg: ChatMessage = {
+      id: '2',
+      role: 'user',
+      content: 'hello subagent',
+      subagentId: 'sub1',
+      timestamp: '',
+    };
+    expect(shouldDisplayMessage(msg, { filters: { subagent: true } })).toBe(true);
   });
 
   it('displays specific role if explicitly allowed', () => {
@@ -66,7 +77,7 @@ describe('shouldDisplayMessage', () => {
       exitCode: 0,
       timestamp: '',
     };
-    expect(shouldDisplayMessage(msg, { messages: { command: true } })).toBe(true);
+    expect(shouldDisplayMessage(msg, { filters: { command: true } })).toBe(true);
   });
 });
 

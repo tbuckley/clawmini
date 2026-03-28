@@ -2,6 +2,7 @@
 
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import { readDiscordConfig, isAuthorized, initDiscordConfig } from './config.js';
+import { readDiscordState, updateDiscordState } from './state.js';
 import { getTRPCClient } from './client.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
 import { getClawminiDir } from '../shared/workspace.js';
@@ -35,7 +36,8 @@ export async function main() {
     partials: [Partials.Channel],
   });
 
-  const filteringConfig: FilteringConfig = {};
+  const state = await readDiscordState();
+  const filteringConfig: FilteringConfig = { filters: state.filters };
 
   client.once(Events.ClientReady, (readyClient) => {
     console.log(`Ready! Logged in as ${readyClient.user.tag}`);
@@ -53,6 +55,9 @@ export async function main() {
     // Ignore messages from the bot itself
     if (message.author.id === client.user?.id) return;
     if (message.author.bot) return;
+
+    // Only handle DM messages
+    if (message.guild) return;
 
     // Check if the user is authorized
     if (!isAuthorized(message.author.id, config.authorizedUserId)) {
@@ -73,6 +78,10 @@ export async function main() {
 
     if (commandResult) {
       if (commandResult.type === 'text') {
+        if (commandResult.newConfig) {
+          filteringConfig.filters = commandResult.newConfig.filters;
+          await updateDiscordState({ filters: filteringConfig.filters });
+        }
         await message.reply(commandResult.text);
       } else if (commandResult.type === 'debug') {
         const formatted =

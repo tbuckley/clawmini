@@ -54,7 +54,7 @@ export interface ToolMessage extends BaseMessage {
   role: 'tool';
   messageId: string;
   name: string;
-  payload?: unknown;
+  payload: unknown;
 }
 
 export interface PolicyRequestMessage extends BaseMessage {
