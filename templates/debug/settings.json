@@ -1,5 +1,6 @@
 {
     "commands": {
-        "new": "echo \"[DEBUG] $CLAW_CLI_MESSAGE:\" && eval \"$CLAW_CLI_MESSAGE\""
-    }
+        "new": "echo \"[DEBUG] $CLAW_CLI_MESSAGE:\\n\\`\\`\\`\" && eval \"$CLAW_CLI_MESSAGE\" && echo \"\\`\\`\\`\""
+    },
+    "files": "./attachments"
 }
