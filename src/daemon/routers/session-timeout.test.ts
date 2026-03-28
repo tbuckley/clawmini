@@ -60,6 +60,7 @@ describe('sessionTimeoutRouter', () => {
             'This chat session has ended. Save any important details from it to your memory. When finished, reply with NO_REPLY_NECESSARY.',
           reply: '[@clawmini/session-timeout] Starting a fresh session...',
           nextSessionId: 'mock-uuid',
+          env: { __SESSION_TIMEOUT__: 'true' },
           jobs: {
             remove: ['__session_timeout__'],
           },
@@ -93,11 +94,28 @@ describe('sessionTimeoutRouter', () => {
           reply: '[@clawmini/session-timeout] Starting a fresh session...',
           nextSessionId: 'mock-uuid',
           session: { type: 'existing', id: 'session-abc' },
+          env: { __SESSION_TIMEOUT__: 'true' },
           jobs: {
             remove: ['__session_timeout__session-abc'],
           },
         }),
       ])
     );
+  });
+
+  it('bypasses timeout job creation if currently executing a timeout', () => {
+    const router = createSessionTimeoutRouter();
+    const initialState: RouterState = {
+      messageId: 'msg-3',
+      message: 'Timeout prompt',
+      chatId: 'chat-1',
+      sessionId: 'session-xyz',
+      env: { __SESSION_TIMEOUT__: 'true' },
+      jobs: { remove: ['__session_timeout__session-xyz'] },
+    };
+
+    const nextState = router(initialState);
+
+    expect(nextState).toBe(initialState); // Returns exactly the same state without modifications
   });
 });

@@ -149,7 +149,7 @@ export async function handleUserMessage(
   await executeDirectMessage(chatId, finalState, settings, cwd, noWait, message);
 }
 
-async function applyRouterStateUpdates(
+export async function applyRouterStateUpdates(
   chatId: string,
   cwd: string,
   finalState: RouterState,
@@ -174,8 +174,11 @@ async function applyRouterStateUpdates(
 
   if (finalState.nextSessionId) {
     chatSettings.sessions = chatSettings.sessions || {};
-    chatSettings.sessions[currentAgentId] = finalState.nextSessionId;
-    settingsChanged = true;
+    const currentActiveSession = chatSettings.sessions[currentAgentId];
+    if (!currentActiveSession || currentActiveSession === finalState.sessionId) {
+      chatSettings.sessions[currentAgentId] = finalState.nextSessionId;
+      settingsChanged = true;
+    }
   }
 
   if (finalState.jobs) {

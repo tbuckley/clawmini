@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { updateChatSettings, readChatSettings } from '../../shared/workspace.js';
-import { executeDirectMessage } from '../message.js';
+import { executeDirectMessage, applyRouterStateUpdates } from '../message.js';
 import { executeRouterPipeline, resolveRouters } from '../routers.js';
 import type { RouterState } from '../routers/types.js';
 import { createChatLogger } from '../agent/chat-logger.js';
@@ -41,7 +41,16 @@ export async function executeSubagent(
       env: {},
     };
 
+    const initialState = { ...routerState };
     routerState = await executeRouterPipeline(routerState, resolvedRouters);
+
+    await applyRouterStateUpdates(
+      chatId,
+      workspaceRoot,
+      routerState,
+      settings,
+      initialState.agentId
+    );
 
     await executeDirectMessage(
       chatId,
