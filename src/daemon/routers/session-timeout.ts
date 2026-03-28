@@ -17,7 +17,7 @@ export interface SessionTimeoutConfig {
  *       "use": "session-timeout",
  *       "with": {
  *         "timeout": "60m",
- *         "prompt": "This chat session has ended. Save any important details from it to your memory."
+ *         "prompt": "This chat session has ended. Save any important details from it to your memory. When finished, reply with NO_REPLY_NECESSARY."
  *       }
  *     }
  *   ]
@@ -28,12 +28,14 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
   const timeStr = config.timeout ?? '60m';
   const prompt =
     config.prompt ??
-    'This chat session has ended. Save any important details from it to your memory.';
+    'This chat session has ended. Save any important details from it to your memory. When finished, reply with NO_REPLY_NECESSARY.';
 
   return function (state: RouterState): RouterState {
+    const jobId = state.sessionId ? `__session_timeout__${state.sessionId}` : '__session_timeout__';
+
     const jobs = {
       ...state.jobs,
-      remove: [...(state.jobs?.remove || []), '__session_timeout__'],
+      remove: [...(state.jobs?.remove || []), jobId],
     };
 
     return {
@@ -45,13 +47,14 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
           // Add a job after the timeout that will send the prompt, reply to the user,
           // start a fresh session, and delete the job
           {
-            id: '__session_timeout__',
+            id: jobId,
             schedule: { at: timeStr },
             message: prompt,
             reply: '[@clawmini/session-timeout] Starting a fresh session...',
             nextSessionId: randomUUID(),
+            ...(state.sessionId ? { session: { type: 'existing', id: state.sessionId } } : {}),
             jobs: {
-              remove: ['__session_timeout__'],
+              remove: [jobId],
             },
           },
         ],
