@@ -17,6 +17,7 @@ import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 import { google } from 'googleapis';
 import { getAuthClient } from './auth.js';
+import { handleRoutingCommand, type RoutingTrpcClient } from '../shared/adapters/routing.js';
 
 export function getTRPCClient(options: { socketPath?: string } = {}) {
   const socketPath = options.socketPath ?? getSocketPath();
@@ -105,6 +106,40 @@ export function startGoogleChatIngestion(
       const mappedChatId = currentState.channelChatMap?.[externalContextId];
       const text = event.message?.text || '';
       const isRoutingCommand = text.startsWith('/chat') || text.startsWith('/agent');
+
+      if (isRoutingCommand) {
+        const routingResult = await handleRoutingCommand(
+          text,
+          externalContextId,
+          currentState.channelChatMap || {},
+          'google-chat',
+          trpc as unknown as RoutingTrpcClient
+        );
+
+        if (routingResult) {
+          if (routingResult.type === 'mapped') {
+            const newMap = {
+              ...currentState.channelChatMap,
+              [externalContextId]: routingResult.newChatId,
+            };
+            await updateGoogleChatState({ channelChatMap: newMap });
+          }
+
+          try {
+            const authClient = await getAuthClient();
+            const chatApi = google.chat({ version: 'v1', auth: authClient });
+            await chatApi.spaces.messages.create({
+              parent: externalContextId,
+              requestBody: { text: routingResult.text },
+            });
+          } catch (err) {
+            console.error('Failed to send routing command reply:', err);
+          }
+
+          message.ack();
+          return;
+        }
+      }
 
       if (!mappedChatId && !isRoutingCommand) {
         console.log(`Unmapped space ${externalContextId}, sending first contact warning.`);

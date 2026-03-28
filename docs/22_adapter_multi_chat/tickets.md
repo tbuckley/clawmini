@@ -38,7 +38,7 @@ Adjust the message ingestion pipeline for both adapters to handle incoming messa
 ---
 
 ## Ticket 3: Implement Routing Commands (`/chat` and `/agent`)
-**Status**: Not Started
+**Status**: Completed
 
 **Description**: 
 Allow users to dynamically map their current external context (channel/space) to a specific daemon chat or a new chat with a specific agent.

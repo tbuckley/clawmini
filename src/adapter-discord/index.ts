@@ -19,6 +19,7 @@ import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { handleRoutingCommand, type RoutingTrpcClient } from '../shared/adapters/routing.js';
 
 export async function main() {
   const args = process.argv.slice(2);
@@ -102,6 +103,28 @@ export async function main() {
 
     const isRoutingCommand =
       message.content.startsWith('/chat') || message.content.startsWith('/agent');
+
+    if (isRoutingCommand) {
+      const routingResult = await handleRoutingCommand(
+        message.content,
+        externalContextId,
+        currentState.channelChatMap || {},
+        'discord',
+        trpc as unknown as RoutingTrpcClient
+      );
+
+      if (routingResult) {
+        if (routingResult.type === 'mapped') {
+          const newMap = {
+            ...currentState.channelChatMap,
+            [externalContextId]: routingResult.newChatId,
+          };
+          await updateDiscordState({ channelChatMap: newMap });
+        }
+        await message.reply(routingResult.text);
+        return;
+      }
+    }
 
     if (!mappedChatId && !isRoutingCommand) {
       console.log(`Unmapped channel ${externalContextId}, sending first contact warning.`);
