@@ -1,4 +1,5 @@
 import type { Client, MessageCreateOptions } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Colors } from 'discord.js';
 import path from 'node:path';
 import type { getTRPCClient } from './client.js';
 import { readDiscordState, writeDiscordState } from './state.js';
@@ -84,6 +85,52 @@ export async function startDaemonToDiscordForwarder(
 
                 if (isDisplayed) {
                   const logMessage = message;
+                  const isPolicyRequest =
+                    logMessage.role === 'policy' && logMessage.status === 'pending';
+
+                  if (isPolicyRequest) {
+                    try {
+                      const user = await client.users.fetch(discordUserId);
+                      const dm = await user.createDM();
+
+                      const embed = new EmbedBuilder()
+                        .setTitle('Action Required: Policy Request')
+                        .setDescription(
+                          logMessage.content || 'A pending policy request requires your attention.'
+                        )
+                        .setColor(Colors.Yellow);
+
+                      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                        new ButtonBuilder()
+                          .setCustomId(`approve_${logMessage.id}`)
+                          .setLabel('Approve')
+                          .setStyle(ButtonStyle.Success),
+                        new ButtonBuilder()
+                          .setCustomId(`reject_${logMessage.id}`)
+                          .setLabel('Reject')
+                          .setStyle(ButtonStyle.Danger)
+                      );
+
+                      const options: MessageCreateOptions = {
+                        embeds: [embed],
+                        components: [row],
+                      };
+
+                      await dm.send(options);
+                    } catch (error) {
+                      console.error(
+                        `Failed to send message to Discord user ${discordUserId}:`,
+                        error
+                      );
+                      break;
+                    }
+
+                    lastMessageId = logMessage.id;
+                    await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
+                      console.error
+                    );
+                    continue;
+                  }
 
                   if ('level' in logMessage && logMessage.level === 'verbose') {
                     lastMessageId = logMessage.id;

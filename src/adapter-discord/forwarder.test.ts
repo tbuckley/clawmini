@@ -458,7 +458,7 @@ describe('Daemon to Discord Forwarder', () => {
     vi.useRealTimers();
   });
 
-  it('should forward pending policy requests', async () => {
+  it('should format and forward pending policy requests', async () => {
     const controller = new AbortController();
     vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
 
@@ -486,7 +486,18 @@ describe('Daemon to Discord Forwarder', () => {
 
     await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalled());
 
-    expect(mockDm.send).toHaveBeenCalledWith({ content: 'Please approve this' });
+    expect(mockDm.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: expect.any(Array),
+        components: expect.any(Array),
+      })
+    );
+    const callArgs = vi.mocked(mockDm.send).mock.calls[0]?.[0] as any;
+    expect(callArgs.embeds[0].data.title).toBe('Action Required: Policy Request');
+    expect(callArgs.embeds[0].data.description).toBe('Please approve this');
+    expect(callArgs.components[0].components[0].data.custom_id).toBe('approve_msg-1');
+    expect(callArgs.components[0].components[1].data.custom_id).toBe('reject_msg-1');
+
     expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' });
 
     controller.abort();

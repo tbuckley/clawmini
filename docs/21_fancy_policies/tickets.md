@@ -9,7 +9,7 @@ Update the message filtering logic in `src/adapter-discord/forwarder.ts` and `sr
 - Run `npm run validate` to ensure tests and type checks pass.
 
 ## Ticket 2: Implement Discord Adapter Forwarding for Policies
-**Status**: not started
+**Status**: completed
 **Description**: 
 Modify `src/adapter-discord/forwarder.ts` to format pending policy requests (`role: 'policy'`, `status: 'pending'`) using Discord `MessageEmbeds` and `MessageActionRows`. The output must include a Success "Approve" button (custom ID: `approve_<id>`) and a Danger "Reject" button (custom ID: `reject_<id>`).
 **Verification Steps**:
