@@ -91,7 +91,7 @@ export const SubagentTrackerSchema = z.looseObject({
   agentId: z.string().optional(),
   sessionId: z.string().optional(),
   createdAt: z.string(),
-  status: z.enum(['active', 'completed', 'failed']),
+  status: z.enum(['active', 'completed', 'failed', 'pending', 'blocked']),
   parentId: z.string().optional(),
 });
 

@@ -119,8 +119,8 @@ describe('executeSubagent', () => {
       '/workspace'
     );
 
-    // Should NOT call updateChatSettings to set status to completed
-    expect(workspace.updateChatSettings).not.toHaveBeenCalled();
+    // Should NOT call updateChatSettings to set status to completed (only once for active)
+    expect(workspace.updateChatSettings).toHaveBeenCalledTimes(1);
   });
 });
 

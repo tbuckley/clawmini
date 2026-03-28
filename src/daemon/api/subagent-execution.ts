@@ -1,7 +1,8 @@
+import { TRPCError } from '@trpc/server';
 import { executeSubagent, waitForPolicyRequest } from './subagent-utils.js';
 import { updateChatSettings } from '../../shared/workspace.js';
 
-export async function handleSubagentExecution(
+export function handleSubagentExecution(
   policyResult: { status: 'pending' | 'approved'; request: { id: string } } | null | undefined,
   isAsync: boolean | undefined,
   chatId: string,
@@ -13,40 +14,34 @@ export async function handleSubagentExecution(
   workspaceRoot: string
 ) {
   if (policyResult?.status === 'pending') {
+    waitForPolicyRequest(policyResult.request.id, workspaceRoot)
+      .then(() => {
+        executeSubagent(
+          chatId,
+          subagentId,
+          agentId,
+          sessionId,
+          prompt,
+          isAsync,
+          tokenPayload,
+          workspaceRoot
+        ).catch(console.error);
+      })
+      .catch((_err) => {
+        updateChatSettings(chatId, (settings) => {
+          if (settings.subagents?.[subagentId]) {
+            settings.subagents[subagentId].status = 'failed';
+          }
+          return settings;
+        }).catch(console.error);
+      });
+
     if (!isAsync) {
-      await waitForPolicyRequest(policyResult.request.id, workspaceRoot);
-      executeSubagent(
-        chatId,
-        subagentId,
-        agentId,
-        sessionId,
-        prompt,
-        isAsync,
-        tokenPayload,
-        workspaceRoot
-      );
-    } else {
-      waitForPolicyRequest(policyResult.request.id, workspaceRoot)
-        .then(() => {
-          executeSubagent(
-            chatId,
-            subagentId,
-            agentId,
-            sessionId,
-            prompt,
-            isAsync,
-            tokenPayload,
-            workspaceRoot
-          );
-        })
-        .catch((_err) => {
-          updateChatSettings(chatId, (settings) => {
-            if (settings.subagents?.[subagentId]) {
-              settings.subagents[subagentId].status = 'failed';
-            }
-            return settings;
-          }).catch(console.error);
-        });
+      throw new TRPCError({
+        code: 'PRECONDITION_FAILED',
+        message:
+          'Subagent execution is blocked pending policy approval. Synchronous execution is not supported while pending.',
+      });
     }
   } else {
     executeSubagent(
@@ -58,6 +53,6 @@ export async function handleSubagentExecution(
       isAsync,
       tokenPayload,
       workspaceRoot
-    );
+    ).catch(console.error);
   }
 }

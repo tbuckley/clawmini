@@ -55,7 +55,7 @@ export const subagentSpawn = apiProcedure
         agentId,
         sessionId,
         createdAt: new Date().toISOString(),
-        status: 'active',
+        status: 'pending',
         parentId,
       };
 
@@ -85,7 +85,7 @@ export const subagentSpawn = apiProcedure
       workspaceRoot
     );
 
-    await handleSubagentExecution(
+    handleSubagentExecution(
       policyResult,
       isAsync,
       chatId,
@@ -120,7 +120,7 @@ export const subagentSend = apiProcedure
       }
 
       sub = settings.subagents[input.subagentId];
-      sub!.status = 'active';
+      sub!.status = 'pending';
       return settings;
     });
 
@@ -147,7 +147,7 @@ export const subagentSend = apiProcedure
       workspaceRoot
     );
 
-    await handleSubagentExecution(
+    handleSubagentExecution(
       policyResult,
       isAsync,
       chatId,

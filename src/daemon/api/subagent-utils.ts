@@ -115,6 +115,13 @@ export async function executeSubagent(
   workspaceRoot: string
 ) {
   try {
+    await updateChatSettings(chatId, (settings) => {
+      if (settings.subagents?.[subagentId]) {
+        settings.subagents[subagentId]!.status = 'active';
+      }
+      return settings;
+    });
+
     await executeDirectMessage(
       chatId,
       {
