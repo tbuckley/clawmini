@@ -122,12 +122,30 @@ export function startGoogleChatIngestion(
               try {
                 const chatApi = google.chat({ version: 'v1', auth: await getAuthClient() });
 
+                const originalCards = event.message.cardsV2 || [];
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const updatedCards = originalCards.map((c: any) => {
+                  if (c.card?.sections) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    c.card.sections = c.card.sections.map((s: any) => {
+                      if (s.widgets) {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        s.widgets = s.widgets.filter((w: any) => !w.buttonList);
+                      }
+                      return s;
+                    });
+                  }
+                  if (c.card?.header) {
+                    c.card.header.subtitle = `Policy ${methodName}d`;
+                  }
+                  return c;
+                });
+
                 await chatApi.spaces.messages.update({
                   name: event.message.name,
-                  updateMask: 'text,cardsV2',
+                  updateMask: 'cardsV2',
                   requestBody: {
-                    text: `Policy request ${policyId} has been handled.`,
-                    cardsV2: [],
+                    cardsV2: updatedCards,
                   },
                 });
               } catch (updateErr) {
