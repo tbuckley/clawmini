@@ -449,14 +449,17 @@ describe('Discord Adapter Entry Point', () => {
   });
 
   describe('Interaction Handling', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let interactionHandler: ((interaction: any) => Promise<void>) | undefined;
 
     beforeEach(async () => {
       vi.mocked(mockClientInstance.on).mockImplementation(
         (event: string, cb: (...args: unknown[]) => void) => {
           if (event === 'interactionCreate') {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             interactionHandler = cb as any;
           }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           return mockClientInstance as any;
         }
       );

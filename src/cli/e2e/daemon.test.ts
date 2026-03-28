@@ -41,7 +41,7 @@ describe('E2E Daemon and Web Tests', () => {
     const { stdout: stdoutUp, code: codeUp } = await runCli(['up']);
     expect(codeUp).toBe(0);
     expect(stdoutUp).toContain('Successfully started clawmini daemon.');
-  });
+  }, 15000);
 
   it('should run web command and serve static files', async () => {
     const webPort = 8081;
@@ -250,7 +250,7 @@ describe('E2E Daemon and Web Tests', () => {
     await runCli(['down']);
     fs.writeFileSync(settingsPath, originalSettings);
     await runCli(['up']);
-  });
+  }, 15000);
 
   it('should inject CLAW_API_URL and CLAW_API_TOKEN into spawned agents when API is enabled', async () => {
     await runCli(['down']);

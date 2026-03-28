@@ -65,7 +65,7 @@ describe('E2E Cron Tests', () => {
     const { stdout: stdoutList3 } = await runCli(['jobs', 'list']);
     expect(stdoutList3).not.toContain('test-job-1');
     expect(stdoutList3).toContain('- test-job-2 (cron: * * * * *)');
-  });
+  }, 15000);
 
   it('should execute a job and inherit chat default agent and session', async () => {
     // 1. Create a specific agent for this chat

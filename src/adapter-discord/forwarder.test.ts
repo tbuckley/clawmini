@@ -492,6 +492,7 @@ describe('Daemon to Discord Forwarder', () => {
         components: expect.any(Array),
       })
     );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const callArgs = vi.mocked(mockDm.send).mock.calls[0]?.[0] as any;
     expect(callArgs.embeds[0].data.title).toBe('Action Required: Policy Request');
     expect(callArgs.embeds[0].data.description).toBe('Please approve this');

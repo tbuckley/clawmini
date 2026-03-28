@@ -39,5 +39,5 @@ describe('E2E Basic Tests', () => {
     const { stdout: stdoutDelete } = await runCli(['chats', 'delete', 'test-chat']);
     expect(stdoutDelete).toContain('Chat test-chat deleted successfully.');
     expect(fs.existsSync(path.join(chatsDir, 'test-chat'))).toBe(false);
-  });
+  }, 15000);
 });

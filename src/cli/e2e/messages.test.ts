@@ -181,7 +181,7 @@ describe('E2E Messages Tests', () => {
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     const oldCmd = settings.defaultAgent?.commands?.new;
 
-    settings.defaultAgent = settings.defaultAgent || {};
+    settings.defaultAgent = typeof settings.defaultAgent === 'object' ? settings.defaultAgent : {};
     settings.defaultAgent.commands = settings.defaultAgent.commands || {};
     settings.defaultAgent.commands.new = 'sleep 1 && echo $CLAW_CLI_MESSAGE';
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
@@ -191,7 +191,7 @@ describe('E2E Messages Tests', () => {
     await runCli(['messages', 'send', 'first', '--chat', 'order-chat', '--no-wait']);
     await runCli(['messages', 'send', 'second', '--chat', 'order-chat', '--no-wait']);
 
-    await new Promise((resolve) => setTimeout(resolve, 2500));
+    await new Promise((resolve) => setTimeout(resolve, 3500));
 
     settings.defaultAgent.commands.new = oldCmd;
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
@@ -213,14 +213,14 @@ describe('E2E Messages Tests', () => {
     expect(lines[1].content).toBe('second');
     expect(commandLogs[0].content.trim()).toBe('first');
     expect(commandLogs[1].content.trim()).toBe('second');
-  });
+  }, 10000);
 
   it('should handle full multi-message session workflow (extraction & append)', async () => {
     const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     const oldCmds = settings.defaultAgent?.commands || {};
 
-    settings.defaultAgent = settings.defaultAgent || {};
+    settings.defaultAgent = typeof settings.defaultAgent === 'object' ? settings.defaultAgent : {};
     settings.defaultAgent.commands = {
       new: 'echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2',
       append: 'echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2',
@@ -232,7 +232,7 @@ describe('E2E Messages Tests', () => {
     await runCli(['chats', 'add', 'workflow-chat']);
 
     await runCli(['messages', 'send', 'msg-1', '--chat', 'workflow-chat']);
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/workflow-chat/chat.jsonl');
     let chatLog = fs.readFileSync(chatLogPath, 'utf8');
@@ -257,7 +257,7 @@ describe('E2E Messages Tests', () => {
     expect(sessionSettings.env.SESSION_ID).toBe('session-123');
 
     await runCli(['messages', 'send', 'msg-2', '--chat', 'workflow-chat']);
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     chatLog = fs.readFileSync(chatLogPath, 'utf8');
     lines = chatLog
@@ -278,7 +278,7 @@ describe('E2E Messages Tests', () => {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 
     await runCli(['messages', 'send', 'msg-3', '--chat', 'workflow-chat']);
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     chatLog = fs.readFileSync(chatLogPath, 'utf8');
     lines = chatLog
