@@ -4,6 +4,7 @@ import { initGoogleChatConfig, readGoogleChatConfig } from './config.js';
 import { getTRPCClient, startGoogleChatIngestion } from './client.js';
 import { startDaemonToGoogleChatForwarder } from './forwarder.js';
 import { getDriveAuthClient } from './auth.js';
+import type { FilteringConfig } from '../shared/adapters/filtering.js';
 
 export async function main() {
   const args = process.argv.slice(2);
@@ -38,13 +39,14 @@ export async function main() {
   }
 
   const trpc = getTRPCClient();
+  const filteringConfig: FilteringConfig = {};
 
   // Start ingestion from Pub/Sub
-  startGoogleChatIngestion(config, trpc);
+  startGoogleChatIngestion(config, trpc, filteringConfig);
   console.log(`Listening to Pub/Sub subscription: ${config.subscriptionName}`);
 
   // Start forwarding from daemon to Google Chat API
-  startDaemonToGoogleChatForwarder(trpc, config).catch((error) => {
+  startDaemonToGoogleChatForwarder(trpc, config, filteringConfig).catch((error) => {
     console.error('Error in daemon-to-google-chat forwarder:', error);
   });
 }

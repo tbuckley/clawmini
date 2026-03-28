@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
-import {
-  readDiscordConfig,
-  isAuthorized,
-  initDiscordConfig,
-  getDiscordConfigPath,
-} from './config.js';
+import { readDiscordConfig, isAuthorized, initDiscordConfig } from './config.js';
 import { getTRPCClient } from './client.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
 import { getClawminiDir } from '../shared/workspace.js';
-import { handleAdapterCommand } from '../shared/adapters/commands.js';
+import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
+import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -39,13 +35,15 @@ export async function main() {
     partials: [Partials.Channel],
   });
 
+  const filteringConfig: FilteringConfig = {};
+
   client.once(Events.ClientReady, (readyClient) => {
     console.log(`Ready! Logged in as ${readyClient.user.tag}`);
 
     // Start forwarding from daemon to Discord
     startDaemonToDiscordForwarder(readyClient, trpc, config.authorizedUserId, {
       chatId: config.chatId,
-      config: config,
+      config: filteringConfig,
     }).catch((error) => {
       console.error('Error in daemon-to-discord forwarder:', error);
     });
@@ -54,9 +52,7 @@ export async function main() {
   client.on(Events.MessageCreate, async (message) => {
     // Ignore messages from the bot itself
     if (message.author.id === client.user?.id) return;
-
-    // Only handle DM messages
-    if (message.guild) return;
+    if (message.author.bot) return;
 
     // Check if the user is authorized
     if (!isAuthorized(message.author.id, config.authorizedUserId)) {
@@ -70,14 +66,22 @@ export async function main() {
 
     const commandResult = await handleAdapterCommand(
       message.content,
-      config,
-      getDiscordConfigPath(process.cwd()),
-      trpc,
+      filteringConfig,
+      trpc as unknown as CommandTrpcClient,
       config.chatId
     );
 
     if (commandResult) {
-      await message.reply(commandResult);
+      if (commandResult.type === 'text') {
+        await message.reply(commandResult.text);
+      } else if (commandResult.type === 'debug') {
+        const formatted =
+          commandResult.messages.length === 0
+            ? 'No ignored background messages found.'
+            : `**Debug Output (${commandResult.messages.length} ignored messages):**\n\n` +
+              commandResult.messages.map((msg) => formatMessage(msg)).join('\n\n---\n\n');
+        await message.reply(formatted);
+      }
       return;
     }
 

@@ -10,10 +10,11 @@ import { getSocketPath, getClawminiDir } from '../shared/workspace.js';
 import { createUnixSocketFetch } from '../shared/fetch.js';
 import { createUnixSocketEventSource } from '../shared/event-source.js';
 import type { GoogleChatConfig } from './config.js';
-import { isAuthorized, getGoogleChatConfigPath } from './config.js';
+import { isAuthorized } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
 import { downloadAttachment } from './utils.js';
-import { handleAdapterCommand } from '../shared/adapters/commands.js';
+import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
+import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 import { google } from 'googleapis';
 import { getAuthClient } from './auth.js';
 
@@ -48,7 +49,8 @@ export function getTRPCClient(options: { socketPath?: string } = {}) {
 
 export function startGoogleChatIngestion(
   config: GoogleChatConfig,
-  trpc: ReturnType<typeof getTRPCClient>
+  trpc: ReturnType<typeof getTRPCClient>,
+  filteringConfig: FilteringConfig
 ) {
   const pubsub = new PubSub({ projectId: config.projectId });
   const subscription = pubsub.subscription(config.subscriptionName);
@@ -102,18 +104,28 @@ export function startGoogleChatIngestion(
 
       const commandResult = await handleAdapterCommand(
         text,
-        config,
-        getGoogleChatConfigPath(process.cwd()),
-        trpc,
+        filteringConfig,
+        trpc as unknown as CommandTrpcClient,
         config.chatId || 'default'
       );
 
       if (commandResult) {
+        let resultText = '';
+        if (commandResult.type === 'text') {
+          resultText = commandResult.text;
+        } else if (commandResult.type === 'debug') {
+          resultText =
+            commandResult.messages.length === 0
+              ? 'No ignored background messages found.'
+              : `**Debug Output (${commandResult.messages.length} ignored messages):**\n\n` +
+                commandResult.messages.map((msg) => formatMessage(msg)).join('\n\n---\n\n');
+        }
+
         const authClient = await getAuthClient();
         const chatApi = google.chat({ version: 'v1', auth: authClient });
         await chatApi.spaces.messages.create({
           parent: activeSpaceName as string,
-          requestBody: { text: commandResult },
+          requestBody: { text: resultText },
         });
         message.ack();
         return;

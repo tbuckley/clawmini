@@ -1,12 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleAdapterCommand } from './commands.js';
-import fs from 'node:fs/promises';
-
-vi.mock('node:fs/promises', () => ({
-  default: {
-    writeFile: vi.fn().mockResolvedValue(undefined),
-  },
-}));
+import { handleAdapterCommand, type CommandTrpcClient } from './commands.js';
 
 describe('Adapter Commands', () => {
   beforeEach(() => {
@@ -24,35 +17,34 @@ describe('Adapter Commands', () => {
     const result = await handleAdapterCommand(
       '/show all',
       config,
-      'config.json',
-      mockTrpcClient,
+      mockTrpcClient as unknown as CommandTrpcClient,
       'chat-1'
     );
-    expect(result).toBe('Configuration updated: Showing all messages.');
-    expect(config.messages).toEqual({ all: true });
-    expect(fs.writeFile).toHaveBeenCalledWith(
-      'config.json',
-      JSON.stringify(config, null, 2),
-      'utf-8'
-    );
+    expect(result).toEqual({ type: 'text', text: 'Configuration updated: Showing all messages.' });
+    expect(config.messages).toEqual({
+      subagent: true,
+      command: true,
+      system: true,
+      tool: true,
+      policy: true,
+      subagent_status: true,
+      legacy_log: true,
+    });
   });
 
   it('should handle /hide all', async () => {
-    const config = { messages: { agent: true } };
+    const config = { messages: { tool: true } };
     const result = await handleAdapterCommand(
       '/hide all',
       config,
-      'config.json',
-      mockTrpcClient,
+      mockTrpcClient as unknown as CommandTrpcClient,
       'chat-1'
     );
-    expect(result).toBe('Configuration updated: Hidden all overrides (using defaults).');
+    expect(result).toEqual({
+      type: 'text',
+      text: 'Configuration updated: Hidden all overrides (using defaults).',
+    });
     expect(config.messages).toEqual({});
-    expect(fs.writeFile).toHaveBeenCalledWith(
-      'config.json',
-      JSON.stringify(config, null, 2),
-      'utf-8'
-    );
   });
 
   it('should handle /show with no arguments', async () => {
@@ -60,11 +52,11 @@ describe('Adapter Commands', () => {
     const result = await handleAdapterCommand(
       '/show',
       config,
-      'config.json',
-      mockTrpcClient,
+      mockTrpcClient as unknown as CommandTrpcClient,
       'chat-1'
     );
-    expect(result).toContain('Valid options for /show:');
+    expect(result?.type).toBe('text');
+    expect((result as { text: string }).text).toContain('Valid options for /show:');
   });
 
   it('should handle /hide with no arguments', async () => {
@@ -72,11 +64,11 @@ describe('Adapter Commands', () => {
     const result = await handleAdapterCommand(
       '/hide',
       config,
-      'config.json',
-      mockTrpcClient,
+      mockTrpcClient as unknown as CommandTrpcClient,
       'chat-1'
     );
-    expect(result).toContain('Valid options for /hide:');
+    expect(result?.type).toBe('text');
+    expect((result as { text: string }).text).toContain('Valid options for /hide:');
   });
 
   it('should handle /show <role>', async () => {
@@ -84,31 +76,35 @@ describe('Adapter Commands', () => {
     const result = await handleAdapterCommand(
       '/show tool',
       config,
-      'config.json',
-      mockTrpcClient,
+      mockTrpcClient as unknown as CommandTrpcClient,
       'chat-1'
     );
-    expect(result).toBe("Configuration updated: Showing messages for 'tool'.");
+    expect(result).toEqual({
+      type: 'text',
+      text: "Configuration updated: Showing messages for 'tool'.",
+    });
     expect(config.messages).toEqual({ tool: true });
   });
 
   it('should handle /hide <role>', async () => {
-    const config = { messages: { agent: true } };
+    const config = { messages: { command: true } };
     const result = await handleAdapterCommand(
       '/hide subagent',
       config,
-      'config.json',
-      mockTrpcClient,
+      mockTrpcClient as unknown as CommandTrpcClient,
       'chat-1'
     );
-    expect(result).toBe("Configuration updated: Hiding messages for 'subagent'.");
-    expect(config.messages).toEqual({ agent: true, subagent: false });
+    expect(result).toEqual({
+      type: 'text',
+      text: "Configuration updated: Hiding messages for 'subagent'.",
+    });
+    expect(config.messages).toEqual({ command: true, subagent: false });
   });
 
   it('should handle /debug <N>', async () => {
     const config = { messages: {} }; // defaults
     const mockMessages = [
-      { id: '1', role: 'user', content: 'hello' }, // user without subagentId (excluded)
+      { id: '1', role: 'user', content: 'hello' }, // user without subagentId (displayed by default, excluded)
       { id: '2', role: 'agent', content: 'hidden agent', subagentId: 'sub1' }, // agent with subagentId (ignored by default)
       { id: '3', role: 'agent', content: 'visible agent' }, // agent without subagentId (displayed by default)
       { id: '4', role: 'agent', content: 'hidden agent 2', subagentId: 'sub2' }, // agent with subagentId (ignored by default)
@@ -119,17 +115,19 @@ describe('Adapter Commands', () => {
     const result = await handleAdapterCommand(
       '/debug 2',
       config,
-      'config.json',
-      mockTrpcClient,
+      mockTrpcClient as unknown as CommandTrpcClient,
       'chat-1'
     );
 
     expect(mockTrpcClient.getMessages.query).toHaveBeenCalledWith({ chatId: 'chat-1', limit: 20 });
 
-    // Expected to find messages 2 and 4, which are ignored
-    expect(result).toContain('Debug Output (2 ignored messages):');
-    expect(result).toContain('[From:sub1]\nhidden agent');
-    expect(result).toContain('[From:sub2]\nhidden agent 2');
+    expect(result).toEqual({
+      type: 'debug',
+      messages: [
+        { id: '2', role: 'agent', content: 'hidden agent', subagentId: 'sub1' },
+        { id: '4', role: 'agent', content: 'hidden agent 2', subagentId: 'sub2' },
+      ],
+    });
   });
 
   it('should return null for non-commands', async () => {
@@ -137,8 +135,7 @@ describe('Adapter Commands', () => {
     const result = await handleAdapterCommand(
       'hello world',
       config,
-      'config.json',
-      mockTrpcClient,
+      mockTrpcClient as unknown as CommandTrpcClient,
       'chat-1'
     );
     expect(result).toBeNull();

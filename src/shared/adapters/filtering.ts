@@ -7,44 +7,23 @@ export interface FilteringConfig {
 export function shouldDisplayMessage(message: ChatMessage, config: FilteringConfig): boolean {
   const overrides = config.messages || {};
 
-  if (overrides['all']) {
+  // If the message has a subagentId, return false immediately unless subagent messages are allowed.
+  if (message.subagentId && overrides['subagent'] !== true) {
+    return false;
+  }
+
+  // Then check if it's a standard agent message (via role/displayRole) and always return true if so.
+  const isStandardAgent = message.role === 'agent' || message.displayRole === 'agent';
+
+  if (isStandardAgent) {
     return true;
   }
 
-  // Explicitly hidden (overrides defaults and other implicit allows)
-  if (overrides[message.role] === false) {
-    return false;
-  }
-  if (message.displayRole && overrides[message.displayRole] === false) {
-    return false;
-  }
-  if (message.subagentId && overrides['subagent'] === false) {
-    return false;
-  }
-
-  const isSubagentAllowed = overrides['subagent'] === true;
-
-  // Specific overrides
-  if (overrides[message.role] === true) {
-    if (!message.subagentId || isSubagentAllowed) {
-      return true;
-    }
-  }
-  if (message.displayRole && overrides[message.displayRole] === true) {
-    if (!message.subagentId || isSubagentAllowed) {
-      return true;
-    }
-  }
-  if (message.subagentId && overrides['subagent'] === true) {
-    return true;
-  }
-
-  // Evaluate default agent rules
-  const isAgentDisplay =
-    message.displayRole === 'agent' || message.role === 'agent' || message.role === 'legacy_log';
-
-  // Subagents are hidden by default unless overridden
-  if (isAgentDisplay && !message.subagentId) {
+  // Finally, check if the role is allowed and forward it if so.
+  if (
+    overrides[message.role] === true ||
+    (message.displayRole && overrides[message.displayRole] === true)
+  ) {
     return true;
   }
 

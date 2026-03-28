@@ -90,7 +90,8 @@ describe('Google Chat Adapter Client', () => {
           maxAttachmentSizeMB: 25,
           directMessageName: 'spaces/123',
         },
-        trpcClient
+        trpcClient,
+        {}
       );
     });
 

@@ -8,11 +8,16 @@ import mime from 'mime-types';
 import type { GoogleChatConfig } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
-import { shouldDisplayMessage, formatMessage } from '../shared/adapters/filtering.js';
+import {
+  shouldDisplayMessage,
+  formatMessage,
+  type FilteringConfig,
+} from '../shared/adapters/filtering.js';
 
 export async function startDaemonToGoogleChatForwarder(
   trpc: ReturnType<typeof getTRPCClient>,
   config: GoogleChatConfig,
+  filteringConfig: FilteringConfig,
   signal?: AbortSignal
 ) {
   const state = await readGoogleChatState();
@@ -69,7 +74,7 @@ export async function startDaemonToGoogleChatForwarder(
 
                   const message = rawMessage as ChatMessage;
 
-                  const isDisplayed = shouldDisplayMessage(message, config);
+                  const isDisplayed = shouldDisplayMessage(message, filteringConfig);
 
                   if (isDisplayed) {
                     const logMessage = message;
