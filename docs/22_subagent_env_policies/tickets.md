@@ -5,7 +5,7 @@
 **Verification:**
 - Run `npm run validate` to ensure type-checks, tests, and linting pass.
 - Verify the relevant type definitions allow `command` to be optional.
-**Status:** not started
+**Status:** complete
 
 ## Ticket 2: Environment Resolution Logic for Subagents
 **Description:** Implement environment resolution for the source and target agents during `subagentSpawn` and `subagentSend`. Use the existing `getActiveEnvironmentName` utility. If environments match, proceed normally. If an environment resolves to `null`, represent it as `host` in the policy evaluation.

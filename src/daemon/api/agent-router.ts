@@ -192,6 +192,10 @@ export const executePolicyHelp = apiProcedure
       return { stdout: '', stderr: 'This command does not support --help\n', exitCode: 1 };
     }
 
+    if (!policy.command) {
+      return { stdout: '', stderr: 'This pseudo-command does not support --help\n', exitCode: 1 };
+    }
+
     const fullArgs = [...(policy.args || []), '--help'];
     const { stdout, stderr, exitCode } = await executeSafe(policy.command, fullArgs, {
       cwd: getWorkspaceRoot(),

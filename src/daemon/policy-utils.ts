@@ -132,6 +132,10 @@ export async function executeRequest(
   policy: PolicyDefinition,
   cwd?: string
 ): Promise<{ stdout: string; stderr: string; exitCode: number; commandStr: string }> {
+  if (!policy.command) {
+    return { stdout: '', stderr: '', exitCode: 0, commandStr: 'pseudo-command' };
+  }
+
   const fullArgs = [...(policy.args || []), ...request.args];
   const interpolatedArgs = interpolateArgs(fullArgs, request.fileMappings);
 
