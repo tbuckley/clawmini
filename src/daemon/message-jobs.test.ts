@@ -110,4 +110,29 @@ describe('Jobs and Session Handling in handleUserMessage', () => {
       '/dir'
     );
   });
+
+  it('updates nextSessionId for global timeout (where sessionId is undefined)', async () => {
+    const { executeRouterPipeline } = await import('./routers.js');
+    vi.mocked(workspace.readChatSettings).mockResolvedValue({ defaultAgent: 'my-agent' });
+    vi.mocked(workspace.getAgent).mockResolvedValue({ commands: { new: 'echo start' } } as any);
+
+    vi.mocked(executeRouterPipeline).mockResolvedValueOnce({
+      messageId: 'msg-3',
+      message: 'test',
+      chatId: 'chat1',
+      // Note: sessionId is intentionally undefined here
+      nextSessionId: 'new-global-timeout-session-id',
+    });
+
+    await handleUserMessage('chat1', 'test message', {} as any, '/dir', false);
+
+    // Should have updated chatSettings with the nextSessionId
+    expect(workspace.writeChatSettings).toHaveBeenCalledWith(
+      'chat1',
+      expect.objectContaining({
+        sessions: { 'my-agent': 'new-global-timeout-session-id' },
+      }),
+      '/dir'
+    );
+  });
 });
