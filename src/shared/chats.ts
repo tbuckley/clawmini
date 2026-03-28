@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -9,6 +10,7 @@ export const DEFAULT_CHAT_ID = 'default';
 export interface BaseMessage {
   id: string;
   role: string;
+  displayRole?: 'user' | 'agent';
   content: string;
   timestamp: string;
   subagentId?: string;
@@ -16,17 +18,66 @@ export interface BaseMessage {
 
 export interface UserMessage extends BaseMessage {
   role: 'user';
+  agentContent?: string;
+  files?: string[];
+}
+
+export interface AgentReplyMessage extends BaseMessage {
+  role: 'agent';
+  files?: string[];
+}
+
+export interface LogMessage extends BaseMessage {
+  role: 'log';
+  messageId: string;
+  type?: 'tool' | 'unknown';
 }
 
 export interface CommandLogMessage extends BaseMessage {
-  role: 'log';
-
+  role: 'command';
   messageId: string;
+  command: string;
+  cwd: string;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  retryAttemptIndex?: number;
+}
 
-  source?: 'router';
+export interface SystemMessage extends BaseMessage {
+  role: 'system';
+  event: 'cron' | 'policy_approved' | 'policy_rejected' | 'subagent_update' | 'router' | 'other';
+  messageId?: string;
+}
+
+export interface ToolMessage extends BaseMessage {
+  role: 'tool';
+  messageId: string;
+  name: string;
+  payload: unknown;
+}
+
+export interface PolicyRequestMessage extends BaseMessage {
+  role: 'policy';
+  messageId: string;
+  requestId: string;
+  commandName: string;
+  args: string[];
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+export interface SubagentStatusMessage extends BaseMessage {
+  role: 'subagent_status';
+  subagentId: string;
+  status: 'completed' | 'failed';
+}
+
+export interface LegacyLogMessage extends BaseMessage {
+  role: 'legacy_log';
+  messageId?: string;
+  source?: string;
   files?: string[];
   level?: 'default' | 'debug' | 'verbose';
-
   command?: string;
   cwd?: string;
   stdout?: string;
@@ -34,7 +85,15 @@ export interface CommandLogMessage extends BaseMessage {
   exitCode?: number;
 }
 
-export type ChatMessage = UserMessage | CommandLogMessage;
+export type ChatMessage =
+  | UserMessage
+  | AgentReplyMessage
+  | CommandLogMessage
+  | SystemMessage
+  | ToolMessage
+  | PolicyRequestMessage
+  | SubagentStatusMessage
+  | LegacyLogMessage;
 
 export async function getChatsDir(startDir = process.cwd()): Promise<string> {
   const dir = path.join(getClawminiDir(startDir), 'chats');
@@ -154,6 +213,18 @@ async function* readLinesBackwards(filePath: string): AsyncGenerator<string, voi
   }
 }
 
+export function parseChatMessage(line: string): ChatMessage | null {
+  try {
+    const msg = JSON.parse(line);
+    if (msg && msg.role === 'log') {
+      msg.role = 'legacy_log';
+    }
+    return msg as ChatMessage;
+  } catch {
+    return null;
+  }
+}
+
 export async function getMessages(
   id: string,
   limit?: number,
@@ -174,7 +245,9 @@ export async function getMessages(
     const content = await fs.readFile(chatFile, 'utf8');
     const lines = content.split('\n').filter((line) => line.trim() !== '');
 
-    let messages = lines.map((line) => JSON.parse(line) as ChatMessage);
+    let messages = lines
+      .map((line) => parseChatMessage(line))
+      .filter((msg): msg is ChatMessage => msg !== null);
 
     if (before) {
       const beforeIndex = messages.findIndex((m) => m.id === before);
@@ -198,7 +271,8 @@ export async function getMessages(
 
   for await (const line of readLinesBackwards(chatFile)) {
     try {
-      const msg = JSON.parse(line) as ChatMessage;
+      const msg = parseChatMessage(line);
+      if (!msg) continue;
 
       if (skipping) {
         if (msg.id === before) {
@@ -275,7 +349,8 @@ export async function findLastMessage(
 
   for await (const line of readLinesBackwards(chatFile)) {
     try {
-      const msg = JSON.parse(line) as ChatMessage;
+      const msg = parseChatMessage(line);
+      if (!msg) continue;
       if (predicate(msg)) return msg;
     } catch {
       // Ignore invalid JSON lines

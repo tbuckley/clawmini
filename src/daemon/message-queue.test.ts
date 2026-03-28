@@ -112,7 +112,7 @@ describe('Daemon Execution Queue', () => {
     expect(chats.appendMessage).toHaveBeenCalledWith(
       'chat1',
       expect.objectContaining({
-        role: 'log',
+        role: 'command',
         exitCode: 1,
         stderr: 'Error: command not found',
       })

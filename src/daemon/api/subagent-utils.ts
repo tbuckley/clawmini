@@ -58,11 +58,11 @@ export async function executeSubagent(
     const logger = createChatLogger(chatId, subagentId);
 
     // Emit debug message to wake up waiters
-    await logger.logSystemEvent({ content: 'Subagent completed', level: 'debug' });
+    await logger.logSubagentStatus({ subagentId, status: 'completed' });
 
     if (isAsync) {
       const lastLogMessage = await logger.findLastMessage(
-        (m) => m.role === 'log' && m.command !== 'retry-delay' && m.source !== 'router'
+        (m) => m.role === 'agent' || m.displayRole === 'agent'
       );
       let outputContent = '';
       if (lastLogMessage && 'content' in lastLogMessage) {
@@ -91,7 +91,10 @@ export async function executeSubagent(
         },
         undefined,
         workspaceRoot,
-        true // noWait
+        true,
+        undefined,
+        parentTokenPayload?.subagentId,
+        'subagent_update'
       );
     }
   } catch {
@@ -103,6 +106,6 @@ export async function executeSubagent(
       return errSettings;
     });
     const logger = createChatLogger(chatId, subagentId);
-    await logger.logSystemEvent({ content: 'Subagent failed', level: 'debug' });
+    await logger.logSubagentStatus({ subagentId, status: 'failed' });
   }
 }

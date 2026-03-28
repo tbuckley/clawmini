@@ -106,11 +106,10 @@ describe('slashPolicies', () => {
     expect(appendMessage).toHaveBeenCalledWith(
       'chat-1',
       expect.objectContaining({
-        role: 'log',
-        content: 'Request req-1 approved and executed.',
-        command: 'echo hello world',
-        stdout: 'hello world',
-        exitCode: 0,
+        role: 'system',
+        event: 'policy_approved',
+        displayRole: 'user',
+        content: expect.stringContaining('Request req-1 approved.'),
       })
     );
     expect(result.action).toBeUndefined();
@@ -143,13 +142,23 @@ describe('slashPolicies', () => {
       state: 'Rejected',
       rejectionReason: 'Not allowed',
     });
+    expect(appendMessage).toHaveBeenCalledTimes(2);
     expect(appendMessage).toHaveBeenCalledWith(
       'chat-1',
       expect.objectContaining({
-        role: 'log',
+        role: 'system',
+        event: 'policy_rejected',
+        displayRole: 'user',
         content: 'Request req-1 rejected. Reason: Not allowed',
-        command: 'policy-request-reject req-1',
-        exitCode: 1,
+      })
+    );
+    expect(appendMessage).toHaveBeenCalledWith(
+      'chat-1',
+      expect.objectContaining({
+        role: 'system',
+        event: 'policy_rejected',
+        displayRole: 'agent',
+        content: 'Request req-1 rejected. Reason: Not allowed',
       })
     );
     expect(result.action).toBeUndefined();

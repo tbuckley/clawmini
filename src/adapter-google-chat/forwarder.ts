@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { getAuthClient, getDriveAuthClient } from './auth.js';
 import type { getTRPCClient } from './client.js';
-import type { ChatMessage, CommandLogMessage } from '../shared/chats.js';
+import type { ChatMessage } from '../shared/chats.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import mime from 'mime-types';
@@ -68,10 +68,15 @@ export async function startDaemonToGoogleChatForwarder(
 
                   const message = rawMessage as ChatMessage;
 
-                  if (message.role === 'log' && !message.subagentId) {
-                    const logMessage = message as CommandLogMessage;
+                  const isAgentDisplay =
+                    message.displayRole === 'agent' ||
+                    message.role === 'agent' ||
+                    message.role === 'legacy_log';
 
-                    if (logMessage.level === 'verbose') {
+                  if (isAgentDisplay && !message.subagentId) {
+                    const logMessage = message;
+
+                    if ('level' in logMessage && logMessage.level === 'verbose') {
                       lastMessageId = logMessage.id;
                       await updateGoogleChatState({ lastSyncedMessageId: lastMessageId }).catch(
                         console.error
@@ -80,7 +85,9 @@ export async function startDaemonToGoogleChatForwarder(
                     }
 
                     const hasContent = !!logMessage.content?.trim();
-                    const hasFiles = Array.isArray(logMessage.files) && logMessage.files.length > 0;
+                    const files =
+                      'files' in logMessage ? (logMessage.files as string[]) : undefined;
+                    const hasFiles = Array.isArray(files) && files.length > 0;
 
                     if (!hasContent && !hasFiles) {
                       lastMessageId = logMessage.id;
@@ -114,8 +121,8 @@ export async function startDaemonToGoogleChatForwarder(
 
                       let text = logMessage.content || '';
 
-                      if (hasFiles) {
-                        const fileNames = logMessage.files?.map((f) => path.basename(f)).join(', ');
+                      if (hasFiles && files) {
+                        const fileNames = files.map((f) => path.basename(f)).join(', ');
 
                         if (
                           config.driveUploadEnabled !== false &&
@@ -155,7 +162,7 @@ export async function startDaemonToGoogleChatForwarder(
                               );
                             }
 
-                            const uploadPromises = logMessage.files!.map(async (fileRelPath) => {
+                            const uploadPromises = files.map(async (fileRelPath) => {
                               const filePath = path.resolve(workspaceRoot, fileRelPath);
                               if (!fs.existsSync(filePath)) return null;
 

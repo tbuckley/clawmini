@@ -43,7 +43,7 @@ describe('subagentWait', () => {
         setTimeout(() => {
           daemonEvents.emit(DAEMON_EVENT_MESSAGE_APPENDED, {
             chatId,
-            message: { role: 'log', content: 'Subagent completed', subagentId },
+            message: { role: 'subagent_status', status: 'completed', subagentId },
           });
         }, 10);
 
@@ -65,6 +65,7 @@ describe('subagentWait', () => {
     const ctx = {
       tokenPayload: { chatId, agentId: 'agent', sessionId: 'session' },
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const caller = agentRouter.createCaller(ctx as any);
 
     const resultPromise = caller.subagentWait({ subagentId });

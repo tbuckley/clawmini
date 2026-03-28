@@ -185,6 +185,10 @@ export class AgentSession {
         }
 
         await this.logger.logCommandResult(result);
+
+        if (!result.content.includes('NO_REPLY_NECESSARY')) {
+          await this.logger.logAgentReply({ content: result.content });
+        }
       },
     });
   }

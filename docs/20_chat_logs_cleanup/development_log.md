@@ -1,0 +1,50 @@
+# Development Log: Chat Logs Cleanup
+
+## Progress
+- Refactored `src/shared/chats.ts` to implement the new `ChatMessage` union and distinct interfaces (`BaseMessage`, `UserMessage`, `AgentReplyMessage`, `LogMessage`, `CommandLogMessage`, `SystemMessage`, `ToolMessage`, `PolicyRequestMessage`, `SubagentStatusMessage`, `LegacyLogMessage`), fulfilling Ticket 1.
+- Updated all related files (adapters, routers, loggers, CLI) to compile cleanly against the new types.
+- Removed obsolete `level` check logic and `message-verbosity.test.ts` as `CommandLogMessage` uses `displayRole` for visibility going forward.
+- Verified compilation and tests pass using `npm run validate`.
+- Marked Ticket 1 as complete.
+- Implemented `parseChatMessage` in `src/shared/chats.ts` to cleanly map older `role: 'log'` messages with legacy properties (or lacking `messageId`) to `role: 'legacy_log'`, ensuring backward compatibility.
+- Added comprehensive unit tests in `src/shared/chats.test.ts` to verify parsing of legacy and generic logs.
+- Fixed an eslint `max-lines` error in `src/shared/chats.ts` caused by expanding the file.
+- Verified changes with `npm run validate`.
+- Marked Ticket 2 as complete.
+- Added `logSystemMessage`, `logAgentReply`, `logToolMessage`, and `logPolicyRequestMessage` methods to `Logger` in `src/daemon/agent/types.ts`.
+- Implemented these methods in `src/daemon/agent/chat-logger.ts` mapping properly to the updated `ChatMessage` taxonomy.
+- Exposed `SystemMessage`, `AgentReplyMessage`, `ToolMessage`, and `PolicyRequestMessage` from `src/daemon/chats.ts`.
+- Added unit tests for each new logging method in `src/daemon/agent/chat-logger.test.ts`.
+- Resolved TypeScript strictness issue (`exactOptionalPropertyTypes`) by conditionally assigning optional properties rather than initializing them as `undefined`.
+- Verified compilation and tests pass using `npm run validate`.
+- Marked Ticket 3 as complete.
+- Added `logReplyMessage` and `logToolMessage` trpc mutations to `src/daemon/api/agent-router.ts`.
+- Implemented `clawmini-lite reply` and `clawmini-lite tool <name> <payload>` commands in `src/cli/lite.ts`.
+- Wrote E2E tests for the new lite commands in `src/cli/e2e/export-lite-func.test.ts`.
+- Verified compilation and tests pass using `npm run validate`.
+- Marked Ticket 4 as complete.
+- Refactored `executeDirectMessage` in `src/daemon/message.ts` to accept an optional `systemEvent` parameter and use `logger.logSystemMessage` accordingly.
+- Updated cron jobs (`src/daemon/cron.ts`) and subagent notifications (`src/daemon/api/subagent-utils.ts`) to log events as `SystemMessage` ('cron' and 'subagent_update').
+- Refactored `createPolicyRequest` in `src/daemon/api/agent-router.ts` to log requests and auto-approvals as `PolicyRequestMessage`.
+- Refactored `/approve` and `/reject` branches in `src/daemon/routers/slash-policies.ts` to log outcomes as `PolicyRequestMessage`.
+- Updated failing tests in `src/daemon/api/policy-request.test.ts`, `src/daemon/routers/slash-policies.test.ts`, and E2E timeout tests to expect the new message formats.
+- Fixed a `no-useless-assignment` linting issue in `message.ts` and removed a trailing bracket syntax error in `slash-policies.test.ts`.
+- Validated all changes using `npm run validate`.
+- Marked Ticket 5 as complete.
+- Updated `src/adapter-discord/forwarder.ts` and `src/adapter-google-chat/forwarder.ts` to filter messages based on `displayRole === 'agent'`, `role === 'agent'`, or `role === 'legacy_log'`, and ensuring `!subagentId`.
+- Updated mock test data in `src/adapter-discord/forwarder.test.ts` and `src/adapter-google-chat/forwarder.test.ts` to use `role: 'agent'` or `role: 'legacy_log'` (for verbose tests) instead of the obsolete `role: 'log'`.
+- Verified compilation and tests pass using `npm run validate`.
+- Marked Ticket 6 as complete.
+- Updated `web/src/lib/types.ts` to mirror the expanded `ChatMessage` union from `src/shared/chats.ts`.
+- Refactored message filtering and rendering logic in `web/src/routes/chats/[id]/+page.svelte` to gracefully handle the new message roles (`agent`, `policy`, `command`, `system`, `tool`).
+- Added interactive 'Approve' and 'Reject' UI elements for `PolicyRequestMessage`, wired to a new `handlePolicy` function that sends `/approve <id>` and `/reject <id>`.
+- Preserved graceful degradation for `LegacyLogMessage`, checking the obsolete `level` property exclusively for those legacy types.
+- Updated unit tests in `web/src/routes/chats/[id]/page.svelte.spec.ts` with new mock data supporting the latest taxonomy, validating the UI renders accurately across verbosity levels.
+- Formatted, linted, and successfully passed all checks via `npm run validate`.
+- Marked Ticket 7 as complete.\n- Added `displayRole` to `logSystemMessage` options in `src/daemon/agent/types.ts` and `src/daemon/agent/chat-logger.ts`.\n- Updated `executeDirectMessage` in `src/daemon/message.ts` to accept and pass `displayRole` properly to `logSystemMessage`.\n- Added `logSubagentStatus` method to emit `SubagentStatusMessage` logs.\n- Replaced `logSystemEvent` usages in `src/daemon/api/subagent-utils.ts` with `logSubagentStatus` for tracking completed and failed events.\n- Exported `SubagentStatusMessage` from `src/daemon/chats.ts`.\n- Validated all changes via `npm run validate`.\n- Marked Ticket 8 as complete.\n- Updated `logAutomaticReply` in `src/daemon/agent/chat-logger.ts` to emit `SystemMessage` with `event: 'router'` and `displayRole: 'agent'` instead of `CommandLogMessage`.\n- Updated `logAutomaticReply` signature in `src/daemon/agent/types.ts` to return `Promise<SystemMessage>`.\n- Updated `src/daemon/message-router.test.ts` to expect `SystemMessage` for router replies.\n- Validated all changes via `npm run validate`.\n- Marked Ticket 9 as complete.
+\n- Refactored `/approve` and `/reject` branches in `src/daemon/routers/slash-policies.ts` to emit `SystemMessage` instead of `CommandLogMessage` or `PolicyRequestMessage`, ensuring agents are properly notified.\n- Included command stdout and stderr for approved requests in the system message.\n- Updated tests in `src/daemon/routers/slash-policies.test.ts` to verify the `SystemMessage` logs.\n- Validated all changes via `npm run validate`.\n- Marked Ticket 10 as complete.
+- Updated `AgentSession.handleMessage` in `src/daemon/agent/agent-session.ts` to emit an `AgentReplyMessage` immediately following `CommandLogMessage`, excluding output with `NO_REPLY_NECESSARY`.
+- Fixed E2E test timing and ordering expectations in `src/cli/e2e/fallbacks.test.ts` and `src/cli/e2e/messages.test.ts` to correctly handle the new `AgentReplyMessage` inclusion.
+- Fixed two minor ESLint issues in tests that referenced `any`.
+- All checks pass successfully (`npm run validate`).
+- Marked Ticket 11 as complete.

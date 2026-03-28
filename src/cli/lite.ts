@@ -41,8 +41,8 @@ program
   });
 
 program
-  .command('log [message]')
-  .description('Log a message')
+  .command('reply <message>')
+  .description('Emit an AgentReplyMessage')
   .option(
     '-f, --file <path>',
     'File path(s) to attach (can specify multiple)',
@@ -52,13 +52,33 @@ program
   .action(async (message, options) => {
     try {
       const files = options.file.length > 0 ? options.file : undefined;
-      const payload: { message?: string; files?: string[] } = {};
-      if (message !== undefined) payload.message = message;
+      const payload: { message: string; files?: string[] } = { message };
       if (files !== undefined) payload.files = files;
 
       const client = getClient();
-      await client.logMessage.mutate(payload);
-      console.log('Log message appended.');
+      await client.logReplyMessage.mutate(payload);
+      console.log('Reply message appended.');
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('tool <name> <payload>', { hidden: true })
+  .description('Emit a ToolMessage')
+  .action(async (name, payload) => {
+    try {
+      let parsedPayload: unknown;
+      try {
+        parsedPayload = JSON.parse(payload);
+      } catch {
+        parsedPayload = payload;
+      }
+
+      const client = getClient();
+      await client.logToolMessage.mutate({ name, payload: parsedPayload });
+      console.log('Tool message appended.');
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
       process.exit(1);

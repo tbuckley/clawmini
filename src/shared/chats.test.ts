@@ -63,9 +63,10 @@ describe('chats utilities', () => {
     const msg2: CommandLogMessage = {
       id: 'log-1',
       messageId: 'msg-1',
-      role: 'log',
+      role: 'command',
       content: 'output',
       stderr: '',
+      stdout: '',
       timestamp: new Date().toISOString(),
       command: 'echo output',
       cwd: '/tmp',
@@ -75,10 +76,10 @@ describe('chats utilities', () => {
     const msg3: CommandLogMessage = {
       id: 'log-2',
       messageId: 'msg-1',
-      role: 'log',
-      source: 'router',
+      role: 'command',
       content: 'router modified message',
       stderr: '',
+      stdout: '',
       timestamp: new Date().toISOString(),
       command: 'router',
       cwd: '/tmp',
@@ -168,5 +169,86 @@ describe('chats utilities', () => {
     const readAllBefore = await getMessages('chat1', 0, TEST_DIR, undefined, 'msg-4');
     expect(readAllBefore.length).toBe(3);
     expect(readAllBefore[0]?.id).toBe('msg-1');
+  });
+
+  it('should parse legacy log messages gracefully', async () => {
+    await createChat('chat1', TEST_DIR);
+
+    // Old plain log missing messageId
+    const oldPlainLog = {
+      id: 'log-1',
+      role: 'log',
+      content: 'legacy content',
+      timestamp: new Date().toISOString(),
+    };
+
+    // Old command log with legacy properties
+    const oldCommandLog = {
+      id: 'log-2',
+      role: 'log',
+      messageId: 'msg-1',
+      content: 'output',
+      command: 'echo output',
+      timestamp: new Date().toISOString(),
+    };
+
+    // New generic log message without legacy properties
+    const newLogMsg = {
+      id: 'log-3',
+      role: 'log',
+      messageId: 'msg-1',
+      content: 'new log',
+      timestamp: new Date().toISOString(),
+      type: 'tool',
+    };
+
+    const chatFile = path.join(TEST_DIR, '.clawmini', 'chats', 'chat1', 'chat.jsonl');
+    await fs.appendFile(chatFile, JSON.stringify(oldPlainLog) + '\n');
+    await fs.appendFile(chatFile, JSON.stringify(oldCommandLog) + '\n');
+    await fs.appendFile(chatFile, JSON.stringify(newLogMsg) + '\n');
+
+    const messages = await getMessages('chat1', undefined, TEST_DIR);
+    expect(messages.length).toBe(3);
+
+    // Should map to legacy_log
+    expect(messages[0]?.role).toBe('legacy_log');
+    expect(messages[1]?.role).toBe('legacy_log');
+    expect(messages[2]?.role).toBe('legacy_log');
+  });
+
+  it('should skip corrupted JSON lines gracefully', async () => {
+    await createChat('chat1', TEST_DIR);
+
+    const validMsg1 = {
+      id: 'msg-1',
+      role: 'user',
+      content: 'Hello',
+      timestamp: new Date().toISOString(),
+    };
+
+    const validMsg2 = {
+      id: 'msg-2',
+      role: 'agent',
+      content: 'Hi',
+      timestamp: new Date().toISOString(),
+    };
+
+    const chatFile = path.join(TEST_DIR, '.clawmini', 'chats', 'chat1', 'chat.jsonl');
+    await fs.appendFile(chatFile, JSON.stringify(validMsg1) + '\n');
+    await fs.appendFile(chatFile, '{ "id": "corrupted", "role": "user" \n'); // Invalid JSON
+    await fs.appendFile(chatFile, JSON.stringify(validMsg2) + '\n');
+    await fs.appendFile(chatFile, 'This is completely not JSON\n'); // Invalid JSON
+
+    // Test getMessages with limit > 0
+    const limitedMessages = await getMessages('chat1', 10, TEST_DIR);
+    expect(limitedMessages.length).toBe(2);
+    expect(limitedMessages[0]?.id).toBe('msg-1');
+    expect(limitedMessages[1]?.id).toBe('msg-2');
+
+    // Test getMessages with limit <= 0 (read all)
+    const allMessages = await getMessages('chat1', 0, TEST_DIR);
+    expect(allMessages.length).toBe(2);
+    expect(allMessages[0]?.id).toBe('msg-1');
+    expect(allMessages[1]?.id).toBe('msg-2');
   });
 });

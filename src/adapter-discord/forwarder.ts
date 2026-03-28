@@ -2,7 +2,7 @@ import type { Client, MessageCreateOptions } from 'discord.js';
 import path from 'node:path';
 import type { getTRPCClient } from './client.js';
 import { readDiscordState, writeDiscordState } from './state.js';
-import type { ChatMessage, CommandLogMessage } from '../shared/chats.js';
+import type { ChatMessage } from '../shared/chats.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
 
 export async function startDaemonToDiscordForwarder(
@@ -68,12 +68,18 @@ export async function startDaemonToDiscordForwarder(
 
                 const message = rawMessage as ChatMessage;
 
-                // Only forward logs (agent responses, system messages)
-                // Ignore any messages associated with subagents
-                if (message.role === 'log' && !message.subagentId) {
-                  const logMessage = message as CommandLogMessage;
+                // Only forward messages that are explicitly marked for agent display,
+                // or are backwards-compatible agent replies / legacy logs.
+                // Ignore any messages associated with subagents.
+                const isAgentDisplay =
+                  message.displayRole === 'agent' ||
+                  message.role === 'agent' ||
+                  message.role === 'legacy_log';
 
-                  if (logMessage.level === 'verbose') {
+                if (isAgentDisplay && !message.subagentId) {
+                  const logMessage = message;
+
+                  if ('level' in logMessage && logMessage.level === 'verbose') {
                     lastMessageId = logMessage.id;
                     await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
                       console.error
@@ -82,15 +88,16 @@ export async function startDaemonToDiscordForwarder(
                   }
 
                   const hasContent = !!logMessage.content?.trim();
-                  const hasFiles = Array.isArray(logMessage.files) && logMessage.files.length > 0;
+                  const files = 'files' in logMessage ? (logMessage.files as string[]) : undefined;
+                  const hasFiles = Array.isArray(files) && files.length > 0;
 
                   // The daemon stores logMessage.files as paths relative to the WORKSPACE directory
                   // (the directory containing .clawmini). We must resolve these against the current
                   // workspace root so discord.js can successfully locate and read the files.
                   let absoluteFiles: string[] = [];
-                  if (hasFiles) {
+                  if (hasFiles && files) {
                     const workspaceRoot = getWorkspaceRoot(process.cwd());
-                    absoluteFiles = logMessage.files!.map((f) => path.resolve(workspaceRoot, f));
+                    absoluteFiles = files.map((f) => path.resolve(workspaceRoot, f));
                   }
 
                   if (!hasContent && !hasFiles) {

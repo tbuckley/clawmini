@@ -87,9 +87,19 @@ messagesCmd
         messages.forEach((msg) => console.log(JSON.stringify(msg)));
       } else {
         messages.forEach((msg) => {
-          if (msg.role === 'user') {
+          if (msg.role === 'user' || msg.displayRole === 'user') {
             console.log(`[USER] ${msg.content}`);
-          } else if (msg.role === 'log') {
+          } else if (msg.role === 'agent' || msg.displayRole === 'agent') {
+            console.log(`[AGENT] ${msg.content.trim()}`);
+          } else if (msg.role === 'policy') {
+            console.log(`[POLICY] ${msg.commandName} ${msg.args.join(' ')}`);
+          } else if (msg.role === 'tool') {
+            console.log(`[TOOL] ${msg.name}`);
+          } else if (msg.role === 'system') {
+            if (msg.content) {
+              console.log(`[LOG] ${msg.content.trim()}`);
+            }
+          } else if (msg.role === 'command' || msg.role === 'legacy_log') {
             if (msg.content) {
               console.log(`[LOG] ${msg.content.trim()}`);
             } else if (msg.stderr) {

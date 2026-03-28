@@ -83,5 +83,76 @@ describe('ChatLogger', () => {
       expect(filtered).toHaveLength(1);
       expect(filtered[0]!.id).toBe('1');
     });
+
+    it('should log system message correctly', async () => {
+      const logger = createChatLogger('chat-1');
+      await logger.logSystemMessage({ content: 'test', event: 'cron', messageId: 'msg-1' });
+
+      expect(daemonChats.appendMessage).toHaveBeenCalledWith(
+        'chat-1',
+        expect.objectContaining({
+          role: 'system',
+          content: 'test',
+          event: 'cron',
+          messageId: 'msg-1',
+        })
+      );
+    });
+
+    it('should log agent reply correctly', async () => {
+      const logger = createChatLogger('chat-1');
+      await logger.logAgentReply({ content: 'reply', files: ['test.txt'] });
+
+      expect(daemonChats.appendMessage).toHaveBeenCalledWith(
+        'chat-1',
+        expect.objectContaining({ role: 'agent', content: 'reply', files: ['test.txt'] })
+      );
+    });
+
+    it('should log tool message correctly', async () => {
+      const logger = createChatLogger('chat-1');
+      await logger.logToolMessage({
+        content: 'tool content',
+        messageId: 'msg-1',
+        name: 'myTool',
+        payload: { a: 1 },
+      });
+
+      expect(daemonChats.appendMessage).toHaveBeenCalledWith(
+        'chat-1',
+        expect.objectContaining({
+          role: 'tool',
+          content: 'tool content',
+          messageId: 'msg-1',
+          name: 'myTool',
+          payload: { a: 1 },
+        })
+      );
+    });
+
+    it('should log policy request correctly', async () => {
+      const logger = createChatLogger('chat-1');
+      await logger.logPolicyRequestMessage({
+        content: 'please allow',
+        messageId: 'msg-1',
+        requestId: 'req-1',
+        commandName: 'ls',
+        args: ['-la'],
+        status: 'pending',
+      });
+
+      expect(daemonChats.appendMessage).toHaveBeenCalledWith(
+        'chat-1',
+        expect.objectContaining({
+          role: 'policy',
+          content: 'please allow',
+          messageId: 'msg-1',
+          requestId: 'req-1',
+          commandName: 'ls',
+          args: ['-la'],
+          status: 'pending',
+        })
+      );
+    });
   });
 });

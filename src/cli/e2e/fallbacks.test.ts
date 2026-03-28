@@ -44,9 +44,10 @@ describe('E2E Fallbacks Tests', () => {
       .map((l) => JSON.parse(l));
 
     // Lines: USER, LOG (retry-delay), LOG (success)
-    expect(lines.some((l) => l.role === 'log' && l.content.includes('retrying'))).toBe(true);
-    const lastLog = lines[lines.length - 1];
-    expect(lastLog.role).toBe('log');
+    expect(lines.some((l) => l.role === 'command' && l.content.includes('retrying'))).toBe(true);
+    const commandLogs = lines.filter((l) => l.role === 'command');
+    const lastLog = commandLogs[commandLogs.length - 1];
+    expect(lastLog.role).toBe('command');
     expect(lastLog.content.trim()).toBe('Succeeded');
     expect(lastLog.exitCode).toBe(0);
   });
@@ -131,7 +132,7 @@ describe('E2E Fallbacks Tests', () => {
       .map((l) => JSON.parse(l));
 
     expect(
-      lines.filter((l) => l.role === 'log' && l.content.includes('retrying')).length
+      lines.filter((l) => l.role === 'command' && l.content.includes('retrying')).length
     ).toBeGreaterThanOrEqual(1);
     expect(lines[lines.length - 1].content.trim()).toBe('Third time is a charm');
   }, 10000);
@@ -166,7 +167,8 @@ describe('E2E Fallbacks Tests', () => {
       .filter((l) => l.trim().length > 0)
       .map((l) => JSON.parse(l));
 
-    const lastLog = lines[lines.length - 1];
+    const commandLogs = lines.filter((l) => l.role === 'command');
+    const lastLog = commandLogs[commandLogs.length - 1];
     expect(lastLog.exitCode).toBe(1);
     expect(lastLog.stdout.trim()).toBe('Fallback 1 fail');
   });

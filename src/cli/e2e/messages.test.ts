@@ -205,15 +205,14 @@ describe('E2E Messages Tests', () => {
       .split('\n')
       .map((l) => JSON.parse(l));
 
-    expect(lines).toHaveLength(4);
+    const commandLogs = lines.filter((l) => l.role === 'command');
+    expect(commandLogs).toHaveLength(2);
     expect(lines[0].role).toBe('user');
     expect(lines[0].content).toBe('first');
     expect(lines[1].role).toBe('user');
     expect(lines[1].content).toBe('second');
-    expect(lines[2].role).toBe('log');
-    expect(lines[2].content.trim()).toBe('first');
-    expect(lines[3].role).toBe('log');
-    expect(lines[3].content.trim()).toBe('second');
+    expect(commandLogs[0].content.trim()).toBe('first');
+    expect(commandLogs[1].content.trim()).toBe('second');
   });
 
   it('should handle full multi-message session workflow (extraction & append)', async () => {
@@ -242,11 +241,12 @@ describe('E2E Messages Tests', () => {
       .split('\n')
       .map((l) => JSON.parse(l));
 
-    expect(lines).toHaveLength(2);
-    expect(lines[1].command).toBe('echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2');
-    expect(lines[1].content).toContain('EXTRACTED-NEW msg-1');
-    expect(lines[1].stderr).toContain('ERR NEW');
-    expect(lines[1].stdout).toContain('NEW msg-1');
+    const commandLogs = lines.filter((l) => l.role === 'command');
+    expect(commandLogs).toHaveLength(1);
+    expect(commandLogs[0].command).toBe('echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2');
+    expect(commandLogs[0].content).toContain('EXTRACTED-NEW msg-1');
+    expect(commandLogs[0].stderr).toContain('ERR NEW');
+    expect(commandLogs[0].stdout).toContain('NEW msg-1');
 
     const sessionSettings = JSON.parse(
       fs.readFileSync(
@@ -265,11 +265,14 @@ describe('E2E Messages Tests', () => {
       .split('\n')
       .map((l) => JSON.parse(l));
 
-    expect(lines).toHaveLength(4);
-    expect(lines[3].command).toBe('echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2');
-    expect(lines[3].content).toContain('EXTRACTED-APPEND msg-2');
-    expect(lines[3].stderr).toContain('ERR APPEND');
-    expect(lines[3].stdout).toContain('APPEND msg-2');
+    const commandLogs2 = lines.filter((l) => l.role === 'command');
+    expect(commandLogs2).toHaveLength(2);
+    expect(commandLogs2[1].command).toBe(
+      'echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2'
+    );
+    expect(commandLogs2[1].content).toContain('EXTRACTED-APPEND msg-2');
+    expect(commandLogs2[1].stderr).toContain('ERR APPEND');
+    expect(commandLogs2[1].stdout).toContain('APPEND msg-2');
 
     settings.defaultAgent.commands.getMessageContent = 'echo "EXTRACTION_FAIL" >&2 && exit 1';
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
@@ -283,10 +286,11 @@ describe('E2E Messages Tests', () => {
       .split('\n')
       .map((l) => JSON.parse(l));
 
-    expect(lines).toHaveLength(6);
-    expect(lines[5].stdout).toContain('APPEND msg-3');
-    expect(lines[5].stderr).toContain('ERR APPEND');
-    expect(lines[5].stderr).toContain('getMessageContent failed: EXTRACTION_FAIL');
+    const commandLogs3 = lines.filter((l) => l.role === 'command');
+    expect(commandLogs3).toHaveLength(3);
+    expect(commandLogs3[2].stdout).toContain('APPEND msg-3');
+    expect(commandLogs3[2].stderr).toContain('ERR APPEND');
+    expect(commandLogs3[2].stderr).toContain('getMessageContent failed: EXTRACTION_FAIL');
 
     settings.defaultAgent.commands = oldCmds;
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));

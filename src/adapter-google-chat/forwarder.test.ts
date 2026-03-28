@@ -27,6 +27,7 @@ vi.mock('googleapis', () => {
     google: {
       auth: {
         getClient: vi.fn().mockResolvedValue({}),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         OAuth2: vi.fn().mockImplementation(function (this: any) {
           this.setCredentials = vi.fn();
           this.generateAuthUrl = vi.fn().mockReturnValue('http://mock-auth-url');
@@ -135,7 +136,7 @@ describe('Daemon to Google Chat Forwarder', () => {
     subscribeCallbacks.onData([
       {
         id: 'msg-2',
-        role: 'log',
+        role: 'agent',
         content: 'Agent response',
         timestamp: '',
       },
@@ -166,7 +167,7 @@ describe('Daemon to Google Chat Forwarder', () => {
     subscribeCallbacks.onData([
       {
         id: 'msg-2',
-        role: 'log',
+        role: 'agent',
         content: 'Here are the files',
         files: ['/tmp/file1.png', '/tmp/file2.txt'],
       },
@@ -207,7 +208,7 @@ describe('Daemon to Google Chat Forwarder', () => {
     subscribeCallbacks.onData([
       {
         id: 'msg-3',
-        role: 'log',
+        role: 'agent',
         content: 'Here are the files',
         files: ['/tmp/file1.png', '/tmp/file2.txt'],
       },
@@ -244,7 +245,7 @@ describe('Daemon to Google Chat Forwarder', () => {
     subscribeCallbacks.onData([
       {
         id: 'msg-drive-fail',
-        role: 'log',
+        role: 'agent',
         content: 'Here are the files',
         files: ['/tmp/file1.png'],
       },
@@ -284,8 +285,8 @@ describe('Daemon to Google Chat Forwarder', () => {
     });
 
     subscribeCallbacks.onData([
-      { id: 'msg-err-1', role: 'log', content: 'Agent response 1' },
-      { id: 'msg-err-2', role: 'log', content: 'Agent response 2' },
+      { id: 'msg-err-1', role: 'agent', content: 'Agent response 1' },
+      { id: 'msg-err-2', role: 'agent', content: 'Agent response 2' },
     ]);
 
     // Wait for the second message to be processed, meaning the first one didn't break the loop

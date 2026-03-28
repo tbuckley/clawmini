@@ -2,7 +2,13 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { TRPCError } from '@trpc/server';
-import { appendMessage, type CommandLogMessage } from '../chats.js';
+import {
+  appendMessage,
+  type CommandLogMessage,
+  type AgentReplyMessage,
+  type ToolMessage,
+  type PolicyRequestMessage,
+} from '../chats.js';
 import { executeSafe, generateRequestPreview, executeRequest } from '../policy-utils.js';
 import { getWorkspaceRoot, readPolicies, getClawminiDir } from '../../shared/workspace.js';
 import { PolicyRequestService } from '../policy-request-service.js';
@@ -48,9 +54,9 @@ export const logMessage = apiProcedure
     const logMsg: CommandLogMessage = {
       id,
       messageId: id,
-      role: 'log',
-      source: 'router',
+      role: 'command',
       content: messageStr,
+      stdout: '',
       stderr: '',
       timestamp,
       command: `clawmini-lite log${filesArgStr}`,
@@ -58,6 +64,84 @@ export const logMessage = apiProcedure
       exitCode: 0,
       ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
       ...(filePaths.length > 0 ? { files: filePaths } : {}),
+    };
+
+    await appendMessage(chatId, logMsg);
+    return { success: true };
+  });
+
+export const logReplyMessage = apiProcedure
+  .input(
+    z.object({
+      message: z.string(),
+      files: z.array(z.string()).optional(),
+    })
+  )
+  .mutation(async ({ input, ctx }) => {
+    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
+    const chatId = ctx.tokenPayload.chatId;
+    const timestamp = new Date().toISOString();
+    const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
+
+    const filePaths: string[] = [];
+    if (input.files && input.files.length > 0) {
+      const workspaceRoot = getWorkspaceRoot(process.cwd());
+      const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
+
+      for (const file of input.files) {
+        const validPath = await validateLogFile(file, agentDir, workspaceRoot);
+        filePaths.push(validPath);
+      }
+    }
+
+    const logMsg: AgentReplyMessage = {
+      id,
+      role: 'agent',
+      content: input.message,
+      timestamp,
+      ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
+      ...(filePaths.length > 0 ? { files: filePaths } : {}),
+    };
+
+    await appendMessage(chatId, logMsg);
+    return { success: true };
+  });
+
+export const logToolMessage = apiProcedure
+  .input(
+    z.object({
+      name: z.string(),
+      payload: z.any().optional(),
+    })
+  )
+  .mutation(async ({ input, ctx }) => {
+    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
+    const chatId = ctx.tokenPayload.chatId;
+    const timestamp = new Date().toISOString();
+    const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
+    const messageId = randomUUID();
+
+    const payloadObj = input.payload !== undefined ? input.payload : {};
+    let contentStr: string;
+    if (typeof payloadObj === 'string') {
+      contentStr = payloadObj;
+    } else {
+      try {
+        contentStr = JSON.stringify(payloadObj, null, 2);
+      } catch {
+        contentStr = String(payloadObj);
+      }
+    }
+
+    const logMsg: ToolMessage = {
+      id,
+      messageId,
+      role: 'tool',
+      name: input.name,
+      payload: payloadObj,
+      content: contentStr,
+      timestamp,
+      ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
     };
 
     await appendMessage(chatId, logMsg);
@@ -167,22 +251,19 @@ export const createPolicyRequest = apiProcedure
       request.executionResult = { stdout, stderr, exitCode };
       await store.save(request);
 
-      const logMsg = {
+      const logMsg: PolicyRequestMessage = {
         id: randomUUID(),
         // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
         messageId: randomUUID(),
-        role: 'log' as const,
-        source: 'router' as const,
-        level: 'verbose' as const, // Auto approvals do not need to be shown to the user
-        content: `[Auto-approved] Policy ${input.commandName} was executed.`,
-        stderr,
-        stdout, // Adding stdout and stderr for execution context
+        role: 'policy',
+        requestId: request.id,
+        commandName: input.commandName,
+        args: input.args,
+        status: 'approved',
+        content: `[Auto-approved] Policy ${input.commandName} was executed.\n\nCommand: ${commandStr}\nExit Code: ${exitCode}\n\nStdout:\n${stdout}\n\nStderr:\n${stderr}`,
         timestamp: new Date().toISOString(),
-        command: commandStr,
-        cwd: getWorkspaceRoot(),
-        exitCode,
         ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
-      } satisfies CommandLogMessage;
+      };
 
       await appendMessage(chatId, logMsg);
       return request;
@@ -190,20 +271,20 @@ export const createPolicyRequest = apiProcedure
 
     const previewContent = await generateRequestPreview(request);
 
-    const logMsg = {
+    const logMsg: PolicyRequestMessage = {
       id: randomUUID(),
       // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
       messageId: randomUUID(),
-      role: 'log' as const,
-      source: 'router' as const,
+      role: 'policy',
+      requestId: request.id,
+      commandName: input.commandName,
+      args: input.args,
+      status: 'pending',
       content: previewContent,
-      stderr: '',
       timestamp: new Date().toISOString(),
-      command: 'policy-request',
-      cwd: process.cwd(),
-      exitCode: 0,
+      displayRole: 'agent',
       ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
-    } satisfies CommandLogMessage;
+    };
 
     await appendMessage(chatId, logMsg);
     return request;
@@ -237,6 +318,8 @@ import {
 
 export const agentRouter = router({
   logMessage,
+  logReplyMessage,
+  logToolMessage,
   listCronJobs: agentListCronJobs,
   addCronJob: agentAddCronJob,
   deleteCronJob: agentDeleteCronJob,

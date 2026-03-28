@@ -1,0 +1,2 @@
+1. In the request "When an agent runs a command, the final output should be stored in an AgentReplyMessage (if it isn't NO_REPLY_NECESSARY)", do you mean `logCommandResult` should emit an `AgentReplyMessage` *instead* of a `CommandLogMessage`, or *in addition* to it? (If it's an `AgentReplyMessage`, it loses the structured fields like `command`, `cwd`, and `exitCode`. Should it be wrapped in the `content` of the `AgentReplyMessage`?)
+2. Should we completely remove `logSystemEvent` from `chat-logger.ts` and replace all calls to it with `logSystemMessage` now?
