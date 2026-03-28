@@ -55,6 +55,30 @@ describe('Adapter Commands', () => {
     );
   });
 
+  it('should handle /show with no arguments', async () => {
+    const config = { messages: {} };
+    const result = await handleAdapterCommand(
+      '/show',
+      config,
+      'config.json',
+      mockTrpcClient,
+      'chat-1'
+    );
+    expect(result).toContain('Valid options for /show:');
+  });
+
+  it('should handle /hide with no arguments', async () => {
+    const config = { messages: {} };
+    const result = await handleAdapterCommand(
+      '/hide',
+      config,
+      'config.json',
+      mockTrpcClient,
+      'chat-1'
+    );
+    expect(result).toContain('Valid options for /hide:');
+  });
+
   it('should handle /show <role>', async () => {
     const config = { messages: {} };
     const result = await handleAdapterCommand(

@@ -42,6 +42,10 @@ export async function handleAdapterCommand(
     return 'Configuration updated: Hidden all overrides (using defaults).';
   }
 
+  if (trimmed === '/show' || trimmed === '/hide') {
+    return `Valid options for ${trimmed}: ${Array.from(VALID_ROLES).join(', ')}`;
+  }
+
   if (trimmed.startsWith('/show ')) {
     const role = trimmed.slice(6).trim();
     if (!VALID_ROLES.has(role)) {
