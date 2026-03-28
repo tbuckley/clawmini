@@ -12,9 +12,7 @@ import {
   readEnvironment,
   getEnvironmentPath,
   getWorkspaceRoot,
-  updateChatSettings,
 } from '../shared/workspace.js';
-import { listChats } from '../shared/chats.js';
 import { cronManager } from './cron.js';
 import { SettingsSchema } from '../shared/config.js';
 import { validateToken, getApiContext } from './auth.js';

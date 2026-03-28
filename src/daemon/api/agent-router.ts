@@ -13,17 +13,10 @@ import { executeSafe, generateRequestPreview, executeRequest } from '../policy-u
 import { getWorkspaceRoot, readPolicies, getClawminiDir } from '../../shared/workspace.js';
 import { PolicyRequestService } from '../policy-request-service.js';
 import { RequestStore } from '../request-store.js';
-import { CronJobSchema } from '../../shared/config.js';
 import { apiProcedure, router } from './trpc.js';
 import { taskScheduler } from '../agent/task-scheduler.js';
 import { formatPendingMessages } from '../agent/utils.js';
-import {
-  resolveAgentDir,
-  validateLogFile,
-  listCronJobsShared,
-  addCronJobShared,
-  deleteCronJobShared,
-} from './router-utils.js';
+import { resolveAgentDir, validateLogFile } from './router-utils.js';
 
 export const logMessage = apiProcedure
   .input(
@@ -148,28 +141,7 @@ export const logToolMessage = apiProcedure
     return { success: true };
   });
 
-export const agentListCronJobs = apiProcedure.query(async ({ ctx }) => {
-  if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
-  const chatId = ctx.tokenPayload.chatId;
-  return listCronJobsShared(chatId);
-});
-
-export const agentAddCronJob = apiProcedure
-  .input(z.object({ job: CronJobSchema }))
-  .mutation(async ({ input, ctx }) => {
-    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
-    const chatId = ctx.tokenPayload.chatId;
-    const job = { ...input.job, agentId: ctx.tokenPayload.agentId };
-    return addCronJobShared(chatId, job);
-  });
-
-export const agentDeleteCronJob = apiProcedure
-  .input(z.object({ id: z.string() }))
-  .mutation(async ({ input, ctx }) => {
-    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
-    const chatId = ctx.tokenPayload.chatId;
-    return deleteCronJobShared(chatId, input.id);
-  });
+import { agentListCronJobs, agentAddCronJob, agentDeleteCronJob } from './cron-router.js';
 
 export const listPolicies = apiProcedure.query(async () => {
   return await readPolicies();
@@ -196,7 +168,11 @@ export const executePolicyHelp = apiProcedure
       if (input.commandName.startsWith('@clawmini/')) {
         return { stdout: '', stderr: 'This pseudo-command does not support --help\n', exitCode: 1 };
       }
-      return { stdout: '', stderr: `Policy ${input.commandName} is missing a required 'command' field.\n`, exitCode: 1 };
+      return {
+        stdout: '',
+        stderr: `Policy ${input.commandName} is missing a required 'command' field.\n`,
+        exitCode: 1,
+      };
     }
 
     const fullArgs = [...(policy.args || []), '--help'];
