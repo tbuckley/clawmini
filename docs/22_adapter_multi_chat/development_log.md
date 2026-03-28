@@ -19,3 +19,10 @@
 - Addressed a 1:1 mapping constraint where a user attempting to map a chat already mapped to another channel receives an instructional error.
 - Intercepted `/chat` and `/agent` commands inside `src/adapter-discord/index.ts` and `src/adapter-google-chat/client.ts`.
 - Mocked TRPC clients and verified routing behavior via Vitest `routing.test.ts`.
+
+## Session 4
+- Implemented Ticket 4: Dynamic Forwarding Subscriptions.
+- Refactored `startDaemonToDiscordForwarder` and `startDaemonToGoogleChatForwarder` to track multiple `chatId`s using `activeSubscriptions` Map.
+- Set up `syncSubscriptions` to poll and automatically initiate/teardown subscriptions based on changes in `channelChatMap`.
+- Fixed a bug causing an infinite loop in Vitest caused by `setInterval` inside `vi.runAllTimersAsync()` by refactoring tests to use `vi.advanceTimersByTimeAsync(30000)` instead.
+- Confirmed all checks (`npm run validate`) pass properly.

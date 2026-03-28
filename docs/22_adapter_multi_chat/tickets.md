@@ -62,7 +62,7 @@ Allow users to dynamically map their current external context (channel/space) to
 ---
 
 ## Ticket 4: Implement Dynamic Forwarding Subscriptions
-**Status**: Not Started
+**Status**: Completed
 
 **Description**: 
 Refactor the daemon-to-adapter forwarding logic to support multiple concurrent subscriptions and dynamic updates based on `channelChatMap`.
