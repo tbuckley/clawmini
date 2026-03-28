@@ -231,7 +231,16 @@ export async function main() {
         const rationale = interaction.fields.getTextInputValue('rationale');
 
         const command = rationale ? `/reject ${policyId} ${rationale}` : `/reject ${policyId}`;
-        await interaction.reply({ content: `Rejecting policy ${policyId}...`, ephemeral: true });
+
+        if (interaction.isFromMessage()) {
+          await interaction.update({ components: [] });
+          await interaction.followUp({
+            content: `Rejecting policy ${policyId}...`,
+            ephemeral: true,
+          });
+        } else {
+          await interaction.reply({ content: `Rejecting policy ${policyId}...`, ephemeral: true });
+        }
 
         try {
           await trpc.sendMessage.mutate({
@@ -246,7 +255,10 @@ export async function main() {
           });
         } catch (error) {
           console.error('Failed to send reject command to daemon:', error);
-          await interaction.editReply({ content: `Failed to reject policy ${policyId}.` });
+          await interaction.followUp({
+            content: `Failed to reject policy ${policyId}.`,
+            ephemeral: true,
+          });
         }
       }
     }

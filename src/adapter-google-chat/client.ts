@@ -13,10 +13,15 @@ import type { GoogleChatConfig } from './config.js';
 import { isAuthorized } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
 import { downloadAttachment } from './utils.js';
+<<<<<<< HEAD
 import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 import { google } from 'googleapis';
 import { getAuthClient } from './auth.js';
+=======
+import { getAuthClient } from './auth.js';
+import { google } from 'googleapis';
+>>>>>>> 8b27be9 (feat: update adapter interactions to visually reflect policy request cleanup)
 
 export function getTRPCClient(options: { socketPath?: string } = {}) {
   const socketPath = options.socketPath ?? getSocketPath();
@@ -112,6 +117,23 @@ export function startGoogleChatIngestion(
 
           if (policyId && (methodName === 'approve' || methodName === 'reject')) {
             const cmd = methodName === 'approve' ? `/approve ${policyId}` : `/reject ${policyId}`;
+
+            if (event.message?.name) {
+              try {
+                const chatApi = google.chat({ version: 'v1', auth: await getAuthClient() });
+
+                await chatApi.spaces.messages.update({
+                  name: event.message.name,
+                  updateMask: 'cardsV2',
+                  requestBody: {
+                    cardsV2: [],
+                  },
+                });
+              } catch (updateErr) {
+                console.error(`Failed to update card for policy ${policyId}:`, updateErr);
+              }
+            }
+
             await trpc.sendMessage.mutate({
               type: 'send-message',
               client: 'cli',

@@ -537,15 +537,19 @@ describe('Discord Adapter Entry Point', () => {
       const mockInteraction = {
         isButton: () => false,
         isModalSubmit: () => true,
+        isFromMessage: () => true,
         user: { id: 'user-123' },
         customId: 'modal_reject_123',
         fields: {
           getTextInputValue: vi.fn().mockReturnValue('bad policy'),
         },
         reply: vi.fn(),
+        update: vi.fn(),
+        followUp: vi.fn(),
       };
       if (interactionHandler) await interactionHandler(mockInteraction);
-      expect(mockInteraction.reply).toHaveBeenCalledWith({
+      expect(mockInteraction.update).toHaveBeenCalledWith({ components: [] });
+      expect(mockInteraction.followUp).toHaveBeenCalledWith({
         content: 'Rejecting policy 123...',
         ephemeral: true,
       });
