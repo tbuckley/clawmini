@@ -124,8 +124,9 @@ export function startGoogleChatIngestion(
 
                 await chatApi.spaces.messages.update({
                   name: event.message.name,
-                  updateMask: 'cardsV2',
+                  updateMask: 'text,cardsV2',
                   requestBody: {
+                    text: `Policy request ${policyId} has been handled.`,
                     cardsV2: [],
                   },
                 });
