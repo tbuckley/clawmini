@@ -19,7 +19,7 @@ Update the state and configuration schemas for both the Discord and Google Chat 
 ---
 
 ## Ticket 2: Implement First Contact Protocol and Message Pre-processing
-**Status**: Not Started
+**Status**: Completed
 
 **Description**: 
 Adjust the message ingestion pipeline for both adapters to handle incoming messages in new contexts and implement platform-specific filtering rules.

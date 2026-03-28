@@ -58,7 +58,7 @@ describe('Daemon to Discord Forwarder', () => {
     };
 
     vi.mocked(readDiscordState).mockResolvedValue({});
-    vi.mocked(updateDiscordState).mockResolvedValue(undefined as any);
+    vi.mocked(updateDiscordState).mockResolvedValue({});
   });
 
   it('should fetch initial messages if no state exists and start observation loop', async () => {

@@ -65,8 +65,26 @@ export async function main() {
     if (message.author.id === client.user?.id) return;
     if (message.author.bot) return;
 
-    // Only handle DM messages
-    if (message.guild) return;
+    // Enforce requireMention config for guild messages
+    if (message.guild && config.requireMention) {
+      const isMentioned = message.mentions.has(client.user!.id);
+      let isReplyToBot = false;
+
+      if (message.reference && message.reference.messageId) {
+        try {
+          const referencedMessage = await message.channel.messages.fetch(
+            message.reference.messageId
+          );
+          isReplyToBot = referencedMessage.author.id === client.user!.id;
+        } catch (err) {
+          console.error('Failed to fetch referenced message for mention check:', err);
+        }
+      }
+
+      if (!isMentioned && !isReplyToBot) {
+        return;
+      }
+    }
 
     // Check if the user is authorized
     if (!isAuthorized(message.author.id, config.authorizedUserId)) {
@@ -78,11 +96,28 @@ export async function main() {
 
     console.log(`Received message from ${message.author.tag}: ${message.content}`);
 
+    const externalContextId = message.channelId;
+    const currentState = await readDiscordState();
+    const mappedChatId = currentState.channelChatMap?.[externalContextId];
+
+    const isRoutingCommand =
+      message.content.startsWith('/chat') || message.content.startsWith('/agent');
+
+    if (!mappedChatId && !isRoutingCommand) {
+      console.log(`Unmapped channel ${externalContextId}, sending first contact warning.`);
+      await message.reply(
+        'This channel/space is not currently mapped to a daemon chat. Please use `/chat [chat-id]` or `/agent [agent-id]` to map it.'
+      );
+      return;
+    }
+
+    const targetChatId = mappedChatId || config.chatId;
+
     const commandResult = await handleAdapterCommand(
       message.content,
       filteringConfig,
       trpc as unknown as CommandTrpcClient,
-      config.chatId
+      targetChatId
     );
 
     if (commandResult) {
@@ -163,7 +198,7 @@ export async function main() {
         client: 'cli',
         data: {
           message: finalContent,
-          chatId: config.chatId,
+          chatId: targetChatId,
           files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
           adapter: 'discord',
           noWait: true,
@@ -194,12 +229,16 @@ export async function main() {
         await interaction.update({ components: [] });
         await interaction.followUp({ content: `Approving policy ${policyId}...`, ephemeral: true });
         try {
+          const currentState = await readDiscordState();
+          const targetChatId = interaction.channelId
+            ? currentState.channelChatMap?.[interaction.channelId] || config.chatId
+            : config.chatId;
           await trpc.sendMessage.mutate({
             type: 'send-message',
             client: 'cli',
             data: {
               message: `/approve ${policyId}`,
-              chatId: config.chatId,
+              chatId: targetChatId,
               adapter: 'discord',
               noWait: true,
             },

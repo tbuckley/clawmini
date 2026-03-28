@@ -12,6 +12,11 @@ const { mockClientInstance } = vi.hoisted(() => ({
   },
 }));
 
+vi.mock('./state.js', () => ({
+  readDiscordState: vi.fn().mockResolvedValue({ channelChatMap: { 'channel-123': 'default' } }),
+  updateDiscordState: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('discord.js', () => {
   return {
     Client: class {
@@ -120,6 +125,8 @@ describe('Discord Adapter Entry Point', () => {
       author: { id: 'user-123', tag: 'user#1234' },
       content: 'Hello daemon!',
       guild: null,
+      channelId: 'channel-123',
+      reply: vi.fn(),
       attachments: new Map(),
     };
 
@@ -172,6 +179,8 @@ describe('Discord Adapter Entry Point', () => {
         author: { id: 'user-123', tag: 'user#1234' } as unknown as import('discord.js').User,
         content: 'message 1',
         guild: null,
+        channelId: 'channel-123',
+        reply: vi.fn(),
         attachments: new Map(),
       } as unknown as import('discord.js').Message);
       await messageHandler({
@@ -179,6 +188,8 @@ describe('Discord Adapter Entry Point', () => {
         author: { id: 'user-123', tag: 'user#1234' } as unknown as import('discord.js').User,
         content: 'message 2',
         guild: null,
+        channelId: 'channel-123',
+        reply: vi.fn(),
         attachments: new Map(),
       } as unknown as import('discord.js').Message);
     }
@@ -228,6 +239,8 @@ describe('Discord Adapter Entry Point', () => {
       author: { id: 'user-evil', tag: 'evil#666' },
       content: 'Hack the daemon!',
       guild: null,
+      channelId: 'channel-123',
+      reply: vi.fn(),
     };
 
     const { isAuthorized } = await import('./config.js');
@@ -240,7 +253,7 @@ describe('Discord Adapter Entry Point', () => {
     expect(mockTrpc.sendMessage.mutate).not.toHaveBeenCalled();
   });
 
-  it('should ignore non-DM (guild) messages', async () => {
+  it('should process non-DM (guild) messages if requireMention is false', async () => {
     let messageHandler: ((message: import('discord.js').Message) => Promise<void>) | undefined;
     vi.mocked(mockClientInstance.on).mockImplementation(
       (event: string, cb: (...args: unknown[]) => void) => {
@@ -260,6 +273,9 @@ describe('Discord Adapter Entry Point', () => {
       author: { id: 'user-123', tag: 'user#1234' },
       content: 'Hack the daemon!',
       guild: { id: 'guild-123' },
+      channelId: 'channel-123',
+      reply: vi.fn(),
+      attachments: new Map(),
     };
 
     const { isAuthorized } = await import('./config.js');
@@ -269,7 +285,7 @@ describe('Discord Adapter Entry Point', () => {
       await messageHandler(mockMessage as unknown as import('discord.js').Message);
     }
 
-    expect(mockTrpc.sendMessage.mutate).not.toHaveBeenCalled();
+    expect(mockTrpc.sendMessage.mutate).toHaveBeenCalled();
   });
 
   it('should download attachments and forward their paths', async () => {
@@ -310,6 +326,8 @@ describe('Discord Adapter Entry Point', () => {
         author: { id: 'user-123', tag: 'user#1234' } as unknown as import('discord.js').User,
         content: 'Check out this file',
         guild: null,
+        channelId: 'channel-123',
+        reply: vi.fn(),
         attachments,
       } as unknown as import('discord.js').Message);
     }
@@ -370,6 +388,7 @@ describe('Discord Adapter Entry Point', () => {
         author: { id: 'user-123', tag: 'user#1234' } as unknown as import('discord.js').User,
         content: 'Check out this huge file',
         guild: null,
+        channelId: 'channel-123',
         attachments,
         reply: replyMock,
       } as unknown as import('discord.js').Message);
@@ -426,6 +445,8 @@ describe('Discord Adapter Entry Point', () => {
         content: "Yes, I'm in!",
         guild: null,
         attachments: new Map(),
+        channelId: 'channel-123',
+        reply: vi.fn(),
         reference: { messageId: '12345' },
         fetchReference: vi.fn().mockResolvedValue(mockReferencedMessage),
       } as unknown as import('discord.js').Message);

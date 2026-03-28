@@ -89,8 +89,8 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      const state = await readGoogleChatState();
-      let activeSpaceName = config.directMessageName || state.activeSpaceName;
+      const currentState = await readGoogleChatState();
+      let activeSpaceName = config.directMessageName || currentState.activeSpaceName;
 
       if (!activeSpaceName) {
         activeSpaceName = spaceName;
@@ -100,6 +100,31 @@ export function startGoogleChatIngestion(
         message.ack();
         return;
       }
+
+      const externalContextId = spaceName;
+      const mappedChatId = currentState.channelChatMap?.[externalContextId];
+      const text = event.message?.text || '';
+      const isRoutingCommand = text.startsWith('/chat') || text.startsWith('/agent');
+
+      if (!mappedChatId && !isRoutingCommand) {
+        console.log(`Unmapped space ${externalContextId}, sending first contact warning.`);
+        try {
+          const authClient = await getAuthClient();
+          const chatApi = google.chat({ version: 'v1', auth: authClient });
+          await chatApi.spaces.messages.create({
+            parent: externalContextId,
+            requestBody: {
+              text: 'This channel/space is not currently mapped to a daemon chat. Please use `/chat [chat-id]` or `/agent [agent-id]` to map it.',
+            },
+          });
+        } catch (err) {
+          console.error('Failed to send first contact warning:', err);
+        }
+        message.ack();
+        return;
+      }
+
+      const targetChatId = mappedChatId || config.chatId || 'default';
 
       if (event.type === 'CARD_CLICKED') {
         const action = event.action;
@@ -154,7 +179,7 @@ export function startGoogleChatIngestion(
               client: 'cli',
               data: {
                 message: cmd,
-                chatId: config.chatId || 'default',
+                chatId: targetChatId,
                 adapter: 'google-chat',
                 noWait: true,
               },
@@ -166,13 +191,11 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      const text = event.message?.text || '';
-
       const commandResult = await handleAdapterCommand(
         text,
         filteringConfig,
         trpc as unknown as CommandTrpcClient,
-        config.chatId || 'default'
+        targetChatId
       );
 
       if (commandResult) {
@@ -227,7 +250,7 @@ export function startGoogleChatIngestion(
         client: 'cli',
         data: {
           message: text,
-          chatId: config.chatId || 'default',
+          chatId: targetChatId,
           files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
           adapter: 'google-chat',
           noWait: true,
