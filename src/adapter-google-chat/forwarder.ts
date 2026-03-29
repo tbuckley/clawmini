@@ -159,18 +159,15 @@ export async function startDaemonToGoogleChatForwarder(
                       continue;
                     }
 
-                    if ('level' in logMessage && logMessage.level === 'verbose') {
-                      await saveLastMessageId(chatId, logMessage.id).catch(console.error);
-                      lastMessageId = logMessage.id;
-                      continue;
-                    }
-
                     const hasContent = !!logMessage.content?.trim();
                     const files =
                       'files' in logMessage ? (logMessage.files as string[]) : undefined;
                     const hasFiles = Array.isArray(files) && files.length > 0;
 
-                    if (!hasContent && !hasFiles) {
+                    if (
+                      ('level' in logMessage && logMessage.level === 'verbose') ||
+                      (!hasContent && !hasFiles)
+                    ) {
                       await saveLastMessageId(chatId, logMessage.id).catch(console.error);
                       lastMessageId = logMessage.id;
                       continue;
@@ -197,8 +194,8 @@ export async function startDaemonToGoogleChatForwarder(
 
                         if (
                           config.driveUploadEnabled !== false &&
-                          config.driveOauthClientId &&
-                          config.driveOauthClientSecret
+                          config.oauthClientId &&
+                          config.oauthClientSecret
                         ) {
                           text += `\n\n`;
                           try {
@@ -305,8 +302,10 @@ export async function startDaemonToGoogleChatForwarder(
     targetChatIds.add(defaultChatId);
 
     if (state.channelChatMap) {
-      for (const mappedChatId of Object.values(state.channelChatMap)) {
-        targetChatIds.add(mappedChatId);
+      for (const mappedEntry of Object.values(state.channelChatMap)) {
+        if (mappedEntry.chatId) {
+          targetChatIds.add(mappedEntry.chatId);
+        }
       }
     }
 

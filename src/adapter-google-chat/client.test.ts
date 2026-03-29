@@ -9,7 +9,7 @@ import * as utils from './utils.js';
 vi.mock('node:fs');
 vi.mock('./state.js', () => ({
   readGoogleChatState: vi.fn().mockResolvedValue({
-    channelChatMap: { 'spaces/123': 'default' },
+    channelChatMap: { 'spaces/123': { chatId: 'default' } },
     activeSpaceName: 'spaces/123',
   }),
   updateGoogleChatState: vi.fn().mockResolvedValue(undefined),

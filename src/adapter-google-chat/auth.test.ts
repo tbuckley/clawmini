@@ -33,11 +33,11 @@ describe('auth.ts', () => {
     vi.restoreAllMocks();
   });
 
-  it('should only update driveOauthTokens when new tokens are emitted to prevent overwriting state', async () => {
+  it('should only update oauthTokens when new tokens are emitted to prevent overwriting state', async () => {
     const mockState = {
       lastSyncedMessageIds: { default: '123' },
       activeSpaceName: 'Space1',
-      driveOauthTokens: { access_token: 'old_token' },
+      oauthTokens: { access_token: 'old_token' },
     };
 
     vi.mocked(state.readGoogleChatState).mockResolvedValue(mockState);
@@ -54,11 +54,11 @@ describe('auth.ts', () => {
       projectId: 'test',
       subscriptionName: 'test-sub',
       authorizedUsers: [],
-      driveOauthClientId: 'client-id',
-      driveOauthClientSecret: 'client-secret',
+      oauthClientId: 'client-id',
+      oauthClientSecret: 'client-secret',
     };
 
-    const authPromise = auth.getDriveAuthClient(config);
+    const authPromise = auth.getUserAuthClient(config);
 
     await vi.waitFor(() => {
       expect(mockOn).toHaveBeenCalledWith('tokens', expect.any(Function));
@@ -70,7 +70,7 @@ describe('auth.ts', () => {
     await tokenCallback(newTokens);
 
     expect(state.updateGoogleChatState).toHaveBeenCalledWith({
-      driveOauthTokens: {
+      oauthTokens: {
         access_token: 'new_token',
       },
     });

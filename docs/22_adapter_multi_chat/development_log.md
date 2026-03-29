@@ -3,26 +3,43 @@
 ## Session 1
 - Initialised Ticket 1: Update State and Config Schemas for Multi-Chat Support.
 - Verified schema changes for Discord and Google Chat adapters in git diff.
-- Identified test failures in `npm run validate` and updated tests in `src/adapter-discord/config.test.ts`, `src/adapter-discord/forwarder.test.ts`, and `src/adapter-google-chat/state.test.ts` to expect the new schema formats properly.
-- Completed Ticket 1.
+- Identified test failures in `npm run validate`.
+- Fixed `channelChatMap` to be an object instead of a string array in test and code logic for `src/adapter-discord/client.test.ts`, `src/adapter-discord/client.ts`, `src/adapter-discord/state.test.ts`, `src/adapter-discord/forwarder.ts`.
+- Updated schema typing to allow undefined explicitly where required, maintaining strict structural compatibility.
+- Re-run `npm run validate`, successfully passing all checks.
+- Completed Ticket 1 in `tickets.md` and committed all changes.
+
 ## Session 2
-- Implemented Ticket 2: First Contact Protocol and Message Pre-processing.
-- Updated Discord adapter to allow processing of guild messages, but restricted by the `requireMention` config.
-- Added the First Contact Protocol to both Discord and Google Chat adapters. Unmapped contexts now receive a friendly warning instead of silently dropping the message.
-- Fixed broken Vitest test cases by properly mocking state mapping (`readDiscordState` and `readGoogleChatState`) to satisfy the new First Contact constraints.
-- Added E2E type overrides for test logs.
+- Started work on Ticket 2: Implement "First Contact" Protocol (Discord).
+- Refactored `startDiscordIngestion` in `src/adapter-discord/client.ts` to implement the required First Contact logic:
+  - Check if `targetChatId` is mapped for a given channel.
+  - If not, verify if it's the very first message processed by the adapter by checking if `channelChatMap` is empty.
+  - Automatically map the first channel to `config.chatId` (default) and process the message.
+  - If it's not the first message, reply with a strict, non-processed warning indicating the channel is unmapped and block the message from daemon propagation.
+- Verified and fixed Discord tests to ensure correct behaviour:
+  - Ensured routing commands correctly populate `channelChatMap`.
+  - Added new mock properties `mockMessage.reply` and modified expected return shapes so subsequent tests relying on default properties (like `channelChatMap`) don't fail.
+- When mocking discord.js Messages, ensure they match the properties required by the code paths (e.g. `channelId`, `attachments`, `reply`).
+- Confirmed all checks (`npm run validate`) pass properly.
 
 ## Session 3
-- Implemented Ticket 3: Routing Commands (`/chat` and `/agent`).
-- Created `src/shared/adapters/routing.ts` to share logic between both adapters.
-- Extended the daemon's TRPC router (`src/daemon/api/user-router.ts`) to expose `getChats`, `getAgents`, and `createChat` (with `agentId` assignment) functionality for adapter clients.
-- Addressed a 1:1 mapping constraint where a user attempting to map a chat already mapped to another channel receives an instructional error.
-- Intercepted `/chat` and `/agent` commands inside `src/adapter-discord/index.ts` and `src/adapter-google-chat/client.ts`.
-- Mocked TRPC clients and verified routing behavior via Vitest `routing.test.ts`.
-
-## Session 4
-- Implemented Ticket 4: Dynamic Forwarding Subscriptions.
-- Refactored `startDaemonToDiscordForwarder` and `startDaemonToGoogleChatForwarder` to track multiple `chatId`s using `activeSubscriptions` Map.
-- Set up `syncSubscriptions` to poll and automatically initiate/teardown subscriptions based on changes in `channelChatMap`.
+- Started work on Ticket 3: Implement Dynamic Subscriptions (Discord Forwarder).
+- Updated `startDaemonToDiscordForwarder` in `src/adapter-discord/forwarder.ts` to:
+  - Establish `trpc.waitForMessages.subscribe` for each chat mapped in `state.channelChatMap`.
+  - Track `lastSyncedMessageIds` for each daemon chat independently rather than globally.
+  - Set up an `fs.watch` event listener on `state.json` to dynamically synchronize subscriptions on changes.
+  - Correctly extract the target `channelId` to post messages by doing a reverse lookup on `state.channelChatMap`.
+- Resolved a Vitest unhandled rejection hook failure where a thrown Error during `syncSubscriptions` wasn't properly caught within an async boundary.
 - Fixed a bug causing an infinite loop in Vitest caused by `setInterval` inside `vi.runAllTimersAsync()` by refactoring tests to use `vi.advanceTimersByTimeAsync(30000)` instead.
 - Confirmed all checks (`npm run validate`) pass properly.
+
+## Session 4
+- Started work on Ticket 5: Add Google Chat Space Subscription Config & State Schemas.
+- Updated `GoogleChatStateSchema` in `src/adapter-google-chat/state.ts` to use an object for `channelChatMap` handling space subscriptions (`chatId`, `subscriptionId`, `expirationDate`).
+- Added schema migration paths in `readGoogleChatState` to support single-chat legacy formats and migrated `driveOauthTokens` to `oauthTokens`.
+- Replaced `driveOauthClientId` and `driveOauthClientSecret` with generic `oauthClientId` and `oauthClientSecret` in `src/adapter-google-chat/config.ts`.
+- Updated `src/adapter-google-chat/auth.ts` to use `getUserAuthClient()` matching the required new OAuth flows and multiple scopes for Drive and Chat readonly.
+- Updated `src/adapter-google-chat/index.ts` to initialize `getUserAuthClient()` when OAuth secrets are present.
+- Updated numerous test files to accommodate the structural schema changes and OAuth renaming.
+- Successfully verified tests passing using `npm run validate`.
+- Marked Ticket 5 as Completed.

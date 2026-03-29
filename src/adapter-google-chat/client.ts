@@ -87,15 +87,18 @@ export function startGoogleChatIngestion(
       const currentState = await readGoogleChatState();
 
       const externalContextId = spaceName;
-      const mappedChatId = currentState.channelChatMap?.[externalContextId];
+      const mappedChatId = currentState.channelChatMap?.[externalContextId]?.chatId;
       const text = event.message?.text || '';
       const isRoutingCommand = text.startsWith('/chat') || text.startsWith('/agent');
 
       if (isRoutingCommand) {
+        const stringChatMap = Object.fromEntries(
+          Object.entries(currentState.channelChatMap || {}).map(([k, v]) => [k, v.chatId || ''])
+        );
         const routingResult = await handleRoutingCommand(
           text,
           externalContextId,
-          currentState.channelChatMap || {},
+          stringChatMap,
           'google-chat',
           trpc as unknown as RoutingTrpcClient
         );
@@ -140,7 +143,10 @@ export function startGoogleChatIngestion(
           await updateGoogleChatState((latestState) => ({
             channelChatMap: {
               ...(latestState.channelChatMap || {}),
-              [externalContextId]: targetChatId as string,
+              [externalContextId]: {
+                ...(latestState.channelChatMap?.[externalContextId] || {}),
+                chatId: targetChatId as string,
+              },
             },
           }));
         } else {

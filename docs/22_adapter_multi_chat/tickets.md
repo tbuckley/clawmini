@@ -77,3 +77,88 @@ Refactor the daemon-to-adapter forwarding logic to support multiple concurrent s
 - Write integration or unit tests verifying that multiple mocked subscriptions can run concurrently and route daemon messages to the correct mapped external channels.
 - Verify that state updates dynamically trigger new subscriptions without requiring an adapter restart.
 - Run `npm run validate`.
+
+---
+
+## Ticket 5: Add Google Chat Space Subscription Config & State Schemas
+**Status**: Completed
+
+**Description**: 
+Update the schemas to support user-level Space Subscriptions for Workspace Events.
+
+**Tasks**:
+- Update `GoogleChatStateSchema` in `src/adapter-google-chat/state.ts` using `zod` to expand `channelChatMap` to store subscription data: `z.record(z.string(), z.object({ chatId: z.string().nullable().optional(), subscriptionId: z.string().optional(), expirationDate: z.string().optional() })).optional()`.
+- Ensure migrations cleanly default `channelChatMap` to handle single-chat legacy formats if present.
+- Rename legacy `driveOauthClientId`, `driveOauthClientSecret`, and `driveOauthTokens` to generic `oauthClientId`, `oauthClientSecret`, and `oauthTokens` across schemas.
+- Update `src/adapter-google-chat/auth.ts` to request a combined scope array: `['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/chat.messages.readonly']` and `access_type=offline`. Rename `getDriveAuthClient` to `getUserAuthClient`.
+- Update `src/adapter-google-chat/index.ts` to invoke `getUserAuthClient()` if OAuth credentials exist, removing the dependency on `driveUploadEnabled !== false`.
+
+**Verification**:
+- Add unit tests for schema parsing and single-chat legacy migrations for `channelChatMap` subscriptions.
+- Run `npm run validate`.
+
+---
+
+## Ticket 6: Implement Space Subscription Lifecycle (`ADDED_TO_SPACE` & `REMOVED_FROM_SPACE`)
+**Status**: Not Started
+
+**Description**: 
+Handle Google Chat bot events to automatically create and tear down Space Subscriptions when the bot is added to or removed from a Space.
+
+**Tasks**:
+- Update `startGoogleChatIngestion` in `src/adapter-google-chat/client.ts` to intercept `ADDED_TO_SPACE` events.
+- If the space type is not `DIRECT_MESSAGE`:
+  1. Generate a new Access Token using the saved user Refresh Token.
+  2. Perform a `POST` request to `https://workspaceevents.googleapis.com/v1/subscriptions` to subscribe to `google.workspace.chat.message.v1.created` for the target space.
+  3. Save the returned subscription info (`subscriptionId`, `expirationDate`) into `state.json` under the channel's entry in `channelChatMap`.
+- Intercept `REMOVED_FROM_SPACE` events:
+  1. Look up the `subscriptionId` in `channelChatMap`.
+  2. Generate an Access Token and send a `DELETE` request to remove the subscription.
+  3. Delete the subscription fields from the channel's entry in `channelChatMap`, and delete the entry entirely if `chatId` is not set.
+
+**Verification**:
+- Add unit tests mocking the Google Workspace Events API to ensure `ADDED_TO_SPACE` correctly creates subscriptions and writes to state.
+- Add unit tests mocking `REMOVED_FROM_SPACE` deletion.
+- Run `npm run validate`.
+
+---
+
+## Ticket 7: Dual-Pipeline Pub/Sub Worker Logic
+**Status**: Not Started
+
+**Description**: 
+Refactor message ingestion to correctly process native Bot Events alongside the newly configured Workspace Events coming from the same Pub/Sub topic, ensuring no duplication or loops.
+
+**Tasks**:
+- Update `startGoogleChatIngestion` in `src/adapter-google-chat/client.ts`.
+- Read the `ce-type` attribute of the Pub/Sub message. If it equals `google.workspace.chat.message.v1.created`, parse the payload as a Workspace Event. Otherwise, parse as a native Bot Event.
+- Explicitly check the sender of the event. If the sender is `BOT`, `message.ack()` and drop it immediately to prevent infinite reply loops.
+- Implement an in-memory 60-second LRU cache (or Map with cleanup) to store `Message ID`s. If a message ID has already been seen (because an `@mention` triggers both pipelines), drop the duplicate.
+- Ensure all outbound replies continue to use the Bot's Service Account, not the user token.
+
+**Verification**:
+- Add tests mocking Workspace Event payloads vs Bot Event payloads, verifying both are formatted and forwarded properly.
+- Add tests simulating an identical Message ID arriving twice in quick succession and verify only one daemon interaction occurs.
+- Add tests verifying messages from `BOT` are dropped.
+- Run `npm run validate`.
+
+---
+
+## Ticket 8: Background Renewal Cron for Subscriptions
+**Status**: Not Started
+
+**Description**: 
+Implement a background process to prevent active Space Subscriptions from expiring after their default 7-day TTL.
+
+**Tasks**:
+- Implement a recurring background task (e.g., an hourly `setInterval` or cron script) in the Google Chat adapter.
+- Parse `channelChatMap` from `state.json`.
+- Identify subscriptions where `expirationDate` is less than 48 hours away.
+- For expiring subscriptions, use the globally stored user OAuth tokens to fetch an Access Token.
+- `PATCH https://workspaceevents.googleapis.com/v1/subscriptions/{subscriptionId}?updateMask=ttl` with `{ "ttl": "604800s" }`.
+- Update `state.json` with the newly returned `expirationDate`.
+
+**Verification**:
+- Add unit tests for the background renewal logic using fake timers to verify renewals trigger when dates are close.
+- Mock the PATCH request and verify state updates.
+- Run `npm run validate`.

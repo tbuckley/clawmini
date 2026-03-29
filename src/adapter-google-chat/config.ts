@@ -12,8 +12,8 @@ export const GoogleChatConfigSchema = z.looseObject({
   chatId: z.string().default('default').optional(),
   directMessageName: z.string().optional(),
   driveUploadEnabled: z.boolean().default(true).optional(),
-  driveOauthClientId: z.string().optional(),
-  driveOauthClientSecret: z.string().optional(),
+  oauthClientId: z.string().optional(),
+  oauthClientSecret: z.string().optional(),
 });
 
 export type GoogleChatConfig = z.infer<typeof GoogleChatConfigSchema>;
@@ -65,8 +65,8 @@ export async function initGoogleChatConfig(startDir = process.cwd()): Promise<vo
     subscriptionName: 'YOUR_SUBSCRIPTION_NAME',
     authorizedUsers: ['user@example.com'],
     chatId: 'default',
-    driveOauthClientId: 'YOUR_OAUTH_CLIENT_ID',
-    driveOauthClientSecret: 'YOUR_OAUTH_CLIENT_SECRET',
+    oauthClientId: 'YOUR_OAUTH_CLIENT_ID',
+    oauthClientSecret: 'YOUR_OAUTH_CLIENT_SECRET',
   };
 
   await fsPromises.writeFile(configPath, JSON.stringify(templateConfig, null, 2), 'utf-8');

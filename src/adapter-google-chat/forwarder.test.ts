@@ -8,8 +8,8 @@ const mockConfig = {
   chatId: 'default',
   directMessageName: 'spaces/test-space',
   driveUploadEnabled: true,
-  driveOauthClientId: 'mock-client-id',
-  driveOauthClientSecret: 'mock-client-secret',
+  oauthClientId: 'mock-client-id',
+  oauthClientSecret: 'mock-client-secret',
 };
 
 const mockMessagesCreate = vi.fn().mockResolvedValue({});
@@ -60,9 +60,10 @@ vi.mock('googleapis', () => {
   };
 });
 
-const mockReadState = vi
-  .fn()
-  .mockResolvedValue({ driveOauthTokens: { access_token: 'mock-token' } });
+const mockReadState = vi.fn().mockImplementation(() => {
+  console.log('MOCKED mockReadState called!');
+  return Promise.resolve({ oauthTokens: { access_token: 'mock-token' } });
+});
 const mockWriteState = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('./state.js', () => ({
@@ -78,6 +79,11 @@ vi.mock('./state.js', () => ({
     return Promise.resolve(result);
   },
   getGoogleChatStatePath: vi.fn().mockReturnValue('./.tmp-mock-google/state.json'),
+}));
+
+vi.mock('./auth.js', () => ({
+  getAuthClient: vi.fn().mockResolvedValue({}),
+  getUserAuthClient: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock('node:fs', () => ({
@@ -212,7 +218,7 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     const forwarderPromise = startDaemonToGoogleChatForwarder(
       mockTrpc,
-      { ...mockConfig, driveOauthClientId: undefined, driveOauthClientSecret: undefined },
+      { ...mockConfig, oauthClientId: undefined, oauthClientSecret: undefined },
       {},
       controller.signal
     );
@@ -474,7 +480,7 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     // Simulate disk lag where read state returns an older message ID
     mockReadState.mockResolvedValueOnce({
-      driveOauthTokens: { access_token: 'mock-token' },
+      oauthTokens: { access_token: 'mock-token' },
       lastSyncedMessageIds: { default: 'msg-stale' },
     });
 

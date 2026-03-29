@@ -5,8 +5,17 @@ import { getClawminiDir } from '../shared/workspace.js';
 
 export const GoogleChatStateSchema = z.object({
   lastSyncedMessageIds: z.record(z.string(), z.string()).optional(),
-  channelChatMap: z.record(z.string(), z.string()).optional(),
-  driveOauthTokens: z.any().optional(),
+  channelChatMap: z
+    .record(
+      z.string(),
+      z.object({
+        chatId: z.string().nullable().optional(),
+        subscriptionId: z.string().optional(),
+        expirationDate: z.string().optional(),
+      })
+    )
+    .optional(),
+  oauthTokens: z.any().optional(),
   activeSpaceName: z.string().optional(),
   activeSpaceByChatId: z.record(z.string(), z.string()).optional(),
   filters: z.record(z.string(), z.boolean()).optional(),
@@ -28,11 +37,22 @@ export async function readGoogleChatState(startDir = process.cwd()): Promise<Goo
     if (parsed.lastSyncedMessageId && !parsed.lastSyncedMessageIds) {
       parsed.lastSyncedMessageIds = { default: parsed.lastSyncedMessageId };
     }
+    if (parsed.driveOauthTokens && !parsed.oauthTokens) {
+      parsed.oauthTokens = parsed.driveOauthTokens;
+      delete parsed.driveOauthTokens;
+    }
+    if (parsed.channelChatMap) {
+      for (const [key, value] of Object.entries(parsed.channelChatMap)) {
+        if (typeof value === 'string') {
+          parsed.channelChatMap[key] = { chatId: value };
+        }
+      }
+    }
 
     const result = GoogleChatStateSchema.safeParse(parsed);
     if (!result.success) {
       return {
-        driveOauthTokens: undefined,
+        oauthTokens: undefined,
         activeSpaceName: undefined,
       };
     }
@@ -40,7 +60,7 @@ export async function readGoogleChatState(startDir = process.cwd()): Promise<Goo
   } catch {
     // Return default state if file doesn't exist or is invalid JSON
     return {
-      driveOauthTokens: undefined,
+      oauthTokens: undefined,
       activeSpaceName: undefined,
     };
   }

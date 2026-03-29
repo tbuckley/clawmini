@@ -29,3 +29,14 @@
    - The user needs a way to say "route this channel to chat X" or "route this channel to agent Y".
    - This could be implemented via adapter-level chat commands (e.g., `!chat <id>`, `!agent <id>`).
    - The adapter would need to validate these IDs against the daemon's TRPC API (`trpc.getChats`, `trpc.getAgents`).
+
+## Space Subscriptions (Google Chat) Research
+- `src/adapter-google-chat/state.ts`: The `GoogleChatStateSchema` needs its `channelChatMap` updated to store subscription info alongside the chat ID. It should be: `channelChatMap: z.record(z.string(), z.object({ chatId: z.string().nullable().optional(), subscriptionId: z.string().optional(), expirationDate: z.string().optional() })).optional()`. We need a migration to convert existing `Record<string, string>` formats into this object format.
+- `src/adapter-google-chat/auth.ts`: Currently handles Bot auth (Service Account) and Drive Auth (OAuth2 with offline access). We need to adapt the OAuth flow to request Google Chat scopes (likely `https://www.googleapis.com/auth/chat.messages.readonly` or similar depending on the exact event subscription) and capture the refresh token for the user. 
+- `src/adapter-google-chat/client.ts`: The `startGoogleChatIngestion` function currently handles `MESSAGE` and `CARD_CLICKED` events. We must update it to:
+  1. Handle `ADDED_TO_SPACE` natively (if `space.type !== "DIRECT_MESSAGE"`) to create space subscriptions using the globally saved user OAuth tokens and save the result to state.
+  2. Handle `REMOVED_FROM_SPACE` to cleanly delete the subscription and state entry.
+  3. Distinguish between Workspace Events (via the `ce-type` Pub/Sub attribute) and native Bot Events.
+  4. Deduplicate messages based on Message ID using a 60-second in-memory cache to prevent processing the same message twice when the bot is `@mentioned` in a subscribed space.
+  5. Drop messages where `sender === 'BOT'` to prevent infinite loops.
+- Background Renewal: We need to implement a mechanism (e.g., an hourly `setInterval` inside the adapter process or a separate cron) to check `expirationDate` of space subscriptions and renew those expiring in < 48 hours via `PATCH /v1/subscriptions/{id}`.

@@ -115,8 +115,8 @@ describe('Google Chat Adapter Configuration', () => {
         subscriptionName: 'YOUR_SUBSCRIPTION_NAME',
         authorizedUsers: ['user@example.com'],
         chatId: 'default',
-        driveOauthClientId: 'YOUR_OAUTH_CLIENT_ID',
-        driveOauthClientSecret: 'YOUR_OAUTH_CLIENT_SECRET',
+        oauthClientId: 'YOUR_OAUTH_CLIENT_ID',
+        oauthClientSecret: 'YOUR_OAUTH_CLIENT_SECRET',
       });
     });
 

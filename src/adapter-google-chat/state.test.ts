@@ -60,7 +60,7 @@ describe('Google Chat State Updates', () => {
   });
 
   it('should process callback updates sequentially and receive latest state', async () => {
-    const initialState = { channelChatMap: { 'ext-1': 'chat-1' } };
+    const initialState = { channelChatMap: { 'ext-1': { chatId: 'chat-1' } } };
     let currentMockStateJSON = JSON.stringify(initialState);
 
     vi.mocked(fsPromises.readFile).mockImplementation(async () => {
@@ -75,10 +75,10 @@ describe('Google Chat State Updates', () => {
 
     // Fire two concurrent callback updates
     const update1 = updateGoogleChatState((latest) => ({
-      channelChatMap: { ...latest.channelChatMap, 'ext-2': 'chat-2' },
+      channelChatMap: { ...latest.channelChatMap, 'ext-2': { chatId: 'chat-2' } },
     }));
     const update2 = updateGoogleChatState((latest) => ({
-      channelChatMap: { ...latest.channelChatMap, 'ext-3': 'chat-3' },
+      channelChatMap: { ...latest.channelChatMap, 'ext-3': { chatId: 'chat-3' } },
     }));
 
     await Promise.all([update1, update2]);
@@ -87,9 +87,9 @@ describe('Google Chat State Updates', () => {
 
     expect(finalState).toEqual({
       channelChatMap: {
-        'ext-1': 'chat-1',
-        'ext-2': 'chat-2',
-        'ext-3': 'chat-3',
+        'ext-1': { chatId: 'chat-1' },
+        'ext-2': { chatId: 'chat-2' },
+        'ext-3': { chatId: 'chat-3' },
       },
     });
   });
