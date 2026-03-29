@@ -19,6 +19,9 @@ import { google } from 'googleapis';
 import { getAuthClient } from './auth.js';
 import { handleRoutingCommand, type RoutingTrpcClient } from '../shared/adapters/routing.js';
 
+import { handleAddedToSpace, handleRemovedFromSpace } from './subscriptions.js';
+import { handleCardClicked } from './cards.js';
+
 export function getTRPCClient(options: { socketPath?: string } = {}) {
   const socketPath = options.socketPath ?? getSocketPath();
 
@@ -62,8 +65,13 @@ export function startGoogleChatIngestion(
       const dataString = message.data.toString('utf8');
       const event = JSON.parse(dataString);
 
-      // Only handle MESSAGE and CARD_CLICKED events
-      if (event.type !== 'MESSAGE' && event.type !== 'CARD_CLICKED') {
+      // Only handle MESSAGE, CARD_CLICKED, ADDED_TO_SPACE, and REMOVED_FROM_SPACE events
+      if (
+        event.type !== 'MESSAGE' &&
+        event.type !== 'CARD_CLICKED' &&
+        event.type !== 'ADDED_TO_SPACE' &&
+        event.type !== 'REMOVED_FROM_SPACE'
+      ) {
         message.ack();
         return;
       }
@@ -88,8 +96,27 @@ export function startGoogleChatIngestion(
 
       const externalContextId = spaceName;
       const mappedChatId = currentState.channelChatMap?.[externalContextId]?.chatId;
-      const text = event.message?.text || '';
+      const text = (event.message?.argumentText || event.message?.text || '').trim();
       const isRoutingCommand = text.startsWith('/chat') || text.startsWith('/agent');
+
+      if (event.type === 'ADDED_TO_SPACE' && !text) {
+        await handleAddedToSpace(
+          spaceName as string,
+          externalContextId,
+          space?.type,
+          mappedChatId,
+          mappedChatId,
+          config
+        );
+        message.ack();
+        return;
+      }
+
+      if (event.type === 'REMOVED_FROM_SPACE') {
+        await handleRemovedFromSpace(externalContextId, currentState, config);
+        message.ack();
+        return;
+      }
 
       if (isRoutingCommand) {
         const stringChatMap = Object.fromEntries(
@@ -179,66 +206,11 @@ export function startGoogleChatIngestion(
       }));
 
       if (event.type === 'CARD_CLICKED') {
-        const action = event.action;
-        if (action) {
-          const methodName = action.actionMethodName;
-          const params = action.parameters || [];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const policyIdParam = params.find((p: any) => p.key === 'policyId');
-          const policyId = policyIdParam?.value;
-
-          if (policyId && (methodName === 'approve' || methodName === 'reject')) {
-            const cmd = methodName === 'approve' ? `/approve ${policyId}` : `/reject ${policyId}`;
-
-            if (event.message?.name) {
-              try {
-                const chatApi = google.chat({ version: 'v1', auth: await getAuthClient() });
-
-                const originalCards = event.message.cardsV2 || [];
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const updatedCards = originalCards.map((c: any) => {
-                  if (c.card?.sections) {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    c.card.sections = c.card.sections.map((s: any) => {
-                      if (s.widgets) {
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        s.widgets = s.widgets.filter((w: any) => !w.buttonList);
-                      }
-                      return s;
-                    });
-                  }
-                  if (c.card?.header) {
-                    const statusText = methodName === 'approve' ? 'Approved' : 'Rejected';
-                    c.card.header.subtitle = `Policy ${statusText}`;
-                  }
-                  return c;
-                });
-
-                await chatApi.spaces.messages.update({
-                  name: event.message.name,
-                  updateMask: 'cardsV2',
-                  requestBody: {
-                    cardsV2: updatedCards,
-                  },
-                });
-              } catch (updateErr) {
-                console.error(`Failed to update card for policy ${policyId}:`, updateErr);
-              }
-            }
-
-            await trpc.sendMessage.mutate({
-              type: 'send-message',
-              client: 'cli',
-              data: {
-                message: cmd,
-                chatId: targetChatId,
-                adapter: 'google-chat',
-                noWait: true,
-              },
-            });
-            console.log(`Forwarded ${methodName} for policy ${policyId} to daemon.`);
-          }
-        }
+        await handleCardClicked(
+          event,
+          targetChatId as string,
+          trpc as unknown as RoutingTrpcClient
+        );
         message.ack();
         return;
       }

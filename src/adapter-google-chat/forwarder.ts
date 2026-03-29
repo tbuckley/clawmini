@@ -103,7 +103,7 @@ export async function startDaemonToGoogleChatForwarder(
 
                     if (!activeSpaceName && currentState.channelChatMap) {
                       const entry = Object.entries(currentState.channelChatMap).find(
-                        ([_, mapChatId]) => mapChatId === chatId
+                        ([_, mapChatId]) => mapChatId?.chatId === chatId
                       );
                       if (entry) {
                         activeSpaceName = entry[0];

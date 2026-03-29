@@ -38,9 +38,29 @@ vi.mock('@trpc/client', () => ({
 vi.mock('../shared/fetch.js', () => ({
   createUnixSocketFetch: vi.fn(),
 }));
+vi.mock('./auth.js', () => ({
+  getAuthClient: vi.fn().mockResolvedValue({}),
+  getUserAuthClient: vi.fn().mockResolvedValue({
+    getAccessToken: vi.fn().mockResolvedValue({ token: 'mock-token' }),
+  }),
+}));
+
 const { mockSubscription } = vi.hoisted(() => ({
   mockSubscription: {
     on: vi.fn(),
+  },
+}));
+
+vi.mock('googleapis', () => ({
+  google: {
+    chat: vi.fn().mockReturnValue({
+      spaces: {
+        messages: {
+          create: vi.fn().mockResolvedValue({}),
+          update: vi.fn().mockResolvedValue({}),
+        },
+      },
+    }),
   },
 }));
 
@@ -107,7 +127,7 @@ describe('Google Chat Adapter Client', () => {
         (c: unknown[]) => c[0] === 'message'
       )![1] as (msg: unknown) => Promise<void>;
       const mockMsg = {
-        data: Buffer.from(JSON.stringify({ type: 'ADDED_TO_SPACE' })),
+        data: Buffer.from(JSON.stringify({ type: 'UNKNOWN_EVENT' })),
         ack: vi.fn(),
         nack: vi.fn(),
       };
@@ -115,6 +135,87 @@ describe('Google Chat Adapter Client', () => {
 
       expect(mockMsg.ack).toHaveBeenCalled();
       expect(trpcClient.sendMessage.mutate).not.toHaveBeenCalled();
+    });
+
+    it('should create subscription on ADDED_TO_SPACE for non-DM spaces', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: vi
+          .fn()
+          .mockResolvedValue({ name: 'subscriptions/123', expireTime: '2026-01-01T00:00:00Z' }),
+      });
+      globalThis.fetch = mockFetch;
+
+      const mockMsg = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'ADDED_TO_SPACE',
+            space: { name: 'spaces/new-space', type: 'SPACE' },
+            user: { email: 'user@example.com' },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+
+      const { updateGoogleChatState } = await import('./state.js');
+      vi.mocked(updateGoogleChatState).mockClear();
+
+      await onMessage(mockMsg);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://workspaceevents.googleapis.com/v1/subscriptions',
+        expect.objectContaining({ method: 'POST' })
+      );
+
+      expect(updateGoogleChatState).toHaveBeenCalled();
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
+
+    it('should delete subscription and update state on REMOVED_FROM_SPACE', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+      globalThis.fetch = mockFetch;
+
+      // Ensure state has the subscription
+      const { readGoogleChatState } = await import('./state.js');
+      vi.mocked(readGoogleChatState).mockResolvedValueOnce({
+        channelChatMap: {
+          'spaces/removed': { chatId: 'chat1', subscriptionId: 'subscriptions/456' },
+        },
+      });
+
+      const mockMsg = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'REMOVED_FROM_SPACE',
+            space: { name: 'spaces/removed', type: 'SPACE' },
+            user: { email: 'user@example.com' },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+
+      const { updateGoogleChatState } = await import('./state.js');
+      vi.mocked(updateGoogleChatState).mockClear();
+
+      await onMessage(mockMsg);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://workspaceevents.googleapis.com/v1/subscriptions/456',
+        expect.objectContaining({ method: 'DELETE' })
+      );
+
+      expect(updateGoogleChatState).toHaveBeenCalled();
+      expect(mockMsg.ack).toHaveBeenCalled();
     });
 
     it('should ignore messages from unauthorized users', async () => {

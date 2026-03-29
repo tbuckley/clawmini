@@ -43,3 +43,12 @@
 - Updated numerous test files to accommodate the structural schema changes and OAuth renaming.
 - Successfully verified tests passing using `npm run validate`.
 - Marked Ticket 5 as Completed.
+
+## Session 5
+- Implemented Ticket 6: Space Subscription Lifecycle (`ADDED_TO_SPACE` & `REMOVED_FROM_SPACE`).
+- Extracted `handleAddedToSpace` and `handleRemovedFromSpace` into `src/adapter-google-chat/subscriptions.ts` to keep `client.ts` clean and below the line limits.
+- Extracted `handleCardClicked` into `src/adapter-google-chat/cards.ts` to reduce `client.ts` file length.
+- Added API calls to `https://workspaceevents.googleapis.com/v1/subscriptions` using the Google User's OAuth tokens to dynamically subscribe to `google.workspace.chat.message.v1.created` when the bot is added to spaces.
+- Intercepted `ADDED_TO_SPACE` and `REMOVED_FROM_SPACE` early in the Google Chat ingestion pipeline to bypass the first contact unmapped warnings.
+- Updated `client.test.ts` to simulate and test subscriptions logic accurately using mock fetch interactions.
+- Resolved various TypeScript alignment errors around strict typing of `mappedChatId` and nested objects inside the state JSON configuration.

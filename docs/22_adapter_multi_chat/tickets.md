@@ -100,7 +100,7 @@ Update the schemas to support user-level Space Subscriptions for Workspace Event
 ---
 
 ## Ticket 6: Implement Space Subscription Lifecycle (`ADDED_TO_SPACE` & `REMOVED_FROM_SPACE`)
-**Status**: Not Started
+**Status**: Completed
 
 **Description**: 
 Handle Google Chat bot events to automatically create and tear down Space Subscriptions when the bot is added to or removed from a Space.
