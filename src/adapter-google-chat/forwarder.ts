@@ -95,9 +95,9 @@ export async function startDaemonToGoogleChatForwarder(
                     const logMessage = message;
 
                     const currentState = await readGoogleChatState();
-                    let activeSpaceName = config.directMessageName;
+                    let activeSpaceName: string | undefined;
 
-                    if (!activeSpaceName && currentState.activeSpaceByChatId) {
+                    if (currentState.activeSpaceByChatId) {
                       activeSpaceName = currentState.activeSpaceByChatId[chatId];
                     }
 
@@ -108,6 +108,10 @@ export async function startDaemonToGoogleChatForwarder(
                       if (entry) {
                         activeSpaceName = entry[0];
                       }
+                    }
+
+                    if (!activeSpaceName) {
+                      activeSpaceName = config.directMessageName;
                     }
 
                     const isPolicyRequest =
