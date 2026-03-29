@@ -7,6 +7,7 @@ import fs from 'node:fs';
 export const GoogleChatConfigSchema = z.looseObject({
   projectId: z.string().min(1, 'GCP Project ID is required.'),
   subscriptionName: z.string().min(1, 'Pub/Sub Subscription Name is required.'),
+  topicName: z.string().min(1, 'Pub/Sub Topic Name is required.'),
   authorizedUsers: z.array(z.string()).min(1, 'At least one Authorized User is required.'),
   maxAttachmentSizeMB: z.number().default(25).optional(),
   chatId: z.string().default('default').optional(),
@@ -62,6 +63,7 @@ export async function initGoogleChatConfig(startDir = process.cwd()): Promise<vo
 
   const templateConfig = {
     projectId: 'YOUR_PROJECT_ID',
+    topicName: 'YOUR_TOPIC_NAME',
     subscriptionName: 'YOUR_SUBSCRIPTION_NAME',
     authorizedUsers: ['user@example.com'],
     chatId: 'default',
@@ -72,7 +74,7 @@ export async function initGoogleChatConfig(startDir = process.cwd()): Promise<vo
   await fsPromises.writeFile(configPath, JSON.stringify(templateConfig, null, 2), 'utf-8');
   console.log(`Created template configuration file at ${configPath}`);
   console.log(
-    'Please update it with your actual GCP Project ID, Pub/Sub Subscription Name, and Authorized Users.'
+    'Please update it with your actual GCP Project ID, Pub/Sub Topic Name, Pub/Sub Subscription Name, and Authorized Users.'
   );
 }
 

@@ -15,6 +15,7 @@ describe('Subscription Renewal Cron', () => {
     projectId: 'test-project',
     credentialsPath: '/tmp/test-creds.json',
     subscriptionName: 'test-subscription',
+  topicName: "test-topic",
     authorizedUsers: ['test-user'],
     oauthClientId: 'test-client',
     oauthClientSecret: 'test-secret',

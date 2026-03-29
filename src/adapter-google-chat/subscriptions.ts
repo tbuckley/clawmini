@@ -28,6 +28,9 @@ export async function handleAddedToSpace(
             targetResource: `//chat.googleapis.com/${spaceName}`,
             eventTypes: ['google.workspace.chat.message.v1.created'],
             payloadOptions: { includeResource: true },
+            notificationEndpoint: {
+              pubsubTopic: `projects/${config.projectId}/topics/${config.topicName}`,
+            },
           }),
         });
 

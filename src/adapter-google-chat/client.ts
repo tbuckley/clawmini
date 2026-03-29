@@ -126,7 +126,7 @@ export function startGoogleChatIngestion(
       const mappedChatId = currentState.channelChatMap?.[externalContextId]?.chatId;
       const isRoutingCommand = text.startsWith('/chat') || text.startsWith('/agent');
 
-      if (eventType === 'ADDED_TO_SPACE' && !text) {
+      if (eventType === 'ADDED_TO_SPACE') {
         await handleAddedToSpace(
           spaceName as string,
           externalContextId,
@@ -135,8 +135,10 @@ export function startGoogleChatIngestion(
           mappedChatId,
           config
         );
-        message.ack();
-        return;
+        if (!text) {
+          message.ack();
+          return;
+        }
       }
 
       if (eventType === 'REMOVED_FROM_SPACE') {
@@ -187,7 +189,8 @@ export function startGoogleChatIngestion(
 
       if (!targetChatId && !isRoutingCommand) {
         const isFirstEverMessage =
-          !currentState.channelChatMap || Object.keys(currentState.channelChatMap).length === 0;
+          !currentState.channelChatMap ||
+          Object.values(currentState.channelChatMap).every((entry) => !entry.chatId);
 
         if (isFirstEverMessage) {
           targetChatId = config.chatId || 'default';
