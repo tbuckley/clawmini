@@ -74,10 +74,12 @@ export function startGoogleChatIngestion(
       const eventType = isWorkspaceEvent ? 'MESSAGE' : parsedData.type;
 
       const eventMessage = isWorkspaceEvent ? parsedData.message || parsedData : parsedData.message;
-      const email =
+      let email =
         (isWorkspaceEvent
           ? eventMessage?.sender?.email
           : parsedData.user?.email || eventMessage?.sender?.email) || '';
+      const senderName = eventMessage?.sender?.name || parsedData.user?.name || '';
+
       const space = isWorkspaceEvent
         ? eventMessage?.space
         : parsedData.space || eventMessage?.space;
@@ -106,8 +108,11 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      if (!email || !isAuthorized(email, config.authorizedUsers)) {
-        console.log(`Unauthorized or missing email: ${email}`);
+      const identifier = email || senderName;
+
+      if (!identifier || !isAuthorized(identifier, config.authorizedUsers)) {
+        console.log(`Unauthorized or missing identifier: ${identifier}`);
+        console.log('DEBUG missing identifier parsedData:', JSON.stringify(parsedData, null, 2));
         message.ack();
         return;
       }
@@ -311,7 +316,7 @@ export function startGoogleChatIngestion(
         },
       });
 
-      console.log(`Forwarded message from ${email} to daemon.`);
+      console.log(`Forwarded message from ${identifier} to daemon.`);
       message.ack();
     } catch (error) {
       console.error('Error processing Pub/Sub message:', error);
