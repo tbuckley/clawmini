@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
-import { readDiscordState, writeDiscordState } from './state.js';
+import { readDiscordState, updateDiscordState } from './state.js';
 
 vi.mock('./state.js', () => ({
   readDiscordState: vi.fn(),
-  writeDiscordState: vi.fn(),
+  updateDiscordState: vi.fn(),
+  getDiscordStatePath: vi.fn().mockReturnValue('./.tmp-mock-discord/state.json'),
+}));
+
+vi.mock('node:fs', () => ({
+  default: {
+    existsSync: vi.fn().mockReturnValue(true),
+    mkdirSync: vi.fn(),
+    watch: vi.fn().mockReturnValue({ close: vi.fn() }),
+  },
 }));
 
 describe('Daemon to Discord Forwarder', () => {
@@ -17,9 +26,21 @@ describe('Daemon to Discord Forwarder', () => {
   let subscribeCallbacks: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let typingSubscribeCallbacks: any;
+  let mockUpdateDiscordState: import('vitest').Mock;
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mockUpdateDiscordState = vi.fn();
+    vi.mocked(updateDiscordState).mockImplementation(async (updates) => {
+      const result =
+        typeof updates === 'function'
+          ? updates({ lastSyncedMessageIds: {} } as import('./state.js').DiscordState)
+          : updates;
+      mockUpdateDiscordState(result);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return result as any;
+    });
 
     mockDm = {
       send: vi.fn().mockResolvedValue({}),
@@ -57,8 +78,7 @@ describe('Daemon to Discord Forwarder', () => {
       },
     };
 
-    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: undefined });
-    vi.mocked(writeDiscordState).mockResolvedValue(undefined);
+    vi.mocked(readDiscordState).mockResolvedValue({});
   });
 
   it('should fetch initial messages if no state exists and start observation loop', async () => {
@@ -79,7 +99,9 @@ describe('Daemon to Discord Forwarder', () => {
 
     expect(readDiscordState).toHaveBeenCalled();
     expect(mockTrpc.getMessages.query).toHaveBeenCalledWith({ chatId: 'default', limit: 1 });
-    expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' });
+    expect(mockUpdateDiscordState).toHaveBeenCalledWith({
+      lastSyncedMessageIds: { default: 'msg-1' },
+    });
     expect(mockTrpc.waitForMessages.subscribe).toHaveBeenCalledWith(
       { chatId: 'default', lastMessageId: 'msg-1' },
       expect.any(Object)
@@ -106,7 +128,9 @@ describe('Daemon to Discord Forwarder', () => {
     expect(mockClient.users.fetch).toHaveBeenCalledWith('user-123');
     expect(mockUser.createDM).toHaveBeenCalled();
     expect(mockDm.send).toHaveBeenCalledWith({ content: 'Agent response' });
-    expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-2' });
+    expect(mockUpdateDiscordState).toHaveBeenCalledWith({
+      lastSyncedMessageIds: { default: 'msg-1' },
+    });
 
     controller.abort();
     await forwarderPromise;
@@ -114,7 +138,9 @@ describe('Daemon to Discord Forwarder', () => {
 
   it('should use stored state if available', async () => {
     const controller = new AbortController();
-    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-stored' });
+    vi.mocked(readDiscordState).mockResolvedValue({
+      lastSyncedMessageIds: { default: 'msg-stored' },
+    });
 
     const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
       chatId: 'default',
@@ -135,7 +161,7 @@ describe('Daemon to Discord Forwarder', () => {
 
   it('should ignore user messages in the observation loop but update state', async () => {
     const controller = new AbortController();
-    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageIds: { default: 'msg-0' } });
 
     const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
       chatId: 'default',
@@ -149,7 +175,9 @@ describe('Daemon to Discord Forwarder', () => {
     ]);
 
     await vi.waitFor(() =>
-      expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' })
+      expect(mockUpdateDiscordState).toHaveBeenCalledWith({
+        lastSyncedMessageIds: { default: 'msg-1' },
+      })
     );
 
     expect(mockDm.send).not.toHaveBeenCalled();
@@ -160,7 +188,7 @@ describe('Daemon to Discord Forwarder', () => {
 
   it('should ignore verbose log messages in the observation loop but update state', async () => {
     const controller = new AbortController();
-    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageIds: { default: 'msg-0' } });
 
     const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
       chatId: 'default',
@@ -185,7 +213,9 @@ describe('Daemon to Discord Forwarder', () => {
     ]);
 
     await vi.waitFor(() =>
-      expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' })
+      expect(mockUpdateDiscordState).toHaveBeenCalledWith({
+        lastSyncedMessageIds: { default: 'msg-1' },
+      })
     );
 
     expect(mockDm.send).not.toHaveBeenCalled();
@@ -197,7 +227,7 @@ describe('Daemon to Discord Forwarder', () => {
   it('should chunk long messages', async () => {
     const controller = new AbortController();
     const longContent = 'a'.repeat(2500);
-    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageIds: { default: 'msg-0' } });
 
     const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
       chatId: 'default',
@@ -224,7 +254,9 @@ describe('Daemon to Discord Forwarder', () => {
 
     expect(mockDm.send).toHaveBeenNthCalledWith(1, { content: 'a'.repeat(2000) });
     expect(mockDm.send).toHaveBeenNthCalledWith(2, { content: 'a'.repeat(500) });
-    expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' });
+    expect(mockUpdateDiscordState).toHaveBeenCalledWith({
+      lastSyncedMessageIds: { default: 'msg-1' },
+    });
 
     controller.abort();
     await forwarderPromise;
@@ -232,7 +264,7 @@ describe('Daemon to Discord Forwarder', () => {
 
   it('should send file attachments when message includes a file', async () => {
     const controller = new AbortController();
-    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageIds: { default: 'msg-0' } });
 
     const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
       chatId: 'default',
@@ -269,7 +301,7 @@ describe('Daemon to Discord Forwarder', () => {
 
   it('should send ONLY the file attachment when message content is empty', async () => {
     const controller = new AbortController();
-    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageIds: { default: 'msg-0' } });
 
     const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
       chatId: 'default',
@@ -306,7 +338,7 @@ describe('Daemon to Discord Forwarder', () => {
   it('should attach the file only to the last chunk when chunking long messages', async () => {
     const controller = new AbortController();
     const longContent = 'a'.repeat(2500);
-    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageIds: { default: 'msg-0' } });
 
     const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
       chatId: 'default',
@@ -345,7 +377,7 @@ describe('Daemon to Discord Forwarder', () => {
   it('should retry with exponential backoff on daemon error', async () => {
     vi.useFakeTimers();
     const controller = new AbortController();
-    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageIds: { default: 'msg-0' } });
 
     const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
       chatId: 'default',
@@ -360,7 +392,7 @@ describe('Daemon to Discord Forwarder', () => {
 
     // First error
     callbacks.onError(new Error('Daemon down'));
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(30000);
 
     // Should have resubscribed
     expect(subscribeCallbacks).toBeTruthy();
@@ -369,7 +401,7 @@ describe('Daemon to Discord Forwarder', () => {
 
     // Second error
     callbacks.onError(new Error('Still down'));
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(30000);
 
     // Should have resubscribed
     expect(subscribeCallbacks).toBeTruthy();
@@ -392,7 +424,7 @@ describe('Daemon to Discord Forwarder', () => {
     ]);
 
     // allow microtasks
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(30000);
 
     expect(mockTrpc.waitForMessages.subscribe).toHaveBeenCalledTimes(3);
     expect(mockDm.send).toHaveBeenCalledWith({ content: 'Finally up' });
@@ -442,14 +474,14 @@ describe('Daemon to Discord Forwarder', () => {
     typingSubscribeCallbacks = null;
 
     callbacks.onError(new Error('Daemon down'));
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(30000);
 
     expect(typingSubscribeCallbacks).toBeTruthy();
     callbacks = typingSubscribeCallbacks;
     typingSubscribeCallbacks = null;
 
     callbacks.onError(new Error('Still down'));
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(30000);
 
     expect(typingSubscribeCallbacks).toBeTruthy();
 
@@ -460,7 +492,7 @@ describe('Daemon to Discord Forwarder', () => {
 
   it('should format and forward pending policy requests', async () => {
     const controller = new AbortController();
-    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageIds: { default: 'msg-0' } });
 
     const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
       chatId: 'default',
@@ -496,10 +528,12 @@ describe('Daemon to Discord Forwarder', () => {
     const callArgs = vi.mocked(mockDm.send).mock.calls[0]?.[0] as any;
     expect(callArgs.embeds[0].data.title).toBe('Action Required: Policy Request');
     expect(callArgs.embeds[0].data.description).toBe('Please approve this');
-    expect(callArgs.components[0].components[0].data.custom_id).toBe('approve_msg-1');
-    expect(callArgs.components[0].components[1].data.custom_id).toBe('reject_msg-1');
+    expect(callArgs.components[0].components[0].data.custom_id).toBe('approve|msg-1|default');
+    expect(callArgs.components[0].components[1].data.custom_id).toBe('reject|msg-1|default');
 
-    expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' });
+    expect(mockUpdateDiscordState).toHaveBeenCalledWith({
+      lastSyncedMessageIds: { default: 'msg-1' },
+    });
 
     controller.abort();
     await forwarderPromise;
@@ -507,7 +541,7 @@ describe('Daemon to Discord Forwarder', () => {
 
   it('should fallback to plain text if rich message fails for policy request', async () => {
     const controller = new AbortController();
-    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageId: 'msg-0' });
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageIds: { default: 'msg-0' } });
 
     // Mock DM failure for first call (embeds), success for second (plain text)
     mockDm.send = vi
@@ -545,8 +579,69 @@ describe('Daemon to Discord Forwarder', () => {
     });
 
     // Should still update state to avoid infinite loop
-    expect(writeDiscordState).toHaveBeenCalledWith({ lastSyncedMessageId: 'msg-1' });
+    expect(mockUpdateDiscordState).toHaveBeenCalledWith({
+      lastSyncedMessageIds: { default: 'msg-1' },
+    });
 
+    controller.abort();
+    await forwarderPromise;
+  });
+
+  it('should prioritize local memory over disk state during syncSubscriptions polling', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
+
+    // Initial sync is called immediately without timers
+    await vi.runAllTicks();
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy(), { timeout: 1000 });
+
+    // Send a message, this updates the local memory cache to msg-local
+    subscribeCallbacks.onData([
+      { id: 'msg-local', role: 'agent', content: 'Agent response', timestamp: '' },
+    ]);
+
+    await vi.waitFor(
+      () =>
+        expect(mockUpdateDiscordState).toHaveBeenCalledWith(
+          expect.objectContaining({ lastSyncedMessageIds: { default: 'msg-local' } })
+        ),
+      { timeout: 1000 }
+    );
+
+    // Simulate disk change where read state returns an older message ID
+    vi.mocked(readDiscordState).mockResolvedValueOnce({
+      lastSyncedMessageIds: { default: 'msg-stale', otherChat: 'msg-other' },
+    });
+
+    // Trigger fs.watch callback
+    const fsWatchMock = (await import('node:fs')).default.watch as import('vitest').Mock;
+    const watchCallback = fsWatchMock.mock.calls[0]![1];
+    watchCallback('change', 'state.json');
+
+    // Wait for the async syncSubscriptions to finish
+    await vi.runAllTicks();
+
+    subscribeCallbacks.onData([
+      { id: 'msg-latest', role: 'agent', content: 'Agent response 2', timestamp: '' },
+    ]);
+
+    await vi.waitFor(
+      () =>
+        expect(mockUpdateDiscordState).toHaveBeenCalledWith(
+          expect.objectContaining({
+            lastSyncedMessageIds: { default: 'msg-latest', otherChat: 'msg-other' },
+          })
+        ),
+      { timeout: 1000 }
+    );
+
+    vi.useRealTimers();
     controller.abort();
     await forwarderPromise;
   });

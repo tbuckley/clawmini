@@ -17,6 +17,7 @@ import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 import { google } from 'googleapis';
 import { getAuthClient } from './auth.js';
+import { handleRoutingCommand, type RoutingTrpcClient } from '../shared/adapters/routing.js';
 
 export function getTRPCClient(options: { socketPath?: string } = {}) {
   const socketPath = options.socketPath ?? getSocketPath();
@@ -77,29 +78,99 @@ export function startGoogleChatIngestion(
       const space = event.space || event.message?.space;
       const spaceName = space?.name;
 
-      if (space?.type !== 'DIRECT_MESSAGE' && space?.singleUserBotDm !== true) {
-        console.log(`Ignoring message from unsupported space type: ${space?.type}`);
-        message.ack();
-        return;
-      }
-
       if (!spaceName) {
         console.log('Ignoring message: Could not determine space name.');
         message.ack();
         return;
       }
 
-      const state = await readGoogleChatState();
-      let activeSpaceName = config.directMessageName || state.activeSpaceName;
+      const currentState = await readGoogleChatState();
 
-      if (!activeSpaceName) {
-        activeSpaceName = spaceName;
-        await updateGoogleChatState({ activeSpaceName });
-      } else if (activeSpaceName !== spaceName) {
-        console.log(`Ignoring message from inactive space: ${spaceName}`);
-        message.ack();
-        return;
+      const externalContextId = spaceName;
+      const mappedChatId = currentState.channelChatMap?.[externalContextId];
+      const text = event.message?.text || '';
+      const isRoutingCommand = text.startsWith('/chat') || text.startsWith('/agent');
+
+      if (isRoutingCommand) {
+        const routingResult = await handleRoutingCommand(
+          text,
+          externalContextId,
+          currentState.channelChatMap || {},
+          'google-chat',
+          trpc as unknown as RoutingTrpcClient
+        );
+
+        if (routingResult) {
+          if (routingResult.type === 'mapped') {
+            await updateGoogleChatState((latestState) => ({
+              channelChatMap: {
+                ...(latestState.channelChatMap || {}),
+                [externalContextId]: routingResult.newChatId,
+              },
+            }));
+          }
+
+          try {
+            const authClient = await getAuthClient();
+            const chatApi = google.chat({ version: 'v1', auth: authClient });
+            await chatApi.spaces.messages.create({
+              parent: externalContextId,
+              requestBody: { text: routingResult.text },
+            });
+          } catch (err) {
+            console.error('Failed to send routing command reply:', err);
+          }
+
+          message.ack();
+          return;
+        }
       }
+
+      let targetChatId = mappedChatId;
+
+      if (!targetChatId && !isRoutingCommand) {
+        const isFirstEverMessage =
+          !currentState.channelChatMap || Object.keys(currentState.channelChatMap).length === 0;
+
+        if (isFirstEverMessage) {
+          targetChatId = config.chatId || 'default';
+          console.log(
+            `First contact detected. Automatically mapping space ${externalContextId} to chat ${targetChatId}.`
+          );
+          await updateGoogleChatState((latestState) => ({
+            channelChatMap: {
+              ...(latestState.channelChatMap || {}),
+              [externalContextId]: targetChatId as string,
+            },
+          }));
+        } else {
+          console.log(`Unmapped space ${externalContextId}, sending first contact warning.`);
+          try {
+            const authClient = await getAuthClient();
+            const chatApi = google.chat({ version: 'v1', auth: authClient });
+            await chatApi.spaces.messages.create({
+              parent: externalContextId,
+              requestBody: {
+                text: 'This channel/space is not currently mapped to a daemon chat. Please use `/chat [chat-id]` or `/agent [agent-id]` to map it.',
+              },
+            });
+          } catch (err) {
+            console.error('Failed to send first contact warning:', err);
+          }
+          message.ack();
+          return;
+        }
+      }
+
+      // Fallback typing safeguard
+      if (!targetChatId) targetChatId = config.chatId || 'default';
+
+      await updateGoogleChatState((latestState) => ({
+        activeSpaceByChatId: {
+          ...(latestState.activeSpaceByChatId || {}),
+          [targetChatId as string]: externalContextId,
+        },
+      }));
 
       if (event.type === 'CARD_CLICKED') {
         const action = event.action;
@@ -154,7 +225,7 @@ export function startGoogleChatIngestion(
               client: 'cli',
               data: {
                 message: cmd,
-                chatId: config.chatId || 'default',
+                chatId: targetChatId,
                 adapter: 'google-chat',
                 noWait: true,
               },
@@ -166,13 +237,11 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      const text = event.message?.text || '';
-
       const commandResult = await handleAdapterCommand(
         text,
         filteringConfig,
         trpc as unknown as CommandTrpcClient,
-        config.chatId || 'default'
+        targetChatId
       );
 
       if (commandResult) {
@@ -194,7 +263,7 @@ export function startGoogleChatIngestion(
         const authClient = await getAuthClient();
         const chatApi = google.chat({ version: 'v1', auth: authClient });
         await chatApi.spaces.messages.create({
-          parent: activeSpaceName as string,
+          parent: spaceName as string,
           requestBody: { text: resultText },
         });
         message.ack();
@@ -227,7 +296,7 @@ export function startGoogleChatIngestion(
         client: 'cli',
         data: {
           message: text,
-          chatId: config.chatId || 'default',
+          chatId: targetChatId,
           files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
           adapter: 'google-chat',
           noWait: true,

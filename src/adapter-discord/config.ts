@@ -8,7 +8,8 @@ export const DiscordConfigSchema = z.looseObject({
   botToken: z.string().min(1, 'Discord Bot Token is required.'),
   authorizedUserId: z.string().min(1, 'Authorized Discord User ID is required.'),
   chatId: z.string().default('default'),
-  maxAttachmentSizeMB: z.number().default(25).optional(),
+  maxAttachmentSizeMB: z.number().default(25),
+  requireMention: z.boolean().default(false),
 });
 
 export type DiscordConfig = z.infer<typeof DiscordConfigSchema>;

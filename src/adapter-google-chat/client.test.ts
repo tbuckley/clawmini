@@ -7,6 +7,13 @@ import { createTRPCClient } from '@trpc/client';
 import * as utils from './utils.js';
 
 vi.mock('node:fs');
+vi.mock('./state.js', () => ({
+  readGoogleChatState: vi.fn().mockResolvedValue({
+    channelChatMap: { 'spaces/123': 'default' },
+    activeSpaceName: 'spaces/123',
+  }),
+  updateGoogleChatState: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('node:fs/promises', () => ({
   default: {
     mkdir: vi.fn().mockResolvedValue(undefined),

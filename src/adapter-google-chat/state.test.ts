@@ -41,7 +41,7 @@ describe('Google Chat State Updates', () => {
     });
 
     // Fire two concurrent updates
-    const update1 = updateGoogleChatState({ lastSyncedMessageId: 'B' });
+    const update1 = updateGoogleChatState({ lastSyncedMessageIds: { default: 'B' } });
     const update2 = updateGoogleChatState({ activeSpaceName: 'Space2' });
 
     await Promise.all([update1, update2]);
@@ -54,8 +54,43 @@ describe('Google Chat State Updates', () => {
     // { lastSyncedMessageId: 'A', activeSpaceName: 'Space2' }
     // Because they are serialized, it should safely contain BOTH updates.
     expect(finalState).toEqual({
-      lastSyncedMessageId: 'B',
+      lastSyncedMessageIds: { default: 'B' },
       activeSpaceName: 'Space2',
+    });
+  });
+
+  it('should process callback updates sequentially and receive latest state', async () => {
+    const initialState = { channelChatMap: { 'ext-1': 'chat-1' } };
+    let currentMockStateJSON = JSON.stringify(initialState);
+
+    vi.mocked(fsPromises.readFile).mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return currentMockStateJSON;
+    });
+
+    vi.mocked(fsPromises.writeFile).mockImplementation(async (_path, data) => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      currentMockStateJSON = data as string;
+    });
+
+    // Fire two concurrent callback updates
+    const update1 = updateGoogleChatState((latest) => ({
+      channelChatMap: { ...latest.channelChatMap, 'ext-2': 'chat-2' },
+    }));
+    const update2 = updateGoogleChatState((latest) => ({
+      channelChatMap: { ...latest.channelChatMap, 'ext-3': 'chat-3' },
+    }));
+
+    await Promise.all([update1, update2]);
+
+    const finalState = JSON.parse(currentMockStateJSON);
+
+    expect(finalState).toEqual({
+      channelChatMap: {
+        'ext-1': 'chat-1',
+        'ext-2': 'chat-2',
+        'ext-3': 'chat-3',
+      },
     });
   });
 });
