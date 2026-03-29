@@ -8,6 +8,7 @@ export const GoogleChatStateSchema = z.object({
   channelChatMap: z.record(z.string(), z.string()).optional(),
   driveOauthTokens: z.any().optional(),
   activeSpaceName: z.string().optional(),
+  activeSpaceByChatId: z.record(z.string(), z.string()).optional(),
   filters: z.record(z.string(), z.boolean()).optional(),
 });
 

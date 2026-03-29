@@ -96,6 +96,11 @@ export async function startDaemonToGoogleChatForwarder(
 
                     const currentState = await readGoogleChatState();
                     let activeSpaceName = config.directMessageName;
+
+                    if (!activeSpaceName && currentState.activeSpaceByChatId) {
+                      activeSpaceName = currentState.activeSpaceByChatId[chatId];
+                    }
+
                     if (!activeSpaceName && currentState.channelChatMap) {
                       const entry = Object.entries(currentState.channelChatMap).find(
                         ([_, mapChatId]) => mapChatId === chatId
