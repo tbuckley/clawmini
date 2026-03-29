@@ -39,7 +39,7 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
 
     const jobs = {
       ...state.jobs,
-      remove: [...(state.jobs?.remove || []), jobId],
+      remove: [...(state.jobs?.remove || []), jobId, '__session_timeout__'],
     };
 
     return {
