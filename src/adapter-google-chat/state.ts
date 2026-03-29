@@ -16,8 +16,6 @@ export const GoogleChatStateSchema = z.object({
     )
     .optional(),
   oauthTokens: z.any().optional(),
-  activeSpaceName: z.string().optional(),
-  activeSpaceByChatId: z.record(z.string(), z.string()).optional(),
   filters: z.record(z.string(), z.boolean()).optional(),
 });
 
@@ -53,7 +51,6 @@ export async function readGoogleChatState(startDir = process.cwd()): Promise<Goo
     if (!result.success) {
       return {
         oauthTokens: undefined,
-        activeSpaceName: undefined,
       };
     }
     return result.data;
@@ -61,7 +58,6 @@ export async function readGoogleChatState(startDir = process.cwd()): Promise<Goo
     // Return default state if file doesn't exist or is invalid JSON
     return {
       oauthTokens: undefined,
-      activeSpaceName: undefined,
     };
   }
 }

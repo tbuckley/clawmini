@@ -233,13 +233,6 @@ export function startGoogleChatIngestion(
       // Fallback typing safeguard
       if (!targetChatId) targetChatId = config.chatId || 'default';
 
-      await updateGoogleChatState((latestState) => ({
-        activeSpaceByChatId: {
-          ...(latestState.activeSpaceByChatId || {}),
-          [targetChatId as string]: externalContextId,
-        },
-      }));
-
       if (eventType === 'CARD_CLICKED') {
         await handleCardClicked(
           parsedData,
