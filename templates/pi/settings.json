@@ -1,0 +1,8 @@
+{
+  "commands": {
+    "new": ".pi/run",
+    "getSessionId": "jq -r .id",
+    "getMessageContent": "jq -r .out",
+    "append": ".pi/run"
+  }
+}

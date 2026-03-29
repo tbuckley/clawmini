@@ -1,0 +1,5 @@
+#!/bin/bash
+SESSION="${SESSION_ID:-$(date +"%Y%m%d_%H%M%S")}"
+mkdir -p .pi/agent/sessions
+OUTPUT=$(pi --session .pi/agent/sessions/"$SESSION".jsonl -p "$CLAW_CLI_MESSAGE" < /dev/null)
+jq -n --arg out "$OUTPUT" --arg id "$SESSION" '{out: $out, id: $id}'
