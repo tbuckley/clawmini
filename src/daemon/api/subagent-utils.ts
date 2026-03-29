@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { updateChatSettings } from '../../shared/workspace.js';
-import { executeDirectMessage } from '../message.js';
+import { updateChatSettings, readChatSettings } from '../../shared/workspace.js';
+import { executeDirectMessage, applyRouterStateUpdates } from '../message.js';
+import { executeRouterPipeline, resolveRouters } from '../routers.js';
+import type { RouterState } from '../routers/types.js';
 import { createChatLogger } from '../agent/chat-logger.js';
 import type { ChatSettings } from '../../shared/config.js';
 import { taskScheduler } from '../agent/task-scheduler.js';
@@ -26,16 +28,33 @@ export async function executeSubagent(
   workspaceRoot: string
 ) {
   try {
+    const settings = (await readChatSettings(chatId)) || {};
+    const routers = settings.routers ?? [];
+    const resolvedRouters = resolveRouters(routers, false);
+
+    let routerState: RouterState = {
+      messageId: randomUUID(),
+      message: prompt,
+      chatId,
+      agentId,
+      sessionId,
+      env: {},
+    };
+
+    const initialState = { ...routerState };
+    routerState = await executeRouterPipeline(routerState, resolvedRouters);
+
+    await applyRouterStateUpdates(
+      chatId,
+      workspaceRoot,
+      routerState,
+      settings,
+      initialState.agentId
+    );
+
     await executeDirectMessage(
       chatId,
-      {
-        messageId: randomUUID(),
-        message: prompt,
-        chatId,
-        agentId,
-        sessionId,
-        env: {},
-      },
+      routerState,
       undefined, // settings
       workspaceRoot,
       false, // noWait

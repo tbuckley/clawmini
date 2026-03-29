@@ -8,6 +8,61 @@ import { slashPolicies } from './routers/slash-policies.js';
 import { createSessionTimeoutRouter } from './routers/session-timeout.js';
 import type { RouterConfig } from '../shared/config.js';
 
+export const GLOBAL_ROUTERS: RouterConfig[] = ['@clawmini/session-timeout'];
+
+export const USER_ROUTERS: RouterConfig[] = [
+  '@clawmini/slash-new',
+  '@clawmini/slash-command',
+  '@clawmini/slash-stop',
+  '@clawmini/slash-interrupt',
+  '@clawmini/slash-policies',
+];
+
+export function resolveRouters(
+  userRouters: RouterConfig[],
+  isUserMessage: boolean
+): RouterConfig[] {
+  const resolvedGlobals: RouterConfig[] = [];
+  const resolvedUsers: RouterConfig[] = [];
+
+  const userConfigMap = new Map<string, unknown>();
+  for (const r of userRouters) {
+    const name = typeof r === 'string' ? r : r.use;
+    const config = typeof r === 'string' ? {} : r.with || {};
+
+    if (name.startsWith('@clawmini/')) {
+      userConfigMap.set(name, config);
+    } else {
+      resolvedUsers.push(r);
+    }
+  }
+
+  for (const globalRouter of GLOBAL_ROUTERS) {
+    const name = typeof globalRouter === 'string' ? globalRouter : globalRouter.use;
+    const baseConfig = typeof globalRouter === 'string' ? {} : globalRouter.with || {};
+    const userConfig = userConfigMap.get(name) || {};
+    const mergedConfig = { ...baseConfig, ...userConfig };
+
+    resolvedGlobals.push({ use: name, with: mergedConfig });
+  }
+
+  const defaultUserRouters: RouterConfig[] = [];
+  for (const defaultUserRouter of USER_ROUTERS) {
+    const name = typeof defaultUserRouter === 'string' ? defaultUserRouter : defaultUserRouter.use;
+    const baseConfig = typeof defaultUserRouter === 'string' ? {} : defaultUserRouter.with || {};
+    const userConfig = userConfigMap.get(name) || {};
+    const mergedConfig = { ...baseConfig, ...userConfig };
+
+    defaultUserRouters.push({ use: name, with: mergedConfig });
+  }
+
+  if (isUserMessage) {
+    return [...resolvedGlobals, ...defaultUserRouters, ...resolvedUsers];
+  } else {
+    return resolvedGlobals;
+  }
+}
+
 export async function executeRouterPipeline(
   initialState: RouterState,
   routers: RouterConfig[]

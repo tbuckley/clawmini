@@ -1,4 +1,4 @@
-import { executeRouterPipeline } from './routers.js';
+import { executeRouterPipeline, resolveRouters } from './routers.js';
 import type { RouterState } from './routers/types.js';
 import { type ChatSettings, type Settings } from '../shared/config.js';
 import { readChatSettings, writeChatSettings } from '../shared/workspace.js';
@@ -141,14 +141,15 @@ export async function handleUserMessage(
   );
 
   const routers = chatSettings.routers ?? settings?.routers ?? [];
-  const finalState = await executeRouterPipeline(initialState, routers);
+  const resolvedRouters = resolveRouters(routers, true);
+  const finalState = await executeRouterPipeline(initialState, resolvedRouters);
 
   await applyRouterStateUpdates(chatId, cwd, finalState, chatSettings, initialState.agentId);
 
   await executeDirectMessage(chatId, finalState, settings, cwd, noWait, message);
 }
 
-async function applyRouterStateUpdates(
+export async function applyRouterStateUpdates(
   chatId: string,
   cwd: string,
   finalState: RouterState,
@@ -173,8 +174,11 @@ async function applyRouterStateUpdates(
 
   if (finalState.nextSessionId) {
     chatSettings.sessions = chatSettings.sessions || {};
-    chatSettings.sessions[currentAgentId] = finalState.nextSessionId;
-    settingsChanged = true;
+    const currentActiveSession = chatSettings.sessions[currentAgentId];
+    if (!currentActiveSession || currentActiveSession === finalSessionId) {
+      chatSettings.sessions[currentAgentId] = finalState.nextSessionId;
+      settingsChanged = true;
+    }
   }
 
   if (finalState.jobs) {
