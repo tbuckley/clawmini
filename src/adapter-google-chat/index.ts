@@ -5,6 +5,7 @@ import { readGoogleChatState } from './state.js';
 import { getTRPCClient, startGoogleChatIngestion } from './client.js';
 import { startDaemonToGoogleChatForwarder } from './forwarder.js';
 import { getUserAuthClient } from './auth.js';
+import { startSubscriptionRenewalCron } from './cron.js';
 import type { FilteringConfig } from '../shared/adapters/filtering.js';
 
 export async function main() {
@@ -47,6 +48,9 @@ export async function main() {
   startDaemonToGoogleChatForwarder(trpc, config, filteringConfig).catch((error) => {
     console.error('Error in daemon-to-google-chat forwarder:', error);
   });
+
+  // Start background cron for renewing Space Subscriptions
+  startSubscriptionRenewalCron(config);
 }
 
 if (process.env.NODE_ENV !== 'test') {

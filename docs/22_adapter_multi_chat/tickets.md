@@ -145,7 +145,7 @@ Refactor message ingestion to correctly process native Bot Events alongside the 
 ---
 
 ## Ticket 8: Background Renewal Cron for Subscriptions
-**Status**: Not Started
+**Status**: Completed
 
 **Description**: 
 Implement a background process to prevent active Space Subscriptions from expiring after their default 7-day TTL.
