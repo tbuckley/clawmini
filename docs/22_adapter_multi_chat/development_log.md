@@ -52,3 +52,14 @@
 - Intercepted `ADDED_TO_SPACE` and `REMOVED_FROM_SPACE` early in the Google Chat ingestion pipeline to bypass the first contact unmapped warnings.
 - Updated `client.test.ts` to simulate and test subscriptions logic accurately using mock fetch interactions.
 - Resolved various TypeScript alignment errors around strict typing of `mappedChatId` and nested objects inside the state JSON configuration.
+
+## Session 6
+- Implemented Ticket 7: Dual-Pipeline Pub/Sub Worker Logic.
+- Updated `startGoogleChatIngestion` in `src/adapter-google-chat/client.ts` to process native Bot Events and Workspace Events.
+- Implemented a 60-second LRU cache (using Map) to deduplicate Message IDs and drop duplicate messages when the bot is mentioned and triggering both pipelines.
+- Added explicit sender type check to drop messages from `BOT` to prevent infinite reply loops.
+- Added tests simulating Workspace Event payloads and Bot Event payloads.
+- Verified test coverage for duplicate IDs and BOT message dropping.
+- Fixed linter warnings about missing `const` and explicit `any` types.
+- Fixed maximum line constraints by simplifying logical conditionals.
+- Ran `npm run validate` which passed format, lint, check, and unit/E2E tests.

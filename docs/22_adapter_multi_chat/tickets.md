@@ -124,7 +124,7 @@ Handle Google Chat bot events to automatically create and tear down Space Subscr
 ---
 
 ## Ticket 7: Dual-Pipeline Pub/Sub Worker Logic
-**Status**: Not Started
+**Status**: Completed
 
 **Description**: 
 Refactor message ingestion to correctly process native Bot Events alongside the newly configured Workspace Events coming from the same Pub/Sub topic, ensuring no duplication or loops.

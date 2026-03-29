@@ -369,5 +369,109 @@ describe('Google Chat Adapter Client', () => {
       expect(authorizedMockMsg.ack).not.toHaveBeenCalled();
       expect(fsPromises.unlink).toHaveBeenCalled();
     });
+
+    it('should process Workspace Events properly', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+      const mockMsg = {
+        attributes: { 'ce-type': 'google.workspace.chat.message.v1.created' },
+        data: Buffer.from(
+          JSON.stringify({
+            message: {
+              name: 'spaces/123/messages/workspace-event',
+              sender: { email: 'user@example.com', type: 'USER' },
+              space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
+              text: 'Hello from Workspace Event',
+            },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+      await onMessage(mockMsg);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(trpcClient.sendMessage.mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'send-message',
+          data: expect.objectContaining({
+            message: 'Hello from Workspace Event',
+            chatId: 'default',
+          }),
+        })
+      );
+    });
+
+    it('should drop duplicate messages within 60 seconds based on Message ID', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+      const mockMsg1 = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'MESSAGE',
+            space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
+            message: {
+              name: 'spaces/123/messages/duplicate-123',
+              sender: { email: 'user@example.com', type: 'USER' },
+              text: 'First message',
+            },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+      await onMessage(mockMsg1);
+
+      const mockMsg2 = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'MESSAGE',
+            space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
+            message: {
+              name: 'spaces/123/messages/duplicate-123',
+              sender: { email: 'user@example.com', type: 'USER' },
+              text: 'Second message with same id',
+            },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+      await onMessage(mockMsg2);
+
+      // The second message should be acked immediately but not sent to daemon
+      expect(mockMsg2.ack).toHaveBeenCalled();
+
+      // Mutate should have only been called once for the first message
+      expect(trpcClient.sendMessage.mutate).toHaveBeenCalledTimes(1);
+    });
+
+    it('should drop messages where sender type is BOT', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+      const mockMsg = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'MESSAGE',
+            space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
+            message: {
+              name: 'spaces/123/messages/bot-msg',
+              sender: { email: 'bot@example.com', type: 'BOT' },
+              text: 'I am a bot',
+            },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+      await onMessage(mockMsg);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      // mutate should not have been called because it's a BOT
+      expect(trpcClient.sendMessage.mutate).not.toHaveBeenCalled();
+    });
   });
 });

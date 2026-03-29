@@ -59,31 +59,59 @@ export function startGoogleChatIngestion(
   const pubsub = new PubSub({ projectId: config.projectId });
   const subscription = pubsub.subscription(config.subscriptionName);
 
+  const seenMessageIds = new Map<string, number>();
+
   subscription.on('message', async (message: Message) => {
     const downloadedFiles: string[] = [];
     try {
       const dataString = message.data.toString('utf8');
-      const event = JSON.parse(dataString);
+      const parsedData = JSON.parse(dataString);
+
+      const isWorkspaceEvent =
+        message.attributes &&
+        message.attributes['ce-type'] === 'google.workspace.chat.message.v1.created';
+
+      const eventType = isWorkspaceEvent ? 'MESSAGE' : parsedData.type;
+
+      const eventMessage = isWorkspaceEvent ? parsedData.message || parsedData : parsedData.message;
+      const email =
+        (isWorkspaceEvent
+          ? eventMessage?.sender?.email
+          : parsedData.user?.email || eventMessage?.sender?.email) || '';
+      const space = isWorkspaceEvent
+        ? eventMessage?.space
+        : parsedData.space || eventMessage?.space;
+      const senderType = eventMessage?.sender?.type || '';
+      const messageId = eventMessage?.name || '';
+      const text = (eventMessage?.argumentText || eventMessage?.text || '').trim();
+
+      if (senderType === 'BOT') return void message.ack();
+
+      if (messageId) {
+        const now = Date.now();
+        for (const [id, ts] of seenMessageIds.entries())
+          if (now - ts > 60000) seenMessageIds.delete(id);
+        if (seenMessageIds.has(messageId)) return void message.ack();
+        seenMessageIds.set(messageId, now);
+      }
 
       // Only handle MESSAGE, CARD_CLICKED, ADDED_TO_SPACE, and REMOVED_FROM_SPACE events
       if (
-        event.type !== 'MESSAGE' &&
-        event.type !== 'CARD_CLICKED' &&
-        event.type !== 'ADDED_TO_SPACE' &&
-        event.type !== 'REMOVED_FROM_SPACE'
+        eventType !== 'MESSAGE' &&
+        eventType !== 'CARD_CLICKED' &&
+        eventType !== 'ADDED_TO_SPACE' &&
+        eventType !== 'REMOVED_FROM_SPACE'
       ) {
         message.ack();
         return;
       }
 
-      const email = event.user?.email || event.message?.sender?.email;
       if (!email || !isAuthorized(email, config.authorizedUsers)) {
         console.log(`Unauthorized or missing email: ${email}`);
         message.ack();
         return;
       }
 
-      const space = event.space || event.message?.space;
       const spaceName = space?.name;
 
       if (!spaceName) {
@@ -96,10 +124,9 @@ export function startGoogleChatIngestion(
 
       const externalContextId = spaceName;
       const mappedChatId = currentState.channelChatMap?.[externalContextId]?.chatId;
-      const text = (event.message?.argumentText || event.message?.text || '').trim();
       const isRoutingCommand = text.startsWith('/chat') || text.startsWith('/agent');
 
-      if (event.type === 'ADDED_TO_SPACE' && !text) {
+      if (eventType === 'ADDED_TO_SPACE' && !text) {
         await handleAddedToSpace(
           spaceName as string,
           externalContextId,
@@ -112,7 +139,7 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      if (event.type === 'REMOVED_FROM_SPACE') {
+      if (eventType === 'REMOVED_FROM_SPACE') {
         await handleRemovedFromSpace(externalContextId, currentState, config);
         message.ack();
         return;
@@ -205,9 +232,9 @@ export function startGoogleChatIngestion(
         },
       }));
 
-      if (event.type === 'CARD_CLICKED') {
+      if (eventType === 'CARD_CLICKED') {
         await handleCardClicked(
-          event,
+          parsedData,
           targetChatId as string,
           trpc as unknown as RoutingTrpcClient
         );
@@ -247,7 +274,7 @@ export function startGoogleChatIngestion(
         message.ack();
         return;
       }
-      const attachments = event.message?.attachment || [];
+      const attachments = eventMessage?.attachment || [];
 
       if (attachments.length > 0) {
         const tmpDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'google-chat');
