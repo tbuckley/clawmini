@@ -12,14 +12,14 @@ import {
   readEnvironment,
   getEnvironmentPath,
   getWorkspaceRoot,
-  updateChatSettings,
 } from '../shared/workspace.js';
-import { listChats } from '../shared/chats.js';
 import { cronManager } from './cron.js';
 import { SettingsSchema } from '../shared/config.js';
 import { validateToken, getApiContext } from './auth.js';
 import path from 'node:path';
 import { exportLiteToEnvironment } from '../shared/lite.js';
+
+import { cleanOrphanedSubagents, cleanPendingRequests } from './cleanup.js';
 
 export async function initDaemon() {
   const socketPath = getSocketPath();
@@ -142,26 +142,8 @@ export async function initDaemon() {
     });
   });
 
-  const cleanOrphanedSubagents = async () => {
-    try {
-      const chats = await listChats();
-      for (const chatId of chats) {
-        await updateChatSettings(chatId, (settings) => {
-          if (settings.subagents) {
-            for (const subagent of Object.values(settings.subagents)) {
-              if (subagent.status === 'active') {
-                subagent.status = 'failed';
-              }
-            }
-          }
-          return settings;
-        });
-      }
-    } catch (err) {
-      console.warn('Failed to clean orphaned subagents:', err);
-    }
-  };
   await cleanOrphanedSubagents();
+  await cleanPendingRequests();
 
   await runHooks('up');
 

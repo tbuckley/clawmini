@@ -1,9 +1,98 @@
 import { randomUUID } from 'node:crypto';
-import { updateChatSettings } from '../../shared/workspace.js';
+
+import { TRPCError } from '@trpc/server';
+import path from 'node:path';
+import { readPolicies, getClawminiDir } from '../../shared/workspace.js';
+import { RequestStore } from '../request-store.js';
+import { PolicyRequestService } from '../policy-request-service.js';
+import { executeRequest, generateRequestPreview } from '../policy-utils.js';
+import { appendMessage } from '../chats.js';
+import type { PolicyRequestMessage } from '../chats.js';
+import type { PolicyRequest } from '../../shared/policies.js';
+
+import { updateChatSettings, getActiveEnvironmentName } from '../../shared/workspace.js';
 import { executeDirectMessage } from '../message.js';
 import { createChatLogger } from '../agent/chat-logger.js';
 import type { ChatSettings } from '../../shared/config.js';
 import { taskScheduler } from '../agent/task-scheduler.js';
+import { resolveAgentDir } from './router-utils.js';
+import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
+
+export async function waitForPolicyRequest(
+  requestId: string,
+  workspaceRoot: string
+): Promise<void> {
+  const store = new RequestStore(workspaceRoot);
+
+  return new Promise((resolve, reject) => {
+    let resolved = false;
+    const cleanup = () => {
+      daemonEvents.removeListener(DAEMON_EVENT_MESSAGE_APPENDED, onMessage);
+    };
+
+    const checkState = async () => {
+      if (resolved) return;
+      try {
+        const req = await store.load(requestId);
+        if (!req) {
+          resolved = true;
+          cleanup();
+          reject(new TRPCError({ code: 'NOT_FOUND', message: 'Policy request not found' }));
+          return;
+        }
+        if (req.state === 'Approved') {
+          resolved = true;
+          cleanup();
+          resolve();
+        } else if (req.state === 'Rejected') {
+          resolved = true;
+          cleanup();
+          reject(new TRPCError({ code: 'FORBIDDEN', message: 'Policy request rejected' }));
+        }
+      } catch (e) {
+        resolved = true;
+        cleanup();
+        reject(e);
+      }
+    };
+
+    const onMessage = async (data: { message?: { role?: string; event?: string } }) => {
+      if (resolved) return;
+      const message = data?.message;
+      if (
+        message &&
+        message.role === 'system' &&
+        (message.event === 'policy_approved' || message.event === 'policy_rejected')
+      ) {
+        await checkState();
+      }
+    };
+
+    daemonEvents.on(DAEMON_EVENT_MESSAGE_APPENDED, onMessage);
+    checkState().catch((e) => {
+      resolved = true;
+      cleanup();
+      reject(e);
+    });
+  });
+}
+
+export async function resolveSubagentEnvironments(
+  sourceAgentId: string,
+  targetAgentId: string,
+  workspaceRoot: string
+): Promise<{ sourceEnv: string; targetEnv: string }> {
+  const sourceDir = await resolveAgentDir(sourceAgentId, workspaceRoot);
+  const targetDir = await resolveAgentDir(targetAgentId, workspaceRoot);
+
+  const sourceEnvRaw = await getActiveEnvironmentName(sourceDir, workspaceRoot);
+  const targetEnvRaw = await getActiveEnvironmentName(targetDir, workspaceRoot);
+
+  return {
+    sourceEnv: sourceEnvRaw || 'host',
+    targetEnv: targetEnvRaw || 'host',
+  };
+}
 
 export function getSubagentDepth(settings: ChatSettings, parentId: string | undefined): number {
   let depth = 0;
@@ -26,6 +115,13 @@ export async function executeSubagent(
   workspaceRoot: string
 ) {
   try {
+    await updateChatSettings(chatId, (settings) => {
+      if (settings.subagents?.[subagentId]) {
+        settings.subagents[subagentId]!.status = 'active';
+      }
+      return settings;
+    });
+
     await executeDirectMessage(
       chatId,
       {
@@ -108,4 +204,97 @@ export async function executeSubagent(
     const logger = createChatLogger(chatId, subagentId);
     await logger.logSubagentStatus({ subagentId, status: 'failed' });
   }
+}
+
+export async function handleSubagentPolicyRequest(
+  sourceEnv: string,
+  targetEnv: string,
+  chatId: string,
+  sourceAgentId: string,
+  sourceSubagentId: string | undefined,
+  action: 'spawn' | 'send',
+  targetAgentId: string,
+  targetSubagentId: string,
+  prompt: string,
+  workspaceRoot: string
+): Promise<{ request: PolicyRequest; status: 'pending' | 'approved' } | null> {
+  if (sourceEnv === targetEnv) {
+    return null;
+  }
+
+  const commandName = `@clawmini/subagent:${sourceEnv}:${targetEnv}`;
+  const args = [action, targetAgentId, targetSubagentId, prompt];
+
+  const config = await readPolicies(workspaceRoot);
+  const policy = config?.policies?.[commandName];
+
+  if (!policy) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: `Policy not found: ${commandName}`,
+    });
+  }
+
+  const isAutoApprove = !!policy.autoApprove;
+
+  const snapshotDir = path.join(getClawminiDir(workspaceRoot), 'tmp', 'snapshots');
+  const store = new RequestStore(workspaceRoot);
+  const agentDir = await resolveAgentDir(sourceAgentId, workspaceRoot);
+  const service = new PolicyRequestService(store, agentDir, snapshotDir);
+
+  const request = await service.createRequest(
+    commandName,
+    args,
+    {},
+    chatId,
+    sourceAgentId,
+    isAutoApprove,
+    sourceSubagentId
+  );
+
+  if (isAutoApprove) {
+    const { stdout, stderr, exitCode, commandStr } = await executeRequest(
+      request,
+      policy,
+      workspaceRoot
+    );
+
+    request.executionResult = { stdout, stderr, exitCode };
+    await store.save(request);
+
+    const logMsg: PolicyRequestMessage = {
+      id: randomUUID(),
+      messageId: randomUUID(),
+      role: 'policy',
+      requestId: request.id,
+      commandName,
+      args,
+      status: 'approved',
+      content: `[Auto-approved] Policy ${commandName} was executed.\n\nCommand: ${commandStr}\nExit Code: ${exitCode}\n\nStdout:\n${stdout}\n\nStderr:\n${stderr}`,
+      timestamp: new Date().toISOString(),
+      ...(sourceSubagentId ? { subagentId: sourceSubagentId } : {}),
+    };
+
+    await appendMessage(chatId, logMsg);
+    return { request, status: 'approved' };
+  }
+
+  const previewContent = await generateRequestPreview(request);
+
+  const logMsg: PolicyRequestMessage = {
+    id: randomUUID(),
+    messageId: randomUUID(),
+    role: 'policy',
+    requestId: request.id,
+    commandName,
+    args,
+    status: 'pending',
+    content: previewContent,
+    timestamp: new Date().toISOString(),
+    displayRole: 'agent',
+    ...(sourceSubagentId ? { subagentId: sourceSubagentId } : {}),
+  };
+
+  await appendMessage(chatId, logMsg);
+  return { request, status: 'pending' };
 }

@@ -1,6 +1,6 @@
 export interface PolicyDefinition {
   description?: string;
-  command: string;
+  command?: string;
   args?: string[];
   allowHelp?: boolean;
   autoApprove?: boolean;

@@ -61,7 +61,6 @@ if (fs.existsSync(policiesPath)) {
 const policyDefinition: PolicyDefinition = {
   description,
   allowHelp: true,
-  command: '',
 };
 
 if (scriptFile) {

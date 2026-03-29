@@ -132,6 +132,18 @@ export async function executeRequest(
   policy: PolicyDefinition,
   cwd?: string
 ): Promise<{ stdout: string; stderr: string; exitCode: number; commandStr: string }> {
+  if (!policy.command) {
+    if (!request.commandName.startsWith('@clawmini/')) {
+      return {
+        stdout: '',
+        stderr: `Policy ${request.commandName} is missing a required 'command' field.`,
+        exitCode: 1,
+        commandStr: 'pseudo-command',
+      };
+    }
+    return { stdout: '', stderr: '', exitCode: 0, commandStr: 'pseudo-command' };
+  }
+
   const fullArgs = [...(policy.args || []), ...request.args];
   const interpolatedArgs = interpolateArgs(fullArgs, request.fileMappings);
 

@@ -7,7 +7,13 @@ import { createChatLogger } from '../agent/chat-logger.js';
 import { on } from 'node:events';
 import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
 import { createAgentSession } from '../agent/agent-session.js';
-import { executeSubagent, getSubagentDepth } from './subagent-utils.js';
+import {
+  getSubagentDepth,
+  resolveSubagentEnvironments,
+  handleSubagentPolicyRequest,
+} from './subagent-utils.js';
+import { handleSubagentExecution } from './subagent-execution.js';
+import { cancelPendingSubagentRequests } from '../cleanup.js';
 import type { SubagentTracker } from '../../shared/config.js';
 
 const MAX_SUBAGENT_DEPTH = 2;
@@ -50,7 +56,7 @@ export const subagentSpawn = apiProcedure
         agentId,
         sessionId,
         createdAt: new Date().toISOString(),
-        status: 'active',
+        status: 'pending',
         parentId,
       };
 
@@ -59,16 +65,35 @@ export const subagentSpawn = apiProcedure
 
     const workspaceRoot = getWorkspaceRoot(process.cwd());
 
+    const { sourceEnv, targetEnv } = await resolveSubagentEnvironments(
+      parentAgentId || 'default',
+      agentId,
+      workspaceRoot
+    );
+
     const isAsync = input.async ?? depth === 0;
 
-    // Execute asynchronously
-    executeSubagent(
+    const policyResult = await handleSubagentPolicyRequest(
+      sourceEnv,
+      targetEnv,
+      chatId,
+      parentAgentId || 'default',
+      parentId,
+      'spawn',
+      agentId,
+      id,
+      input.prompt,
+      workspaceRoot
+    );
+
+    handleSubagentExecution(
+      policyResult,
+      isAsync,
       chatId,
       id,
       agentId,
       sessionId,
       input.prompt,
-      isAsync,
       ctx.tokenPayload,
       workspaceRoot
     );
@@ -96,20 +121,41 @@ export const subagentSend = apiProcedure
       }
 
       sub = settings.subagents[input.subagentId];
-      sub!.status = 'active';
+      sub!.status = 'pending';
       return settings;
     });
 
     const workspaceRoot = getWorkspaceRoot(process.cwd());
 
-    // Execute asynchronously
-    executeSubagent(
+    const { sourceEnv, targetEnv } = await resolveSubagentEnvironments(
+      ctx.tokenPayload.agentId || 'default',
+      sub!.agentId || 'default',
+      workspaceRoot
+    );
+
+    const isAsync = input.async ?? false; // or undefined, but we should match the previous behavior
+
+    const policyResult = await handleSubagentPolicyRequest(
+      sourceEnv,
+      targetEnv,
+      chatId,
+      ctx.tokenPayload.agentId || 'default',
+      ctx.tokenPayload.subagentId,
+      'send',
+      sub!.agentId || 'default',
+      sub!.id,
+      input.prompt,
+      workspaceRoot
+    );
+
+    handleSubagentExecution(
+      policyResult,
+      isAsync,
       chatId,
       sub!.id,
       sub!.agentId || 'default',
       sub!.sessionId || 'default',
       input.prompt,
-      input.async,
       ctx.tokenPayload,
       workspaceRoot
     );
@@ -214,6 +260,8 @@ export const subagentStop = apiProcedure
     });
 
     if (subToStop) {
+      await cancelPendingSubagentRequests(input.subagentId, 'Subagent stopped');
+
       const session = await createAgentSession({
         chatId,
         agentId: subToStop.agentId || 'default',
@@ -244,6 +292,8 @@ export const subagentDelete = apiProcedure
     });
 
     if (subToDelete) {
+      await cancelPendingSubagentRequests(input.subagentId, 'Subagent deleted');
+
       const session = await createAgentSession({
         chatId,
         agentId: subToDelete.agentId || 'default',
