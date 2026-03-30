@@ -71,7 +71,7 @@ To allow the adapter to temporarily store files in Google Drive for uploads and 
 2. Go to **APIs & Services > Credentials**.
 3. Click **Create Credentials** and select **OAuth client ID** (you may need to configure the OAuth consent screen first).
 4. Choose **Web application** as the application type.
-5. Add `http://localhost:31337/oauth2callback` to the **Authorized redirect URIs**.
+5. Add `http://localhost:31338/oauth2callback` to the **Authorized redirect URIs**.
 6. Copy the **Client ID** and **Client Secret**.
 
 Add these to your `config.json` file along with the `topicName`:

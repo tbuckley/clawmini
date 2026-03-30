@@ -31,7 +31,7 @@ export async function getUserAuthClient(config: GoogleChatConfig) {
     const oauth2Client = new google.auth.OAuth2(
       config.oauthClientId,
       config.oauthClientSecret,
-      'http://localhost:31337/oauth2callback'
+      'http://localhost:31338/oauth2callback'
     );
 
     oauth2Client.on('tokens', async (tokens) => {
@@ -76,7 +76,7 @@ export async function getUserAuthClient(config: GoogleChatConfig) {
 
       const server = http.createServer(async (req, res) => {
         if (req.url?.startsWith('/oauth2callback')) {
-          const url = new URL(req.url, 'http://localhost:31337');
+          const url = new URL(req.url, 'http://localhost:31338');
           const code = url.searchParams.get('code');
           if (code) {
             res.end('Authentication successful! You can close this window.');
@@ -108,13 +108,13 @@ export async function getUserAuthClient(config: GoogleChatConfig) {
       });
 
       server.on('error', (err) => {
-        console.error('Failed to start local OAuth server on port 31337', err);
+        console.error('Failed to start local OAuth server on port 31338', err);
         clearTimeout(timeoutId);
         userAuthPromise = null;
         reject(err);
       });
 
-      server.listen(31337, '127.0.0.1', () => {
+      server.listen(31338, '127.0.0.1', () => {
         timeoutId = setTimeout(
           () => {
             server.close();
