@@ -57,21 +57,6 @@ describe('applyRouterStateUpdates session logic', () => {
     expect(chatSettings.sessions).toBeDefined();
     expect(chatSettings.sessions['default']).toBe('next-sess');
   });
-
-  it('only updates nextSessionId if current active session matches finalSessionId', async () => {
-    const chatSettings: any = {
-      sessions: { default: 'new-active-session' },
-    };
-    const finalState: any = {
-      sessionId: 'old-timeout-session',
-      nextSessionId: 'timeout-next-sess',
-    };
-
-    await applyRouterStateUpdates('chat1', '/cwd', finalState, chatSettings, undefined);
-
-    // Should NOT have changed to 'timeout-next-sess'
-    expect(chatSettings.sessions['default']).toBe('new-active-session');
-  });
 });
 
 describe('Session Resolution & Execution', () => {

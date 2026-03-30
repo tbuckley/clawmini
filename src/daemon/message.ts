@@ -168,11 +168,8 @@ export async function applyRouterStateUpdates(
 
   if (finalState.nextSessionId) {
     chatSettings.sessions = chatSettings.sessions || {};
-    const currentActiveSession = chatSettings.sessions[currentAgentId];
-    if (!currentActiveSession || currentActiveSession === finalSessionId) {
-      chatSettings.sessions[currentAgentId] = finalState.nextSessionId;
-      settingsChanged = true;
-    }
+    chatSettings.sessions[currentAgentId] = finalState.nextSessionId;
+    settingsChanged = true;
   }
 
   if (finalState.jobs) {
