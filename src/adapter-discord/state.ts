@@ -41,14 +41,12 @@ export async function readDiscordState(startDir = process.cwd()): Promise<Discor
       }
     }
 
-    const result = DiscordStateSchema.safeParse(parsed);
-    if (!result.success) {
+    return DiscordStateSchema.parse(parsed);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       return {};
     }
-    return result.data;
-  } catch {
-    // Return default state if file doesn't exist or is invalid JSON
-    return {};
+    throw err;
   }
 }
 

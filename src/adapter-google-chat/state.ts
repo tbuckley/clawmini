@@ -48,18 +48,14 @@ export async function readGoogleChatState(startDir = process.cwd()): Promise<Goo
       }
     }
 
-    const result = GoogleChatStateSchema.safeParse(parsed);
-    if (!result.success) {
+    return GoogleChatStateSchema.parse(parsed);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       return {
         oauthTokens: undefined,
       };
     }
-    return result.data;
-  } catch {
-    // Return default state if file doesn't exist or is invalid JSON
-    return {
-      oauthTokens: undefined,
-    };
+    throw err;
   }
 }
 

@@ -15,7 +15,9 @@ describe('Discord State Management', () => {
   });
 
   it('should return default state if file does not exist', async () => {
-    vi.mocked(fsPromises.readFile).mockRejectedValue(new Error('File not found'));
+    const error = new Error('File not found') as Error & { code: string };
+    error.code = 'ENOENT';
+    vi.mocked(fsPromises.readFile).mockRejectedValue(error);
 
     const state = await readDiscordState();
     expect(state).toEqual({});
@@ -29,11 +31,10 @@ describe('Discord State Management', () => {
     expect(state).toEqual(mockState);
   });
 
-  it('should return default state if file contains invalid JSON', async () => {
+  it('should throw if file contains invalid JSON', async () => {
     vi.mocked(fsPromises.readFile).mockResolvedValue('invalid-json');
 
-    const state = await readDiscordState();
-    expect(state).toEqual({});
+    await expect(readDiscordState()).rejects.toThrow();
   });
 
   it('should write state to file', async () => {

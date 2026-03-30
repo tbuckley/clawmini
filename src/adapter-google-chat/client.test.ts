@@ -516,5 +516,39 @@ describe('Google Chat Adapter Client', () => {
       // mutate should not have been called because it's a BOT
       expect(trpcClient.sendMessage.mutate).not.toHaveBeenCalled();
     });
+
+    it('should bypass requireMention if the message is a thread reply', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+
+      const { readGoogleChatState } = await import('./state.js');
+      vi.mocked(readGoogleChatState).mockResolvedValueOnce({
+        channelChatMap: {
+          'spaces/123': { chatId: 'chat-1', requireMention: true },
+        },
+      });
+
+      const mockMsg = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'MESSAGE',
+            space: { name: 'spaces/123', type: 'SPACE' },
+            user: { email: 'user@example.com' },
+            message: {
+              name: 'spaces/123/messages/reply-msg',
+              text: 'This is a thread reply without mention',
+              threadReply: true,
+            },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+      await onMessage(mockMsg);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(trpcClient.sendMessage.mutate).toHaveBeenCalled();
+    });
   });
 });

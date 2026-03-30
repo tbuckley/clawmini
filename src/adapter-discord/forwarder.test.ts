@@ -55,6 +55,9 @@ describe('Daemon to Discord Forwarder', () => {
       users: {
         fetch: vi.fn().mockResolvedValue(mockUser),
       },
+      channels: {
+        fetch: vi.fn(),
+      },
     } as unknown as import('discord.js').Client;
 
     subscribeCallbacks = null;
@@ -644,6 +647,39 @@ describe('Daemon to Discord Forwarder', () => {
     );
 
     vi.useRealTimers();
+    controller.abort();
+    await forwarderPromise;
+  });
+
+  it('should use mapped channel ID from state if it exists', async () => {
+    const controller = new AbortController();
+    vi.mocked(readDiscordState).mockResolvedValue({
+      lastSyncedMessageIds: { 'mapped-chat': 'msg-0' },
+      channelChatMap: { 'channel-123': { chatId: 'mapped-chat' } },
+    });
+
+    const mockChannel = {
+      isTextBased: () => true,
+      isDMBased: () => false,
+      send: vi.fn().mockResolvedValue({}),
+    };
+    mockClient.channels.fetch = vi.fn().mockResolvedValue(mockChannel);
+
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'mapped-chat',
+      signal: controller.signal,
+    });
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    subscribeCallbacks.onData([
+      { id: 'msg-1', role: 'agent', content: 'hello mapped', timestamp: '' },
+    ]);
+
+    await vi.waitFor(() => expect(mockChannel.send).toHaveBeenCalled());
+
+    expect(mockClient.channels.fetch).toHaveBeenCalledWith('channel-123');
+
     controller.abort();
     await forwarderPromise;
   });

@@ -274,8 +274,10 @@ export function startGoogleChatIngestion(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             eventMessage.annotations.some((a: any) => a.type === 'USER_MENTION');
 
-          // If requireMention is true and it's not a DM, ignore if not mentioned.
-          if (!isMentioned) {
+          const isThreadReply = !!eventMessage?.threadReply;
+
+          // If requireMention is true and it's not a DM, ignore if not mentioned and not a thread reply.
+          if (!isMentioned && !isThreadReply) {
             message.ack();
             return;
           }

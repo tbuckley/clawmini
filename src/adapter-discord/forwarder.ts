@@ -32,7 +32,7 @@ async function resolveDiscordDestination(
 
   let targetDiscordChannelId: string | undefined;
   for (const [channelId, mappedChatId] of Object.entries(channelChatMap)) {
-    if (mappedChatId === chatId) {
+    if (mappedChatId?.chatId === chatId) {
       targetDiscordChannelId = channelId;
       break;
     }

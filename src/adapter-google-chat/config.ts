@@ -31,15 +31,12 @@ export async function readGoogleChatConfig(
   try {
     const data = await fsPromises.readFile(configPath, 'utf-8');
     const parsed = JSON.parse(data);
-    const result = GoogleChatConfigSchema.safeParse(parsed);
-    if (!result.success) {
-      console.error('Invalid Google Chat configuration:', result.error.format());
+    return GoogleChatConfigSchema.parse(parsed);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       return null;
     }
-    return result.data;
-  } catch {
-    // Return null if file doesn't exist or is invalid JSON
-    return null;
+    throw err;
   }
 }
 
