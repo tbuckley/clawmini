@@ -33,8 +33,8 @@ describe('Session Timeout E2E', () => {
       'settings.json'
     );
     const agentSettings = JSON.parse(fs.readFileSync(agentSettingsPath, 'utf8'));
-    agentSettings.commands.new = 'echo "[DEBUG] $CLAW_CLI_MESSAGE"';
-    agentSettings.commands.append = 'echo "[DEBUG $SESSION_ID] $CLAW_CLI_MESSAGE"';
+    agentSettings.commands.new = 'echo "[DEBUG NEW $SESSION_ID] $CLAW_CLI_MESSAGE"';
+    agentSettings.commands.append = 'echo "[DEBUG APPEND $SESSION_ID] $CLAW_CLI_MESSAGE"';
     fs.writeFileSync(agentSettingsPath, JSON.stringify(agentSettings, null, 2));
   }, 30000);
 
@@ -42,7 +42,7 @@ describe('Session Timeout E2E', () => {
     await teardownE2E();
   }, 30000);
 
-  function parseJsonlHistory(stdout: string) {
+  function getMessages(stdout: string) {
     return stdout
       .trim()
       .split('\n')
@@ -55,6 +55,12 @@ describe('Session Timeout E2E', () => {
         }
       })
       .filter(Boolean);
+  }
+
+  function getAgentResponse(messages: any[], userMessage: string) {
+    return messages.find(
+      (m) => m.content && m.content.includes(userMessage) && m.content.includes('[DEBUG')
+    );
   }
 
   it('(1) sending a message and waiting for timeout, ensuring that the old session has the timeout message sent to it and new messages go to a different session. The user should be sent a system message saying that a new session has started.', async () => {
@@ -85,13 +91,11 @@ describe('Session Timeout E2E', () => {
       '30',
       '--json',
     ]);
-    const messages = parseJsonlHistory(history2);
+    const messages = getMessages(history2);
     if (messages.length === 0) console.error('RAW STDOUT:', history2, 'STDERR:', err2);
 
     // Check that we see the first message, the fresh session reply, and the second message as a NEW session
-    const firstMsgLog = messages.find(
-      (m: any) => m.content && m.content.includes('[DEBUG] first message')
-    );
+    const firstMsgLog = getAgentResponse(messages, 'first message');
     if (!firstMsgLog) console.error('FAILED TO FIND FIRST MSG LOG in:', messages);
     expect(firstMsgLog).toBeDefined();
 
@@ -101,15 +105,15 @@ describe('Session Timeout E2E', () => {
     );
     expect(timeoutOutput).toBeDefined();
 
-    // The second message should use `commands.new`, which prints `[DEBUG] second message`
-    const secondMsgLog = messages.find(
-      (m: any) => m.content && m.content.includes('[DEBUG] second message')
-    );
+    // The second message should use `commands.new`, which prints `[DEBUG NEW ] second message` because $SESSION_ID is empty
+    const secondMsgLog = getAgentResponse(messages, 'second message');
     expect(secondMsgLog).toBeDefined();
+    expect(secondMsgLog.content).toContain('[DEBUG NEW ]');
 
     // It should NOT be appended.
     const secondMsgAppended = messages.find(
-      (m: any) => m.content && m.content.includes('second message') && m.content.includes('[DEBUG ')
+      (m: any) =>
+        m.content && m.content.includes('second message') && m.content.includes('[DEBUG APPEND ')
     );
     expect(secondMsgAppended).toBeUndefined();
   }, 20000);
@@ -130,7 +134,7 @@ describe('Session Timeout E2E', () => {
     // Send a keep-alive message so the new session's timeout is reset to 5s from now!
     await runCli(['messages', 'send', '--chat', 'test2', 'msg KEEP ALIVE']);
 
-    // Wait another 3.5 seconds. 
+    // Wait another 3.5 seconds.
     // Now we are at ~6s since msg A (timeout FIRED).
     // We are at ~3.5s since msg KEEP ALIVE (timeout NOT FIRED).
     await new Promise((resolve) => setTimeout(resolve, 3500));
@@ -149,8 +153,15 @@ describe('Session Timeout E2E', () => {
     expect(history).not.toContain('[@clawmini/session-timeout] Starting a fresh session...');
 
     // But the background timeout prompt SHOULD have been sent for msg A!
-    const messages = parseJsonlHistory(history);
+    const messages = getMessages(history);
     if (messages.length === 0) console.error('TEST 2 NO PARSED MESSAGES. RAW:', history);
+
+    // Find msg KEEP ALIVE and get its session ID
+    const keepAliveLog = getAgentResponse(messages, 'msg KEEP ALIVE');
+    expect(keepAliveLog).toBeDefined();
+    const keepAliveSessionId = keepAliveLog.content.match(/\[DEBUG APPEND (.*?)\]/)?.[1];
+    expect(keepAliveSessionId).toBeTruthy();
+
     const backgroundPrompts = messages.filter(
       (m: any) => m.content && m.content.includes('This chat session has ended.')
     );
@@ -171,15 +182,11 @@ describe('Session Timeout E2E', () => {
       '--json',
     ]);
 
-    const messages2 = parseJsonlHistory(history2);
+    const messages2 = getMessages(history2);
 
-    // If the session was NOT blown away, msg C should be appended to the session of KEEP ALIVE.
-    // Thus it should output `[DEBUG <session_id>] msg C`
-    const appendedMsgLog = messages2.find(
-      (m: any) => m.content && m.content.includes('msg C') && m.content.includes('[DEBUG ')
-    );
+    const appendedMsgLog = getAgentResponse(messages2, 'msg C');
     if (!appendedMsgLog) console.error('FAILED TO FIND APPENDED MSG LOG in:', messages2);
     expect(appendedMsgLog).toBeDefined();
-    expect(appendedMsgLog.content).not.toContain('[DEBUG]'); // [DEBUG] is what commands.new outputs
+    expect(appendedMsgLog.content).toContain(`[DEBUG APPEND ${keepAliveSessionId}]`);
   }, 20000);
 });

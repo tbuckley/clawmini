@@ -48,26 +48,27 @@ describe('sessionTimeoutRouter', () => {
     };
 
     const nextState = router(initialState);
+    const generatedSessionId = nextState.sessionId;
 
-    expect(nextState.nextSessionId).toBeUndefined(); // Should not modify current session
-    expect(nextState.jobs?.remove).toContain('__session_timeout__');
+    expect(generatedSessionId).toBeDefined();
+    expect(nextState.jobs?.remove).toContain(`__session_timeout__${generatedSessionId}`);
     expect(nextState.jobs?.add).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: '__session_timeout__',
+          id: `__session_timeout__${generatedSessionId}`,
           schedule: { at: '60m' },
           message:
             'This chat session has ended. Save any important details from it to your memory. When finished, reply with NO_REPLY_NECESSARY.',
           reply: '[@clawmini/session-timeout] Starting a fresh session...',
-          nextSessionId: 'mock-uuid',
+          nextSessionId: expect.any(String),
+          session: { type: 'existing', id: generatedSessionId },
           env: { __SESSION_TIMEOUT__: 'true' },
           jobs: {
-            remove: ['__session_timeout__'],
+            remove: [`__session_timeout__${generatedSessionId}`],
           },
         }),
       ])
     );
-    expect(nextState.jobs?.add?.[0]).not.toHaveProperty('session');
   });
 
   it('respects custom timeout and prompt configuration', () => {

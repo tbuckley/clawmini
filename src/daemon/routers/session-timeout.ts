@@ -35,7 +35,8 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
       return state;
     }
 
-    const jobId = state.sessionId ? `__session_timeout__${state.sessionId}` : '__session_timeout__';
+    const sessionId = state.sessionId || crypto.randomUUID();
+    const jobId = `__session_timeout__${sessionId}`;
 
     const jobs = {
       ...state.jobs,
@@ -44,10 +45,11 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
 
     return {
       ...state,
+      sessionId,
       jobs: {
         ...jobs,
         add: [
-          ...(jobs?.add || []),
+          ...(jobs.add || []),
           // Add a job after the timeout that will send the prompt, reply to the user,
           // start a fresh session, and delete the job
           {
@@ -56,7 +58,7 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
             message: prompt,
             reply: '[@clawmini/session-timeout] Starting a fresh session...',
             nextSessionId: randomUUID(),
-            ...(state.sessionId ? { session: { type: 'existing', id: state.sessionId } } : {}),
+            session: { type: 'existing', id: sessionId },
             env: { __SESSION_TIMEOUT__: 'true' },
             jobs: {
               remove: [jobId],
