@@ -42,6 +42,8 @@ This step is optional, but recommended.
 
 The adapter authenticates using Google's Application Default Credentials.
 
+### Option A: Short-lived Credentials (requires regular re-authentication)
+
 1. Run the following command in your terminal:
    ```bash
    # replace with the service account email from Step 1
@@ -51,7 +53,21 @@ The adapter authenticates using Google's Application Default Credentials.
    ```bash
    gcloud auth application-default login
    ```
-2. Follow the browser prompts to authenticate. This generates a local credentials file that the adapter will use automatically.
+2. Follow the browser prompts to authenticate. This generates a local credentials file that the adapter will use automatically. Note that impersonated credentials expire quickly and require re-authenticating regularly (e.g., daily).
+
+### Option B: Long-lived Service Account JSON Key (Recommended for long-running setups)
+
+To avoid having to re-authenticate every day, you can use a Service Account JSON Key.
+
+1. In the Google Cloud Console, navigate to **IAM & Admin** > **Service Accounts**.
+2. Select the service account you created in Step 1.
+3. Go to the **Keys** tab, click **Add Key** > **Create new key**, and select **JSON**.
+4. Save the downloaded `.json` file securely on your machine (ensure it is added to `.gitignore` if placed inside a code repository).
+5. Set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to point to the absolute path of the JSON file before starting the adapter:
+   ```bash
+   export GOOGLE_APPLICATION_CREDENTIALS="/absolute/path/to/your/service-account-key.json"
+   ```
+   You can add this `export` command to your `.bashrc`, `.zshrc`, or include it in your service startup scripts.
 
 ## Step 5: Configure the Adapter
 
