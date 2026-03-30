@@ -166,12 +166,6 @@ export async function applyRouterStateUpdates(
     settingsChanged = true;
   }
 
-  if (finalSessionId && chatSettings.sessions?.[currentAgentId] !== finalSessionId) {
-    chatSettings.sessions = chatSettings.sessions || {};
-    chatSettings.sessions[currentAgentId] = finalSessionId;
-    settingsChanged = true;
-  }
-
   if (finalState.nextSessionId) {
     chatSettings.sessions = chatSettings.sessions || {};
     const currentActiveSession = chatSettings.sessions[currentAgentId];

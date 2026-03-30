@@ -117,7 +117,7 @@ export class CronManager {
         globalSettings = undefined;
       }
 
-      const overrideSessionId = job.session?.type === 'new' ? crypto.randomUUID() : undefined;
+      const overrideSessionId = job.session?.type === 'new' ? crypto.randomUUID() : job.session?.id;
       const chatSettings = (await readChatSettings(chatId, process.cwd())) ?? {};
       let routerState = await getInitialRouterState(
         chatId,
