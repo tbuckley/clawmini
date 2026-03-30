@@ -13,7 +13,7 @@ const { mockClientInstance } = vi.hoisted(() => ({
 }));
 
 vi.mock('./state.js', () => ({
-  readDiscordState: vi.fn().mockResolvedValue({ channelChatMap: { 'channel-123': 'default' } }),
+  readDiscordState: vi.fn().mockResolvedValue({ channelChatMap: { 'channel-123': { chatId: 'default' } } }),
   updateDiscordState: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -282,6 +282,88 @@ describe('Discord Adapter Entry Point', () => {
 
     const { isAuthorized } = await import('./config.js');
     vi.mocked(isAuthorized).mockReturnValue(true);
+
+    if (messageHandler) {
+      await messageHandler(mockMessage as unknown as import('discord.js').Message);
+    }
+
+    expect(mockTrpc.sendMessage.mutate).toHaveBeenCalled();
+  });
+
+  it('should NOT process non-DM (guild) messages if channel requireMention is true and not mentioned', async () => {
+    let messageHandler: ((message: import('discord.js').Message) => Promise<void>) | undefined;
+    vi.mocked(mockClientInstance.on).mockImplementation(
+      (event: string, cb: (...args: unknown[]) => void) => {
+        if (event === 'messageCreate') {
+          messageHandler = cb as unknown as (
+            message: import('discord.js').Message
+          ) => Promise<void>;
+        }
+        return mockClientInstance as unknown as import('discord.js').Client;
+      }
+    );
+
+    const { main } = await import('./index.js');
+    await main();
+
+    const mockMessage = {
+      author: { id: 'user-123', tag: 'user#1234' },
+      content: 'Hack the daemon!',
+      guild: { id: 'guild-123' },
+      channelId: 'channel-123',
+      reply: vi.fn(),
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      attachments: new Map(),
+    };
+
+    const { isAuthorized } = await import('./config.js');
+    vi.mocked(isAuthorized).mockReturnValue(true);
+
+    const { readDiscordState } = await import('./state.js');
+    vi.mocked(readDiscordState).mockResolvedValue({
+      channelChatMap: { 'channel-123': { chatId: 'default', requireMention: true } },
+    });
+
+    if (messageHandler) {
+      await messageHandler(mockMessage as unknown as import('discord.js').Message);
+    }
+
+    expect(mockTrpc.sendMessage.mutate).not.toHaveBeenCalled();
+  });
+
+  it('should process non-DM (guild) messages if channel requireMention is true and IS mentioned', async () => {
+    let messageHandler: ((message: import('discord.js').Message) => Promise<void>) | undefined;
+    vi.mocked(mockClientInstance.on).mockImplementation(
+      (event: string, cb: (...args: unknown[]) => void) => {
+        if (event === 'messageCreate') {
+          messageHandler = cb as unknown as (
+            message: import('discord.js').Message
+          ) => Promise<void>;
+        }
+        return mockClientInstance as unknown as import('discord.js').Client;
+      }
+    );
+
+    const { main } = await import('./index.js');
+    await main();
+
+    const mockMessage = {
+      author: { id: 'user-123', tag: 'user#1234' },
+      content: 'Hack the daemon!',
+      guild: { id: 'guild-123' },
+      channelId: 'channel-123',
+      reply: vi.fn(),
+      mentions: { has: vi.fn().mockReturnValue(true) },
+      attachments: new Map(),
+    };
+
+    const { isAuthorized } = await import('./config.js');
+    vi.mocked(isAuthorized).mockReturnValue(true);
+
+    const { readDiscordState } = await import('./state.js');
+    vi.mocked(readDiscordState).mockResolvedValue({
+      channelChatMap: { 'channel-123': { chatId: 'default', requireMention: true } },
+    });
 
     if (messageHandler) {
       await messageHandler(mockMessage as unknown as import('discord.js').Message);

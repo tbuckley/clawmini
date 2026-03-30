@@ -365,8 +365,10 @@ export async function startDaemonToDiscordForwarder(
     targetChatIds.add(defaultChatId);
 
     if (state.channelChatMap) {
-      for (const mappedChatId of Object.values(state.channelChatMap)) {
-        targetChatIds.add(mappedChatId);
+      for (const mappedEntry of Object.values(state.channelChatMap)) {
+        if (mappedEntry.chatId) {
+          targetChatIds.add(mappedEntry.chatId);
+        }
       }
     }
 

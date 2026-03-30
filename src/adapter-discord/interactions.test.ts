@@ -57,7 +57,7 @@ describe('handleDiscordInteraction', () => {
   it('routes approve to channel mapped chat if explicit not provided', async () => {
     mockInteraction.customId = 'approve_policy-1';
     vi.mocked(readDiscordState).mockResolvedValue({
-      channelChatMap: { 'channel-1': 'mapped-chat' },
+      channelChatMap: { 'channel-1': { chatId: 'mapped-chat' } },
     });
     await handleDiscordInteraction(mockInteraction, config, mockTrpc);
 
@@ -80,7 +80,7 @@ describe('handleDiscordInteraction', () => {
     mockInteraction.customId = 'modal_reject|policy-1|';
 
     vi.mocked(readDiscordState).mockResolvedValue({
-      channelChatMap: { 'channel-1': 'mapped-chat' },
+      channelChatMap: { 'channel-1': { chatId: 'mapped-chat' } },
     });
 
     await handleDiscordInteraction(mockInteraction, config, mockTrpc);

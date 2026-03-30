@@ -51,7 +51,7 @@ export async function handleDiscordInteraction(
         const targetChatId =
           explicitChatId ||
           (interaction.channelId
-            ? currentState.channelChatMap?.[interaction.channelId] || config.chatId
+            ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
             : config.chatId);
         await trpc.sendMessage.mutate({
           type: 'send-message',
@@ -131,7 +131,7 @@ export async function handleDiscordInteraction(
         const targetChatId =
           explicitChatId ||
           (interaction.channelId
-            ? currentState.channelChatMap?.[interaction.channelId] || config.chatId
+            ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
             : config.chatId);
 
         await trpc.sendMessage.mutate({

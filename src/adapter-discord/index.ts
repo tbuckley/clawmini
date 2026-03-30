@@ -63,24 +63,38 @@ export async function main() {
     if (message.author.id === client.user?.id) return;
     if (message.author.bot) return;
 
+    const externalContextId = message.channelId;
+    const currentState = await readDiscordState();
+    const mappedChatId = currentState.channelChatMap?.[externalContextId]?.chatId;
+    const isRoutingCommand =
+      message.content.startsWith('/chat') || message.content.startsWith('/agent');
+
     // Enforce requireMention config for guild messages
-    if (message.guild && config.requireMention) {
-      const isMentioned = message.mentions.has(client.user!.id);
-      let isReplyToBot = false;
+    if (message.guild) {
+      const channelConfig = currentState.channelChatMap?.[externalContextId];
+      const requiresMention =
+        channelConfig?.requireMention !== undefined
+          ? channelConfig.requireMention
+          : config.requireMention;
 
-      if (message.reference && message.reference.messageId) {
-        try {
-          const referencedMessage = await message.channel.messages.fetch(
-            message.reference.messageId
-          );
-          isReplyToBot = referencedMessage.author.id === client.user!.id;
-        } catch (err) {
-          console.error('Failed to fetch referenced message for mention check:', err);
+      if (requiresMention && !isRoutingCommand) {
+        const isMentioned = message.mentions.has(client.user!.id);
+        let isReplyToBot = false;
+
+        if (message.reference && message.reference.messageId) {
+          try {
+            const referencedMessage = await message.channel.messages.fetch(
+              message.reference.messageId
+            );
+            isReplyToBot = referencedMessage.author.id === client.user!.id;
+          } catch (err) {
+            console.error('Failed to fetch referenced message for mention check:', err);
+          }
         }
-      }
 
-      if (!isMentioned && !isReplyToBot) {
-        return;
+        if (!isMentioned && !isReplyToBot) {
+          return;
+        }
       }
     }
 
@@ -93,13 +107,6 @@ export async function main() {
     }
 
     console.log(`Received message from ${message.author.tag}: ${message.content}`);
-
-    const externalContextId = message.channelId;
-    const currentState = await readDiscordState();
-    const mappedChatId = currentState.channelChatMap?.[externalContextId];
-
-    const isRoutingCommand =
-      message.content.startsWith('/chat') || message.content.startsWith('/agent');
 
     if (isRoutingCommand) {
       const routingResult = await handleRoutingCommand(

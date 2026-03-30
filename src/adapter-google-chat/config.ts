@@ -13,6 +13,7 @@ export const GoogleChatConfigSchema = z.looseObject({
   chatId: z.string().default('default').optional(),
   directMessageName: z.string().optional(),
   driveUploadEnabled: z.boolean().default(true).optional(),
+  requireMention: z.boolean().default(false),
   oauthClientId: z.string().optional(),
   oauthClientSecret: z.string().optional(),
 });
@@ -67,6 +68,7 @@ export async function initGoogleChatConfig(startDir = process.cwd()): Promise<vo
     subscriptionName: 'YOUR_SUBSCRIPTION_NAME',
     authorizedUsers: ['user@example.com'],
     chatId: 'default',
+    requireMention: false,
     oauthClientId: 'YOUR_OAUTH_CLIENT_ID',
     oauthClientSecret: 'YOUR_OAUTH_CLIENT_SECRET',
   };

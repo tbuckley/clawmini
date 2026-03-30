@@ -36,6 +36,7 @@ describe('Google Chat Adapter Configuration', () => {
           maxAttachmentSizeMB: 25,
           chatId: 'default',
           driveUploadEnabled: true,
+          requireMention: false,
         });
       }
     });
@@ -120,6 +121,7 @@ describe('Google Chat Adapter Configuration', () => {
         topicName: 'YOUR_TOPIC_NAME',
         authorizedUsers: ['user@example.com'],
         chatId: 'default',
+        requireMention: false,
         oauthClientId: 'YOUR_OAUTH_CLIENT_ID',
         oauthClientSecret: 'YOUR_OAUTH_CLIENT_SECRET',
       });
@@ -154,6 +156,7 @@ describe('Google Chat Adapter Configuration', () => {
         maxAttachmentSizeMB: 25,
         chatId: 'default',
         driveUploadEnabled: true,
+        requireMention: false,
       });
       expect(fsPromises.readFile).toHaveBeenCalledWith(getGoogleChatConfigPath(), 'utf-8');
     });
@@ -182,3 +185,4 @@ describe('Google Chat Adapter Configuration', () => {
     });
   });
 });
+;

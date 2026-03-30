@@ -12,6 +12,7 @@ export const GoogleChatStateSchema = z.object({
         chatId: z.string().nullable().optional(),
         subscriptionId: z.string().optional(),
         expirationDate: z.string().optional(),
+        requireMention: z.boolean().optional(),
       })
     )
     .optional(),

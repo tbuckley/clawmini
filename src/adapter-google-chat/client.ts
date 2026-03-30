@@ -260,6 +260,28 @@ export function startGoogleChatIngestion(
       // Fallback typing safeguard
       if (!targetChatId) targetChatId = config.chatId || 'default';
 
+      const isDirectMessage = space?.type === 'DIRECT_MESSAGE' || space?.singleUserBotDm === true;
+      if (!isDirectMessage && eventType === 'MESSAGE') {
+        const channelConfig = currentState.channelChatMap?.[externalContextId];
+        const requiresMention =
+          channelConfig?.requireMention !== undefined
+            ? channelConfig.requireMention
+            : config.requireMention;
+
+        if (requiresMention && !isRoutingCommand) {
+          const isMentioned =
+            Array.isArray(eventMessage?.annotations) &&
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            eventMessage.annotations.some((a: any) => a.type === 'USER_MENTION');
+            
+          // If requireMention is true and it's not a DM, ignore if not mentioned.
+          if (!isMentioned) {
+            message.ack();
+            return;
+          }
+        }
+      }
+
       if (eventType === 'CARD_CLICKED') {
         await handleCardClicked(
           parsedData,

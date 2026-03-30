@@ -5,7 +5,15 @@ import { getClawminiDir } from '../shared/workspace.js';
 
 export const DiscordStateSchema = z.object({
   lastSyncedMessageIds: z.record(z.string(), z.string()).optional(),
-  channelChatMap: z.record(z.string(), z.string()).optional(),
+  channelChatMap: z
+    .record(
+      z.string(),
+      z.object({
+        chatId: z.string().nullable().optional(),
+        requireMention: z.boolean().optional(),
+      })
+    )
+    .optional(),
   filters: z.record(z.string(), z.boolean()).optional(),
 });
 
@@ -24,6 +32,13 @@ export async function readDiscordState(startDir = process.cwd()): Promise<Discor
     // Migrate legacy state
     if (parsed.lastSyncedMessageId && !parsed.lastSyncedMessageIds) {
       parsed.lastSyncedMessageIds = { default: parsed.lastSyncedMessageId };
+    }
+    if (parsed.channelChatMap) {
+      for (const [key, value] of Object.entries(parsed.channelChatMap)) {
+        if (typeof value === 'string') {
+          parsed.channelChatMap[key] = { chatId: value };
+        }
+      }
     }
 
     const result = DiscordStateSchema.safeParse(parsed);
