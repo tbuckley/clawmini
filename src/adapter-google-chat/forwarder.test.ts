@@ -6,6 +6,7 @@ const mockConfig = {
   subscriptionName: 'test',
   topicName: 'test-topic',
   authorizedUsers: ['user@example.com'],
+  requireMention: false,
   chatId: 'default',
   directMessageName: 'spaces/test-space',
   driveUploadEnabled: true,

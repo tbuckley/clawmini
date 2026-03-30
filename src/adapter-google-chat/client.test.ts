@@ -121,6 +121,7 @@ describe('Google Chat Adapter Client', () => {
           subscriptionName: 'test-sub',
           topicName: 'test-topic',
           authorizedUsers: ['user@example.com'],
+          requireMention: false,
           maxAttachmentSizeMB: 25,
           directMessageName: 'spaces/123',
         },

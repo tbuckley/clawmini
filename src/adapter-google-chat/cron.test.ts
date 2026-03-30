@@ -17,6 +17,7 @@ describe('Subscription Renewal Cron', () => {
     subscriptionName: 'test-subscription',
     topicName: 'test-topic',
     authorizedUsers: ['test-user'],
+    requireMention: false,
     oauthClientId: 'test-client',
     oauthClientSecret: 'test-secret',
     oauthTokens: { refresh_token: 'test-token' },

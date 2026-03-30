@@ -51,10 +51,11 @@ describe('auth.ts', () => {
     });
 
     const config = {
-      projectId: 'test',
+      projectId: 'test-project',
       subscriptionName: 'test-sub',
       topicName: 'test-topic',
       authorizedUsers: [],
+      requireMention: false,
       oauthClientId: 'client-id',
       oauthClientSecret: 'client-secret',
     };

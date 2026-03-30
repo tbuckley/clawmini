@@ -38,6 +38,7 @@ describe('Google Chat Adapter Entry Point', () => {
       subscriptionName: 'test-sub',
       topicName: 'test-topic',
       authorizedUsers: ['test@example.com'],
+      requireMention: false,
       chatId: 'default',
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

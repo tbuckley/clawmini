@@ -185,4 +185,3 @@ describe('Google Chat Adapter Configuration', () => {
     });
   });
 });
-;

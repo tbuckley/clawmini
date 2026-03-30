@@ -109,10 +109,13 @@ export async function main() {
     console.log(`Received message from ${message.author.tag}: ${message.content}`);
 
     if (isRoutingCommand) {
+      const stringChatMap = Object.fromEntries(
+        Object.entries(currentState.channelChatMap || {}).map(([k, v]) => [k, v.chatId || ''])
+      );
       const routingResult = await handleRoutingCommand(
         message.content,
         externalContextId,
-        currentState.channelChatMap || {},
+        stringChatMap,
         'discord',
         trpc as unknown as RoutingTrpcClient
       );
@@ -122,7 +125,10 @@ export async function main() {
           await updateDiscordState((latestState) => ({
             channelChatMap: {
               ...(latestState.channelChatMap || {}),
-              [externalContextId]: routingResult.newChatId,
+              [externalContextId]: {
+                ...(latestState.channelChatMap?.[externalContextId] || {}),
+                chatId: routingResult.newChatId,
+              },
             },
           }));
         }
@@ -135,7 +141,8 @@ export async function main() {
 
     if (!targetChatId && !isRoutingCommand) {
       const isFirstEverMessage =
-        !currentState.channelChatMap || Object.keys(currentState.channelChatMap).length === 0;
+        !currentState.channelChatMap ||
+        Object.values(currentState.channelChatMap).every((entry) => !entry.chatId);
 
       if (isFirstEverMessage) {
         targetChatId = config.chatId || 'default';
@@ -145,7 +152,10 @@ export async function main() {
         await updateDiscordState((latestState) => ({
           channelChatMap: {
             ...(latestState.channelChatMap || {}),
-            [externalContextId]: targetChatId as string,
+            [externalContextId]: {
+              ...(latestState.channelChatMap?.[externalContextId] || {}),
+              chatId: targetChatId as string,
+            },
           },
         }));
       } else {

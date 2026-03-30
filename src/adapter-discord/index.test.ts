@@ -13,7 +13,9 @@ const { mockClientInstance } = vi.hoisted(() => ({
 }));
 
 vi.mock('./state.js', () => ({
-  readDiscordState: vi.fn().mockResolvedValue({ channelChatMap: { 'channel-123': { chatId: 'default' } } }),
+  readDiscordState: vi
+    .fn()
+    .mockResolvedValue({ channelChatMap: { 'channel-123': { chatId: 'default' } } }),
   updateDiscordState: vi.fn().mockResolvedValue(undefined),
 }));
 
