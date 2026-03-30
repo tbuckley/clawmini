@@ -27,6 +27,12 @@ vi.mock('@trpc/client', () => ({
     ping: {
       query: vi.fn().mockResolvedValue({ status: 'ok' }),
     },
+    getChats: {
+      query: vi.fn().mockResolvedValue(['default', 'chat-1']),
+    },
+    getAgents: {
+      query: vi.fn().mockResolvedValue(['agent-1']),
+    },
     sendMessage: {
       mutate: vi.fn().mockResolvedValue({}),
     },
@@ -113,7 +119,7 @@ describe('Google Chat Adapter Client', () => {
         {
           projectId: 'test-project',
           subscriptionName: 'test-sub',
-  topicName: "test-topic",
+          topicName: 'test-topic',
           authorizedUsers: ['user@example.com'],
           maxAttachmentSizeMB: 25,
           directMessageName: 'spaces/123',
@@ -217,6 +223,41 @@ describe('Google Chat Adapter Client', () => {
 
       expect(updateGoogleChatState).toHaveBeenCalled();
       expect(mockMsg.ack).toHaveBeenCalled();
+    });
+
+    it('should assign object shape when mapping chat on routing command', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+
+      const { updateGoogleChatState } = await import('./state.js');
+      vi.mocked(updateGoogleChatState).mockClear();
+
+      const mockMsg = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'MESSAGE',
+            space: { name: 'spaces/new-space', type: 'SPACE' },
+            user: { email: 'user@example.com' },
+            message: { text: '/chat chat-1' },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+
+      await onMessage(mockMsg);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+
+      const updateCalls = vi.mocked(updateGoogleChatState).mock.calls;
+      const lastCallArg = updateCalls[updateCalls.length - 1]![0];
+      const result =
+        typeof lastCallArg === 'function'
+          ? lastCallArg({ channelChatMap: {} } as import('./state.js').GoogleChatState)
+          : lastCallArg;
+
+      expect(result.channelChatMap!['spaces/new-space']).toEqual({ chatId: 'chat-1' });
     });
 
     it('should ignore messages from unauthorized users', async () => {

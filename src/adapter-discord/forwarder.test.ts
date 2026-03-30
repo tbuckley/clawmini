@@ -624,6 +624,8 @@ describe('Daemon to Discord Forwarder', () => {
     const watchCallback = fsWatchMock.mock.calls[0]![1];
     watchCallback('change', 'state.json');
 
+    vi.advanceTimersByTime(250);
+
     // Wait for the async syncSubscriptions to finish
     await vi.runAllTicks();
 

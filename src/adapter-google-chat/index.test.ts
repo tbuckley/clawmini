@@ -36,7 +36,7 @@ describe('Google Chat Adapter Entry Point', () => {
     const mockConfig = {
       projectId: 'test-project',
       subscriptionName: 'test-sub',
-  topicName: "test-topic",
+      topicName: 'test-topic',
       authorizedUsers: ['test@example.com'],
       chatId: 'default',
     };

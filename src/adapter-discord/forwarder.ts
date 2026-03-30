@@ -396,13 +396,18 @@ export async function startDaemonToDiscordForwarder(
     if (!fs.existsSync(stateDir)) {
       fs.mkdirSync(stateDir, { recursive: true });
     }
+    let debounceTimer: NodeJS.Timeout | null = null;
     const watcher = fs.watch(stateDir, (eventType: string, filename: string | null) => {
       if (filename === path.basename(statePath)) {
-        syncSubscriptions().catch(console.error);
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          syncSubscriptions().catch(console.error);
+        }, 200);
       }
     });
 
     signal?.addEventListener('abort', () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       watcher.close();
       for (const sub of activeSubscriptions.values()) sub.unsubscribe();
       for (const sub of activeTypingSubscriptions.values()) sub.unsubscribe();

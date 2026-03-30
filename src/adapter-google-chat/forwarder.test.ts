@@ -4,7 +4,7 @@ import { startDaemonToGoogleChatForwarder } from './forwarder.js';
 const mockConfig = {
   projectId: 'test',
   subscriptionName: 'test',
-  topicName: "test-topic",
+  topicName: 'test-topic',
   authorizedUsers: ['user@example.com'],
   chatId: 'default',
   directMessageName: 'spaces/test-space',

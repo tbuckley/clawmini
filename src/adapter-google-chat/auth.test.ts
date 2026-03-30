@@ -53,7 +53,7 @@ describe('auth.ts', () => {
     const config = {
       projectId: 'test',
       subscriptionName: 'test-sub',
-  topicName: "test-topic",
+      topicName: 'test-topic',
       authorizedUsers: [],
       oauthClientId: 'client-id',
       oauthClientSecret: 'client-secret',

@@ -142,10 +142,19 @@ export async function main() {
           },
         }));
       } else {
-        console.log(`Unmapped channel ${externalContextId}, sending first contact warning.`);
-        await message.reply(
-          'This channel/space is not currently mapped to a daemon chat. Please use `/chat [chat-id]` or `/agent [agent-id]` to map it.'
-        );
+        const isDirectMessage = !message.guild;
+        const isMentioned = message.mentions.has(client.user!.id);
+        const isSlashCommand = message.content.startsWith('/');
+        if (isDirectMessage || isMentioned || isSlashCommand) {
+          console.log(`Unmapped channel ${externalContextId}, sending first contact warning.`);
+          await message.reply(
+            'This channel/space is not currently mapped to a daemon chat. Please use `/chat [chat-id]` or `/agent [agent-id]` to map it.'
+          );
+        } else {
+          console.log(
+            `Unmapped channel ${externalContextId}, silently ignoring background message.`
+          );
+        }
         return;
       }
     }

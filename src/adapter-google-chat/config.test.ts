@@ -25,7 +25,7 @@ describe('Google Chat Adapter Configuration', () => {
       const config = {
         projectId: 'test-project',
         subscriptionName: 'test-sub',
-  topicName: "test-topic",
+        topicName: 'test-topic',
         authorizedUsers: ['test@example.com'],
       };
       const result = GoogleChatConfigSchema.safeParse(config);
@@ -44,7 +44,7 @@ describe('Google Chat Adapter Configuration', () => {
       const config = {
         projectId: 'test-project',
         subscriptionName: 'test-sub',
-  topicName: "test-topic",
+        topicName: 'test-topic',
         authorizedUsers: ['test@example.com'],
         maxAttachmentSizeMB: 50,
       };
@@ -59,7 +59,7 @@ describe('Google Chat Adapter Configuration', () => {
       const config = {
         projectId: 'test-project',
         subscriptionName: 'test-sub',
-  topicName: "test-topic",
+        topicName: 'test-topic',
         authorizedUsers: ['test@example.com'],
         messages: { all: true, test: false },
       };
@@ -79,7 +79,7 @@ describe('Google Chat Adapter Configuration', () => {
       const result = GoogleChatConfigSchema.safeParse({
         projectId: '',
         subscriptionName: '',
-  topicName: "test-topic",
+        topicName: 'test-topic',
         authorizedUsers: [],
       });
       expect(result.success).toBe(false);
@@ -143,7 +143,7 @@ describe('Google Chat Adapter Configuration', () => {
       const mockConfig = {
         projectId: 'test-project',
         subscriptionName: 'test-sub',
-  topicName: "test-topic",
+        topicName: 'test-topic',
         authorizedUsers: ['user@example.com'],
       };
       vi.mocked(fsPromises.readFile).mockResolvedValue(JSON.stringify(mockConfig));

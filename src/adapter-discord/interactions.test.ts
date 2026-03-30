@@ -69,4 +69,28 @@ describe('handleDiscordInteraction', () => {
       })
     );
   });
+
+  it('routes modal_reject to mapped chat if explicit chat ID is empty string', async () => {
+    mockInteraction.isButton.mockReturnValue(false);
+    mockInteraction.isModalSubmit.mockReturnValue(true);
+    mockInteraction.isFromMessage = vi.fn().mockReturnValue(true);
+    mockInteraction.fields = {
+      getTextInputValue: vi.fn().mockReturnValue('nope'),
+    };
+    mockInteraction.customId = 'modal_reject|policy-1|';
+
+    vi.mocked(readDiscordState).mockResolvedValue({
+      channelChatMap: { 'channel-1': 'mapped-chat' },
+    });
+
+    await handleDiscordInteraction(mockInteraction, config, mockTrpc);
+
+    expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          chatId: 'mapped-chat',
+        }),
+      })
+    );
+  });
 });

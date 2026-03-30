@@ -20,8 +20,8 @@ describe('Google Chat State Updates', () => {
   });
 
   it('should process concurrent state updates sequentially to prevent data loss', async () => {
-    // Create an initial state where lastSyncedMessageId is 'A' and activeSpaceName is 'Space1'
-    const initialState = { lastSyncedMessageId: 'A', activeSpaceName: 'Space1' };
+    // Create an initial state where lastSyncedMessageIds is 'A' and oauthTokens is 'Space1'
+    const initialState = { lastSyncedMessageId: 'A', oauthTokens: 'Space1' };
 
     // We mock readFile to always return the LAST state that was written by writeFile.
     // However, if the read/writes were not sequential (if they ran truly concurrently without a mutex),
@@ -42,7 +42,7 @@ describe('Google Chat State Updates', () => {
 
     // Fire two concurrent updates
     const update1 = updateGoogleChatState({ lastSyncedMessageIds: { default: 'B' } });
-    const update2 = updateGoogleChatState({ activeSpaceName: 'Space2' });
+    const update2 = updateGoogleChatState({ oauthTokens: 'Space2' });
 
     await Promise.all([update1, update2]);
 
@@ -50,12 +50,12 @@ describe('Google Chat State Updates', () => {
     const finalState = JSON.parse(currentMockStateJSON);
 
     // If a race condition occurred, finalState would likely be either:
-    // { lastSyncedMessageId: 'B', activeSpaceName: 'Space1' } OR
-    // { lastSyncedMessageId: 'A', activeSpaceName: 'Space2' }
+    // { lastSyncedMessageId: 'B', oauthTokens: 'Space1' } OR
+    // { lastSyncedMessageId: 'A', oauthTokens: 'Space2' }
     // Because they are serialized, it should safely contain BOTH updates.
     expect(finalState).toEqual({
       lastSyncedMessageIds: { default: 'B' },
-      activeSpaceName: 'Space2',
+      oauthTokens: 'Space2',
     });
   });
 

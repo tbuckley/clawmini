@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { google } from 'googleapis';
 import { getAuthClient } from './auth.js';
 import type { getTRPCClient } from './client.js';
@@ -330,13 +331,18 @@ export async function startDaemonToGoogleChatForwarder(
     if (!fs.existsSync(stateDir)) {
       fs.mkdirSync(stateDir, { recursive: true });
     }
+    let debounceTimer: NodeJS.Timeout | null = null;
     const watcher = fs.watch(stateDir, (eventType, filename) => {
       if (filename === path.basename(statePath)) {
-        syncSubscriptions().catch(console.error);
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          syncSubscriptions().catch(console.error);
+        }, 200);
       }
     });
 
     signal?.addEventListener('abort', () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       watcher.close();
       for (const sub of activeSubscriptions.values()) sub.unsubscribe();
       resolve();

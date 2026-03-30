@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { PubSub, Message } from '@google-cloud/pubsub';
 import { createTRPCClient, httpLink, splitLink, httpSubscriptionLink } from '@trpc/client';
 import fs from 'node:fs';
@@ -61,6 +62,19 @@ export function startGoogleChatIngestion(
 
   const seenMessageIds = new Map<string, number>();
 
+  // Periodically clean up deduplication cache every 5 minutes
+  setInterval(
+    () => {
+      const now = Date.now();
+      for (const [id, ts] of seenMessageIds.entries()) {
+        if (now - ts > 10 * 60 * 1000) {
+          seenMessageIds.delete(id);
+        }
+      }
+    },
+    5 * 60 * 1000
+  ).unref();
+
   subscription.on('message', async (message: Message) => {
     const downloadedFiles: string[] = [];
     try {
@@ -74,7 +88,7 @@ export function startGoogleChatIngestion(
       const eventType = isWorkspaceEvent ? 'MESSAGE' : parsedData.type;
 
       const eventMessage = isWorkspaceEvent ? parsedData.message || parsedData : parsedData.message;
-      let email =
+      const email =
         (isWorkspaceEvent
           ? eventMessage?.sender?.email
           : parsedData.user?.email || eventMessage?.sender?.email) || '';
@@ -90,11 +104,8 @@ export function startGoogleChatIngestion(
       if (senderType === 'BOT') return void message.ack();
 
       if (messageId) {
-        const now = Date.now();
-        for (const [id, ts] of seenMessageIds.entries())
-          if (now - ts > 60000) seenMessageIds.delete(id);
         if (seenMessageIds.has(messageId)) return void message.ack();
-        seenMessageIds.set(messageId, now);
+        seenMessageIds.set(messageId, Date.now());
       }
 
       // Only handle MESSAGE, CARD_CLICKED, ADDED_TO_SPACE, and REMOVED_FROM_SPACE events
@@ -169,7 +180,10 @@ export function startGoogleChatIngestion(
             await updateGoogleChatState((latestState) => ({
               channelChatMap: {
                 ...(latestState.channelChatMap || {}),
-                [externalContextId]: routingResult.newChatId,
+                [externalContextId]: {
+                  ...(latestState.channelChatMap?.[externalContextId] || {}),
+                  chatId: routingResult.newChatId,
+                },
               },
             }));
           }
@@ -212,18 +226,31 @@ export function startGoogleChatIngestion(
             },
           }));
         } else {
-          console.log(`Unmapped space ${externalContextId}, sending first contact warning.`);
-          try {
-            const authClient = await getAuthClient();
-            const chatApi = google.chat({ version: 'v1', auth: authClient });
-            await chatApi.spaces.messages.create({
-              parent: externalContextId,
-              requestBody: {
-                text: 'This channel/space is not currently mapped to a daemon chat. Please use `/chat [chat-id]` or `/agent [agent-id]` to map it.',
-              },
-            });
-          } catch (err) {
-            console.error('Failed to send first contact warning:', err);
+          const isDirectMessage =
+            space?.type === 'DIRECT_MESSAGE' || space?.singleUserBotDm === true;
+          const isMentioned =
+            Array.isArray(eventMessage?.annotations) &&
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            eventMessage.annotations.some((a: any) => a.type === 'USER_MENTION');
+          const isSlashCommand = text.startsWith('/');
+          if (isDirectMessage || isMentioned || isSlashCommand) {
+            console.log(`Unmapped space ${externalContextId}, sending first contact warning.`);
+            try {
+              const authClient = await getAuthClient();
+              const chatApi = google.chat({ version: 'v1', auth: authClient });
+              await chatApi.spaces.messages.create({
+                parent: externalContextId,
+                requestBody: {
+                  text: 'This channel/space is not currently mapped to a daemon chat. Please use `/chat [chat-id]` or `/agent [agent-id]` to map it.',
+                },
+              });
+            } catch (err) {
+              console.error('Failed to send first contact warning:', err);
+            }
+          } else {
+            console.log(
+              `Unmapped space ${externalContextId}, silently ignoring background message.`
+            );
           }
           message.ack();
           return;

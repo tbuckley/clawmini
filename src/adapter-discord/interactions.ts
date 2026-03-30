@@ -39,7 +39,7 @@ export async function handleDiscordInteraction(
       if (interaction.customId.startsWith('approve|')) {
         const parts = interaction.customId.split('|');
         policyId = parts[1];
-        explicitChatId = parts[2];
+        explicitChatId = parts[2] || undefined;
       } else {
         policyId = interaction.customId.replace('approve_', '');
       }
@@ -108,7 +108,7 @@ export async function handleDiscordInteraction(
       if (interaction.customId.startsWith('modal_reject|')) {
         const parts = interaction.customId.split('|');
         policyId = parts[1];
-        explicitChatId = parts[2];
+        explicitChatId = parts[2] || undefined;
       } else {
         policyId = interaction.customId.replace('modal_reject_', '');
       }
