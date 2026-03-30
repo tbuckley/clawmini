@@ -11,7 +11,7 @@ import { getSocketPath, getClawminiDir } from '../shared/workspace.js';
 import { createUnixSocketFetch } from '../shared/fetch.js';
 import { createUnixSocketEventSource } from '../shared/event-source.js';
 import type { GoogleChatConfig } from './config.js';
-import { isAuthorized } from './config.js';
+import { isAuthorized, updateGoogleChatConfig } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
 import { downloadAttachment } from './utils.js';
 import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
@@ -119,14 +119,35 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      const identifier = email || senderName;
+      let isUserAuthorized = false;
+      let authorizedByEmail = false;
 
-      if (!identifier || !isAuthorized(identifier, config.authorizedUsers)) {
-        console.log(`Unauthorized or missing identifier: ${identifier}`);
+      if (email && isAuthorized(email, config.authorizedUsers)) {
+        isUserAuthorized = true;
+        authorizedByEmail = true;
+      } else if (senderName && isAuthorized(senderName, config.authorizedUsers)) {
+        isUserAuthorized = true;
+      }
+
+      if (!isUserAuthorized) {
+        console.log(`Unauthorized or missing identifier: email=${email}, name=${senderName}`);
         console.log('DEBUG missing identifier parsedData:', JSON.stringify(parsedData, null, 2));
         message.ack();
         return;
       }
+
+      // Automatically authorize user IDs if associated an authorized email
+      if (authorizedByEmail && senderName && !isAuthorized(senderName, config.authorizedUsers)) {
+        console.log(
+          `Automatically authorizing user ID ${senderName} based on authorized email ${email}`
+        );
+        config.authorizedUsers.push(senderName);
+        updateGoogleChatConfig(config).catch((err) =>
+          console.error('Failed to update config with new user ID:', err)
+        );
+      }
+
+      const identifier = email || senderName;
 
       const spaceName = space?.name;
 
