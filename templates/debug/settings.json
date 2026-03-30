@@ -1,6 +1,8 @@
 {
     "commands": {
-        "new": "echo \"[DEBUG] $CLAW_CLI_MESSAGE:\\n\\`\\`\\`\" && eval \"$CLAW_CLI_MESSAGE\" && echo \"\\`\\`\\`\""
+        "new": "echo \"[DEBUG] $CLAW_CLI_MESSAGE:\\n\\`\\`\\`\" && eval \"$CLAW_CLI_MESSAGE\" && echo \"\\`\\`\\`\"",
+        "append": "echo \"[DEBUG $SESSION_ID] $CLAW_CLI_MESSAGE:\\n\\`\\`\\`\" && eval \"$CLAW_CLI_MESSAGE\" && echo \"\\`\\`\\`\"",
+        "getSessionId": "node -e 'console.log(Math.random().toString(36).slice(2, 10))'"
     },
     "files": "./attachments"
 }

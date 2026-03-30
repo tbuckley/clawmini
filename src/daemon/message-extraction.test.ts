@@ -9,6 +9,7 @@ import { EventEmitter } from 'node:events';
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 vi.mock('./chats.js', () => ({ appendMessage: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('./routers.js', () => ({
+  resolveRouters: vi.fn((routers) => routers),
   executeRouterPipeline: vi.fn().mockImplementation((state) => Promise.resolve(state)),
 }));
 vi.mock('../shared/workspace.js', () => ({
@@ -82,15 +83,6 @@ describe('Extraction Logic', () => {
     expect(mockSpawn).toHaveBeenNthCalledWith(2, 'echo getSessionId', expect.anything());
 
     // Verify state files were updated
-    expect(workspace.writeChatSettings).toHaveBeenCalledWith(
-      'chat1',
-      expect.objectContaining({
-        defaultAgent: 'my-agent',
-        sessions: { 'my-agent': 'default' },
-      }),
-      '/dir-extract-1'
-    );
-
     expect(workspace.writeAgentSessionSettings).toHaveBeenCalledWith(
       'my-agent',
       'default',

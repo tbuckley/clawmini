@@ -2,7 +2,8 @@
 import schedule from 'node-schedule';
 import { listChats } from '../shared/chats.js';
 import { readChatSettings, writeChatSettings } from '../shared/workspace.js';
-import { executeDirectMessage, getInitialRouterState } from './message.js';
+import { executeDirectMessage, getInitialRouterState, applyRouterStateUpdates } from './message.js';
+import { executeRouterPipeline, resolveRouters } from './routers.js';
 import type { CronJob, Settings } from '../shared/config.js';
 import fs from 'node:fs/promises';
 import { getSettingsPath } from '../shared/workspace.js';
@@ -116,9 +117,9 @@ export class CronManager {
         globalSettings = undefined;
       }
 
-      const overrideSessionId = job.session?.type === 'new' ? crypto.randomUUID() : undefined;
+      const overrideSessionId = job.session?.type === 'new' ? crypto.randomUUID() : job.session?.id;
       const chatSettings = (await readChatSettings(chatId, process.cwd())) ?? {};
-      const routerState = await getInitialRouterState(
+      let routerState = await getInitialRouterState(
         chatId,
         job.message,
         chatSettings,
@@ -130,10 +131,32 @@ export class CronManager {
         routerState.env = routerState.env || {};
         applyEnvOverrides(routerState.env, job.env);
       }
-      if (job.reply !== undefined) routerState.reply = job.reply;
-      if (job.nextSessionId !== undefined) routerState.nextSessionId = job.nextSessionId;
+
+      const currentAgentId = job.agentId ?? chatSettings.defaultAgent ?? 'default';
+      const currentActiveSession = chatSettings.sessions?.[currentAgentId];
+      const isOutdatedSession =
+        job.session?.type === 'existing' &&
+        currentActiveSession !== undefined &&
+        currentActiveSession !== job.session.id;
+
+      if (job.reply !== undefined && !isOutdatedSession) routerState.reply = job.reply;
+      if (job.nextSessionId !== undefined && !isOutdatedSession)
+        routerState.nextSessionId = job.nextSessionId;
       if (job.action !== undefined) routerState.action = job.action;
       if (job.jobs !== undefined) routerState.jobs = job.jobs;
+
+      const routers = chatSettings.routers ?? globalSettings?.routers ?? [];
+      const resolvedRouters = resolveRouters(routers, false);
+      const initialState = { ...routerState };
+      routerState = await executeRouterPipeline(routerState, resolvedRouters);
+
+      await applyRouterStateUpdates(
+        chatId,
+        process.cwd(),
+        routerState,
+        chatSettings,
+        initialState.agentId
+      );
 
       await executeDirectMessage(
         chatId,

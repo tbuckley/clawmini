@@ -8,6 +8,7 @@ import { createAutoFinishMockSpawn } from './message-test-utils.js';
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 vi.mock('../shared/chats.js', () => ({ appendMessage: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('./routers.js', () => ({
+  resolveRouters: vi.fn((routers) => routers),
   executeRouterPipeline: vi.fn().mockImplementation((state) => Promise.resolve(state)),
 }));
 vi.mock('../shared/workspace.js', () => ({
@@ -28,6 +29,35 @@ vi.mock('../shared/workspace.js', () => ({
   getEnvironmentPath: vi.fn().mockReturnValue(''),
   readEnvironment: vi.fn().mockResolvedValue(null),
 }));
+
+import { applyRouterStateUpdates } from './message.js';
+
+describe('applyRouterStateUpdates session logic', () => {
+  it('does NOT update chatSettings.sessions unless nextSessionId is set', async () => {
+    const chatSettings: any = {};
+    const finalState: any = {
+      sessionId: 'override-session',
+    };
+
+    await applyRouterStateUpdates('chat1', '/cwd', finalState, chatSettings, undefined);
+
+    // Should NOT have set chatSettings.sessions
+    expect(chatSettings.sessions).toBeUndefined();
+  });
+
+  it('DOES update chatSettings.sessions if nextSessionId is set', async () => {
+    const chatSettings: any = {};
+    const finalState: any = {
+      sessionId: 'override-session',
+      nextSessionId: 'next-sess',
+    };
+
+    await applyRouterStateUpdates('chat1', '/cwd', finalState, chatSettings, undefined);
+
+    expect(chatSettings.sessions).toBeDefined();
+    expect(chatSettings.sessions['default']).toBe('next-sess');
+  });
+});
 
 describe('Session Resolution & Execution', () => {
   beforeEach(() => {
