@@ -289,7 +289,12 @@ export async function main() {
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
-    await handleDiscordInteraction(interaction, config, trpc as unknown as CommandTrpcClient);
+    await handleDiscordInteraction(
+      interaction,
+      config,
+      trpc as unknown as CommandTrpcClient,
+      filteringConfig
+    );
   });
 
   try {
