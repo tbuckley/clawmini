@@ -9,8 +9,15 @@ import { registerSubagentCommands } from './subagent-commands.js';
 /**
  * clawmini-lite - A standalone client
  */
-const API_URL = process.env.CLAW_API_URL;
-const API_TOKEN = process.env.CLAW_API_TOKEN;
+const urlVarName = process.env.CLAW_LITE_URL_VAR || 'CLAW_API_URL';
+const API_URL = process.env.CLAW_LITE_URL_VAR
+  ? process.env[process.env.CLAW_LITE_URL_VAR]
+  : process.env.CLAW_API_URL;
+
+const tokenVarName = process.env.CLAW_LITE_API_VAR || 'CLAW_API_TOKEN';
+const API_TOKEN = process.env.CLAW_LITE_API_VAR
+  ? process.env[process.env.CLAW_LITE_API_VAR]
+  : process.env.CLAW_API_TOKEN;
 
 function getClient() {
   return createTRPCClient<AppRouter>({
@@ -35,7 +42,7 @@ program
   .description('A standalone client for clawmini')
   .hook('preAction', () => {
     if (!API_URL || !API_TOKEN) {
-      console.error('CLAW_API_URL and CLAW_API_TOKEN must be set in the environment.');
+      console.error(`${urlVarName} and ${tokenVarName} must be set in the environment.`);
       process.exit(1);
     }
   });

@@ -13,7 +13,7 @@
 - Run `npm run validate` to ensure type checking and tests pass.
 
 ## Step 2: Update Lite Client Resolution Logic
-**Status**: Not Started
+**Status**: Completed
 
 **Tasks:**
 - Update `src/cli/lite.ts` to dynamically resolve authentication environment variables.
