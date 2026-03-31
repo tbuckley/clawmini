@@ -46,7 +46,7 @@ describe('handleDiscordInteraction', () => {
 
   it('routes approve to explicit chat if provided', async () => {
     mockInteraction.customId = 'approve|policy-1|explicit-chat';
-    await handleDiscordInteraction(mockInteraction, config, mockTrpc);
+    await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
 
     expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -62,7 +62,7 @@ describe('handleDiscordInteraction', () => {
     vi.mocked(readDiscordState).mockResolvedValue({
       channelChatMap: { 'channel-1': { chatId: 'mapped-chat' } },
     });
-    await handleDiscordInteraction(mockInteraction, config, mockTrpc);
+    await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
 
     expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -86,7 +86,7 @@ describe('handleDiscordInteraction', () => {
       channelChatMap: { 'channel-1': { chatId: 'mapped-chat' } },
     });
 
-    await handleDiscordInteraction(mockInteraction, config, mockTrpc);
+    await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
 
     expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -110,7 +110,7 @@ describe('handleDiscordInteraction', () => {
     it('routes basic commands like /pending', async () => {
       mockInteraction.commandName = 'pending';
 
-      await handleDiscordInteraction(mockInteraction, config, mockTrpc);
+      await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
 
       expect(mockInteraction.reply).toHaveBeenCalledWith({
         content: 'Executing command: /pending',
@@ -133,7 +133,7 @@ describe('handleDiscordInteraction', () => {
         return null;
       });
 
-      await handleDiscordInteraction(mockInteraction, config, mockTrpc);
+      await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
 
       expect(mockInteraction.reply).toHaveBeenCalledWith({
         content: 'Executing command: /reject req-123 too risky',
