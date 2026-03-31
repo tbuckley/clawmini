@@ -7,7 +7,7 @@
     "getMessageContent": "jq -r '.response'"
   },
   "env": {
-    "MODEL": "gemini-3.1-pro-preview-customtools",
+    "MODEL": "gemini-3.1-pro-preview",
     "GEMINI_SYSTEM_MD": "true",
     "GEMINI_API_KEY": true
   },
