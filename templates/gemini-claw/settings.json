@@ -1,8 +1,8 @@
 {
   "apiTokenEnvVar": "GEMINI_CLI_CLAW_API_TOKEN",
   "commands": {
-    "new": "gemini --output-format json --model $MODEL -p \"$CLAW_CLI_MESSAGE\"",
-    "append": "gemini --output-format json --model $MODEL --resume $SESSION_ID -p \"$CLAW_CLI_MESSAGE\"",
+    "new": "gemini --yolo --output-format json --model $MODEL -p \"$CLAW_CLI_MESSAGE\"",
+    "append": "gemini --yolo --output-format json --model $MODEL --resume $SESSION_ID -p \"$CLAW_CLI_MESSAGE\"",
     "getSessionId": "jq -r '.session_id'",
     "getMessageContent": "jq -r '.response'"
   },

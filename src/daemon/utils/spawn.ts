@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { RunCommandFn } from '../agent/types.js';
 
-const LOG_TO_TERMINAL = true;
+const LOG_TO_TERMINAL = false;
 
 export const runCommand: RunCommandFn = async ({
   command,
@@ -11,6 +11,7 @@ export const runCommand: RunCommandFn = async ({
   signal,
 }: Parameters<RunCommandFn>[0] & { logToTerminal?: boolean }) => {
   return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve, reject) => {
+    console.log('RUN: ', command);
     const p = spawn(command, { shell: true, cwd, env, signal });
 
     if (stdin && p.stdin) {

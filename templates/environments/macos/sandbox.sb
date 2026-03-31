@@ -19,3 +19,11 @@
     (literal "/dev/ptmx")
     (regex #"^/dev/ttys[0-9]*$")
 )
+
+;; deny access to .clawmini folder
+(deny file-read*
+    (subpath (string-append (param "WORKSPACE") "/.clawmini"))
+)
+(deny file-write*
+    (subpath (string-append (param "WORKSPACE") "/.clawmini"))
+)
