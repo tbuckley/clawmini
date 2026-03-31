@@ -19,8 +19,11 @@ describe('E2E Messages Tests', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Message sent successfully.');
 
-    const daemonLog = fs.readFileSync(path.resolve(e2eDir, '.clawmini/daemon.log'), 'utf8');
-    expect(daemonLog).toContain('e2e test message');
+    const chatLog = fs.readFileSync(
+      path.resolve(e2eDir, '.clawmini/chats/default/chat.jsonl'),
+      'utf8'
+    );
+    expect(chatLog).toContain('e2e test message');
   });
 
   it('should send a message to a specific chat', async () => {
