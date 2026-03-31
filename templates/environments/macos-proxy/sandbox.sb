@@ -20,6 +20,14 @@
     (regex #"^/dev/ttys[0-9]*$")
 )
 
+;; deny access to .clawmini folder
+(deny file-read*
+    (subpath (string-append (param "WORKSPACE") "/.clawmini"))
+)
+(deny file-write*
+    (subpath (string-append (param "WORKSPACE") "/.clawmini"))
+)
+
 ;; deny all network EXCEPT local proxy and basic network operations
 (deny network-outbound)
 
