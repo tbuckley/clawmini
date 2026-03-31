@@ -530,7 +530,7 @@ describe('Google Chat Adapter Client', () => {
 
       // Override the list mock for this test
       const { google } = await import('googleapis');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       vi.mocked(google.chat({ version: 'v1' }).spaces.messages.list).mockResolvedValueOnce({
         data: { messages: [{ sender: { type: 'BOT' } }] },
       } as any);

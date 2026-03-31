@@ -23,6 +23,8 @@ export const AgentSchema = z.looseObject({
       getMessageContent: z.string().optional(),
     })
     .optional(),
+  apiTokenEnvVar: z.string().optional(),
+  apiUrlEnvVar: z.string().optional(),
   env: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   subagentEnv: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   directory: z.string().optional(),

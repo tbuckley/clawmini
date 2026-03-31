@@ -94,8 +94,16 @@ export class AgentSession {
       const proxyUrl = apiCtx.proxy_host
         ? `${apiCtx.proxy_host}:${apiCtx.port}`
         : `http://${apiCtx.host}:${apiCtx.port}`;
-      env['CLAW_API_URL'] = proxyUrl;
-      agentSpecificEnvKeys.add('CLAW_API_URL');
+
+      if (currentAgent.apiUrlEnvVar) {
+        env[currentAgent.apiUrlEnvVar] = proxyUrl;
+        agentSpecificEnvKeys.add(currentAgent.apiUrlEnvVar);
+        env['CLAW_LITE_URL_VAR'] = currentAgent.apiUrlEnvVar;
+        agentSpecificEnvKeys.add('CLAW_LITE_URL_VAR');
+      } else {
+        env['CLAW_API_URL'] = proxyUrl;
+        agentSpecificEnvKeys.add('CLAW_API_URL');
+      }
 
       const token = generateToken({
         chatId: this.chatId,
@@ -104,8 +112,16 @@ export class AgentSession {
         ...(this.subagentId ? { subagentId: this.subagentId } : {}),
         timestamp: Date.now(),
       });
-      env['CLAW_API_TOKEN'] = token;
-      agentSpecificEnvKeys.add('CLAW_API_TOKEN');
+
+      if (currentAgent.apiTokenEnvVar) {
+        env[currentAgent.apiTokenEnvVar] = token;
+        agentSpecificEnvKeys.add(currentAgent.apiTokenEnvVar);
+        env['CLAW_LITE_API_VAR'] = currentAgent.apiTokenEnvVar;
+        agentSpecificEnvKeys.add('CLAW_LITE_API_VAR');
+      } else {
+        env['CLAW_API_TOKEN'] = token;
+        agentSpecificEnvKeys.add('CLAW_API_TOKEN');
+      }
     }
 
     let command = initialCommand;
