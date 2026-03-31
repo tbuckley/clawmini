@@ -15,13 +15,11 @@ export default function (pi: ExtensionAPI) {
         logInput = input.path?.substr(0, limit) ?? '...';
         break;
       default:
-        logInput = JSON.stringify(input).substring(0, limit);
+        logInput = JSON.stringify(input).substr(0, limit);
     }
 
-    const logMessage = `🔧 ${toolName} - \`${logInput}\``;
-
     try {
-      const result = await pi.exec("clawmini-lite.js", ["log", logMessage], { cwd: ctx.cwd });
+      const result = await pi.exec("clawmini-lite.js", ["tool", toolName, logInput], { cwd: ctx.cwd });
       if (result.code !== 0) {
         console.warn(`clawmini-lite failed: ${result.stderr}`);
       }
