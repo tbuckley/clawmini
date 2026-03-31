@@ -207,6 +207,9 @@ export async function startDaemonToDiscordForwarder(
                   const files = 'files' in logMessage ? (logMessage.files as string[]) : undefined;
                   const hasFiles = Array.isArray(files) && files.length > 0;
 
+                  // The daemon stores logMessage.files as paths relative to the WORKSPACE directory
+                  // (the directory containing .clawmini). We must resolve these against the current
+                  // workspace root so discord.js can successfully locate and read the files.
                   let absoluteFiles: string[] = [];
                   if (hasFiles && files) {
                     const workspaceRoot = getWorkspaceRoot(process.cwd());

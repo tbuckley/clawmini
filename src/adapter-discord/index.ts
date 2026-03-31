@@ -77,7 +77,7 @@ export async function main() {
           ? channelConfig.requireMention
           : config.requireMention;
 
-      if (requiresMention && !isRoutingCommand) {
+      if (requiresMention) {
         const isMentioned = message.mentions.has(client.user!.id);
         let isReplyToBot = false;
 

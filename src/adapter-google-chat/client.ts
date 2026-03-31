@@ -292,13 +292,36 @@ export function startGoogleChatIngestion(
         if (requiresMention && !isRoutingCommand) {
           const isMentioned =
             Array.isArray(eventMessage?.annotations) &&
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            eventMessage.annotations.some((a: any) => a.type === 'USER_MENTION');
+            eventMessage.annotations.some(
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (a: any) => a.type === 'USER_MENTION' && a.userMention?.user?.type === 'BOT'
+            );
 
-          const isThreadReply = !!eventMessage?.threadReply;
+          let isReplyToBot = false;
+          if (eventMessage?.threadReply && eventMessage.thread?.name) {
+            try {
+              const authClient = await getAuthClient();
+              const chatApi = google.chat({ version: 'v1', auth: authClient });
+              const response = await chatApi.spaces.messages.list({
+                parent: externalContextId,
+                filter: `thread.name="${eventMessage.thread.name}"`,
+              });
+              isReplyToBot =
+                response.data.messages?.some(
+                  (m) =>
+                    m.sender?.type === 'BOT' ||
+                    m.annotations?.some(
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      (a: any) => a.type === 'USER_MENTION' && a.userMention?.user?.type === 'BOT'
+                    )
+                ) ?? false;
+            } catch (err) {
+              console.error('Failed to fetch thread messages for mention check:', err);
+            }
+          }
 
-          // If requireMention is true and it's not a DM, ignore if not mentioned and not a thread reply.
-          if (!isMentioned && !isThreadReply) {
+          // If requireMention is true and it's not a DM, ignore if not mentioned and not a thread reply to the bot.
+          if (!isMentioned && !isReplyToBot) {
             message.ack();
             return;
           }

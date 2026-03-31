@@ -64,6 +64,7 @@ vi.mock('googleapis', () => ({
         messages: {
           create: vi.fn().mockResolvedValue({}),
           update: vi.fn().mockResolvedValue({}),
+          list: vi.fn().mockResolvedValue({ data: { messages: [] } }),
         },
       },
     }),
@@ -517,17 +518,22 @@ describe('Google Chat Adapter Client', () => {
       expect(trpcClient.sendMessage.mutate).not.toHaveBeenCalled();
     });
 
-    it('should bypass requireMention if the message is a thread reply', async () => {
+    it('should bypass requireMention if the message is a thread reply to the bot', async () => {
       const onMessage = mockSubscription.on.mock.calls.find(
         (c: unknown[]) => c[0] === 'message'
       )![1] as (msg: unknown) => Promise<void>;
 
       const { readGoogleChatState } = await import('./state.js');
-      vi.mocked(readGoogleChatState).mockResolvedValueOnce({
-        channelChatMap: {
-          'spaces/123': { chatId: 'chat-1', requireMention: true },
-        },
+      vi.mocked(readGoogleChatState).mockResolvedValue({
+        channelChatMap: { 'spaces/123': { chatId: 'default', requireMention: true } },
       });
+
+      // Override the list mock for this test
+      const { google } = await import('googleapis');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(google.chat({ version: 'v1' }).spaces.messages.list).mockResolvedValueOnce({
+        data: { messages: [{ sender: { type: 'BOT' } }] },
+      } as any);
 
       const mockMsg = {
         data: Buffer.from(
@@ -539,6 +545,7 @@ describe('Google Chat Adapter Client', () => {
               name: 'spaces/123/messages/reply-msg',
               text: 'This is a thread reply without mention',
               threadReply: true,
+              thread: { name: 'spaces/123/threads/456' },
             },
           })
         ),

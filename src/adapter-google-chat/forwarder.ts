@@ -107,9 +107,7 @@ export async function startDaemonToGoogleChatForwarder(
                       }
                     }
 
-                    if (!activeSpaceName) {
-                      activeSpaceName = config.directMessageName;
-                    }
+                    // We no longer fallback to config.directMessageName. If it's not mapped, we'll drop it below.
 
                     const isPolicyRequest =
                       logMessage.role === 'policy' && logMessage.status === 'pending';

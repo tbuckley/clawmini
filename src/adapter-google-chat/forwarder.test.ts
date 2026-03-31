@@ -62,26 +62,30 @@ vi.mock('googleapis', () => {
   };
 });
 
-const mockReadState = vi.fn().mockImplementation(() => {
-  console.log('MOCKED mockReadState called!');
-  return Promise.resolve({ oauthTokens: { access_token: 'mock-token' } });
-});
-const mockWriteState = vi.fn().mockResolvedValue(undefined);
+const { mockStateDeps } = vi.hoisted(() => ({
+  mockStateDeps: {
+    mockReadState: vi.fn().mockResolvedValue({
+      oauthTokens: { access_token: 'mock-token' },
+      channelChatMap: { 'spaces/test-space': { chatId: 'default' } },
+    }),
+    mockWriteState: vi.fn().mockResolvedValue(undefined),
+  },
+}));
 
 vi.mock('./state.js', () => ({
-  readGoogleChatState: () => mockReadState(),
+  readGoogleChatState: () => mockStateDeps.mockReadState(),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   updateGoogleChatState: (updates: any) => {
     const currentState = { lastSyncedMessageIds: { otherChat: 'msg-other' } };
-    const result =
-      typeof updates === 'function'
-        ? updates(currentState as import('./state.js').GoogleChatState)
-        : updates;
-    mockWriteState(result);
+    const result = typeof updates === 'function' ? updates(currentState as any) : updates;
+    mockStateDeps.mockWriteState(result);
     return Promise.resolve(result);
   },
   getGoogleChatStatePath: vi.fn().mockReturnValue('./.tmp-mock-google/state.json'),
 }));
+
+const mockReadState = mockStateDeps.mockReadState;
+const mockWriteState = mockStateDeps.mockWriteState;
 
 vi.mock('./auth.js', () => ({
   getAuthClient: vi.fn().mockResolvedValue({}),
@@ -128,6 +132,7 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     mockReadState.mockResolvedValue({
       driveOauthTokens: { access_token: 'mock-token' },
+      channelChatMap: { 'spaces/test-space': { chatId: 'default' } },
     });
   });
 
@@ -505,6 +510,7 @@ describe('Daemon to Google Chat Forwarder', () => {
     mockReadState.mockResolvedValueOnce({
       driveOauthTokens: { access_token: 'mock-token' },
       lastSyncedMessageIds: { default: 'msg-stale', otherChat: 'msg-other' },
+      channelChatMap: { 'spaces/test-space': { chatId: 'default' } },
     });
 
     await vi.advanceTimersByTimeAsync(6000);
