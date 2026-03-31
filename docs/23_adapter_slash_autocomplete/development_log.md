@@ -12,3 +12,8 @@
 - Reconstructed text commands by concatenating `commandName` with the arguments for `policy_id` and `rationale`.
 - Added unit tests in `src/adapter-discord/interactions.test.ts` for handling chat input commands and routing them to the daemon via TRPC.
 - Completed Step 3.
+
+## Step 4: Document Google Chat Slash Commands Setup
+- Updated `docs/guides/google_chat_adapter_setup.md` to include explicit instructions on configuring slash commands in Google Cloud Console.
+- Verified markdown formatting and content clarity.
+- All tasks in tickets.md for adapter slash autocomplete are now completed.
