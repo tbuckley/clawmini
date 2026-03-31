@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { getDaemonClient } from '../client.js';
 import { getMessages, getDefaultChatId } from '../../shared/chats.js';
-import { getAgent, isValidAgentId, getClawminiDir } from '../../shared/workspace.js';
+import { getAgent, isValidAgentId, getClawminiDir, readSettings } from '../../shared/workspace.js';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -76,12 +76,48 @@ messagesCmd
   .action(async (options) => {
     try {
       const chatId = options.chat ?? (await getDefaultChatId());
-      const messages = await getMessages(
-        chatId,
-        options.lines,
-        undefined,
-        (msg) => !msg.subagentId
-      );
+      let messages = await getMessages(chatId, options.lines, undefined, (msg) => !msg.subagentId);
+
+      const settings = await readSettings(process.cwd());
+
+      if (settings?.timestampPrefix !== false) {
+        messages = messages.map((msg) => {
+          if (msg.role === 'user' || msg.displayRole === 'user') {
+            const date = new Date(msg.timestamp);
+            const pad = (n: number) => String(n).padStart(2, '0');
+            const YYYY = date.getFullYear();
+            const MM = pad(date.getMonth() + 1);
+            const DD = pad(date.getDate());
+            const HH = pad(date.getHours());
+            const MIN = pad(date.getMinutes());
+
+            // Try to get timezone abbreviation (e.g. EST, PDT) or fallback to offset
+            let z = '';
+            try {
+              const parts = new Intl.DateTimeFormat('en-US', {
+                timeZoneName: 'short',
+              }).formatToParts(date);
+              const tzPart = parts.find((p) => p.type === 'timeZoneName');
+              if (tzPart) z = tzPart.value;
+            } catch {
+              // Ignore
+            }
+
+            if (!z) {
+              const offset = -date.getTimezoneOffset();
+              const sign = offset >= 0 ? '+' : '-';
+              z = `GMT${sign}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`;
+            }
+
+            const prefix = `[${YYYY}-${MM}-${DD} ${HH}:${MIN} ${z}] `;
+            return {
+              ...msg,
+              content: `${prefix}${msg.content}`,
+            };
+          }
+          return msg;
+        });
+      }
 
       if (options.json) {
         messages.forEach((msg) => console.log(JSON.stringify(msg)));
