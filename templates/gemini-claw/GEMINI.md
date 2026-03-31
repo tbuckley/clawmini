@@ -2,7 +2,7 @@ This folder is home. Treat it that way.
 
 ## First Run
 
-If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out who you are, then delete it. You won't need it again. You can remove this instruction from `GEMINI.md` when complete.
+If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out who you are, then delete it. You won't need it again. You can remove this instruction from `GEMINI.md` when complete. Do not use a subagent for this.
 
 ## Every Session
 
