@@ -37,6 +37,15 @@ This step is optional, but recommended.
 7. Under **Interactive features**, optionally check **Join spaces and group conversations**.
 8. Under **Connection settings**, select **Cloud Pub/Sub**.
 9. Set the Pub/Sub topic to the topic you created earlier (e.g., `projects/YOUR_PROJECT_ID/topics/chat`).
+10. Under **Slash commands**, click **Add a slash command** to configure the following supported commands (Command IDs can be any unique number, but these are recommended):
+    - **Name:** `/new`, **Command ID:** `1`, **Description:** Clear previous context and start a new conversation thread.
+    - **Name:** `/stop`, **Command ID:** `2`, **Description:** Stop all running commands and drop any queued messages.
+    - **Name:** `/approve`, **Command ID:** `3`, **Description:** Approve a specific pending agent request. (Usage: `/approve [policy_id]`)
+    - **Name:** `/reject`, **Command ID:** `4`, **Description:** Reject a specific pending agent request. (Usage: `/reject [policy_id] [rationale]`)
+    - **Name:** `/pending`, **Command ID:** `5`, **Description:** View any pending permission requests from your agent.
+    - **Name:** `/show`, **Command ID:** `6`, **Description:** Show the debug view.
+    - **Name:** `/hide`, **Command ID:** `7`, **Description:** Hide the debug view.
+    - **Name:** `/debug`, **Command ID:** `8`, **Description:** Toggle the debug view.
 
 ## Step 4: Setup Application Default Credentials (ADC)
 
