@@ -328,7 +328,11 @@ describe('workspace utilities', () => {
 
   describe('Settings and Environments', () => {
     it('should read and write settings', async () => {
-      const data: Settings = { environments: { './': 'default-env' }, files: './files' };
+      const data: Settings = {
+        environments: { './': 'default-env' },
+        files: './files',
+        timestampPrefix: true,
+      };
       await writeSettings(data, testDir);
       const read = await readSettings(testDir);
       expect(read).toEqual(data);
