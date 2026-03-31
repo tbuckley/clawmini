@@ -18,12 +18,59 @@ export async function handleDiscordInteraction(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   trpc: any
 ) {
-  if (!interaction.isButton() && !interaction.isModalSubmit()) return;
+  if (
+    !interaction.isButton() &&
+    !interaction.isModalSubmit() &&
+    !interaction.isChatInputCommand()
+  ) {
+    return;
+  }
 
   if (!isAuthorized(interaction.user.id, config.authorizedUserId)) {
     if (interaction.isRepliable()) {
       await interaction.reply({
         content: 'You are not authorized to perform this action.',
+        ephemeral: true,
+      });
+    }
+    return;
+  }
+
+  if (interaction.isChatInputCommand()) {
+    const { commandName } = interaction;
+    let commandStr = `/${commandName}`;
+
+    if (commandName === 'approve' || commandName === 'reject') {
+      const policyId = interaction.options.getString('policy_id');
+      if (policyId) commandStr += ` ${policyId}`;
+    }
+    if (commandName === 'reject') {
+      const rationale = interaction.options.getString('rationale');
+      if (rationale) commandStr += ` ${rationale}`;
+    }
+
+    await interaction.reply({ content: `Executing command: ${commandStr}`, ephemeral: true });
+
+    try {
+      const currentState = await readDiscordState();
+      const targetChatId = interaction.channelId
+        ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
+        : config.chatId;
+
+      await trpc.sendMessage.mutate({
+        type: 'send-message',
+        client: 'cli',
+        data: {
+          message: commandStr,
+          chatId: targetChatId,
+          adapter: 'discord',
+          noWait: true,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to send chat input command to daemon:', error);
+      await interaction.followUp({
+        content: `Failed to execute command ${commandStr}.`,
         ephemeral: true,
       });
     }

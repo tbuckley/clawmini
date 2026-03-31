@@ -7,5 +7,8 @@
 ## Step 2: Register Commands on Discord Startup
 - Added `REST` and `Routes` to `src/adapter-discord/index.ts` to register global slash commands on `ClientReady`.
 - Updated tests in `src/adapter-discord/index.test.ts` to mock `REST` and verify `rest.put` is called with the serialized command data.
-- Addressed testing issues with `discord.js` mocking by explicitly providing a mock `SlashCommandBuilder` and intercepting `mockRestPut`.
-- Marked Step 2 as completed.
+## Step 3: Handle Discord Slash Command Interactions
+- Added logic in `src/adapter-discord/interactions.ts` to check if `interaction.isChatInputCommand()` is true.
+- Reconstructed text commands by concatenating `commandName` with the arguments for `policy_id` and `rationale`.
+- Added unit tests in `src/adapter-discord/interactions.test.ts` for handling chat input commands and routing them to the daemon via TRPC.
+- Completed Step 3.

@@ -22,11 +22,14 @@ describe('handleDiscordInteraction', () => {
     mockInteraction = {
       isButton: vi.fn().mockReturnValue(true),
       isModalSubmit: vi.fn().mockReturnValue(false),
+      isChatInputCommand: vi.fn().mockReturnValue(false),
+      isRepliable: vi.fn().mockReturnValue(true),
       user: { id: 'user-1' },
       customId: '',
       channelId: 'channel-1',
       update: vi.fn().mockResolvedValue({}),
       followUp: vi.fn().mockResolvedValue({}),
+      reply: vi.fn().mockResolvedValue({}),
       showModal: vi.fn().mockResolvedValue({}),
     };
     vi.mocked(readDiscordState).mockResolvedValue({});
@@ -92,5 +95,57 @@ describe('handleDiscordInteraction', () => {
         }),
       })
     );
+  });
+
+  describe('chat input commands', () => {
+    beforeEach(() => {
+      mockInteraction.isButton.mockReturnValue(false);
+      mockInteraction.isModalSubmit.mockReturnValue(false);
+      mockInteraction.isChatInputCommand.mockReturnValue(true);
+      mockInteraction.options = {
+        getString: vi.fn(),
+      };
+    });
+
+    it('routes basic commands like /pending', async () => {
+      mockInteraction.commandName = 'pending';
+
+      await handleDiscordInteraction(mockInteraction, config, mockTrpc);
+
+      expect(mockInteraction.reply).toHaveBeenCalledWith({
+        content: 'Executing command: /pending',
+        ephemeral: true,
+      });
+      expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            message: '/pending',
+          }),
+        })
+      );
+    });
+
+    it('routes commands with arguments like /reject', async () => {
+      mockInteraction.commandName = 'reject';
+      mockInteraction.options.getString.mockImplementation((name: string) => {
+        if (name === 'policy_id') return 'req-123';
+        if (name === 'rationale') return 'too risky';
+        return null;
+      });
+
+      await handleDiscordInteraction(mockInteraction, config, mockTrpc);
+
+      expect(mockInteraction.reply).toHaveBeenCalledWith({
+        content: 'Executing command: /reject req-123 too risky',
+        ephemeral: true,
+      });
+      expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            message: '/reject req-123 too risky',
+          }),
+        })
+      );
+    });
   });
 });

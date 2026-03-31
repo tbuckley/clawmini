@@ -13,7 +13,7 @@
 ## Step 3: Handle Discord Slash Command Interactions
 - **Description:** Add an event listener for `interactionCreate` in the Discord adapter. If `interaction.isChatInputCommand()` is true, reconstruct the equivalent text command (e.g., `/reject req-123 my reason`) and pipe it into the existing text command logic. Ensure the interaction is appropriately acknowledged (`interaction.reply` or `interaction.deferReply`).
 - **Verification:** Add unit tests to simulate `interactionCreate` events and verify they are correctly parsed, routed, and acknowledged. Run `npm run validate`.
-- **Status:** Not started
+- **Status:** Completed
 
 ## Step 4: Document Google Chat Slash Commands Setup
 - **Description:** Update the documentation (e.g., `README.md` or a new guide in `docs/guides/`) to provide explicit instructions on how users can manually configure these slash commands (Command Names, IDs, and Descriptions) in the Google Cloud Console for Google Chat.

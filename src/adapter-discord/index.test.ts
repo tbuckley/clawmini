@@ -97,6 +97,9 @@ describe('Discord Adapter Entry Point', () => {
       waitForMessages: {
         subscribe: vi.fn(),
       },
+      waitForTyping: {
+        subscribe: vi.fn(),
+      },
     } as unknown as ReturnType<typeof import('./client.js').getTRPCClient>;
     vi.mocked(getTRPCClient).mockReturnValue(mockTrpc);
     vi.mocked(readDiscordConfig).mockResolvedValue({
@@ -628,6 +631,7 @@ describe('Discord Adapter Entry Point', () => {
       const mockInteraction = {
         isButton: () => false,
         isModalSubmit: () => false,
+        isChatInputCommand: () => false,
       };
       if (interactionHandler) await interactionHandler(mockInteraction);
       expect(mockTrpc.sendMessage.mutate).not.toHaveBeenCalled();
@@ -639,6 +643,7 @@ describe('Discord Adapter Entry Point', () => {
       const mockInteraction = {
         isButton: () => true,
         isModalSubmit: () => false,
+        isChatInputCommand: () => false,
         isRepliable: () => true,
         user: { id: 'unauth' },
         reply: vi.fn(),
@@ -655,6 +660,7 @@ describe('Discord Adapter Entry Point', () => {
       const mockInteraction = {
         isButton: () => true,
         isModalSubmit: () => false,
+        isChatInputCommand: () => false,
         user: { id: 'user-123' },
         customId: 'approve_123',
         update: vi.fn(),
@@ -682,6 +688,7 @@ describe('Discord Adapter Entry Point', () => {
       const mockInteraction = {
         isButton: () => true,
         isModalSubmit: () => false,
+        isChatInputCommand: () => false,
         user: { id: 'user-123' },
         customId: 'reject_123',
         showModal: vi.fn(),
@@ -694,6 +701,7 @@ describe('Discord Adapter Entry Point', () => {
       const mockInteraction = {
         isButton: () => false,
         isModalSubmit: () => true,
+        isChatInputCommand: () => false,
         isFromMessage: () => true,
         user: { id: 'user-123' },
         customId: 'modal_reject_123',
