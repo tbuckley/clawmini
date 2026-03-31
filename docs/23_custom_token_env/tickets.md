@@ -41,7 +41,7 @@
 - Run `npm run validate` to ensure tests still pass.
 
 ## Step 4: Add and Update E2E Tests
-**Status**: Not Started
+**Status**: Completed
 
 **Tasks:**
 - Update existing E2E tests (e.g., `src/cli/e2e/daemon.test.ts`, `src/cli/e2e/export-lite-func.test.ts`, `src/cli/e2e/requests.test.ts`) if they explicitly check for the hardcoded `CLAW_API_TOKEN` but shouldn't, or update them to verify default behavior remains intact.
