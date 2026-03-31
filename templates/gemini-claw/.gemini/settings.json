@@ -3,8 +3,13 @@
     "tools": {
         "exclude": [
             "ask_user",
-            "save_memory"
+            "save_memory",
+            "enter_plan_mode",
+            "exit_plan_mode"
         ]
+    },
+    "experimental": {
+        "enableAgents": false
     },
     "hooks": {
         "BeforeTool": [

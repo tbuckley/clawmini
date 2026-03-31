@@ -1,1 +1,4 @@
+# Gemini CLI
 generativelanguage.googleapis.com
+oauth2.googleapis.com
+play.googleapis.comcloudcode-pa.googleapis.com
