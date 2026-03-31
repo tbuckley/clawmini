@@ -8,7 +8,8 @@ export const DiscordConfigSchema = z.looseObject({
   botToken: z.string().min(1, 'Discord Bot Token is required.'),
   authorizedUserId: z.string().min(1, 'Authorized Discord User ID is required.'),
   chatId: z.string().default('default'),
-  maxAttachmentSizeMB: z.number().default(25).optional(),
+  maxAttachmentSizeMB: z.number().default(25),
+  requireMention: z.boolean().default(false),
 });
 
 export type DiscordConfig = z.infer<typeof DiscordConfigSchema>;
@@ -22,15 +23,12 @@ export async function readDiscordConfig(startDir = process.cwd()): Promise<Disco
   try {
     const data = await fsPromises.readFile(configPath, 'utf-8');
     const parsed = JSON.parse(data);
-    const result = DiscordConfigSchema.safeParse(parsed);
-    if (!result.success) {
-      console.error('Invalid Discord configuration:', result.error.format());
+    return DiscordConfigSchema.parse(parsed);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       return null;
     }
-    return result.data;
-  } catch {
-    // Return null if file doesn't exist or is invalid JSON
-    return null;
+    throw err;
   }
 }
 

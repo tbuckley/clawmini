@@ -53,10 +53,12 @@ This will create a `config.json` file at `.clawmini/adapters/discord/config.json
 {
   "botToken": "YOUR_DISCORD_BOT_TOKEN",
   "authorizedUserId": "YOUR_DISCORD_USER_ID",
-  "chatId": "default"
+  "chatId": "default",
+  "requireMention": false
 }
 ```
-*(Note: `chatId` defaults to `"default"`. You can change this if you want the bot to associate with a different chat).*
+
+_(Note: `chatId` defaults to `"default"`. You can change this if you want the bot to associate with a different chat. `requireMention` defaults to `false` and can be set to `true` if you only want the bot to respond when explicitly mentioned)._
 
 ## Step 5: Start the Adapter
 
@@ -67,3 +69,14 @@ npx clawmini-adapter-discord
 ```
 
 The adapter will now forward authorized Discord DM messages to your Clawmini daemon and vice versa.
+
+## Routing and Creating Chats
+
+By default, the adapter connects to a single chat (the one specified as `chatId` in your `config.json`). However, you can create new Discord channels (or use different DMs) to map to separate Clawmini chats.
+
+1. Create a new Text Channel in your Discord server (or open a new DM group).
+2. Invite the bot to the channel if necessary.
+3. Send the command `/agent [agent-id]` to automatically create a new Clawmini chat with that agent and map it to the current Discord channel.
+4. Alternatively, use `/chat [chat-id]` to map that specific Discord channel to an existing Clawmini chat.
+
+_Note: Each Discord channel can only be mapped to one Clawmini chat, and each Clawmini chat can only be mapped to one channel/space across all adapters._

@@ -3,14 +3,14 @@ import path from 'node:path';
 import fs from 'node:fs';
 import mime from 'mime-types';
 import type { GoogleChatConfig } from './config.js';
-import { getDriveAuthClient } from './auth.js';
+import { getUserAuthClient } from './auth.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
 
 export async function uploadFilesToDrive(
   files: string[],
   config: GoogleChatConfig
 ): Promise<string[]> {
-  const driveClient = await getDriveAuthClient(config);
+  const driveClient = await getUserAuthClient(config);
   const driveApi = google.drive({ version: 'v3', auth: driveClient });
   const workspaceRoot = getWorkspaceRoot(process.cwd());
 

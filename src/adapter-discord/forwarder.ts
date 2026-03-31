@@ -1,8 +1,19 @@
-import type { Client, MessageCreateOptions } from 'discord.js';
+/* eslint-disable max-lines */
+import type {
+  Client,
+  MessageCreateOptions,
+  TextChannel,
+  DMChannel,
+  NewsChannel,
+  ThreadChannel,
+  VoiceChannel,
+  StageChannel,
+} from 'discord.js';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Colors } from 'discord.js';
 import path from 'node:path';
+import fs from 'node:fs';
 import type { getTRPCClient } from './client.js';
-import { readDiscordState, writeDiscordState } from './state.js';
+import { readDiscordState, updateDiscordState, getDiscordStatePath } from './state.js';
 import type { ChatMessage } from '../shared/chats.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
 import {
@@ -10,6 +21,40 @@ import {
   formatMessage,
   type FilteringConfig,
 } from '../shared/adapters/filtering.js';
+
+async function resolveDiscordDestination(
+  client: Client,
+  discordUserId: string,
+  chatId: string
+): Promise<TextChannel | DMChannel | NewsChannel | ThreadChannel | VoiceChannel | StageChannel> {
+  const state = await readDiscordState();
+  const channelChatMap = state.channelChatMap || {};
+
+  let targetDiscordChannelId: string | undefined;
+  for (const [channelId, mappedChatId] of Object.entries(channelChatMap)) {
+    if (mappedChatId?.chatId === chatId) {
+      targetDiscordChannelId = channelId;
+      break;
+    }
+  }
+
+  if (targetDiscordChannelId) {
+    try {
+      const channel = await client.channels.fetch(targetDiscordChannelId);
+      if (channel && channel.isTextBased() && !channel.isDMBased()) {
+        return channel as TextChannel | NewsChannel | ThreadChannel | VoiceChannel | StageChannel;
+      }
+    } catch (error) {
+      console.warn(
+        `Failed to fetch mapped channel ${targetDiscordChannelId} for chat ${chatId}, falling back to DM.`,
+        error
+      );
+    }
+  }
+
+  const user = await client.users.fetch(discordUserId);
+  return user.createDM();
+}
 
 export async function startDaemonToDiscordForwarder(
   client: Client,
@@ -21,46 +66,58 @@ export async function startDaemonToDiscordForwarder(
     config?: FilteringConfig;
   } = {}
 ) {
-  const chatId = options.chatId ?? 'default';
+  const defaultChatId = options.chatId ?? 'default';
   const signal = options.signal;
   const config = options.config ?? {};
 
-  const state = await readDiscordState();
-  let lastMessageId = state.lastSyncedMessageId;
+  const activeSubscriptions = new Map<string, { unsubscribe: () => void }>();
+  const activeTypingSubscriptions = new Map<string, { unsubscribe: () => void }>();
+  let currentLastSyncedMessageIds = (await readDiscordState()).lastSyncedMessageIds || {};
 
-  // 1. If we don't have a lastMessageId, get the most recent one from the daemon
-  // to avoid sending the entire chat history on first run.
-  if (!lastMessageId) {
-    try {
-      const messages = await trpc.getMessages.query({ chatId, limit: 1 });
-      if (Array.isArray(messages) && messages.length > 0) {
-        const lastMsg = messages[messages.length - 1];
-        if (lastMsg) {
-          lastMessageId = lastMsg.id;
-          await writeDiscordState({ lastSyncedMessageId: lastMessageId });
+  const saveLastMessageId = async (chatId: string, id: string) => {
+    currentLastSyncedMessageIds = { ...currentLastSyncedMessageIds, [chatId]: id };
+    return updateDiscordState((state) => ({
+      lastSyncedMessageIds: {
+        ...state.lastSyncedMessageIds,
+        ...currentLastSyncedMessageIds,
+      },
+    }));
+  };
+
+  const startSubscriptionForChat = async (chatId: string) => {
+    if (activeSubscriptions.has(chatId)) return;
+    if (signal?.aborted) return;
+
+    let lastMessageId = currentLastSyncedMessageIds[chatId];
+
+    if (!lastMessageId) {
+      try {
+        const messages = await trpc.getMessages.query({ chatId, limit: 1 });
+        if (Array.isArray(messages) && messages.length > 0) {
+          const lastMsg = messages[messages.length - 1];
+          if (lastMsg) {
+            await saveLastMessageId(chatId, lastMsg.id);
+            lastMessageId = lastMsg.id;
+          }
         }
+      } catch (error) {
+        if (signal?.aborted) return;
+        console.error(`Failed to fetch initial messages from daemon for ${chatId}:`, error);
       }
-    } catch (error) {
-      if (signal?.aborted) return;
-      console.error('Failed to fetch initial messages from daemon:', error);
     }
-  }
 
-  console.log(
-    `Starting daemon-to-discord forwarder for chat ${chatId}, lastMessageId: ${lastMessageId}`
-  );
+    console.log(
+      `Starting daemon-to-discord forwarder for chat ${chatId}, lastMessageId: ${lastMessageId}`
+    );
 
-  let retryDelay = 1000;
-  const maxRetryDelay = 30000;
+    let retryDelay = 1000;
+    const maxRetryDelay = 30000;
 
-  // 2. Start the observation loop using tRPC subscription
-  return new Promise<void>((resolve) => {
     let subscription: { unsubscribe: () => void } | null = null;
     let messageQueue = Promise.resolve();
 
     const connect = () => {
-      if (signal?.aborted) {
-        resolve();
+      if (signal?.aborted || !activeSubscriptions.has(chatId)) {
         return;
       }
 
@@ -77,7 +134,7 @@ export async function startDaemonToDiscordForwarder(
             // Queue processing to ensure sequential execution
             messageQueue = messageQueue.then(async () => {
               for (const rawMessage of messages) {
-                if (signal?.aborted) break;
+                if (signal?.aborted || !activeSubscriptions.has(chatId)) break;
 
                 const message = rawMessage as ChatMessage;
 
@@ -90,8 +147,7 @@ export async function startDaemonToDiscordForwarder(
 
                   if (isPolicyRequest) {
                     try {
-                      const user = await client.users.fetch(discordUserId);
-                      const dm = await user.createDM();
+                      const dm = await resolveDiscordDestination(client, discordUserId, chatId);
 
                       const embed = new EmbedBuilder()
                         .setTitle('Action Required: Policy Request')
@@ -104,22 +160,22 @@ export async function startDaemonToDiscordForwarder(
                         ('requestId' in logMessage && logMessage.requestId) || logMessage.id;
                       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
                         new ButtonBuilder()
-                          .setCustomId(`approve_${policyId}`)
+                          .setCustomId(`approve|${policyId}|${chatId}`)
                           .setLabel('Approve')
                           .setStyle(ButtonStyle.Success),
                         new ButtonBuilder()
-                          .setCustomId(`reject_${policyId}`)
+                          .setCustomId(`reject|${policyId}|${chatId}`)
                           .setLabel('Reject')
                           .setStyle(ButtonStyle.Danger)
                       );
 
-                      const options: MessageCreateOptions = {
+                      const optionsMsg: MessageCreateOptions = {
                         embeds: [embed],
                         components: [row],
                       };
 
                       try {
-                        await dm.send(options);
+                        await dm.send(optionsMsg);
                       } catch (richError) {
                         console.warn(
                           `Failed to send rich message to Discord user ${discordUserId}, falling back to plain text:`,
@@ -136,18 +192,14 @@ export async function startDaemonToDiscordForwarder(
                       );
                     }
 
+                    await saveLastMessageId(chatId, logMessage.id).catch(console.error);
                     lastMessageId = logMessage.id;
-                    await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
-                      console.error
-                    );
                     continue;
                   }
 
                   if ('level' in logMessage && logMessage.level === 'verbose') {
+                    await saveLastMessageId(chatId, logMessage.id).catch(console.error);
                     lastMessageId = logMessage.id;
-                    await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
-                      console.error
-                    );
                     continue;
                   }
 
@@ -165,23 +217,19 @@ export async function startDaemonToDiscordForwarder(
                   }
 
                   if (!hasContent && !hasFiles) {
+                    await saveLastMessageId(chatId, logMessage.id).catch(console.error);
                     lastMessageId = logMessage.id;
-                    await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
-                      console.error
-                    );
                     continue;
                   }
 
                   try {
-                    const user = await client.users.fetch(discordUserId);
-                    const dm = await user.createDM();
+                    const dm = await resolveDiscordDestination(client, discordUserId, chatId);
                     const formattedContent = formatMessage(message);
 
-                    // Discord has a 2000 character limit for messages.
                     if (formattedContent && formattedContent.length > 2000) {
                       const chunks = chunkString(formattedContent, 2000);
                       for (let i = 0; i < chunks.length; i++) {
-                        if (signal?.aborted) break;
+                        if (signal?.aborted || !activeSubscriptions.has(chatId)) break;
                         const chunkOptions: MessageCreateOptions = { content: chunks[i] as string };
                         if (i === chunks.length - 1 && hasFiles) {
                           chunkOptions.files = absoluteFiles;
@@ -189,42 +237,38 @@ export async function startDaemonToDiscordForwarder(
                         await dm.send(chunkOptions);
                       }
                     } else {
-                      const options: MessageCreateOptions = {};
+                      const optionsMsg: MessageCreateOptions = {};
                       if (formattedContent) {
-                        options.content = formattedContent;
+                        optionsMsg.content = formattedContent;
                       }
                       if (hasFiles) {
-                        options.files = absoluteFiles;
+                        optionsMsg.files = absoluteFiles;
                       }
-                      await dm.send(options);
+                      await dm.send(optionsMsg);
                     }
                   } catch (error) {
                     console.error(
                       `Failed to send message to Discord user ${discordUserId}:`,
                       error
                     );
-                    // We don't advance lastMessageId if sending failed
-                    break;
+                    break; // don't advance lastMessageId
                   }
                 }
 
+                await saveLastMessageId(chatId, message.id).catch(console.error);
                 lastMessageId = message.id;
-                await writeDiscordState({ lastSyncedMessageId: lastMessageId }).catch(
-                  console.error
-                );
               }
             });
           },
           onError: (error) => {
             console.error(
-              `Error in daemon-to-discord forwarder subscription. Retrying in ${retryDelay}ms.`,
+              `Error in daemon-to-discord forwarder subscription for ${chatId}. Retrying in ${retryDelay}ms.`,
               error
             );
             subscription?.unsubscribe();
             subscription = null;
 
-            if (signal?.aborted) {
-              resolve();
+            if (signal?.aborted || !activeSubscriptions.has(chatId)) {
               return;
             }
 
@@ -235,10 +279,8 @@ export async function startDaemonToDiscordForwarder(
           },
           onComplete: () => {
             subscription = null;
-            if (!signal?.aborted) {
+            if (!signal?.aborted && activeSubscriptions.has(chatId)) {
               setTimeout(() => connect(), retryDelay);
-            } else {
-              resolve();
             }
           },
         }
@@ -249,7 +291,7 @@ export async function startDaemonToDiscordForwarder(
     let typingRetryDelay = 1000;
 
     const connectTyping = () => {
-      if (signal?.aborted) {
+      if (signal?.aborted || !activeSubscriptions.has(chatId)) {
         return;
       }
 
@@ -261,9 +303,10 @@ export async function startDaemonToDiscordForwarder(
             if (!event) return;
 
             try {
-              const user = await client.users.fetch(discordUserId);
-              const dm = await user.createDM();
-              await dm.sendTyping();
+              const dm = await resolveDiscordDestination(client, discordUserId, chatId);
+              if (dm.sendTyping) {
+                await dm.sendTyping();
+              }
             } catch (error) {
               console.error(
                 `Failed to send typing indicator to Discord user ${discordUserId}:`,
@@ -273,13 +316,13 @@ export async function startDaemonToDiscordForwarder(
           },
           onError: (error) => {
             console.error(
-              `Error in daemon-to-discord typing forwarder subscription. Retrying in ${typingRetryDelay}ms.`,
+              `Error in daemon-to-discord typing forwarder subscription for ${chatId}. Retrying in ${typingRetryDelay}ms.`,
               error
             );
             typingSubscription?.unsubscribe();
             typingSubscription = null;
 
-            if (signal?.aborted) {
+            if (signal?.aborted || !activeSubscriptions.has(chatId)) {
               return;
             }
 
@@ -290,7 +333,7 @@ export async function startDaemonToDiscordForwarder(
           },
           onComplete: () => {
             typingSubscription = null;
-            if (!signal?.aborted) {
+            if (!signal?.aborted && activeSubscriptions.has(chatId)) {
               setTimeout(() => connectTyping(), typingRetryDelay);
             }
           },
@@ -298,12 +341,81 @@ export async function startDaemonToDiscordForwarder(
       );
     };
 
+    activeSubscriptions.set(chatId, {
+      unsubscribe: () => subscription?.unsubscribe(),
+    });
+    activeTypingSubscriptions.set(chatId, {
+      unsubscribe: () => typingSubscription?.unsubscribe(),
+    });
+
     connect();
     connectTyping();
+  };
+
+  const syncSubscriptions = async () => {
+    if (signal?.aborted) return;
+    const state = await readDiscordState();
+
+    // Update local copy of last message IDs
+    if (state.lastSyncedMessageIds) {
+      currentLastSyncedMessageIds = {
+        ...currentLastSyncedMessageIds,
+        ...state.lastSyncedMessageIds,
+      };
+    }
+
+    const targetChatIds = new Set<string>();
+    targetChatIds.add(defaultChatId);
+
+    if (state.channelChatMap) {
+      for (const mappedEntry of Object.values(state.channelChatMap)) {
+        if (mappedEntry.chatId) {
+          targetChatIds.add(mappedEntry.chatId);
+        }
+      }
+    }
+
+    // Start new subscriptions
+    for (const targetChatId of targetChatIds) {
+      if (!activeSubscriptions.has(targetChatId)) {
+        startSubscriptionForChat(targetChatId);
+      }
+    }
+
+    // Teardown old subscriptions
+    for (const [activeChatId, sub] of activeSubscriptions.entries()) {
+      if (!targetChatIds.has(activeChatId)) {
+        sub.unsubscribe();
+        activeSubscriptions.delete(activeChatId);
+        activeTypingSubscriptions.get(activeChatId)?.unsubscribe();
+        activeTypingSubscriptions.delete(activeChatId);
+      }
+    }
+  };
+
+  return new Promise<void>((resolve) => {
+    syncSubscriptions().catch(console.error);
+
+    const statePath = getDiscordStatePath();
+    const stateDir = path.dirname(statePath);
+    if (!fs.existsSync(stateDir)) {
+      fs.mkdirSync(stateDir, { recursive: true });
+    }
+    let debounceTimer: NodeJS.Timeout | null = null;
+    const watcher = fs.watch(stateDir, (eventType: string, filename: string | null) => {
+      if (filename === path.basename(statePath)) {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          syncSubscriptions().catch(console.error);
+        }, 200);
+      }
+    });
 
     signal?.addEventListener('abort', () => {
-      subscription?.unsubscribe();
-      typingSubscription?.unsubscribe();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      watcher.close();
+      for (const sub of activeSubscriptions.values()) sub.unsubscribe();
+      for (const sub of activeTypingSubscriptions.values()) sub.unsubscribe();
       resolve();
     });
   });

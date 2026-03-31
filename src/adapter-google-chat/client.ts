@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { PubSub, Message } from '@google-cloud/pubsub';
 import { createTRPCClient, httpLink, splitLink, httpSubscriptionLink } from '@trpc/client';
 import fs from 'node:fs';
@@ -10,13 +11,17 @@ import { getSocketPath, getClawminiDir } from '../shared/workspace.js';
 import { createUnixSocketFetch } from '../shared/fetch.js';
 import { createUnixSocketEventSource } from '../shared/event-source.js';
 import type { GoogleChatConfig } from './config.js';
-import { isAuthorized } from './config.js';
+import { isAuthorized, updateGoogleChatConfig } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
 import { downloadAttachment } from './utils.js';
 import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 import { google } from 'googleapis';
 import { getAuthClient } from './auth.js';
+import { handleRoutingCommand, type RoutingTrpcClient } from '../shared/adapters/routing.js';
+
+import { handleAddedToSpace, handleRemovedFromSpace } from './subscriptions.js';
+import { handleCardClicked } from './cards.js';
 
 export function getTRPCClient(options: { socketPath?: string } = {}) {
   const socketPath = options.socketPath ?? getSocketPath();
@@ -55,33 +60,96 @@ export function startGoogleChatIngestion(
   const pubsub = new PubSub({ projectId: config.projectId });
   const subscription = pubsub.subscription(config.subscriptionName);
 
+  const seenMessageIds = new Map<string, number>();
+
+  // Periodically clean up deduplication cache every 5 minutes
+  setInterval(
+    () => {
+      const now = Date.now();
+      for (const [id, ts] of seenMessageIds.entries()) {
+        if (now - ts > 10 * 60 * 1000) {
+          seenMessageIds.delete(id);
+        }
+      }
+    },
+    5 * 60 * 1000
+  ).unref();
+
   subscription.on('message', async (message: Message) => {
     const downloadedFiles: string[] = [];
     try {
       const dataString = message.data.toString('utf8');
-      const event = JSON.parse(dataString);
+      const parsedData = JSON.parse(dataString);
 
-      // Only handle MESSAGE and CARD_CLICKED events
-      if (event.type !== 'MESSAGE' && event.type !== 'CARD_CLICKED') {
+      const isWorkspaceEvent =
+        message.attributes &&
+        message.attributes['ce-type'] === 'google.workspace.chat.message.v1.created';
+
+      const eventType = isWorkspaceEvent ? 'MESSAGE' : parsedData.type;
+
+      const eventMessage = isWorkspaceEvent ? parsedData.message || parsedData : parsedData.message;
+      const email =
+        (isWorkspaceEvent
+          ? eventMessage?.sender?.email
+          : parsedData.user?.email || eventMessage?.sender?.email) || '';
+      const senderName = eventMessage?.sender?.name || parsedData.user?.name || '';
+
+      const space = isWorkspaceEvent
+        ? eventMessage?.space
+        : parsedData.space || eventMessage?.space;
+      const senderType = eventMessage?.sender?.type || '';
+      const messageId = eventMessage?.name || '';
+      const text = (eventMessage?.argumentText || eventMessage?.text || '').trim();
+
+      if (senderType === 'BOT') return void message.ack();
+
+      if (messageId) {
+        if (seenMessageIds.has(messageId)) return void message.ack();
+        seenMessageIds.set(messageId, Date.now());
+      }
+
+      // Only handle MESSAGE, CARD_CLICKED, ADDED_TO_SPACE, and REMOVED_FROM_SPACE events
+      if (
+        eventType !== 'MESSAGE' &&
+        eventType !== 'CARD_CLICKED' &&
+        eventType !== 'ADDED_TO_SPACE' &&
+        eventType !== 'REMOVED_FROM_SPACE'
+      ) {
         message.ack();
         return;
       }
 
-      const email = event.user?.email || event.message?.sender?.email;
-      if (!email || !isAuthorized(email, config.authorizedUsers)) {
-        console.log(`Unauthorized or missing email: ${email}`);
+      let isUserAuthorized = false;
+      let authorizedByEmail = false;
+
+      if (email && isAuthorized(email, config.authorizedUsers)) {
+        isUserAuthorized = true;
+        authorizedByEmail = true;
+      } else if (senderName && isAuthorized(senderName, config.authorizedUsers)) {
+        isUserAuthorized = true;
+      }
+
+      if (!isUserAuthorized) {
+        console.log(`Unauthorized or missing identifier: email=${email}, name=${senderName}`);
+        console.log('DEBUG missing identifier parsedData:', JSON.stringify(parsedData, null, 2));
         message.ack();
         return;
       }
 
-      const space = event.space || event.message?.space;
+      // Automatically authorize user IDs if associated an authorized email
+      if (authorizedByEmail && senderName && !isAuthorized(senderName, config.authorizedUsers)) {
+        console.log(
+          `Automatically authorizing user ID ${senderName} based on authorized email ${email}`
+        );
+        config.authorizedUsers.push(senderName);
+        updateGoogleChatConfig(config).catch((err) =>
+          console.error('Failed to update config with new user ID:', err)
+        );
+      }
+
+      const identifier = email || senderName;
+
       const spaceName = space?.name;
-
-      if (space?.type !== 'DIRECT_MESSAGE' && space?.singleUserBotDm !== true) {
-        console.log(`Ignoring message from unsupported space type: ${space?.type}`);
-        message.ack();
-        return;
-      }
 
       if (!spaceName) {
         console.log('Ignoring message: Could not determine space name.');
@@ -89,90 +157,192 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      const state = await readGoogleChatState();
-      let activeSpaceName = config.directMessageName || state.activeSpaceName;
+      const currentState = await readGoogleChatState();
 
-      if (!activeSpaceName) {
-        activeSpaceName = spaceName;
-        await updateGoogleChatState({ activeSpaceName });
-      } else if (activeSpaceName !== spaceName) {
-        console.log(`Ignoring message from inactive space: ${spaceName}`);
+      const externalContextId = spaceName;
+      const mappedChatId = currentState.channelChatMap?.[externalContextId]?.chatId;
+      const isRoutingCommand = text.startsWith('/chat') || text.startsWith('/agent');
+
+      if (eventType === 'ADDED_TO_SPACE') {
+        await handleAddedToSpace(
+          spaceName as string,
+          externalContextId,
+          space?.type,
+          mappedChatId,
+          mappedChatId,
+          config
+        );
+        if (!text) {
+          message.ack();
+          return;
+        }
+      }
+
+      if (eventType === 'REMOVED_FROM_SPACE') {
+        await handleRemovedFromSpace(externalContextId, currentState, config);
         message.ack();
         return;
       }
 
-      if (event.type === 'CARD_CLICKED') {
-        const action = event.action;
-        if (action) {
-          const methodName = action.actionMethodName;
-          const params = action.parameters || [];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const policyIdParam = params.find((p: any) => p.key === 'policyId');
-          const policyId = policyIdParam?.value;
+      if (isRoutingCommand) {
+        const stringChatMap = Object.fromEntries(
+          Object.entries(currentState.channelChatMap || {}).map(([k, v]) => [k, v.chatId || ''])
+        );
+        const routingResult = await handleRoutingCommand(
+          text,
+          externalContextId,
+          stringChatMap,
+          'google-chat',
+          trpc as unknown as RoutingTrpcClient
+        );
 
-          if (policyId && (methodName === 'approve' || methodName === 'reject')) {
-            const cmd = methodName === 'approve' ? `/approve ${policyId}` : `/reject ${policyId}`;
-
-            if (event.message?.name) {
-              try {
-                const chatApi = google.chat({ version: 'v1', auth: await getAuthClient() });
-
-                const originalCards = event.message.cardsV2 || [];
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const updatedCards = originalCards.map((c: any) => {
-                  if (c.card?.sections) {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    c.card.sections = c.card.sections.map((s: any) => {
-                      if (s.widgets) {
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        s.widgets = s.widgets.filter((w: any) => !w.buttonList);
-                      }
-                      return s;
-                    });
-                  }
-                  if (c.card?.header) {
-                    const statusText = methodName === 'approve' ? 'Approved' : 'Rejected';
-                    c.card.header.subtitle = `Policy ${statusText}`;
-                  }
-                  return c;
-                });
-
-                await chatApi.spaces.messages.update({
-                  name: event.message.name,
-                  updateMask: 'cardsV2',
-                  requestBody: {
-                    cardsV2: updatedCards,
-                  },
-                });
-              } catch (updateErr) {
-                console.error(`Failed to update card for policy ${policyId}:`, updateErr);
-              }
-            }
-
-            await trpc.sendMessage.mutate({
-              type: 'send-message',
-              client: 'cli',
-              data: {
-                message: cmd,
-                chatId: config.chatId || 'default',
-                adapter: 'google-chat',
-                noWait: true,
+        if (routingResult) {
+          if (routingResult.type === 'mapped') {
+            await updateGoogleChatState((latestState) => ({
+              channelChatMap: {
+                ...(latestState.channelChatMap || {}),
+                [externalContextId]: {
+                  ...(latestState.channelChatMap?.[externalContextId] || {}),
+                  chatId: routingResult.newChatId,
+                },
               },
+            }));
+          }
+
+          try {
+            const authClient = await getAuthClient();
+            const chatApi = google.chat({ version: 'v1', auth: authClient });
+            await chatApi.spaces.messages.create({
+              parent: externalContextId,
+              requestBody: { text: routingResult.text },
             });
-            console.log(`Forwarded ${methodName} for policy ${policyId} to daemon.`);
+          } catch (err) {
+            console.error('Failed to send routing command reply:', err);
+          }
+
+          message.ack();
+          return;
+        }
+      }
+
+      let targetChatId = mappedChatId;
+
+      if (!targetChatId && !isRoutingCommand) {
+        const isFirstEverMessage =
+          !currentState.channelChatMap ||
+          Object.values(currentState.channelChatMap).every((entry) => !entry.chatId);
+
+        if (isFirstEverMessage) {
+          targetChatId = config.chatId || 'default';
+          console.log(
+            `First contact detected. Automatically mapping space ${externalContextId} to chat ${targetChatId}.`
+          );
+          await updateGoogleChatState((latestState) => ({
+            channelChatMap: {
+              ...(latestState.channelChatMap || {}),
+              [externalContextId]: {
+                ...(latestState.channelChatMap?.[externalContextId] || {}),
+                chatId: targetChatId as string,
+              },
+            },
+          }));
+        } else {
+          const isDirectMessage =
+            space?.type === 'DIRECT_MESSAGE' || space?.singleUserBotDm === true;
+          const isMentioned =
+            Array.isArray(eventMessage?.annotations) &&
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            eventMessage.annotations.some((a: any) => a.type === 'USER_MENTION');
+          const isSlashCommand = text.startsWith('/');
+          if (isDirectMessage || isMentioned || isSlashCommand) {
+            console.log(`Unmapped space ${externalContextId}, sending first contact warning.`);
+            try {
+              const authClient = await getAuthClient();
+              const chatApi = google.chat({ version: 'v1', auth: authClient });
+              await chatApi.spaces.messages.create({
+                parent: externalContextId,
+                requestBody: {
+                  text: 'This channel/space is not currently mapped to a daemon chat. Please use `/chat [chat-id]` or `/agent [agent-id]` to map it.',
+                },
+              });
+            } catch (err) {
+              console.error('Failed to send first contact warning:', err);
+            }
+          } else {
+            console.log(
+              `Unmapped space ${externalContextId}, silently ignoring background message.`
+            );
+          }
+          message.ack();
+          return;
+        }
+      }
+
+      // Fallback typing safeguard
+      if (!targetChatId) targetChatId = config.chatId || 'default';
+
+      const isDirectMessage = space?.type === 'DIRECT_MESSAGE' || space?.singleUserBotDm === true;
+      if (!isDirectMessage && eventType === 'MESSAGE') {
+        const channelConfig = currentState.channelChatMap?.[externalContextId];
+        const requiresMention =
+          channelConfig?.requireMention !== undefined
+            ? channelConfig.requireMention
+            : config.requireMention;
+
+        if (requiresMention && !isRoutingCommand) {
+          const isMentioned =
+            Array.isArray(eventMessage?.annotations) &&
+            eventMessage.annotations.some(
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (a: any) => a.type === 'USER_MENTION' && a.userMention?.user?.type === 'BOT'
+            );
+
+          let isReplyToBot = false;
+          if (eventMessage?.threadReply && eventMessage.thread?.name) {
+            try {
+              const authClient = await getAuthClient();
+              const chatApi = google.chat({ version: 'v1', auth: authClient });
+              const response = await chatApi.spaces.messages.list({
+                parent: externalContextId,
+                filter: `thread.name="${eventMessage.thread.name}"`,
+              });
+              isReplyToBot =
+                response.data.messages?.some(
+                  (m) =>
+                    m.sender?.type === 'BOT' ||
+                    m.annotations?.some(
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      (a: any) => a.type === 'USER_MENTION' && a.userMention?.user?.type === 'BOT'
+                    )
+                ) ?? false;
+            } catch (err) {
+              console.error('Failed to fetch thread messages for mention check:', err);
+            }
+          }
+
+          // If requireMention is true and it's not a DM, ignore if not mentioned and not a thread reply to the bot.
+          if (!isMentioned && !isReplyToBot) {
+            message.ack();
+            return;
           }
         }
+      }
+
+      if (eventType === 'CARD_CLICKED') {
+        await handleCardClicked(
+          parsedData,
+          targetChatId as string,
+          trpc as unknown as RoutingTrpcClient
+        );
         message.ack();
         return;
       }
-
-      const text = event.message?.text || '';
 
       const commandResult = await handleAdapterCommand(
         text,
         filteringConfig,
         trpc as unknown as CommandTrpcClient,
-        config.chatId || 'default'
+        targetChatId
       );
 
       if (commandResult) {
@@ -194,13 +364,13 @@ export function startGoogleChatIngestion(
         const authClient = await getAuthClient();
         const chatApi = google.chat({ version: 'v1', auth: authClient });
         await chatApi.spaces.messages.create({
-          parent: activeSpaceName as string,
+          parent: spaceName as string,
           requestBody: { text: resultText },
         });
         message.ack();
         return;
       }
-      const attachments = event.message?.attachment || [];
+      const attachments = eventMessage?.attachment || [];
 
       if (attachments.length > 0) {
         const tmpDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'google-chat');
@@ -227,14 +397,14 @@ export function startGoogleChatIngestion(
         client: 'cli',
         data: {
           message: text,
-          chatId: config.chatId || 'default',
+          chatId: targetChatId,
           files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
           adapter: 'google-chat',
           noWait: true,
         },
       });
 
-      console.log(`Forwarded message from ${email} to daemon.`);
+      console.log(`Forwarded message from ${identifier} to daemon.`);
       message.ack();
     } catch (error) {
       console.error('Error processing Pub/Sub message:', error);

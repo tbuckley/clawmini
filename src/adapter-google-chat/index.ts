@@ -4,7 +4,8 @@ import { initGoogleChatConfig, readGoogleChatConfig } from './config.js';
 import { readGoogleChatState } from './state.js';
 import { getTRPCClient, startGoogleChatIngestion } from './client.js';
 import { startDaemonToGoogleChatForwarder } from './forwarder.js';
-import { getDriveAuthClient } from './auth.js';
+import { getUserAuthClient } from './auth.js';
+import { startSubscriptionRenewalCron } from './cron.js';
 import type { FilteringConfig } from '../shared/adapters/filtering.js';
 
 export async function main() {
@@ -25,16 +26,12 @@ export async function main() {
     process.exit(1);
   }
 
-  if (
-    config.driveUploadEnabled !== false &&
-    config.driveOauthClientId &&
-    config.driveOauthClientSecret
-  ) {
+  if (config.oauthClientId && config.oauthClientSecret) {
     try {
-      console.log('Initializing Google Drive Authentication...');
-      await getDriveAuthClient(config);
+      console.log('Initializing Google User Authentication...');
+      await getUserAuthClient(config);
     } catch (err) {
-      console.error('Failed to initialize Google Drive authentication:', err);
+      console.error('Failed to initialize Google User authentication:', err);
       process.exit(1);
     }
   }
@@ -51,6 +48,9 @@ export async function main() {
   startDaemonToGoogleChatForwarder(trpc, config, filteringConfig).catch((error) => {
     console.error('Error in daemon-to-google-chat forwarder:', error);
   });
+
+  // Start background cron for renewing Space Subscriptions
+  startSubscriptionRenewalCron(config);
 }
 
 if (process.env.NODE_ENV !== 'test') {

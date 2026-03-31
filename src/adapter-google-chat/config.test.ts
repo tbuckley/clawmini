@@ -25,6 +25,7 @@ describe('Google Chat Adapter Configuration', () => {
       const config = {
         projectId: 'test-project',
         subscriptionName: 'test-sub',
+        topicName: 'test-topic',
         authorizedUsers: ['test@example.com'],
       };
       const result = GoogleChatConfigSchema.safeParse(config);
@@ -35,6 +36,7 @@ describe('Google Chat Adapter Configuration', () => {
           maxAttachmentSizeMB: 25,
           chatId: 'default',
           driveUploadEnabled: true,
+          requireMention: false,
         });
       }
     });
@@ -43,6 +45,7 @@ describe('Google Chat Adapter Configuration', () => {
       const config = {
         projectId: 'test-project',
         subscriptionName: 'test-sub',
+        topicName: 'test-topic',
         authorizedUsers: ['test@example.com'],
         maxAttachmentSizeMB: 50,
       };
@@ -57,6 +60,7 @@ describe('Google Chat Adapter Configuration', () => {
       const config = {
         projectId: 'test-project',
         subscriptionName: 'test-sub',
+        topicName: 'test-topic',
         authorizedUsers: ['test@example.com'],
         messages: { all: true, test: false },
       };
@@ -76,6 +80,7 @@ describe('Google Chat Adapter Configuration', () => {
       const result = GoogleChatConfigSchema.safeParse({
         projectId: '',
         subscriptionName: '',
+        topicName: 'test-topic',
         authorizedUsers: [],
       });
       expect(result.success).toBe(false);
@@ -113,10 +118,12 @@ describe('Google Chat Adapter Configuration', () => {
       expect(JSON.parse(writeCall![1] as string)).toEqual({
         projectId: 'YOUR_PROJECT_ID',
         subscriptionName: 'YOUR_SUBSCRIPTION_NAME',
+        topicName: 'YOUR_TOPIC_NAME',
         authorizedUsers: ['user@example.com'],
         chatId: 'default',
-        driveOauthClientId: 'YOUR_OAUTH_CLIENT_ID',
-        driveOauthClientSecret: 'YOUR_OAUTH_CLIENT_SECRET',
+        requireMention: false,
+        oauthClientId: 'YOUR_OAUTH_CLIENT_ID',
+        oauthClientSecret: 'YOUR_OAUTH_CLIENT_SECRET',
       });
     });
 
@@ -138,6 +145,7 @@ describe('Google Chat Adapter Configuration', () => {
       const mockConfig = {
         projectId: 'test-project',
         subscriptionName: 'test-sub',
+        topicName: 'test-topic',
         authorizedUsers: ['user@example.com'],
       };
       vi.mocked(fsPromises.readFile).mockResolvedValue(JSON.stringify(mockConfig));
@@ -148,31 +156,32 @@ describe('Google Chat Adapter Configuration', () => {
         maxAttachmentSizeMB: 25,
         chatId: 'default',
         driveUploadEnabled: true,
+        requireMention: false,
       });
       expect(fsPromises.readFile).toHaveBeenCalledWith(getGoogleChatConfigPath(), 'utf-8');
     });
 
     it('should return null if the config file does not exist', async () => {
-      vi.mocked(fsPromises.readFile).mockRejectedValue(new Error('File not found'));
+      const error = new Error('File not found') as Error & { code: string };
+      error.code = 'ENOENT';
+      vi.mocked(fsPromises.readFile).mockRejectedValue(error);
 
       const config = await readGoogleChatConfig();
       expect(config).toBeNull();
     });
 
-    it('should return null if the config file contains invalid JSON', async () => {
+    it('should throw if the config file contains invalid JSON', async () => {
       vi.mocked(fsPromises.readFile).mockResolvedValue('invalid-json');
 
-      const config = await readGoogleChatConfig();
-      expect(config).toBeNull();
+      await expect(readGoogleChatConfig()).rejects.toThrow();
     });
 
-    it('should return null if the config fails schema validation', async () => {
+    it('should throw if the config fails schema validation', async () => {
       vi.mocked(fsPromises.readFile).mockResolvedValue(
         JSON.stringify({ subscriptionName: 'test' })
       );
 
-      const config = await readGoogleChatConfig();
-      expect(config).toBeNull();
+      await expect(readGoogleChatConfig()).rejects.toThrow();
     });
   });
 });

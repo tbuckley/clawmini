@@ -7,6 +7,13 @@ import { createTRPCClient } from '@trpc/client';
 import * as utils from './utils.js';
 
 vi.mock('node:fs');
+vi.mock('./state.js', () => ({
+  readGoogleChatState: vi.fn().mockResolvedValue({
+    channelChatMap: { 'spaces/123': { chatId: 'default' } },
+    activeSpaceName: 'spaces/123',
+  }),
+  updateGoogleChatState: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('node:fs/promises', () => ({
   default: {
     mkdir: vi.fn().mockResolvedValue(undefined),
@@ -20,6 +27,12 @@ vi.mock('@trpc/client', () => ({
     ping: {
       query: vi.fn().mockResolvedValue({ status: 'ok' }),
     },
+    getChats: {
+      query: vi.fn().mockResolvedValue(['default', 'chat-1']),
+    },
+    getAgents: {
+      query: vi.fn().mockResolvedValue(['agent-1']),
+    },
     sendMessage: {
       mutate: vi.fn().mockResolvedValue({}),
     },
@@ -31,9 +44,30 @@ vi.mock('@trpc/client', () => ({
 vi.mock('../shared/fetch.js', () => ({
   createUnixSocketFetch: vi.fn(),
 }));
+vi.mock('./auth.js', () => ({
+  getAuthClient: vi.fn().mockResolvedValue({}),
+  getUserAuthClient: vi.fn().mockResolvedValue({
+    getAccessToken: vi.fn().mockResolvedValue({ token: 'mock-token' }),
+  }),
+}));
+
 const { mockSubscription } = vi.hoisted(() => ({
   mockSubscription: {
     on: vi.fn(),
+  },
+}));
+
+vi.mock('googleapis', () => ({
+  google: {
+    chat: vi.fn().mockReturnValue({
+      spaces: {
+        messages: {
+          create: vi.fn().mockResolvedValue({}),
+          update: vi.fn().mockResolvedValue({}),
+          list: vi.fn().mockResolvedValue({ data: { messages: [] } }),
+        },
+      },
+    }),
   },
 }));
 
@@ -86,7 +120,9 @@ describe('Google Chat Adapter Client', () => {
         {
           projectId: 'test-project',
           subscriptionName: 'test-sub',
+          topicName: 'test-topic',
           authorizedUsers: ['user@example.com'],
+          requireMention: false,
           maxAttachmentSizeMB: 25,
           directMessageName: 'spaces/123',
         },
@@ -100,7 +136,7 @@ describe('Google Chat Adapter Client', () => {
         (c: unknown[]) => c[0] === 'message'
       )![1] as (msg: unknown) => Promise<void>;
       const mockMsg = {
-        data: Buffer.from(JSON.stringify({ type: 'ADDED_TO_SPACE' })),
+        data: Buffer.from(JSON.stringify({ type: 'UNKNOWN_EVENT' })),
         ack: vi.fn(),
         nack: vi.fn(),
       };
@@ -108,6 +144,122 @@ describe('Google Chat Adapter Client', () => {
 
       expect(mockMsg.ack).toHaveBeenCalled();
       expect(trpcClient.sendMessage.mutate).not.toHaveBeenCalled();
+    });
+
+    it('should create subscription on ADDED_TO_SPACE for non-DM spaces', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: vi
+          .fn()
+          .mockResolvedValue({ name: 'subscriptions/123', expireTime: '2026-01-01T00:00:00Z' }),
+      });
+      globalThis.fetch = mockFetch;
+
+      const mockMsg = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'ADDED_TO_SPACE',
+            space: { name: 'spaces/new-space', type: 'SPACE' },
+            user: { email: 'user@example.com' },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+
+      const { updateGoogleChatState } = await import('./state.js');
+      vi.mocked(updateGoogleChatState).mockClear();
+
+      await onMessage(mockMsg);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://workspaceevents.googleapis.com/v1/subscriptions',
+        expect.objectContaining({ method: 'POST' })
+      );
+
+      expect(updateGoogleChatState).toHaveBeenCalled();
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
+
+    it('should delete subscription and update state on REMOVED_FROM_SPACE', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+      globalThis.fetch = mockFetch;
+
+      // Ensure state has the subscription
+      const { readGoogleChatState } = await import('./state.js');
+      vi.mocked(readGoogleChatState).mockResolvedValueOnce({
+        channelChatMap: {
+          'spaces/removed': { chatId: 'chat1', subscriptionId: 'subscriptions/456' },
+        },
+      });
+
+      const mockMsg = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'REMOVED_FROM_SPACE',
+            space: { name: 'spaces/removed', type: 'SPACE' },
+            user: { email: 'user@example.com' },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+
+      const { updateGoogleChatState } = await import('./state.js');
+      vi.mocked(updateGoogleChatState).mockClear();
+
+      await onMessage(mockMsg);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://workspaceevents.googleapis.com/v1/subscriptions/456',
+        expect.objectContaining({ method: 'DELETE' })
+      );
+
+      expect(updateGoogleChatState).toHaveBeenCalled();
+      expect(mockMsg.ack).toHaveBeenCalled();
+    });
+
+    it('should assign object shape when mapping chat on routing command', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+
+      const { updateGoogleChatState } = await import('./state.js');
+      vi.mocked(updateGoogleChatState).mockClear();
+
+      const mockMsg = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'MESSAGE',
+            space: { name: 'spaces/new-space', type: 'SPACE' },
+            user: { email: 'user@example.com' },
+            message: { text: '/chat chat-1' },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+
+      await onMessage(mockMsg);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+
+      const updateCalls = vi.mocked(updateGoogleChatState).mock.calls;
+      const lastCallArg = updateCalls[updateCalls.length - 1]![0];
+      const result =
+        typeof lastCallArg === 'function'
+          ? lastCallArg({ channelChatMap: {} } as import('./state.js').GoogleChatState)
+          : lastCallArg;
+
+      expect(result.channelChatMap!['spaces/new-space']).toEqual({ chatId: 'chat-1' });
     });
 
     it('should ignore messages from unauthorized users', async () => {
@@ -260,6 +412,150 @@ describe('Google Chat Adapter Client', () => {
       expect(authorizedMockMsg.nack).toHaveBeenCalled();
       expect(authorizedMockMsg.ack).not.toHaveBeenCalled();
       expect(fsPromises.unlink).toHaveBeenCalled();
+    });
+
+    it('should process Workspace Events properly', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+      const mockMsg = {
+        attributes: { 'ce-type': 'google.workspace.chat.message.v1.created' },
+        data: Buffer.from(
+          JSON.stringify({
+            message: {
+              name: 'spaces/123/messages/workspace-event',
+              sender: { email: 'user@example.com', type: 'USER' },
+              space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
+              text: 'Hello from Workspace Event',
+            },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+      await onMessage(mockMsg);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(trpcClient.sendMessage.mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'send-message',
+          data: expect.objectContaining({
+            message: 'Hello from Workspace Event',
+            chatId: 'default',
+          }),
+        })
+      );
+    });
+
+    it('should drop duplicate messages within 60 seconds based on Message ID', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+      const mockMsg1 = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'MESSAGE',
+            space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
+            message: {
+              name: 'spaces/123/messages/duplicate-123',
+              sender: { email: 'user@example.com', type: 'USER' },
+              text: 'First message',
+            },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+      await onMessage(mockMsg1);
+
+      const mockMsg2 = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'MESSAGE',
+            space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
+            message: {
+              name: 'spaces/123/messages/duplicate-123',
+              sender: { email: 'user@example.com', type: 'USER' },
+              text: 'Second message with same id',
+            },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+      await onMessage(mockMsg2);
+
+      // The second message should be acked immediately but not sent to daemon
+      expect(mockMsg2.ack).toHaveBeenCalled();
+
+      // Mutate should have only been called once for the first message
+      expect(trpcClient.sendMessage.mutate).toHaveBeenCalledTimes(1);
+    });
+
+    it('should drop messages where sender type is BOT', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+      const mockMsg = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'MESSAGE',
+            space: { name: 'spaces/123', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
+            message: {
+              name: 'spaces/123/messages/bot-msg',
+              sender: { email: 'bot@example.com', type: 'BOT' },
+              text: 'I am a bot',
+            },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+      await onMessage(mockMsg);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      // mutate should not have been called because it's a BOT
+      expect(trpcClient.sendMessage.mutate).not.toHaveBeenCalled();
+    });
+
+    it('should bypass requireMention if the message is a thread reply to the bot', async () => {
+      const onMessage = mockSubscription.on.mock.calls.find(
+        (c: unknown[]) => c[0] === 'message'
+      )![1] as (msg: unknown) => Promise<void>;
+
+      const { readGoogleChatState } = await import('./state.js');
+      vi.mocked(readGoogleChatState).mockResolvedValue({
+        channelChatMap: { 'spaces/123': { chatId: 'default', requireMention: true } },
+      });
+
+      // Override the list mock for this test
+      const { google } = await import('googleapis');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(google.chat({ version: 'v1' }).spaces.messages.list).mockResolvedValueOnce({
+        data: { messages: [{ sender: { type: 'BOT' } }] },
+      } as any);
+
+      const mockMsg = {
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'MESSAGE',
+            space: { name: 'spaces/123', type: 'SPACE' },
+            user: { email: 'user@example.com' },
+            message: {
+              name: 'spaces/123/messages/reply-msg',
+              text: 'This is a thread reply without mention',
+              threadReply: true,
+              thread: { name: 'spaces/123/threads/456' },
+            },
+          })
+        ),
+        ack: vi.fn(),
+        nack: vi.fn(),
+      };
+      await onMessage(mockMsg);
+
+      expect(mockMsg.ack).toHaveBeenCalled();
+      expect(trpcClient.sendMessage.mutate).toHaveBeenCalled();
     });
   });
 });

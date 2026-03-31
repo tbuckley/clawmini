@@ -15,29 +15,30 @@ describe('Discord State Management', () => {
   });
 
   it('should return default state if file does not exist', async () => {
-    vi.mocked(fsPromises.readFile).mockRejectedValue(new Error('File not found'));
+    const error = new Error('File not found') as Error & { code: string };
+    error.code = 'ENOENT';
+    vi.mocked(fsPromises.readFile).mockRejectedValue(error);
 
     const state = await readDiscordState();
-    expect(state).toEqual({ lastSyncedMessageId: undefined });
+    expect(state).toEqual({});
   });
 
   it('should read state from file', async () => {
-    const mockState = { lastSyncedMessageId: '12345' };
+    const mockState = { lastSyncedMessageIds: { default: '12345' } };
     vi.mocked(fsPromises.readFile).mockResolvedValue(JSON.stringify(mockState));
 
     const state = await readDiscordState();
     expect(state).toEqual(mockState);
   });
 
-  it('should return default state if file contains invalid JSON', async () => {
+  it('should throw if file contains invalid JSON', async () => {
     vi.mocked(fsPromises.readFile).mockResolvedValue('invalid-json');
 
-    const state = await readDiscordState();
-    expect(state).toEqual({ lastSyncedMessageId: undefined });
+    await expect(readDiscordState()).rejects.toThrow();
   });
 
   it('should write state to file', async () => {
-    const mockState = { lastSyncedMessageId: '67890' };
+    const mockState = { lastSyncedMessageIds: { default: '67890' } };
     const statePath = getDiscordStatePath();
 
     await writeDiscordState(mockState);
@@ -54,7 +55,7 @@ describe('Discord State Management', () => {
     vi.mocked(fsPromises.writeFile).mockRejectedValue(new Error('Permission denied'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await writeDiscordState({ lastSyncedMessageId: '123' });
+    await writeDiscordState({ lastSyncedMessageIds: { default: '123' } });
 
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Failed to write Discord state'),

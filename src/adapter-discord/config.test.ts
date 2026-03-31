@@ -32,6 +32,7 @@ describe('Discord Adapter Configuration', () => {
           ...config,
           chatId: 'default',
           maxAttachmentSizeMB: 25,
+          requireMention: false,
         });
       }
     });
@@ -141,29 +142,34 @@ describe('Discord Adapter Configuration', () => {
       vi.mocked(fsPromises.readFile).mockResolvedValue(JSON.stringify(mockConfig));
 
       const config = await readDiscordConfig();
-      expect(config).toEqual({ ...mockConfig, chatId: 'default', maxAttachmentSizeMB: 25 });
+      expect(config).toEqual({
+        ...mockConfig,
+        chatId: 'default',
+        maxAttachmentSizeMB: 25,
+        requireMention: false,
+      });
       expect(fsPromises.readFile).toHaveBeenCalledWith(getDiscordConfigPath(), 'utf-8');
     });
 
     it('should return null if the config file does not exist', async () => {
-      vi.mocked(fsPromises.readFile).mockRejectedValue(new Error('File not found'));
+      const error = new Error('File not found') as Error & { code: string };
+      error.code = 'ENOENT';
+      vi.mocked(fsPromises.readFile).mockRejectedValue(error);
 
       const config = await readDiscordConfig();
       expect(config).toBeNull();
     });
 
-    it('should return null if the config file contains invalid JSON', async () => {
+    it('should throw if the config file contains invalid JSON', async () => {
       vi.mocked(fsPromises.readFile).mockResolvedValue('invalid-json');
 
-      const config = await readDiscordConfig();
-      expect(config).toBeNull();
+      await expect(readDiscordConfig()).rejects.toThrow();
     });
 
-    it('should return null if the config fails schema validation', async () => {
+    it('should throw if the config fails schema validation', async () => {
       vi.mocked(fsPromises.readFile).mockResolvedValue(JSON.stringify({ botToken: 'test' }));
 
-      const config = await readDiscordConfig();
-      expect(config).toBeNull();
+      await expect(readDiscordConfig()).rejects.toThrow();
     });
   });
 });

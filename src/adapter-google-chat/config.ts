@@ -7,13 +7,15 @@ import fs from 'node:fs';
 export const GoogleChatConfigSchema = z.looseObject({
   projectId: z.string().min(1, 'GCP Project ID is required.'),
   subscriptionName: z.string().min(1, 'Pub/Sub Subscription Name is required.'),
+  topicName: z.string().min(1, 'Pub/Sub Topic Name is required.'),
   authorizedUsers: z.array(z.string()).min(1, 'At least one Authorized User is required.'),
   maxAttachmentSizeMB: z.number().default(25).optional(),
   chatId: z.string().default('default').optional(),
   directMessageName: z.string().optional(),
   driveUploadEnabled: z.boolean().default(true).optional(),
-  driveOauthClientId: z.string().optional(),
-  driveOauthClientSecret: z.string().optional(),
+  requireMention: z.boolean().default(false),
+  oauthClientId: z.string().optional(),
+  oauthClientSecret: z.string().optional(),
 });
 
 export type GoogleChatConfig = z.infer<typeof GoogleChatConfigSchema>;
@@ -29,15 +31,12 @@ export async function readGoogleChatConfig(
   try {
     const data = await fsPromises.readFile(configPath, 'utf-8');
     const parsed = JSON.parse(data);
-    const result = GoogleChatConfigSchema.safeParse(parsed);
-    if (!result.success) {
-      console.error('Invalid Google Chat configuration:', result.error.format());
+    return GoogleChatConfigSchema.parse(parsed);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       return null;
     }
-    return result.data;
-  } catch {
-    // Return null if file doesn't exist or is invalid JSON
-    return null;
+    throw err;
   }
 }
 
@@ -62,17 +61,19 @@ export async function initGoogleChatConfig(startDir = process.cwd()): Promise<vo
 
   const templateConfig = {
     projectId: 'YOUR_PROJECT_ID',
+    topicName: 'YOUR_TOPIC_NAME',
     subscriptionName: 'YOUR_SUBSCRIPTION_NAME',
     authorizedUsers: ['user@example.com'],
     chatId: 'default',
-    driveOauthClientId: 'YOUR_OAUTH_CLIENT_ID',
-    driveOauthClientSecret: 'YOUR_OAUTH_CLIENT_SECRET',
+    requireMention: false,
+    oauthClientId: 'YOUR_OAUTH_CLIENT_ID',
+    oauthClientSecret: 'YOUR_OAUTH_CLIENT_SECRET',
   };
 
   await fsPromises.writeFile(configPath, JSON.stringify(templateConfig, null, 2), 'utf-8');
   console.log(`Created template configuration file at ${configPath}`);
   console.log(
-    'Please update it with your actual GCP Project ID, Pub/Sub Subscription Name, and Authorized Users.'
+    'Please update it with your actual GCP Project ID, Pub/Sub Topic Name, Pub/Sub Subscription Name, and Authorized Users.'
   );
 }
 

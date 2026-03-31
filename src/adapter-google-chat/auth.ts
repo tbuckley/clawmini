@@ -13,56 +13,60 @@ export async function getAuthClient() {
   return authClient;
 }
 
-let driveAuthClient: InstanceType<typeof google.auth.OAuth2> | null = null;
-let driveAuthPromise: Promise<InstanceType<typeof google.auth.OAuth2>> | null = null;
+let userAuthClient: InstanceType<typeof google.auth.OAuth2> | null = null;
+let userAuthPromise: Promise<InstanceType<typeof google.auth.OAuth2>> | null = null;
 
-export async function getDriveAuthClient(config: GoogleChatConfig) {
-  if (driveAuthClient) return driveAuthClient;
-  if (driveAuthPromise) return driveAuthPromise;
+export async function getUserAuthClient(config: GoogleChatConfig) {
+  if (userAuthClient) return userAuthClient;
+  if (userAuthPromise) return userAuthPromise;
 
-  if (!config.driveOauthClientId || !config.driveOauthClientSecret) {
+  if (!config.oauthClientId || !config.oauthClientSecret) {
+    console.error('DEBUG config:', config);
     throw new Error(
-      'driveOauthClientId and driveOauthClientSecret are required in config.json for Drive uploads.'
+      'oauthClientId and oauthClientSecret are required in config.json for user authentication.'
     );
   }
 
-  driveAuthPromise = (async () => {
+  userAuthPromise = (async () => {
     const oauth2Client = new google.auth.OAuth2(
-      config.driveOauthClientId,
-      config.driveOauthClientSecret,
-      'http://localhost:31337/oauth2callback'
+      config.oauthClientId,
+      config.oauthClientSecret,
+      'http://localhost:31338/oauth2callback'
     );
 
     oauth2Client.on('tokens', async (tokens) => {
       try {
         const currentState = await readGoogleChatState();
         await updateGoogleChatState({
-          driveOauthTokens: {
-            ...currentState.driveOauthTokens,
+          oauthTokens: {
+            ...currentState.oauthTokens,
             ...tokens,
           },
         });
       } catch (err) {
-        console.error('Failed to save refreshed Google Drive tokens', err);
+        console.error('Failed to save refreshed Google User tokens', err);
       }
     });
 
     const state = await readGoogleChatState();
-    if (state.driveOauthTokens) {
-      oauth2Client.setCredentials(state.driveOauthTokens);
-      driveAuthClient = oauth2Client;
-      driveAuthPromise = null;
+    if (state.oauthTokens) {
+      oauth2Client.setCredentials(state.oauthTokens);
+      userAuthClient = oauth2Client;
+      userAuthPromise = null;
       return oauth2Client;
     }
 
     const authUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',
-      scope: ['https://www.googleapis.com/auth/drive.file'],
+      scope: [
+        'https://www.googleapis.com/auth/drive.file',
+        'https://www.googleapis.com/auth/chat.messages.readonly',
+      ],
       prompt: 'consent',
     });
 
     console.log('\n======================================================');
-    console.log('Google Drive Authorization Required!');
+    console.log('Google User Authorization Required!');
     console.log('Please visit the following URL to authorize this bot:');
     console.log(authUrl);
     console.log('======================================================\n');
@@ -72,7 +76,7 @@ export async function getDriveAuthClient(config: GoogleChatConfig) {
 
       const server = http.createServer(async (req, res) => {
         if (req.url?.startsWith('/oauth2callback')) {
-          const url = new URL(req.url, 'http://localhost:31337');
+          const url = new URL(req.url, 'http://localhost:31338');
           const code = url.searchParams.get('code');
           if (code) {
             res.end('Authentication successful! You can close this window.');
@@ -82,41 +86,41 @@ export async function getDriveAuthClient(config: GoogleChatConfig) {
               const { tokens } = await oauth2Client.getToken(code);
               oauth2Client.setCredentials(tokens);
 
-              await updateGoogleChatState({ driveOauthTokens: tokens });
+              await updateGoogleChatState({ oauthTokens: tokens });
 
-              console.log('Google Drive authorization successful!');
-              driveAuthClient = oauth2Client;
-              driveAuthPromise = null;
+              console.log('Google User authorization successful!');
+              userAuthClient = oauth2Client;
+              userAuthPromise = null;
               resolve(oauth2Client);
             } catch (err) {
               console.error('Failed to get token', err);
-              driveAuthPromise = null;
+              userAuthPromise = null;
               reject(err);
             }
           } else {
             res.end('Authentication failed!');
             clearTimeout(timeoutId);
             server.close();
-            driveAuthPromise = null;
+            userAuthPromise = null;
             reject(new Error('No code provided in OAuth callback'));
           }
         }
       });
 
       server.on('error', (err) => {
-        console.error('Failed to start local OAuth server on port 31337', err);
+        console.error('Failed to start local OAuth server on port 31338', err);
         clearTimeout(timeoutId);
-        driveAuthPromise = null;
+        userAuthPromise = null;
         reject(err);
       });
 
-      server.listen(31337, '127.0.0.1', () => {
+      server.listen(31338, '127.0.0.1', () => {
         timeoutId = setTimeout(
           () => {
             server.close();
-            driveAuthPromise = null;
-            console.error('Google Drive authorization timed out after 5 minutes.');
-            reject(new Error('Google Drive authorization timed out.'));
+            userAuthPromise = null;
+            console.error('Google User authorization timed out after 5 minutes.');
+            reject(new Error('Google User authorization timed out.'));
           },
           5 * 60 * 1000
         );
@@ -124,5 +128,5 @@ export async function getDriveAuthClient(config: GoogleChatConfig) {
     });
   })();
 
-  return driveAuthPromise;
+  return userAuthPromise;
 }

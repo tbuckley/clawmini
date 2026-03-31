@@ -5,10 +5,16 @@ import { TRPCError } from '@trpc/server';
 import { pathIsInsideDir } from '../../shared/utils/fs.js';
 import { on } from 'node:events';
 import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, DAEMON_EVENT_TYPING } from '../events.js';
-import { getSettingsPath, readChatSettings, getWorkspaceRoot } from '../../shared/workspace.js';
+import {
+  getSettingsPath,
+  readChatSettings,
+  writeChatSettings,
+  getWorkspaceRoot,
+  listAgents,
+} from '../../shared/workspace.js';
 import { CronJobSchema } from '../../shared/config.js';
 import { handleUserMessage } from '../message.js';
-import { getDefaultChatId, getMessages as fetchMessages } from '../chats.js';
+import { getDefaultChatId, getMessages as fetchMessages, listChats, createChat } from '../chats.js';
 import { apiProcedure, publicProcedure, router } from './trpc.js';
 import {
   getUniquePath,
@@ -182,6 +188,24 @@ export const userListCronJobs = apiProcedure
     return listCronJobsShared(chatId);
   });
 
+export const getChats = apiProcedure.query(async () => {
+  return listChats();
+});
+
+export const getAgents = apiProcedure.query(async () => {
+  return listAgents();
+});
+
+export const userCreateChat = apiProcedure
+  .input(z.object({ chatId: z.string(), agent: z.string().optional() }))
+  .mutation(async ({ input }) => {
+    await createChat(input.chatId);
+    if (input.agent) {
+      await writeChatSettings(input.chatId, { defaultAgent: input.agent });
+    }
+    return { success: true, chatId: input.chatId };
+  });
+
 export const userAddCronJob = apiProcedure
   .input(z.object({ chatId: z.string().optional(), job: CronJobSchema }))
   .mutation(async ({ input }) => {
@@ -206,6 +230,9 @@ export const userRouter = router({
   listCronJobs: userListCronJobs,
   addCronJob: userAddCronJob,
   deleteCronJob: userDeleteCronJob,
+  getChats,
+  getAgents,
+  createChat: userCreateChat,
 });
 
 export type UserRouter = typeof userRouter;
