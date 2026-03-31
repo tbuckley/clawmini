@@ -1,24 +1,25 @@
 {
-    "commands": {
-        "new": "gemini --output-format json --model $MODEL -p \"$CLAW_CLI_MESSAGE\"",
-        "append": "gemini --output-format json --model $MODEL --resume $SESSION_ID -p \"$CLAW_CLI_MESSAGE\"",
-        "getSessionId": "jq -r '.session_id'",
-        "getMessageContent": "jq -r '.response'"
+  "apiTokenEnvVar": "GEMINI_CLI_CLAW_API_TOKEN",
+  "commands": {
+    "new": "gemini --output-format json --model $MODEL -p \"$CLAW_CLI_MESSAGE\"",
+    "append": "gemini --output-format json --model $MODEL --resume $SESSION_ID -p \"$CLAW_CLI_MESSAGE\"",
+    "getSessionId": "jq -r '.session_id'",
+    "getMessageContent": "jq -r '.response'"
+  },
+  "env": {
+    "MODEL": "gemini-3.1-pro-preview-customtools",
+    "GEMINI_API_KEY": true
+  },
+  "skillsDir": ".gemini/skills/",
+  "fallbacks": [
+    {
+      "retries": 1
     },
-    "env": {
-        "MODEL": "gemini-3.1-pro-preview-customtools",
-        "GEMINI_API_KEY": true
-    },
-    "skillsDir": ".gemini/skills/",
-    "fallbacks": [
-        {
-            "retries": 1
-        },
-        {
-            "env": {
-                "MODEL": "gemini-3-flash-preview"
-            },
-            "retries": 3
-        }
-    ]
+    {
+      "env": {
+        "MODEL": "gemini-3-flash-preview"
+      },
+      "retries": 3
+    }
+  ]
 }
