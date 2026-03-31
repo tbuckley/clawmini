@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
+import { Client, Events, GatewayIntentBits, Partials, REST, Routes } from 'discord.js';
 import { readDiscordConfig, isAuthorized, initDiscordConfig } from './config.js';
 import { readDiscordState, updateDiscordState } from './state.js';
 import { handleDiscordInteraction } from './interactions.js';
 import { getTRPCClient } from './client.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
+import { slashCommands } from './commands.js';
 import { getClawminiDir } from '../shared/workspace.js';
 import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
@@ -46,8 +47,19 @@ export async function main() {
   const state = await readDiscordState();
   const filteringConfig: FilteringConfig = { filters: state.filters };
 
-  client.once(Events.ClientReady, (readyClient) => {
+  client.once(Events.ClientReady, async (readyClient) => {
     console.log(`Ready! Logged in as ${readyClient.user.tag}`);
+
+    try {
+      const rest = new REST({ version: '10' }).setToken(config.botToken);
+      console.log('Started refreshing application (/) commands.');
+      await rest.put(Routes.applicationCommands(readyClient.user.id), {
+        body: slashCommands.map((cmd) => cmd.toJSON()),
+      });
+      console.log('Successfully reloaded application (/) commands.');
+    } catch (error) {
+      console.error('Error registering slash commands:', error);
+    }
 
     // Start forwarding from daemon to Discord
     startDaemonToDiscordForwarder(readyClient, trpc, config.authorizedUserId, {
@@ -277,7 +289,12 @@ export async function main() {
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
-    await handleDiscordInteraction(interaction, config, trpc as unknown as CommandTrpcClient);
+    await handleDiscordInteraction(
+      interaction,
+      config,
+      trpc as unknown as CommandTrpcClient,
+      filteringConfig
+    );
   });
 
   try {

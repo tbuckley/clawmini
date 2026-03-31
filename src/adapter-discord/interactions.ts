@@ -5,8 +5,10 @@ import {
   TextInputStyle,
   type Interaction,
 } from 'discord.js';
-import { readDiscordState } from './state.js';
+import { readDiscordState, updateDiscordState } from './state.js';
 import type { DiscordConfig } from './config.js';
+import { handleAdapterCommand } from '../shared/adapters/commands.js';
+import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 
 function isAuthorized(userId: string, authorizedUserId: string): boolean {
   return userId === authorizedUserId;
@@ -16,14 +18,104 @@ export async function handleDiscordInteraction(
   interaction: Interaction,
   config: DiscordConfig,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  trpc: any
+  trpc: any,
+  filteringConfig: FilteringConfig
 ) {
-  if (!interaction.isButton() && !interaction.isModalSubmit()) return;
+  if (
+    !interaction.isButton() &&
+    !interaction.isModalSubmit() &&
+    !interaction.isChatInputCommand()
+  ) {
+    return;
+  }
 
   if (!isAuthorized(interaction.user.id, config.authorizedUserId)) {
     if (interaction.isRepliable()) {
       await interaction.reply({
         content: 'You are not authorized to perform this action.',
+        ephemeral: true,
+      });
+    }
+    return;
+  }
+
+  if (interaction.isChatInputCommand()) {
+    const { commandName } = interaction;
+    let commandStr = `/${commandName}`;
+
+    if (commandName === 'approve' || commandName === 'reject') {
+      const policyId = interaction.options.getString('policy_id');
+      if (policyId) commandStr += ` ${policyId}`;
+    }
+    if (commandName === 'reject') {
+      const rationale = interaction.options.getString('rationale');
+      if (rationale) commandStr += ` ${rationale}`;
+    }
+
+    if (commandName === 'show' || commandName === 'hide' || commandName === 'debug') {
+      const currentState = await readDiscordState();
+      const targetChatId = interaction.channelId
+        ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
+        : config.chatId;
+
+      if (!targetChatId) {
+        await interaction.reply({
+          content: 'No active chat mapped to this channel.',
+          ephemeral: true,
+        });
+        return;
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+
+      const commandResult = await handleAdapterCommand(
+        commandStr,
+        filteringConfig,
+        trpc,
+        targetChatId
+      );
+
+      if (commandResult) {
+        if (commandResult.type === 'text') {
+          if (commandResult.newConfig) {
+            filteringConfig.filters = commandResult.newConfig.filters;
+            await updateDiscordState({ filters: filteringConfig.filters });
+          }
+          await interaction.followUp({ content: commandResult.text, ephemeral: true });
+        } else if (commandResult.type === 'debug') {
+          const formatted =
+            commandResult.messages.length === 0
+              ? 'No ignored background messages found.'
+              : `**Debug Output (${commandResult.messages.length} ignored messages):**\n\n` +
+                commandResult.messages.map((msg) => formatMessage(msg)).join('\n\n---\n\n');
+          await interaction.followUp({ content: formatted.substring(0, 2000), ephemeral: true });
+        }
+      }
+      return;
+    }
+
+    await interaction.reply({ content: `Executing command: ${commandStr}`, ephemeral: true });
+
+    try {
+      const currentState = await readDiscordState();
+      const targetChatId = interaction.channelId
+        ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
+        : config.chatId;
+
+      await trpc.sendMessage.mutate({
+        type: 'send-message',
+        client: 'cli',
+        data: {
+          message: commandStr,
+          chatId: targetChatId,
+          adapter: 'discord',
+          noWait: true,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to send chat input command to daemon:', error);
+      await interaction.followUp({
+        content: `Failed to execute command ${commandStr}.`,
         ephemeral: true,
       });
     }

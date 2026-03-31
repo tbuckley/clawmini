@@ -99,7 +99,7 @@ export function startGoogleChatIngestion(
         : parsedData.space || eventMessage?.space;
       const senderType = eventMessage?.sender?.type || '';
       const messageId = eventMessage?.name || '';
-      const text = (eventMessage?.argumentText || eventMessage?.text || '').trim();
+      const text = (eventMessage?.text || '').trim();
 
       if (senderType === 'BOT') return void message.ack();
 
