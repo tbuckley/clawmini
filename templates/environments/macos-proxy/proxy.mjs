@@ -28,10 +28,13 @@ function isAllowed(hostname) {
 }
 
 const server = http.createServer((req, res) => {
+  req.on('error', (err) => console.error('[HTTP] Client request error:', err.message));
+  res.on('error', (err) => console.error('[HTTP] Client response error:', err.message));
+
   try {
     const url = new URL(req.url);
     if (!isAllowed(url.hostname)) {
-      console.log(`[${new Date().toISOString()}] [HTTP] Blocked: ${url.hostname}`);
+      console.log(`[HTTP] Blocked: ${url.hostname}`);
       res.writeHead(403);
       res.end('Domain not allowed by proxy allowlist\n');
       return;
@@ -45,32 +48,44 @@ const server = http.createServer((req, res) => {
         headers: req.headers,
       },
       (proxyRes) => {
+        proxyRes.on('error', (err) => console.error('[HTTP] Proxy response error:', err.message));
         res.writeHead(proxyRes.statusCode, proxyRes.headers);
         proxyRes.pipe(res, { end: true });
       }
     );
-    req.pipe(proxyReq, { end: true });
+
     proxyReq.on('error', (err) => {
-      res.writeHead(500);
+      console.error('[HTTP] Proxy request error:', err.message);
+      if (!res.headersSent) {
+        res.writeHead(500);
+      }
       res.end(err.message);
     });
-  } catch {
-    res.writeHead(400);
+
+    req.pipe(proxyReq, { end: true });
+  } catch (err) {
+    console.error('[HTTP] Error handling request:', err.message);
+    if (!res.headersSent) {
+      res.writeHead(400);
+    }
     res.end('Bad request');
   }
 });
 
 server.on('connect', (req, clientSocket, head) => {
+  clientSocket.on('error', (err) => {
+    console.error(`[HTTPS] Client socket error:`, err.message);
+    clientSocket.destroy();
+  });
+
   try {
     const { port, hostname } = new URL(`http://${req.url}`);
     if (!isAllowed(hostname)) {
-      // Log the domain and timestamp
-      console.log(`[${new Date().toISOString()}] [HTTPS] Blocked: ${hostname}`);
+      console.log(`[HTTPS] Blocked: ${hostname}`);
       clientSocket.write('HTTP/1.1 403 Forbidden\r\n\r\nDomain not allowed by proxy allowlist\n');
       clientSocket.end();
       return;
     }
-    // Only log blocked domains for now
     // console.log(`[HTTPS] Allowed: ${hostname}`);
 
     const serverSocket = net.connect(port || 443, hostname, () => {
@@ -79,11 +94,26 @@ server.on('connect', (req, clientSocket, head) => {
       serverSocket.pipe(clientSocket);
       clientSocket.pipe(serverSocket);
     });
-    serverSocket.on('error', () => clientSocket.end());
-    clientSocket.on('error', () => serverSocket.end());
-  } catch {
-    clientSocket.end();
+
+    serverSocket.on('error', (err) => {
+      console.error(`[HTTPS] Server socket error for ${hostname}:`, err.message);
+      clientSocket.destroy();
+    });
+
+    // Update client error handler to also destroy serverSocket if it exists
+    clientSocket.removeAllListeners('error');
+    clientSocket.on('error', (err) => {
+      console.error(`[HTTPS] Client socket error for ${hostname}:`, err.message);
+      serverSocket.destroy();
+    });
+  } catch (err) {
+    console.error(`[HTTPS] Connection error:`, err.message);
+    clientSocket.destroy();
   }
+});
+
+server.on('error', (err) => {
+  console.error('Proxy server error:', err);
 });
 
 server.listen(8888, () => {
