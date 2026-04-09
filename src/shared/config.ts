@@ -137,6 +137,7 @@ export const SettingsSchema = z.looseObject({
   environments: z.record(z.string(), z.string()).optional(),
   routers: z.array(RouterConfigSchema).optional(),
   files: z.string().default('./attachments').optional(),
+  timestampPrefix: z.boolean().default(true).optional(),
   api: z
     .union([
       z.boolean(),

@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import type { createTRPCClient } from '@trpc/client';
 import type { AgentRouter as AppRouter } from '../daemon/api/index.js';
 import type { SubagentTracker } from '../shared/config.js';
+import { readSettings } from '../shared/workspace.js';
 
 export function registerSubagentCommands(
   program: Command,
@@ -180,7 +181,47 @@ export function registerSubagentCommands(
           subagentId,
           limit: options.lines,
         });
-        const messages = result.messages;
+        let messages = result.messages;
+
+        const settings = await readSettings(process.cwd());
+
+        if (settings?.timestampPrefix !== false) {
+          messages = messages.map((msg) => {
+            if (msg.role === 'user' || msg.displayRole === 'user') {
+              const date = new Date(msg.timestamp);
+              const pad = (n: number) => String(n).padStart(2, '0');
+              const YYYY = date.getFullYear();
+              const MM = pad(date.getMonth() + 1);
+              const DD = pad(date.getDate());
+              const HH = pad(date.getHours());
+              const MIN = pad(date.getMinutes());
+
+              let z = '';
+              try {
+                const parts = new Intl.DateTimeFormat('en-US', {
+                  timeZoneName: 'short',
+                }).formatToParts(date);
+                const tzPart = parts.find((p) => p.type === 'timeZoneName');
+                if (tzPart) z = tzPart.value;
+              } catch {
+                // Ignore
+              }
+
+              if (!z) {
+                const offset = -date.getTimezoneOffset();
+                const sign = offset >= 0 ? '+' : '-';
+                z = `GMT${sign}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`;
+              }
+
+              const prefix = `[${YYYY}-${MM}-${DD} ${HH}:${MIN} ${z}] `;
+              return {
+                ...msg,
+                content: `${prefix}${msg.content}`,
+              };
+            }
+            return msg;
+          });
+        }
 
         if (options.json) {
           messages.forEach((msg) => console.log(JSON.stringify(msg)));
