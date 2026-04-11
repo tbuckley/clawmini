@@ -1,7 +1,7 @@
 # Tickets: Subagent Job and Policy Notification Fixes
 
 ## Ticket 1: Session Timeout Isolation
-**Status:** not started
+**Status:** completed
 **Description:** Prevent the `session-timeout` router from scheduling a session timeout when processing messages from subagents.
 
 **Tasks:**
