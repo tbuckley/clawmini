@@ -11,9 +11,17 @@ vi.mock('../request-store.js');
 vi.mock('../../shared/workspace.js');
 vi.mock('../policy-utils.js');
 vi.mock('../chats.js');
-vi.mock('node:crypto', () => ({
-  randomUUID: vi.fn(() => 'mock-uuid'),
-}));
+vi.mock('node:crypto', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:crypto')>();
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      randomUUID: vi.fn(() => 'mock-uuid'),
+    },
+    randomUUID: vi.fn(() => 'mock-uuid'),
+  };
+});
 
 describe('slashPolicies', () => {
   let mockStore: any;
@@ -108,13 +116,12 @@ describe('slashPolicies', () => {
       expect.objectContaining({
         role: 'system',
         event: 'policy_approved',
-        displayRole: 'user',
+        displayRole: 'agent',
         content: expect.stringContaining('Request req-1 approved.'),
       })
     );
     expect(result.action).toBeUndefined();
-    expect(result.message).toContain('Request req-1 approved.');
-    expect(result.message).toContain('<stdout>\nhello world\n</stdout>');
+    expect(result.message).toBe('');
   });
 
   it('should reject a pending request on /reject with reason and inject feedback', async () => {
@@ -142,16 +149,7 @@ describe('slashPolicies', () => {
       state: 'Rejected',
       rejectionReason: 'Not allowed',
     });
-    expect(appendMessage).toHaveBeenCalledTimes(2);
-    expect(appendMessage).toHaveBeenCalledWith(
-      'chat-1',
-      expect.objectContaining({
-        role: 'system',
-        event: 'policy_rejected',
-        displayRole: 'user',
-        content: 'Request req-1 rejected. Reason: Not allowed',
-      })
-    );
+    expect(appendMessage).toHaveBeenCalledTimes(1);
     expect(appendMessage).toHaveBeenCalledWith(
       'chat-1',
       expect.objectContaining({
@@ -162,7 +160,7 @@ describe('slashPolicies', () => {
       })
     );
     expect(result.action).toBeUndefined();
-    expect(result.message).toBe('Request req-1 rejected. Reason: Not allowed');
+    expect(result.message).toBe('');
   });
 
   it('should not act if request is not found', async () => {
