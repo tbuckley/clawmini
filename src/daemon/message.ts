@@ -146,7 +146,15 @@ export async function handleUserMessage(
 
   await applyRouterStateUpdates(chatId, cwd, finalState, chatSettings, initialState.agentId);
 
-  await executeDirectMessage(chatId, finalState, settings, cwd, noWait, message);
+  await executeDirectMessage(
+    chatId,
+    finalState,
+    settings,
+    cwd,
+    noWait,
+    message,
+    finalState.subagentId
+  );
 }
 
 export async function applyRouterStateUpdates(

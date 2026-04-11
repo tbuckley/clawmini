@@ -35,7 +35,7 @@
 ---
 
 ## Ticket 3: Subagent Policy Execution Routing Fix
-**Status:** not started
+**Status:** completed
 **Description:** Fix the routing bug where policy execution results are incorrectly sent to the main agent instead of the requesting subagent.
 
 **Tasks:**
