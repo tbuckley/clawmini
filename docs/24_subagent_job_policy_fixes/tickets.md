@@ -17,7 +17,7 @@
 ---
 
 ## Ticket 2: Policy Confirmation System Messages
-**Status:** not started
+**Status:** completed
 **Description:** Ensure that when a user runs `/approve` or `/reject` for a subagent policy, a system message confirming the action is appended to the main chat log so the user gets UI feedback.
 
 **Tasks:**
