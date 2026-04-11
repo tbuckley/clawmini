@@ -69,45 +69,50 @@ describe('Policy Confirmation System Messages E2E', () => {
       'debug-agent',
     ]);
 
-    // Wait a bit
-    await new Promise((r) => setTimeout(r, 2000));
+    // Wait for the request to be created by the subagent
+    let match: RegExpMatchArray | null = null;
+    for (let i = 0; i < 40; i++) {
+      const logPath = path.resolve(e2eDir, '.clawmini/chats/chat-reject/chat.jsonl');
+      if (fs.existsSync(logPath)) {
+        const chatLogBefore = fs.readFileSync(logPath, 'utf8');
+        match = chatLogBefore.match(/"requestId":"([^"]+)"/);
+        if (match) break;
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
 
-    // Get the request ID from pending list
+    // Call /pending just to maintain test flow
     const { stdout } = await runCli(['messages', 'send', '/pending', '--chat', 'chat-reject']);
     console.log('/pending output:', stdout);
 
-    const chatLogBefore = fs.readFileSync(
-      path.resolve(e2eDir, '.clawmini/chats/chat-reject/chat.jsonl'),
-      'utf8'
-    );
-    console.log('chat log before pending:', chatLogBefore);
-
-    const match = chatLogBefore.match(/"requestId":"([^"]+)"/);
     expect(match).not.toBeNull();
     const reqId = match![1];
 
     // Reject the policy
     await runCli(['messages', 'send', `/reject ${reqId}`, '--chat', 'chat-reject']);
 
-    await new Promise((r) => setTimeout(r, 1000));
+    // Wait for reject processing
+    let rejectSysMsg;
+    for (let i = 0; i < 40; i++) {
+      const logPath = path.resolve(e2eDir, '.clawmini/chats/chat-reject/chat.jsonl');
+      if (fs.existsSync(logPath)) {
+        const chatLog = fs.readFileSync(logPath, 'utf8');
+        const messages = chatLog
+          .split('\n')
+          .filter((l) => l.trim())
+          .map((l) => JSON.parse(l));
 
-    const chatLog = fs.readFileSync(
-      path.resolve(e2eDir, '.clawmini/chats/chat-reject/chat.jsonl'),
-      'utf8'
-    );
-    const messages = chatLog
-      .split('\n')
-      .filter((l) => l.trim())
-      .map((l) => JSON.parse(l));
-
-    // We expect a system message with displayRole 'agent', event 'policy_rejected' and no subagentId
-    const rejectSysMsg = messages.find(
-      (m) =>
-        m.role === 'system' &&
-        m.event === 'policy_rejected' &&
-        m.displayRole === 'agent' &&
-        m.content.includes(`Request ${reqId} rejected`)
-    );
+        rejectSysMsg = messages.find(
+          (m: any) =>
+            m.role === 'system' &&
+            m.event === 'policy_rejected' &&
+            m.displayRole === 'agent' &&
+            m.content.includes(`Request ${reqId} rejected`)
+        );
+        if (rejectSysMsg) break;
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
     expect(rejectSysMsg).toBeDefined();
     expect(rejectSysMsg.subagentId).toBeUndefined();
   }, 15000);
@@ -126,39 +131,46 @@ describe('Policy Confirmation System Messages E2E', () => {
       'debug-agent',
     ]);
 
-    // Wait a bit
-    await new Promise((r) => setTimeout(r, 2000));
+    // Wait for the request to be created by the subagent
+    let match: RegExpMatchArray | null = null;
+    for (let i = 0; i < 40; i++) {
+      const logPath = path.resolve(e2eDir, '.clawmini/chats/chat-approve/chat.jsonl');
+      if (fs.existsSync(logPath)) {
+        const chatLogBefore = fs.readFileSync(logPath, 'utf8');
+        match = chatLogBefore.match(/"requestId":"([^"]+)"/);
+        if (match) break;
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
 
-    const chatLogBefore = fs.readFileSync(
-      path.resolve(e2eDir, '.clawmini/chats/chat-approve/chat.jsonl'),
-      'utf8'
-    );
-    const match = chatLogBefore.match(/"requestId":"([^"]+)"/);
     expect(match).not.toBeNull();
     const reqId = match![1];
 
     // Approve the policy
     await runCli(['messages', 'send', `/approve ${reqId}`, '--chat', 'chat-approve']);
 
-    await new Promise((r) => setTimeout(r, 1000));
+    // Wait for approve processing
+    let approveSysMsg;
+    for (let i = 0; i < 40; i++) {
+      const logPath = path.resolve(e2eDir, '.clawmini/chats/chat-approve/chat.jsonl');
+      if (fs.existsSync(logPath)) {
+        const chatLog = fs.readFileSync(logPath, 'utf8');
+        const messages = chatLog
+          .split('\n')
+          .filter((l) => l.trim())
+          .map((l) => JSON.parse(l));
 
-    const chatLog = fs.readFileSync(
-      path.resolve(e2eDir, '.clawmini/chats/chat-approve/chat.jsonl'),
-      'utf8'
-    );
-    const messages = chatLog
-      .split('\n')
-      .filter((l) => l.trim())
-      .map((l) => JSON.parse(l));
-
-    // We expect a system message with displayRole 'agent', event 'policy_approved' and no subagentId
-    const approveSysMsg = messages.find(
-      (m) =>
-        m.role === 'system' &&
-        m.event === 'policy_approved' &&
-        m.displayRole === 'agent' &&
-        m.content.includes(`Request ${reqId} approved.`)
-    );
+        approveSysMsg = messages.find(
+          (m: any) =>
+            m.role === 'system' &&
+            m.event === 'policy_approved' &&
+            m.displayRole === 'agent' &&
+            m.content.includes(`Request ${reqId} approved.`)
+        );
+        if (approveSysMsg) break;
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
     expect(approveSysMsg).toBeDefined();
     expect(approveSysMsg.subagentId).toBeUndefined();
   }, 15000);

@@ -69,40 +69,45 @@ describe('Subagent Policy Execution Routing E2E', () => {
       'debug-agent',
     ]);
 
-    // Wait a bit
-    await new Promise((r) => setTimeout(r, 2000));
+    // Wait for the request to be created by the subagent
+    let match: RegExpMatchArray | null = null;
+    for (let i = 0; i < 40; i++) {
+      const logPath = path.resolve(e2eDir, '.clawmini/chats/chat-exec/chat.jsonl');
+      if (fs.existsSync(logPath)) {
+        const chatLogBefore = fs.readFileSync(logPath, 'utf8');
+        match = chatLogBefore.match(/"requestId":"([^"]+)"/);
+        if (match) break;
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
 
-    // Get the request ID from pending list
+    // Call /pending just to maintain test flow
     await runCli(['messages', 'send', '/pending', '--chat', 'chat-exec']);
 
-    const chatLogBefore = fs.readFileSync(
-      path.resolve(e2eDir, '.clawmini/chats/chat-exec/chat.jsonl'),
-      'utf8'
-    );
-
-    const match = chatLogBefore.match(/"requestId":"([^"]+)"/);
     expect(match).not.toBeNull();
     const reqId = match![1];
 
     // Approve the policy
     await runCli(['messages', 'send', `/approve ${reqId}`, '--chat', 'chat-exec']);
 
-    await new Promise((r) => setTimeout(r, 2000));
+    // Wait for approval processing
+    let reactionMsg;
+    for (let i = 0; i < 40; i++) {
+      const logPath = path.resolve(e2eDir, '.clawmini/chats/chat-exec/chat.jsonl');
+      if (fs.existsSync(logPath)) {
+        const chatLog = fs.readFileSync(logPath, 'utf8');
+        const messages = chatLog
+          .split('\n')
+          .filter((l) => l.trim())
+          .map((l) => JSON.parse(l));
 
-    const chatLog = fs.readFileSync(
-      path.resolve(e2eDir, '.clawmini/chats/chat-exec/chat.jsonl'),
-      'utf8'
-    );
-
-    const messages = chatLog
-      .split('\n')
-      .filter((l) => l.trim())
-      .map((l) => JSON.parse(l));
-
-    // Find the message where the agent reacted to the approval
-    const reactionMsg = messages.find(
-      (m) => m.role === 'agent' && m.content.includes(`Request ${reqId} approved`)
-    );
+        reactionMsg = messages.find(
+          (m: any) => m.role === 'agent' && m.content.includes(`Request ${reqId} approved`)
+        );
+        if (reactionMsg) break;
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
 
     expect(reactionMsg).toBeDefined();
 
