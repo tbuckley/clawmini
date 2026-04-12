@@ -7,7 +7,7 @@
 - Ensure `AgentReplyMessage` (and any other outgoing message types like `SystemMessage` that might respond to user actions) supports `messageId?: string`.
 **Verification:**
 - Run `npm run validate` to ensure TypeScript compilation passes.
-**Status:** Not started
+**Status:** Complete
 
 ## Ticket 2: Daemon State Propagation
 **Description:** Update the daemon's internal state management or routing to remember the `adapterMessageId` associated with the current conversation turn, and propagate it to outgoing replies.
