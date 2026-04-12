@@ -43,7 +43,7 @@
 **Verification:**
 - Write or update unit tests for the forwarder to ensure that the outbound API call includes the thread object when a mapping exists.
 - Run `npm run validate`.
-**Status:** Not started
+**Status:** Complete
 
 ## Ticket 5: Discord Adapter Ingestion & Mapping State
 **Description:** Enhance Discord message ingestion to handle threads and quote-replies, and map IDs.
