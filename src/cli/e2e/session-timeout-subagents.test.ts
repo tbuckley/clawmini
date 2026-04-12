@@ -43,12 +43,42 @@ describe('Session Timeout Subagents E2E', () => {
     const chatSettingsPath = path.resolve(e2eDir, '.clawmini/chats/chat-timeout/settings.json');
     const chatSettings = JSON.parse(fs.readFileSync(chatSettingsPath, 'utf8'));
     const jobsList = chatSettings.jobs || [];
-    const timeoutJobsCount = jobsList.filter(
+    const timeoutJobs = jobsList.filter(
       (j: Record<string, unknown>) =>
         typeof j.id === 'string' && j.id.startsWith('__session_timeout__')
-    ).length;
+    );
 
     // It should just be the 1 job scheduled from the first message/second message
-    expect(timeoutJobsCount).toBe(1);
+    expect(timeoutJobs.length).toBe(1);
+    expect(timeoutJobs[0].subagentId).toBeUndefined();
+    expect(timeoutJobs[0]).toMatchInlineSnapshot(
+      {
+        id: expect.stringMatching(/^__session_timeout__/),
+        nextSessionId: expect.any(String),
+        session: { id: expect.any(String) },
+        jobs: { remove: [expect.stringMatching(/^__session_timeout__/)] },
+      }, `
+      {
+        "env": {
+          "__SESSION_TIMEOUT__": "true",
+        },
+        "id": StringMatching /\\^__session_timeout__/,
+        "jobs": {
+          "remove": [
+            StringMatching /\\^__session_timeout__/,
+          ],
+        },
+        "message": "This chat session has ended. Save any important details from it to your memory. When finished, reply with NO_REPLY_NECESSARY.",
+        "nextSessionId": Any<String>,
+        "reply": "[@clawmini/session-timeout] Starting a fresh session...",
+        "schedule": {
+          "at": "60m",
+        },
+        "session": {
+          "id": Any<String>,
+          "type": "existing",
+        },
+      }
+    `);
   }, 15000);
 });
