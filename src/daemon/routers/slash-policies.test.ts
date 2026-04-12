@@ -5,12 +5,14 @@ import { RequestStore } from '../request-store.js';
 import { readPolicies } from '../../shared/workspace.js';
 import { executeRequest } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
+import { executeDirectMessage } from '../message.js';
 import type { PolicyRequest } from '../../shared/policies.js';
 
 vi.mock('../request-store.js');
 vi.mock('../../shared/workspace.js');
 vi.mock('../policy-utils.js');
 vi.mock('../chats.js');
+vi.mock('../message.js');
 vi.mock('node:crypto', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:crypto')>();
   return {
@@ -120,6 +122,7 @@ describe('slashPolicies', () => {
         content: expect.stringContaining('Request req-1 (`test-cmd`) approved.'),
       })
     );
+    expect(executeDirectMessage).toHaveBeenCalled();
     expect(result.action).toBeUndefined();
     expect(result.message).toBe('');
   });
@@ -159,6 +162,7 @@ describe('slashPolicies', () => {
         content: 'Request req-1 (`test-cmd`) rejected. Reason: Not allowed',
       })
     );
+    expect(executeDirectMessage).toHaveBeenCalled();
     expect(result.action).toBeUndefined();
     expect(result.message).toBe('');
   });

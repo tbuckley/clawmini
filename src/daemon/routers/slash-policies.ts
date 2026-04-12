@@ -76,26 +76,24 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
 
     await appendMessage(state.chatId, userNotificationMsg);
 
-    if (req.subagentId) {
-      await executeDirectMessage(
-        state.chatId,
-        {
-          messageId: randomUUID(),
-          message: agentMessage,
-          chatId: state.chatId,
-          agentId: state.agentId || 'default',
-          subagentId: req.subagentId,
-          env: state.env || {},
-        },
-        undefined,
-        getWorkspaceRoot(),
-        true, // noWait
-        agentMessage,
-        req.subagentId,
-        'policy_approved',
-        'user'
-      );
-    }
+    await executeDirectMessage(
+      state.chatId,
+      {
+        messageId: randomUUID(),
+        message: agentMessage,
+        chatId: state.chatId,
+        agentId: state.agentId || 'default',
+        ...(req.subagentId ? { subagentId: req.subagentId } : {}),
+        env: state.env || {},
+      },
+      undefined,
+      getWorkspaceRoot(),
+      true, // noWait
+      agentMessage,
+      req.subagentId,
+      'policy_approved',
+      'user'
+    );
 
     return {
       ...state,
@@ -131,26 +129,24 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
 
     await appendMessage(state.chatId, userNotificationMsg);
 
-    if (req.subagentId) {
-      await executeDirectMessage(
-        state.chatId,
-        {
-          messageId: randomUUID(),
-          message: agentMessage,
-          chatId: state.chatId,
-          agentId: state.agentId || 'default',
-          subagentId: req.subagentId,
-          env: state.env || {},
-        },
-        undefined,
-        getWorkspaceRoot(),
-        true, // noWait
-        agentMessage,
-        req.subagentId,
-        'policy_rejected',
-        'user'
-      );
-    }
+    await executeDirectMessage(
+      state.chatId,
+      {
+        messageId: randomUUID(),
+        message: agentMessage,
+        chatId: state.chatId,
+        agentId: state.agentId || 'default',
+        ...(req.subagentId ? { subagentId: req.subagentId } : {}),
+        env: state.env || {},
+      },
+      undefined,
+      getWorkspaceRoot(),
+      true, // noWait
+      agentMessage,
+      req.subagentId,
+      'policy_rejected',
+      'user'
+    );
 
     return {
       ...state,
