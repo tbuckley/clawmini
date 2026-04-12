@@ -30,6 +30,7 @@ describe('handleDiscordInteraction', () => {
       update: vi.fn().mockResolvedValue({}),
       followUp: vi.fn().mockResolvedValue({}),
       reply: vi.fn().mockResolvedValue({}),
+      deferReply: vi.fn().mockResolvedValue({}),
       showModal: vi.fn().mockResolvedValue({}),
     };
     vi.mocked(readDiscordState).mockResolvedValue({});
@@ -112,10 +113,7 @@ describe('handleDiscordInteraction', () => {
 
       await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
 
-      expect(mockInteraction.reply).toHaveBeenCalledWith({
-        content: 'Executing command: /pending',
-        ephemeral: true,
-      });
+      expect(mockInteraction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
       expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -135,10 +133,7 @@ describe('handleDiscordInteraction', () => {
 
       await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
 
-      expect(mockInteraction.reply).toHaveBeenCalledWith({
-        content: 'Executing command: /reject req-123 too risky',
-        ephemeral: true,
-      });
+      expect(mockInteraction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
       expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({

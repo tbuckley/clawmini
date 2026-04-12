@@ -574,6 +574,7 @@ describe('Discord Adapter Entry Point', () => {
 
     const mockReferencedMessage = {
       content: 'Would anyone like to get dinner Sunday?\nOr maybe lunch?',
+      author: { id: 'other-user' },
     };
 
     if (messageHandler) {

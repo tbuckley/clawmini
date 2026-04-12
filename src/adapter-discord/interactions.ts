@@ -5,10 +5,10 @@ import {
   TextInputStyle,
   type Interaction,
 } from 'discord.js';
-import { readDiscordState, updateDiscordState } from './state.js';
 import type { DiscordConfig } from './config.js';
-import { handleAdapterCommand } from '../shared/adapters/commands.js';
-import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
+import { readDiscordState } from './state.js';
+import { type FilteringConfig } from '../shared/adapters/filtering.js';
+import { processDiscordMessage } from './processMessage.js';
 
 function isAuthorized(userId: string, authorizedUserId: string): boolean {
   return userId === authorizedUserId;
@@ -52,74 +52,22 @@ export async function handleDiscordInteraction(
       if (rationale) commandStr += ` ${rationale}`;
     }
 
-    if (commandName === 'show' || commandName === 'hide' || commandName === 'debug') {
-      const currentState = await readDiscordState();
-      const targetChatId = interaction.channelId
-        ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
-        : config.chatId;
+    await interaction.deferReply({ ephemeral: true });
 
-      if (!targetChatId) {
-        await interaction.reply({
-          content: 'No active chat mapped to this channel.',
-          ephemeral: true,
-        });
-        return;
-      }
+    const currentState = await readDiscordState();
+    const targetChatId = interaction.channelId ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId : config.chatId;
 
-      await interaction.deferReply({ ephemeral: true });
-
-      const commandResult = await handleAdapterCommand(
-        commandStr,
-        filteringConfig,
-        trpc,
-        targetChatId
-      );
-
-      if (commandResult) {
-        if (commandResult.type === 'text') {
-          if (commandResult.newConfig) {
-            filteringConfig.filters = commandResult.newConfig.filters;
-            await updateDiscordState({ filters: filteringConfig.filters });
-          }
-          await interaction.followUp({ content: commandResult.text, ephemeral: true });
-        } else if (commandResult.type === 'debug') {
-          const formatted =
-            commandResult.messages.length === 0
-              ? 'No ignored background messages found.'
-              : `**Debug Output (${commandResult.messages.length} ignored messages):**\n\n` +
-                commandResult.messages.map((msg) => formatMessage(msg)).join('\n\n---\n\n');
-          await interaction.followUp({ content: formatted.substring(0, 2000), ephemeral: true });
-        }
-      }
-      return;
-    }
-
-    await interaction.reply({ content: `Executing command: ${commandStr}`, ephemeral: true });
-
-    try {
-      const currentState = await readDiscordState();
-      const targetChatId = interaction.channelId
-        ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
-        : config.chatId;
-
-      await trpc.sendMessage.mutate({
-        type: 'send-message',
-        client: 'cli',
-        data: {
-          message: commandStr,
-          chatId: targetChatId,
-          adapter: 'discord',
-          noWait: true,
-        },
-      });
-    } catch (error) {
-      console.error('Failed to send chat input command to daemon:', error);
-      await interaction.followUp({
-        content: `Failed to execute command ${commandStr}.`,
-        ephemeral: true,
-      });
-    }
-    return;
+    await processDiscordMessage(
+      commandStr,
+      interaction.user,
+      interaction.channelId,
+      interaction.guild,
+      async (text) => { await interaction.followUp({ content: text, ephemeral: true }); },
+      config,
+      trpc,
+      filteringConfig,
+      { explicitChatId: targetChatId, mentionsBot: true }
+    );    return;
   }
 
   if (interaction.isButton()) {
@@ -138,30 +86,25 @@ export async function handleDiscordInteraction(
 
       await interaction.update({ components: [] });
       await interaction.followUp({ content: `Approving policy ${policyId}...`, ephemeral: true });
-      try {
-        const currentState = await readDiscordState();
-        const targetChatId =
+      
+      const currentState = await readDiscordState();
+      const targetChatId =
           explicitChatId ||
           (interaction.channelId
             ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
             : config.chatId);
-        await trpc.sendMessage.mutate({
-          type: 'send-message',
-          client: 'cli',
-          data: {
-            message: `/approve ${policyId}`,
-            chatId: targetChatId,
-            adapter: 'discord',
-            noWait: true,
-          },
-        });
-      } catch (error) {
-        console.error('Failed to send approve command to daemon:', error);
-        await interaction.followUp({
-          content: `Failed to approve policy ${policyId}.`,
-          ephemeral: true,
-        });
-      }
+
+      await processDiscordMessage(
+        `/approve ${policyId}`,
+        interaction.user,
+        interaction.channelId,
+        interaction.guild,
+        async (text) => { await interaction.followUp({ content: text, ephemeral: true }); },
+        config,
+        trpc,
+        filteringConfig,
+        { explicitChatId: targetChatId, mentionsBot: true }
+      );
     } else if (
       interaction.customId.startsWith('reject_') ||
       interaction.customId.startsWith('reject|')
@@ -215,34 +158,28 @@ export async function handleDiscordInteraction(
           ephemeral: true,
         });
       } else {
-        await interaction.reply({ content: `Rejecting policy ${policyId}...`, ephemeral: true });
+        await interaction.deferReply({ ephemeral: true });
+        await interaction.followUp({ content: `Rejecting policy ${policyId}...`, ephemeral: true });
       }
 
-      try {
-        const currentState = await readDiscordState();
-        const targetChatId =
+      const currentState = await readDiscordState();
+      const targetChatId =
           explicitChatId ||
           (interaction.channelId
             ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
             : config.chatId);
 
-        await trpc.sendMessage.mutate({
-          type: 'send-message',
-          client: 'cli',
-          data: {
-            message: command,
-            chatId: targetChatId,
-            adapter: 'discord',
-            noWait: true,
-          },
-        });
-      } catch (error) {
-        console.error('Failed to send reject command to daemon:', error);
-        await interaction.followUp({
-          content: `Failed to reject policy ${policyId}.`,
-          ephemeral: true,
-        });
-      }
+      await processDiscordMessage(
+        command,
+        interaction.user,
+        interaction.channelId,
+        interaction.guild,
+        async (text) => { await interaction.followUp({ content: text, ephemeral: true }); },
+        config,
+        trpc,
+        filteringConfig,
+        { explicitChatId: targetChatId, mentionsBot: true }
+      );
     }
   }
 }
