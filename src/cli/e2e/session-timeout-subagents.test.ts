@@ -57,7 +57,8 @@ describe('Session Timeout Subagents E2E', () => {
         nextSessionId: expect.any(String),
         session: { id: expect.any(String) },
         jobs: { remove: [expect.stringMatching(/^__session_timeout__/)] },
-      }, `
+      },
+      `
       {
         "env": {
           "__SESSION_TIMEOUT__": "true",
@@ -79,6 +80,7 @@ describe('Session Timeout Subagents E2E', () => {
           "type": "existing",
         },
       }
-    `);
+    `
+    );
   }, 15000);
 });
