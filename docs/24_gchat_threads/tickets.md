@@ -18,7 +18,7 @@
 **Verification:**
 - Write or update a unit test demonstrating that when a `UserMessage` with an `adapterMessageId` is received, the resulting `AgentReplyMessage` contains the identical `messageId`.
 - Run `npm run validate`.
-**Status:** Not started
+**Status:** Complete
 
 ## Ticket 3: Google Chat Adapter Ingestion & Mapping State
 **Description:** Enhance Google Chat ingestion to handle quote-replies and threads by fetching referenced context, prepending it as a blockquote, and mapping IDs.

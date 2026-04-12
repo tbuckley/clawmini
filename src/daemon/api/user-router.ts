@@ -39,6 +39,7 @@ export const sendMessage = apiProcedure
         noWait: z.boolean().optional(),
         files: z.array(z.string()).optional(),
         adapter: z.string().optional(),
+        adapterMessageId: z.string().optional(),
       }),
     })
   )
@@ -48,6 +49,7 @@ export const sendMessage = apiProcedure
     const noWait = input.data.noWait ?? false;
     const sessionId = input.data.sessionId;
     const agentId = input.data.agentId;
+    const adapterMessageId = input.data.adapterMessageId;
     const settingsPath = getSettingsPath();
 
     let settings;
@@ -99,7 +101,16 @@ export const sendMessage = apiProcedure
       message = message ? `${message}\n\n${fileList}` : fileList;
     }
 
-    await handleUserMessage(chatId, message, settings, undefined, noWait, sessionId, agentId);
+    await handleUserMessage(
+      chatId,
+      message,
+      settings,
+      undefined,
+      noWait,
+      sessionId,
+      agentId,
+      adapterMessageId
+    );
 
     return { success: true };
   });

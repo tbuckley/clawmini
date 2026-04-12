@@ -13,7 +13,7 @@ export interface Logger {
   append<T extends ChatMessage>(msg: T): Promise<T>;
   getMessages(limit?: number): Promise<ChatMessage[]>;
   findLastMessage(predicate: (msg: ChatMessage) => boolean): Promise<ChatMessage | null>;
-  logUserMessage(msg: string): Promise<UserMessage>;
+  logUserMessage(msg: string, adapterMessageId?: string): Promise<UserMessage>;
   logSystemEvent(options: {
     content: string;
     level?: 'default' | 'debug' | 'verbose';
@@ -35,7 +35,11 @@ export interface Logger {
     subagentId: string;
     status: 'completed' | 'failed';
   }): Promise<SubagentStatusMessage>;
-  logAgentReply(options: { content: string; files?: string[] }): Promise<AgentReplyMessage>;
+  logAgentReply(options: {
+    content: string;
+    files?: string[];
+    messageId?: string;
+  }): Promise<AgentReplyMessage>;
   logToolMessage(options: {
     content: string;
     messageId: string;
@@ -56,6 +60,7 @@ export interface Message {
   id: string;
   content: string;
   env: Record<string, string>;
+  adapterMessageId?: string;
 }
 
 export interface ExecutionResponse {
