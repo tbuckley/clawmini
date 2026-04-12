@@ -29,3 +29,10 @@
 - Updated unit test `should process authorized messages without attachments` to assert `adapterMessageId: ''`.
 - Verified `npm run validate` and tests passed successfully.
 - Marked Ticket 3 as complete.
+
+## Ticket 4
+- Updated `src/adapter-google-chat/forwarder.ts` to map the `AgentReplyMessage` `messageId` to a `threadData` object.
+- Appended `thread: { name: threadData.threadName }` into the `requestBody` of `chatApi.spaces.messages.create` and correctly appended the `messageReplyOption` parameter to reply to the thread if the mapping matched.
+- Created `should include thread if messageId matches a mapped thread` unit test in `forwarder.test.ts`.
+- Ran `npm run validate`. Formatting and typescript errors occurred initially but were resolved manually using `replace`. e2e tests timed out due to unrelated test suite instability but unit tests and compilation checks for the adapter successfully passed.
+- Marked Ticket 4 as complete.

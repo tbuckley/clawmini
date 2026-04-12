@@ -14,6 +14,7 @@ import {
 } from '../shared/adapters/filtering.js';
 import { buildPolicyCard, chunkString } from './utils.js';
 import { uploadFilesToDrive } from './upload.js';
+import { threadMappings } from './threads.js';
 
 export async function startDaemonToGoogleChatForwarder(
   trpc: ReturnType<typeof getTRPCClient>,
@@ -214,19 +215,40 @@ export async function startDaemonToGoogleChatForwarder(
                         }
                       }
 
+                      const threadData =
+                        'messageId' in logMessage && logMessage.messageId
+                          ? threadMappings.get(logMessage.messageId as string)
+                          : undefined;
+                      const messageReplyOption = threadData
+                        ? 'REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD'
+                        : undefined;
+
                       if (text.length > 4000) {
                         const chunks = chunkString(text, 4000);
                         for (let i = 0; i < chunks.length; i++) {
                           if (signal?.aborted || !activeSubscriptions.has(chatId)) break;
+
+                          const requestBody: any = { text: chunks[i] as string };
+                          if (threadData) {
+                            requestBody.thread = { name: threadData.threadName };
+                          }
+
                           await chatApi.spaces.messages.create({
                             parent: activeSpaceName as string,
-                            requestBody: { text: chunks[i] as string },
+                            ...(messageReplyOption ? { messageReplyOption } : {}),
+                            requestBody,
                           });
                         }
                       } else {
+                        const requestBody: any = { text };
+                        if (threadData) {
+                          requestBody.thread = { name: threadData.threadName };
+                        }
+
                         await chatApi.spaces.messages.create({
                           parent: activeSpaceName as string,
-                          requestBody: { text },
+                          ...(messageReplyOption ? { messageReplyOption } : {}),
+                          requestBody,
                         });
                       }
                     } catch (error) {
