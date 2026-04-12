@@ -10,12 +10,6 @@ describe('Session Timeout Subagents E2E', () => {
     await setupE2E();
     await setupSubagentEnv(runCli, e2eDir, {
       port: 3013,
-      routers: [
-        {
-          use: '@clawmini/session-timeout',
-          with: { timeout: '5s' },
-        },
-      ],
     });
   }, 30000);
 
@@ -27,8 +21,8 @@ describe('Session Timeout Subagents E2E', () => {
     // First, send a normal message so we have a timeout job started from the user.
     await runCli(['messages', 'send', 'hello', '--chat', 'chat-timeout', '--agent', 'debug-agent']);
 
-    // Wait a bit to let the user message be logged
-    await new Promise((r) => setTimeout(r, 1000));
+    // Wait for the user message to be processed
+    await waitForLogMatch(e2eDir, 'chat-timeout', /\[DEBUG\] hello/);
 
     // Now let the subagent spawn a message
     await runCli([
@@ -50,7 +44,8 @@ describe('Session Timeout Subagents E2E', () => {
     const chatSettings = JSON.parse(fs.readFileSync(chatSettingsPath, 'utf8'));
     const jobsList = chatSettings.jobs || [];
     const timeoutJobsCount = jobsList.filter(
-      (j: any) => j.id && j.id.startsWith('__session_timeout__')
+      (j: Record<string, unknown>) =>
+        typeof j.id === 'string' && j.id.startsWith('__session_timeout__')
     ).length;
 
     // It should just be the 1 job scheduled from the first message/second message
