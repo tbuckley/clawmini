@@ -208,6 +208,7 @@ describe('Discord Adapter Entry Point', () => {
         files: undefined,
         adapter: 'discord',
         noWait: true,
+        adapterMessageId: 'msg-1',
       },
     });
     expect(mockTrpc.sendMessage.mutate).toHaveBeenNthCalledWith(2, {
@@ -219,6 +220,7 @@ describe('Discord Adapter Entry Point', () => {
         files: undefined,
         adapter: 'discord',
         noWait: true,
+        adapterMessageId: 'msg-2',
       },
     });
   });

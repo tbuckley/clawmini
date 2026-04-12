@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
 import { readDiscordState, updateDiscordState } from './state.js';
+import { getMessageMapping } from './threads.js';
 
 vi.mock('./state.js', () => ({
   readDiscordState: vi.fn(),
   updateDiscordState: vi.fn(),
   getDiscordStatePath: vi.fn().mockReturnValue('./.tmp-mock-discord/state.json'),
+}));
+
+vi.mock('./threads.js', () => ({
+  getMessageMapping: vi.fn(),
 }));
 
 vi.mock('node:fs', () => ({
@@ -679,6 +684,56 @@ describe('Daemon to Discord Forwarder', () => {
     await vi.waitFor(() => expect(mockChannel.send).toHaveBeenCalled());
 
     expect(mockClient.channels.fetch).toHaveBeenCalledWith('channel-123');
+
+    controller.abort();
+    await forwarderPromise;
+  });
+
+  it('should reply to the mapped message if messageId mapping exists', async () => {
+    const controller = new AbortController();
+    vi.mocked(readDiscordState).mockResolvedValue({ lastSyncedMessageIds: { default: 'msg-0' } });
+
+    const mockChannel = {
+      isTextBased: () => true,
+      isDMBased: () => false,
+      send: vi.fn().mockResolvedValue({}),
+    };
+    mockClient.channels.fetch = vi.fn().mockResolvedValue(mockChannel);
+
+    vi.mocked(getMessageMapping).mockReturnValue({
+      channelId: 'mapped-channel-456',
+      messageId: 'mapped-msg-789',
+    });
+
+    const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+      chatId: 'default',
+      signal: controller.signal,
+    });
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-1',
+        role: 'agent',
+        content: 'mapped response',
+        timestamp: '',
+        messageId: 'mapped-adapter-id',
+        command: 'test',
+        cwd: '',
+        exitCode: 0,
+        stderr: '',
+      },
+    ]);
+
+    await vi.waitFor(() => expect(mockChannel.send).toHaveBeenCalled());
+
+    expect(getMessageMapping).toHaveBeenCalledWith('mapped-adapter-id');
+    expect(mockClient.channels.fetch).toHaveBeenCalledWith('mapped-channel-456');
+    expect(mockChannel.send).toHaveBeenCalledWith({
+      content: 'mapped response',
+      reply: { messageReference: 'mapped-msg-789' },
+    });
 
     controller.abort();
     await forwarderPromise;

@@ -12,6 +12,7 @@ import { formatMessage, type FilteringConfig } from '../shared/adapters/filterin
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { handleRoutingCommand, type RoutingTrpcClient } from '../shared/adapters/routing.js';
+import { storeMessageMapping } from './threads.js';
 
 export async function main() {
   const args = process.argv.slice(2);
@@ -255,7 +256,26 @@ export async function main() {
       } catch (err) {
         console.error('Failed to fetch referenced message:', err);
       }
+    } else if (typeof message.channel?.isThread === 'function' && message.channel.isThread()) {
+      try {
+        const messages = await message.channel.messages.fetch({ before: message.id, limit: 1 });
+        let precedingMessage = messages.first();
+        if (!precedingMessage) {
+          precedingMessage = (await message.channel.fetchStarterMessage()) ?? undefined;
+        }
+        if (precedingMessage && precedingMessage.content) {
+          const quotedContent = precedingMessage.content
+            .split('\n')
+            .map((line) => `> ${line}`)
+            .join('\n');
+          finalContent = `${quotedContent}\n${finalContent}`;
+        }
+      } catch (err) {
+        console.error('Failed to fetch preceding thread message:', err);
+      }
     }
+
+    storeMessageMapping(message.id, message.channelId, message.id);
 
     console.log(`Forwarding message to daemon: ${finalContent}`);
     try {
@@ -268,6 +288,7 @@ export async function main() {
           files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
           adapter: 'discord',
           noWait: true,
+          adapterMessageId: message.id,
         },
       });
       console.log('Message forwarded to daemon successfully.');

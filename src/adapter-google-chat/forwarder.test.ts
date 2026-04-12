@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { startDaemonToGoogleChatForwarder } from './forwarder.js';
+import { threadMappings } from './threads.js';
 
 const mockConfig = {
   projectId: 'test',
@@ -531,6 +532,47 @@ describe('Daemon to Google Chat Forwarder', () => {
     // Since we overwrote 'default' with msg-latest just now, the local memory was msg-local. Let's trace it carefully.
 
     vi.useRealTimers();
+    controller.abort();
+    await forwarderPromise;
+  });
+
+  it('should include thread if messageId matches a mapped thread', async () => {
+    const controller = new AbortController();
+
+    threadMappings.set('mapped-msg-id', {
+      threadName: 'spaces/test-space/threads/thread-123',
+      timestamp: Date.now(),
+    });
+
+    const forwarderPromise = startDaemonToGoogleChatForwarder(
+      mockTrpc,
+      mockConfig,
+      {},
+      controller.signal
+    );
+
+    await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+    subscribeCallbacks.onData([
+      {
+        id: 'msg-thread',
+        messageId: 'mapped-msg-id',
+        role: 'agent',
+        content: 'Agent response in thread',
+      },
+    ]);
+
+    await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalled());
+
+    expect(mockMessagesCreate).toHaveBeenCalledWith({
+      parent: 'spaces/test-space',
+      messageReplyOption: 'REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD',
+      requestBody: {
+        text: 'Agent response in thread',
+        thread: { name: 'spaces/test-space/threads/thread-123' },
+      },
+    });
+
     controller.abort();
     await forwarderPromise;
   });

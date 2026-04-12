@@ -8,6 +8,7 @@ export interface RouterState {
   subagentId?: string;
   sessionId?: string;
   nextSessionId?: string;
+  adapterMessageId?: string;
   env?: Record<string, string>;
   reply?: string;
   action?: 'stop' | 'interrupt' | 'continue';

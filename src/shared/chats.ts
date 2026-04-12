@@ -25,6 +25,7 @@ export interface UserMessage extends BaseMessage {
 export interface AgentReplyMessage extends BaseMessage {
   role: 'agent';
   files?: string[];
+  messageId?: string;
 }
 
 export interface LogMessage extends BaseMessage {
