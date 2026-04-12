@@ -36,3 +36,12 @@
 - Created `should include thread if messageId matches a mapped thread` unit test in `forwarder.test.ts`.
 - Ran `npm run validate`. Formatting and typescript errors occurred initially but were resolved manually using `replace`. e2e tests timed out due to unrelated test suite instability but unit tests and compilation checks for the adapter successfully passed.
 - Marked Ticket 4 as complete.
+
+## Ticket 5
+- Implemented Discord Adapter ingestion for thread mapping.
+- Added `threads.ts` to `src/adapter-discord` providing an LRU Map that stores context mapping (`channelId` and `messageId`) keyed by `adapterMessageId`.
+- Updated `src/adapter-discord/index.ts` to fetch the preceding thread message or starter message when `message.channel.isThread()` is true, and prepend it as a blockquote, similar to Google Chat.
+- Added `adapterMessageId` mapping payload properties inside `trpc.sendMessage.mutate` for Discord ingestion.
+- Updated `index.test.ts` to properly mock expectations for the new `adapterMessageId` payload parameter, and resolved a `isThread` method error in tests using optional chaining (`typeof message.channel?.isThread === 'function' && message.channel.isThread()`).
+- Successfully executed `npm run check` and `vitest run src/adapter-discord/index.test.ts`.
+- Marked Ticket 5 as complete.

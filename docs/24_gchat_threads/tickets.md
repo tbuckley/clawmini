@@ -55,7 +55,7 @@
 **Verification:**
 - Write or update unit tests for Discord ingestion to verify that `adapterMessageId` and the blockquote logic works correctly for threads.
 - Run `npm run validate`.
-**Status:** Not started
+**Status:** Complete
 
 ## Ticket 6: Discord Adapter Outbound Replies
 **Description:** Ensure that bot replies in Discord visually reply to the specific message or thread using Discord's native reply feature.

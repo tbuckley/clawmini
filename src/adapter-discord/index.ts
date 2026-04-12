@@ -9,6 +9,7 @@ import { startDaemonToDiscordForwarder } from './forwarder.js';
 import { slashCommands } from './commands.js';
 import { type CommandTrpcClient } from '../shared/adapters/commands.js';
 import { type FilteringConfig } from '../shared/adapters/filtering.js';
+import { storeMessageMapping } from './threads.js';
 
 import { processDiscordMessage } from './processMessage.js';
 
@@ -80,6 +81,19 @@ export async function main() {
       } catch (err) {
         console.error('Failed to fetch referenced message for mention check:', err);
       }
+    } else if (typeof message.channel?.isThread === 'function' && message.channel.isThread()) {
+      try {
+        const messages = await message.channel.messages.fetch({ before: message.id, limit: 1 });
+        let precedingMessage = messages.first();
+        if (!precedingMessage) {
+          precedingMessage = (await message.channel.fetchStarterMessage()) ?? undefined;
+        }
+        if (precedingMessage && precedingMessage.content) {
+          referenceContent = precedingMessage.content;
+        }
+      } catch (err) {
+        console.error('Failed to fetch preceding thread message:', err);
+      }
     }
 
     const attachments = message.attachments
@@ -89,6 +103,8 @@ export async function main() {
           url: att.url,
         }))
       : [];
+
+    storeMessageMapping(message.id, message.channelId, message.id);
 
     await processDiscordMessage(
       message.content,
@@ -106,6 +122,7 @@ export async function main() {
         isReplyToBot,
         attachments,
         ...(referenceContent ? { referenceContent } : {}),
+        adapterMessageId: message.id,
       }
     );
   });
