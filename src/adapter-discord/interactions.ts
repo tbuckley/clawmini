@@ -55,19 +55,24 @@ export async function handleDiscordInteraction(
     await interaction.deferReply({ ephemeral: true });
 
     const currentState = await readDiscordState();
-    const targetChatId = interaction.channelId ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId : config.chatId;
+    const targetChatId = interaction.channelId
+      ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
+      : config.chatId;
 
     await processDiscordMessage(
       commandStr,
       interaction.user,
       interaction.channelId,
       interaction.guild,
-      async (text) => { await interaction.followUp({ content: text, ephemeral: true }); },
+      async (text) => {
+        await interaction.followUp({ content: text, ephemeral: true });
+      },
       config,
       trpc,
       filteringConfig,
       { explicitChatId: targetChatId, mentionsBot: true }
-    );    return;
+    );
+    return;
   }
 
   if (interaction.isButton()) {
@@ -86,20 +91,22 @@ export async function handleDiscordInteraction(
 
       await interaction.update({ components: [] });
       await interaction.followUp({ content: `Approving policy ${policyId}...`, ephemeral: true });
-      
+
       const currentState = await readDiscordState();
       const targetChatId =
-          explicitChatId ||
-          (interaction.channelId
-            ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
-            : config.chatId);
+        explicitChatId ||
+        (interaction.channelId
+          ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
+          : config.chatId);
 
       await processDiscordMessage(
         `/approve ${policyId}`,
         interaction.user,
         interaction.channelId,
         interaction.guild,
-        async (text) => { await interaction.followUp({ content: text, ephemeral: true }); },
+        async (text) => {
+          await interaction.followUp({ content: text, ephemeral: true });
+        },
         config,
         trpc,
         filteringConfig,
@@ -164,17 +171,19 @@ export async function handleDiscordInteraction(
 
       const currentState = await readDiscordState();
       const targetChatId =
-          explicitChatId ||
-          (interaction.channelId
-            ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
-            : config.chatId);
+        explicitChatId ||
+        (interaction.channelId
+          ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
+          : config.chatId);
 
       await processDiscordMessage(
         command,
         interaction.user,
         interaction.channelId,
         interaction.guild,
-        async (text) => { await interaction.followUp({ content: text, ephemeral: true }); },
+        async (text) => {
+          await interaction.followUp({ content: text, ephemeral: true });
+        },
         config,
         trpc,
         filteringConfig,

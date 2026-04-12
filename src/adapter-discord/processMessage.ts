@@ -19,9 +19,10 @@ export async function processDiscordMessage(
   content: string,
   author: { id: string; tag: string; bot?: boolean },
   channelId: string | null,
-  guild: any | null,
-  reply: (text: string) => Promise<any>,
+  guild: unknown | null,
+  reply: (text: string) => Promise<unknown>,
   config: DiscordConfig,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   trpc: any,
   filteringConfig: FilteringConfig,
   options: ProcessMessageOptions = {}
@@ -30,7 +31,8 @@ export async function processDiscordMessage(
 
   const externalContextId = channelId || 'default';
   const currentState = await readDiscordState();
-  const mappedChatId = options.explicitChatId || (channelId ? currentState.channelChatMap?.[channelId]?.chatId : null);
+  const mappedChatId =
+    options.explicitChatId || (channelId ? currentState.channelChatMap?.[channelId]?.chatId : null);
   const isRoutingCommand = content.startsWith('/chat') || content.startsWith('/agent');
 
   // Enforce requireMention config for guild messages
@@ -119,9 +121,7 @@ export async function processDiscordMessage(
           'This channel/space is not currently mapped to a daemon chat. Please use `/chat [chat-id]` or `/agent [agent-id]` to map it.'
         );
       } else {
-        console.log(
-          `Unmapped channel ${externalContextId}, silently ignoring background message.`
-        );
+        console.log(`Unmapped channel ${externalContextId}, silently ignoring background message.`);
       }
       return;
     }

@@ -1,18 +1,14 @@
 #!/usr/bin/env node
 
 import { Client, Events, GatewayIntentBits, Partials, REST, Routes } from 'discord.js';
-import { readDiscordConfig, isAuthorized, initDiscordConfig } from './config.js';
-import { readDiscordState, updateDiscordState } from './state.js';
+import { readDiscordConfig, initDiscordConfig } from './config.js';
+import { readDiscordState } from './state.js';
 import { handleDiscordInteraction } from './interactions.js';
 import { getTRPCClient } from './client.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
 import { slashCommands } from './commands.js';
-import { getClawminiDir } from '../shared/workspace.js';
-import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
-import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { handleRoutingCommand, type RoutingTrpcClient } from '../shared/adapters/routing.js';
+import { type CommandTrpcClient } from '../shared/adapters/commands.js';
+import { type FilteringConfig } from '../shared/adapters/filtering.js';
 
 import { processDiscordMessage } from './processMessage.js';
 
@@ -86,18 +82,22 @@ export async function main() {
       }
     }
 
-    const attachments = message.attachments ? Array.from(message.attachments.values()).map(att => ({
-      name: att.name,
-      size: att.size,
-      url: att.url
-    })) : [];
+    const attachments = message.attachments
+      ? Array.from(message.attachments.values()).map((att) => ({
+          name: att.name,
+          size: att.size,
+          url: att.url,
+        }))
+      : [];
 
     await processDiscordMessage(
       message.content,
       message.author,
       message.channelId,
       message.guild,
-      async (text) => { await message.reply(text); },
+      async (text) => {
+        await message.reply(text);
+      },
       config,
       trpc,
       filteringConfig,
@@ -105,7 +105,7 @@ export async function main() {
         mentionsBot: !!message.mentions?.has(client.user!.id),
         isReplyToBot,
         attachments,
-        referenceContent
+        ...(referenceContent ? { referenceContent } : {}),
       }
     );
   });
