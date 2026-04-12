@@ -5,8 +5,10 @@ import {
   TextInputStyle,
   type Interaction,
 } from 'discord.js';
-import { readDiscordState } from './state.js';
 import type { DiscordConfig } from './config.js';
+import { readDiscordState } from './state.js';
+import { type FilteringConfig } from '../shared/adapters/filtering.js';
+import { processDiscordMessage } from './processMessage.js';
 
 function isAuthorized(userId: string, authorizedUserId: string): boolean {
   return userId === authorizedUserId;
@@ -16,9 +18,16 @@ export async function handleDiscordInteraction(
   interaction: Interaction,
   config: DiscordConfig,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  trpc: any
+  trpc: any,
+  filteringConfig: FilteringConfig
 ) {
-  if (!interaction.isButton() && !interaction.isModalSubmit()) return;
+  if (
+    !interaction.isButton() &&
+    !interaction.isModalSubmit() &&
+    !interaction.isChatInputCommand()
+  ) {
+    return;
+  }
 
   if (!isAuthorized(interaction.user.id, config.authorizedUserId)) {
     if (interaction.isRepliable()) {
@@ -27,6 +36,42 @@ export async function handleDiscordInteraction(
         ephemeral: true,
       });
     }
+    return;
+  }
+
+  if (interaction.isChatInputCommand()) {
+    const { commandName } = interaction;
+    let commandStr = `/${commandName}`;
+
+    if (commandName === 'approve' || commandName === 'reject') {
+      const policyId = interaction.options.getString('policy_id');
+      if (policyId) commandStr += ` ${policyId}`;
+    }
+    if (commandName === 'reject') {
+      const rationale = interaction.options.getString('rationale');
+      if (rationale) commandStr += ` ${rationale}`;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    const currentState = await readDiscordState();
+    const targetChatId = interaction.channelId
+      ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
+      : config.chatId;
+
+    await processDiscordMessage(
+      commandStr,
+      interaction.user,
+      interaction.channelId,
+      interaction.guild,
+      async (text) => {
+        await interaction.followUp({ content: text, ephemeral: true });
+      },
+      config,
+      trpc,
+      filteringConfig,
+      { explicitChatId: targetChatId, mentionsBot: true }
+    );
     return;
   }
 
@@ -46,30 +91,27 @@ export async function handleDiscordInteraction(
 
       await interaction.update({ components: [] });
       await interaction.followUp({ content: `Approving policy ${policyId}...`, ephemeral: true });
-      try {
-        const currentState = await readDiscordState();
-        const targetChatId =
-          explicitChatId ||
-          (interaction.channelId
-            ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
-            : config.chatId);
-        await trpc.sendMessage.mutate({
-          type: 'send-message',
-          client: 'cli',
-          data: {
-            message: `/approve ${policyId}`,
-            chatId: targetChatId,
-            adapter: 'discord',
-            noWait: true,
-          },
-        });
-      } catch (error) {
-        console.error('Failed to send approve command to daemon:', error);
-        await interaction.followUp({
-          content: `Failed to approve policy ${policyId}.`,
-          ephemeral: true,
-        });
-      }
+
+      const currentState = await readDiscordState();
+      const targetChatId =
+        explicitChatId ||
+        (interaction.channelId
+          ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
+          : config.chatId);
+
+      await processDiscordMessage(
+        `/approve ${policyId}`,
+        interaction.user,
+        interaction.channelId,
+        interaction.guild,
+        async (text) => {
+          await interaction.followUp({ content: text, ephemeral: true });
+        },
+        config,
+        trpc,
+        filteringConfig,
+        { explicitChatId: targetChatId, mentionsBot: true }
+      );
     } else if (
       interaction.customId.startsWith('reject_') ||
       interaction.customId.startsWith('reject|')
@@ -123,34 +165,30 @@ export async function handleDiscordInteraction(
           ephemeral: true,
         });
       } else {
-        await interaction.reply({ content: `Rejecting policy ${policyId}...`, ephemeral: true });
+        await interaction.deferReply({ ephemeral: true });
+        await interaction.followUp({ content: `Rejecting policy ${policyId}...`, ephemeral: true });
       }
 
-      try {
-        const currentState = await readDiscordState();
-        const targetChatId =
-          explicitChatId ||
-          (interaction.channelId
-            ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
-            : config.chatId);
+      const currentState = await readDiscordState();
+      const targetChatId =
+        explicitChatId ||
+        (interaction.channelId
+          ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
+          : config.chatId);
 
-        await trpc.sendMessage.mutate({
-          type: 'send-message',
-          client: 'cli',
-          data: {
-            message: command,
-            chatId: targetChatId,
-            adapter: 'discord',
-            noWait: true,
-          },
-        });
-      } catch (error) {
-        console.error('Failed to send reject command to daemon:', error);
-        await interaction.followUp({
-          content: `Failed to reject policy ${policyId}.`,
-          ephemeral: true,
-        });
-      }
+      await processDiscordMessage(
+        command,
+        interaction.user,
+        interaction.channelId,
+        interaction.guild,
+        async (text) => {
+          await interaction.followUp({ content: text, ephemeral: true });
+        },
+        config,
+        trpc,
+        filteringConfig,
+        { explicitChatId: targetChatId, mentionsBot: true }
+      );
     }
   }
 }

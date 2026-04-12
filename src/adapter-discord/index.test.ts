@@ -19,12 +19,27 @@ vi.mock('./state.js', () => ({
   updateDiscordState: vi.fn().mockResolvedValue(undefined),
 }));
 
+const mockRestPut = vi.fn().mockResolvedValue(true);
+
 vi.mock('discord.js', () => {
   return {
+    REST: class {
+      setToken = vi.fn().mockReturnThis();
+      put = mockRestPut;
+    },
+    Routes: {
+      applicationCommands: vi.fn().mockReturnValue('/mock/commands'),
+    },
     Client: class {
       constructor() {
         return mockClientInstance;
       }
+    },
+    SlashCommandBuilder: class {
+      setName = vi.fn().mockReturnThis();
+      setDescription = vi.fn().mockReturnThis();
+      addStringOption = vi.fn().mockReturnThis();
+      toJSON = vi.fn().mockReturnValue({ name: 'mocked_command' });
     },
     Events: {
       ClientReady: 'ready',
@@ -79,6 +94,12 @@ describe('Discord Adapter Entry Point', () => {
       sendMessage: {
         mutate: vi.fn().mockResolvedValue({ success: true }),
       },
+      waitForMessages: {
+        subscribe: vi.fn(),
+      },
+      waitForTyping: {
+        subscribe: vi.fn(),
+      },
     } as unknown as ReturnType<typeof import('./client.js').getTRPCClient>;
     vi.mocked(getTRPCClient).mockReturnValue(mockTrpc);
     vi.mocked(readDiscordConfig).mockResolvedValue({
@@ -92,6 +113,36 @@ describe('Discord Adapter Entry Point', () => {
     // Reset the mock implementation to return the instance
     vi.mocked(mockClientInstance.on).mockReturnValue(mockClientInstance);
     vi.mocked(mockClientInstance.once).mockReturnValue(mockClientInstance);
+  });
+
+  it('should register slash commands on ClientReady', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let readyHandler: ((client: any) => Promise<void>) | undefined;
+    vi.mocked(mockClientInstance.once).mockImplementation(
+      (event: string, cb: (...args: unknown[]) => void) => {
+        if (event === 'ready') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          readyHandler = cb as any;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return mockClientInstance as any;
+      }
+    );
+
+    const { main } = await import('./index.js');
+    await main();
+
+    expect(readyHandler).toBeDefined();
+
+    if (readyHandler) {
+      await readyHandler({ user: { id: 'bot-id', tag: 'bot#1234' } });
+    }
+
+    const { slashCommands } = await import('./commands.js');
+
+    expect(mockRestPut).toHaveBeenCalledWith('/mock/commands', {
+      body: slashCommands.map((cmd) => cmd.toJSON()),
+    });
   });
 
   it('should initialize Discord config and exit if init argument is provided', async () => {
@@ -523,6 +574,7 @@ describe('Discord Adapter Entry Point', () => {
 
     const mockReferencedMessage = {
       content: 'Would anyone like to get dinner Sunday?\nOr maybe lunch?',
+      author: { id: 'other-user' },
     };
 
     if (messageHandler) {
@@ -580,6 +632,7 @@ describe('Discord Adapter Entry Point', () => {
       const mockInteraction = {
         isButton: () => false,
         isModalSubmit: () => false,
+        isChatInputCommand: () => false,
       };
       if (interactionHandler) await interactionHandler(mockInteraction);
       expect(mockTrpc.sendMessage.mutate).not.toHaveBeenCalled();
@@ -591,6 +644,7 @@ describe('Discord Adapter Entry Point', () => {
       const mockInteraction = {
         isButton: () => true,
         isModalSubmit: () => false,
+        isChatInputCommand: () => false,
         isRepliable: () => true,
         user: { id: 'unauth' },
         reply: vi.fn(),
@@ -607,6 +661,7 @@ describe('Discord Adapter Entry Point', () => {
       const mockInteraction = {
         isButton: () => true,
         isModalSubmit: () => false,
+        isChatInputCommand: () => false,
         user: { id: 'user-123' },
         customId: 'approve_123',
         update: vi.fn(),
@@ -634,6 +689,7 @@ describe('Discord Adapter Entry Point', () => {
       const mockInteraction = {
         isButton: () => true,
         isModalSubmit: () => false,
+        isChatInputCommand: () => false,
         user: { id: 'user-123' },
         customId: 'reject_123',
         showModal: vi.fn(),
@@ -646,6 +702,7 @@ describe('Discord Adapter Entry Point', () => {
       const mockInteraction = {
         isButton: () => false,
         isModalSubmit: () => true,
+        isChatInputCommand: () => false,
         isFromMessage: () => true,
         user: { id: 'user-123' },
         customId: 'modal_reject_123',

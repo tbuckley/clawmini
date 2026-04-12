@@ -22,11 +22,15 @@ describe('handleDiscordInteraction', () => {
     mockInteraction = {
       isButton: vi.fn().mockReturnValue(true),
       isModalSubmit: vi.fn().mockReturnValue(false),
+      isChatInputCommand: vi.fn().mockReturnValue(false),
+      isRepliable: vi.fn().mockReturnValue(true),
       user: { id: 'user-1' },
       customId: '',
       channelId: 'channel-1',
       update: vi.fn().mockResolvedValue({}),
       followUp: vi.fn().mockResolvedValue({}),
+      reply: vi.fn().mockResolvedValue({}),
+      deferReply: vi.fn().mockResolvedValue({}),
       showModal: vi.fn().mockResolvedValue({}),
     };
     vi.mocked(readDiscordState).mockResolvedValue({});
@@ -43,7 +47,7 @@ describe('handleDiscordInteraction', () => {
 
   it('routes approve to explicit chat if provided', async () => {
     mockInteraction.customId = 'approve|policy-1|explicit-chat';
-    await handleDiscordInteraction(mockInteraction, config, mockTrpc);
+    await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
 
     expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -59,7 +63,7 @@ describe('handleDiscordInteraction', () => {
     vi.mocked(readDiscordState).mockResolvedValue({
       channelChatMap: { 'channel-1': { chatId: 'mapped-chat' } },
     });
-    await handleDiscordInteraction(mockInteraction, config, mockTrpc);
+    await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
 
     expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -83,7 +87,7 @@ describe('handleDiscordInteraction', () => {
       channelChatMap: { 'channel-1': { chatId: 'mapped-chat' } },
     });
 
-    await handleDiscordInteraction(mockInteraction, config, mockTrpc);
+    await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
 
     expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -92,5 +96,51 @@ describe('handleDiscordInteraction', () => {
         }),
       })
     );
+  });
+
+  describe('chat input commands', () => {
+    beforeEach(() => {
+      mockInteraction.isButton.mockReturnValue(false);
+      mockInteraction.isModalSubmit.mockReturnValue(false);
+      mockInteraction.isChatInputCommand.mockReturnValue(true);
+      mockInteraction.options = {
+        getString: vi.fn(),
+      };
+    });
+
+    it('routes basic commands like /pending', async () => {
+      mockInteraction.commandName = 'pending';
+
+      await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
+
+      expect(mockInteraction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+      expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            message: '/pending',
+          }),
+        })
+      );
+    });
+
+    it('routes commands with arguments like /reject', async () => {
+      mockInteraction.commandName = 'reject';
+      mockInteraction.options.getString.mockImplementation((name: string) => {
+        if (name === 'policy_id') return 'req-123';
+        if (name === 'rationale') return 'too risky';
+        return null;
+      });
+
+      await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
+
+      expect(mockInteraction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+      expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            message: '/reject req-123 too risky',
+          }),
+        })
+      );
+    });
   });
 });
