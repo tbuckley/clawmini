@@ -13,6 +13,7 @@ import { createUnixSocketEventSource } from '../shared/event-source.js';
 import type { GoogleChatConfig } from './config.js';
 import { isAuthorized, updateGoogleChatConfig } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
+import { threadMappings } from './threads.js';
 import { downloadAttachment } from './utils.js';
 import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
@@ -392,14 +393,64 @@ export function startGoogleChatIngestion(
         }
       }
 
+      // Handle blockquote for threads and quote-replies
+      let contextText = '';
+      try {
+        const authClient = await getAuthClient();
+        const chatApi = google.chat({ version: 'v1', auth: authClient });
+
+        if (eventMessage?.quotedMessageMetadata?.name) {
+          const quotedMessage = await chatApi.spaces.messages.get({
+            name: eventMessage.quotedMessageMetadata.name,
+          });
+          if (quotedMessage.data.text) {
+            contextText = quotedMessage.data.text;
+          }
+        } else if (eventMessage?.threadReply && eventMessage?.thread?.name) {
+          const threadMessages = await chatApi.spaces.messages.list({
+            parent: spaceName as string,
+            filter: `thread.name="${eventMessage.thread.name}"`,
+          });
+          const messagesList = threadMessages.data.messages || [];
+          // Find the current message index, then get the previous one
+          const currentIndex = messagesList.findIndex((m) => m.name === messageId);
+          if (currentIndex > 0) {
+            contextText = messagesList[currentIndex - 1]?.text || '';
+          } else if (currentIndex === -1 && messagesList.length > 0) {
+            // In case the current message hasn't propagated to the list yet
+            contextText = messagesList[messagesList.length - 1]?.text || '';
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch referenced context:', err);
+      }
+
+      let finalMessageText = text;
+      if (contextText) {
+        // Prepend contextText as a markdown blockquote
+        const blockquote = contextText
+          .split('\\n')
+          .map((line) => `> ${line}`)
+          .join('\\n');
+        finalMessageText = `${blockquote}\\n\\n${text}`;
+      }
+
+      if (messageId && eventMessage?.thread?.name) {
+        threadMappings.set(messageId, {
+          threadName: eventMessage.thread.name,
+          timestamp: Date.now(),
+        });
+      }
+
       await trpc.sendMessage.mutate({
         type: 'send-message',
         client: 'cli',
         data: {
-          message: text,
+          message: finalMessageText,
           chatId: targetChatId,
           files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
           adapter: 'google-chat',
+          adapterMessageId: messageId,
           noWait: true,
         },
       });

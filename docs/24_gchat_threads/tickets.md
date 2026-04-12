@@ -32,7 +32,7 @@
 **Verification:**
 - Write or update unit tests mocking the Google Chat API responses to verify that `adapterMessageId` is correctly populated and blockquotes are appropriately formatted.
 - Run `npm run validate`.
-**Status:** Not started
+**Status:** Complete
 
 ## Ticket 4: Google Chat Adapter Outbound Threading
 **Description:** Ensure that bot replies in Google Chat map to the correct thread if the user's message was in a thread.
