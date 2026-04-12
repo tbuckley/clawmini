@@ -59,7 +59,7 @@ describe('Policy Flows E2E', () => {
         m.event === 'policy_rejected' &&
         m.displayRole === 'agent' &&
         typeof m.content === 'string' &&
-        m.content.includes(`Request ${reqId} rejected`)
+        m.content.includes(`Request ${reqId} (\`test-cmd\`) rejected`)
     );
 
     expect(userNotificationMsg).toBeDefined();
@@ -69,7 +69,9 @@ describe('Policy Flows E2E', () => {
     expect(userNotificationMsg!.subagentId).toBeUndefined();
     expect(
       sanitizeContentForSnapshot(userNotificationMsg!.content as string, reqId)
-    ).toMatchInlineSnapshot(`"Request <REQ_ID> rejected. Reason: No reason provided"`);
+    ).toMatchInlineSnapshot(
+      `"Request <REQ_ID> (\`test-cmd\`) rejected. Reason: No reason provided"`
+    );
 
     // 2. Check subagent notification message
     const subagentNotificationMsg = await waitForMessage(
@@ -127,7 +129,7 @@ describe('Policy Flows E2E', () => {
         m.event === 'policy_approved' &&
         m.displayRole === 'agent' &&
         typeof m.content === 'string' &&
-        m.content.includes(`Request ${reqId} approved`)
+        m.content.includes(`Request ${reqId} (\`test-cmd\`) approved`)
     );
 
     expect(userNotificationMsg).toBeDefined();
@@ -135,18 +137,9 @@ describe('Policy Flows E2E', () => {
     expect(userNotificationMsg!.event).toBe('policy_approved');
     expect(userNotificationMsg!.displayRole).toBe('agent');
     expect(userNotificationMsg!.subagentId).toBeUndefined();
-    expect(sanitizeContentForSnapshot(userNotificationMsg!.content as string, reqId))
-      .toMatchInlineSnapshot(`
-      "Request <REQ_ID> approved.
-
-      <stdout>
-      policy executed
-      </stdout>
-
-      <stderr></stderr>
-
-      Exit Code: 0"
-    `);
+    expect(
+      sanitizeContentForSnapshot(userNotificationMsg!.content as string, reqId)
+    ).toMatchInlineSnapshot(`"Request <REQ_ID> (\`test-cmd\`) approved."`);
 
     // 2. Check subagent notification message
     const subagentNotificationMsg = await waitForMessage(

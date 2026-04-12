@@ -69,7 +69,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       role: 'system',
       event: 'policy_approved',
       displayRole: 'agent',
-      content: agentMessage,
+      content: `Request ${id} (\`${req.commandName}\`) approved.`,
       timestamp: new Date().toISOString(),
       // Explicitly omitted subagentId to show in main chat
     };
@@ -124,7 +124,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       role: 'system',
       event: 'policy_rejected',
       displayRole: 'agent',
-      content: agentMessage,
+      content: `Request ${id} (\`${req.commandName}\`) rejected. Reason: ${reason}`,
       timestamp: new Date().toISOString(),
       // Explicitly omitted subagentId to show in main chat
     };

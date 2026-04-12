@@ -117,7 +117,7 @@ describe('slashPolicies', () => {
         role: 'system',
         event: 'policy_approved',
         displayRole: 'agent',
-        content: expect.stringContaining('Request req-1 approved.'),
+        content: expect.stringContaining('Request req-1 (`test-cmd`) approved.'),
       })
     );
     expect(result.action).toBeUndefined();
@@ -156,7 +156,7 @@ describe('slashPolicies', () => {
         role: 'system',
         event: 'policy_rejected',
         displayRole: 'agent',
-        content: 'Request req-1 rejected. Reason: Not allowed',
+        content: 'Request req-1 (`test-cmd`) rejected. Reason: Not allowed',
       })
     );
     expect(result.action).toBeUndefined();
