@@ -14,6 +14,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import type { getTRPCClient } from './client.js';
 import { readDiscordState, updateDiscordState, getDiscordStatePath } from './state.js';
+import { getMessageMapping } from './threads.js';
 import type { ChatMessage } from '../shared/chats.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
 import {
@@ -223,7 +224,28 @@ export async function startDaemonToDiscordForwarder(
                   }
 
                   try {
-                    const dm = await resolveDiscordDestination(client, discordUserId, chatId);
+                    let dm = await resolveDiscordDestination(client, discordUserId, chatId);
+                    const replyContext =
+                      'messageId' in message &&
+                      typeof message.messageId === 'string' &&
+                      message.messageId
+                        ? getMessageMapping(message.messageId)
+                        : undefined;
+
+                    if (replyContext) {
+                      try {
+                        const mappedChannel = await client.channels.fetch(replyContext.channelId);
+                        if (mappedChannel && mappedChannel.isTextBased()) {
+                          dm = mappedChannel as any;
+                        }
+                      } catch (error) {
+                        console.warn(
+                          `Failed to fetch mapped channel ${replyContext.channelId} for reply, using default destination.`,
+                          error
+                        );
+                      }
+                    }
+
                     const formattedContent = formatMessage(message);
 
                     if (formattedContent && formattedContent.length > 2000) {
@@ -231,6 +253,9 @@ export async function startDaemonToDiscordForwarder(
                       for (let i = 0; i < chunks.length; i++) {
                         if (signal?.aborted || !activeSubscriptions.has(chatId)) break;
                         const chunkOptions: MessageCreateOptions = { content: chunks[i] as string };
+                        if (replyContext && i === 0) {
+                          chunkOptions.reply = { messageReference: replyContext.messageId };
+                        }
                         if (i === chunks.length - 1 && hasFiles) {
                           chunkOptions.files = absoluteFiles;
                         }
@@ -238,6 +263,9 @@ export async function startDaemonToDiscordForwarder(
                       }
                     } else {
                       const optionsMsg: MessageCreateOptions = {};
+                      if (replyContext) {
+                        optionsMsg.reply = { messageReference: replyContext.messageId };
+                      }
                       if (formattedContent) {
                         optionsMsg.content = formattedContent;
                       }

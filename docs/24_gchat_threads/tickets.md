@@ -66,4 +66,4 @@
 **Verification:**
 - Write or update unit tests for the Discord forwarder to verify that the `reply` object is passed to Discord's messaging API when a mapping exists.
 - Run `npm run validate`.
-**Status:** Not started
+**Status:** Complete
