@@ -312,6 +312,7 @@ describe('Google Chat Adapter Client', () => {
           message: 'Hello world',
           chatId: 'default',
           adapter: 'google-chat',
+          adapterMessageId: '',
           files: undefined,
           noWait: true,
         },

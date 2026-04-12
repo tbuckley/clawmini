@@ -18,3 +18,14 @@
 - Added a unit test in `message-agent.test.ts` to ensure the property is passed through correctly to the emitted `AgentReplyMessage`.
 - Ran `npm run validate` and fixed TypeScript issues regarding `exactOptionalPropertyTypes`.
 - Marked Ticket 2 as complete.
+
+## Ticket 3
+- Created `src/adapter-google-chat/threads.ts` to hold a map for `adapterMessageId -> thread.name` with basic TTL eviction logic.
+- Updated `src/adapter-google-chat/client.ts` to fetch previous context (quote replies via `quotedMessageMetadata.name` and threads via `threadReply` fetching list).
+- Prepend the fetched message text as markdown blockquotes (`> ...`).
+- Pass `adapterMessageId` into `trpc.sendMessage.mutate`.
+- Ran `npm run format:check` and used `prettier --write "src/**/*.ts"` to fix formats.
+- Fixed TS possibly undefined error with optional chaining.
+- Updated unit test `should process authorized messages without attachments` to assert `adapterMessageId: ''`.
+- Verified `npm run validate` and tests passed successfully.
+- Marked Ticket 3 as complete.
