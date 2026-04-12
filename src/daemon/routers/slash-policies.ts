@@ -5,6 +5,7 @@ import { readPolicies, getWorkspaceRoot } from '../../shared/workspace.js';
 import { executeRequest } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
 import type { SystemMessage } from '../../shared/chats.js';
+import { executeDirectMessage } from '../message.js';
 
 async function loadAndValidateRequest(id: string, state: RouterState) {
   const store = new RequestStore(getWorkspaceRoot());
@@ -62,24 +63,41 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
 
     const agentMessage = `Request ${id} approved.\n\n${wrapInHtml('stdout', stdout)}\n\n${wrapInHtml('stderr', stderr)}\n\nExit Code: ${exitCode}`;
 
-    const logMsg: SystemMessage = {
+    const userNotificationMsg: SystemMessage = {
       id: randomUUID(),
       messageId: state.messageId,
       role: 'system',
       event: 'policy_approved',
-      displayRole: 'user',
-      content: agentMessage,
+      displayRole: 'agent',
+      content: `Request ${id} (\`${req.commandName}\`) approved.`,
       timestamp: new Date().toISOString(),
-      ...(req.subagentId ? { subagentId: req.subagentId } : {}),
+      // Explicitly omitted subagentId to show in main chat
     };
 
-    await appendMessage(state.chatId, logMsg);
+    await appendMessage(state.chatId, userNotificationMsg);
+
+    await executeDirectMessage(
+      state.chatId,
+      {
+        messageId: randomUUID(),
+        message: agentMessage,
+        chatId: state.chatId,
+        agentId: state.agentId || 'default',
+        ...(req.subagentId ? { subagentId: req.subagentId } : {}),
+        env: state.env || {},
+      },
+      undefined,
+      getWorkspaceRoot(),
+      true, // noWait
+      agentMessage,
+      req.subagentId,
+      'policy_approved',
+      'user'
+    );
 
     return {
       ...state,
-      message: agentMessage,
-      reply: `Approved request, running ${req.commandName}`,
-      ...(req.subagentId ? { subagentId: req.subagentId } : {}),
+      message: '', // Prevents further router processing or duplicate user message logs
     };
   }
 
@@ -98,35 +116,41 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
 
     const agentMessage = `Request ${id} rejected. Reason: ${reason}`;
 
-    const logMsg: SystemMessage = {
-      id: randomUUID(),
-      messageId: state.messageId,
-      role: 'system',
-      event: 'policy_rejected',
-      displayRole: 'user',
-      content: agentMessage,
-      timestamp: new Date().toISOString(),
-      ...(req.subagentId ? { subagentId: req.subagentId } : {}),
-    };
-
     const userNotificationMsg: SystemMessage = {
       id: randomUUID(),
       messageId: state.messageId,
       role: 'system',
       event: 'policy_rejected',
       displayRole: 'agent',
-      content: agentMessage,
+      content: `Request ${id} (\`${req.commandName}\`) rejected. Reason: ${reason}`,
       timestamp: new Date().toISOString(),
-      ...(req.subagentId ? { subagentId: req.subagentId } : {}),
+      // Explicitly omitted subagentId to show in main chat
     };
 
-    await appendMessage(state.chatId, logMsg);
     await appendMessage(state.chatId, userNotificationMsg);
+
+    await executeDirectMessage(
+      state.chatId,
+      {
+        messageId: randomUUID(),
+        message: agentMessage,
+        chatId: state.chatId,
+        agentId: state.agentId || 'default',
+        ...(req.subagentId ? { subagentId: req.subagentId } : {}),
+        env: state.env || {},
+      },
+      undefined,
+      getWorkspaceRoot(),
+      true, // noWait
+      agentMessage,
+      req.subagentId,
+      'policy_rejected',
+      'user'
+    );
 
     return {
       ...state,
-      message: agentMessage,
-      ...(req.subagentId ? { subagentId: req.subagentId } : {}),
+      message: '', // Prevents further router processing or duplicate user message logs
     };
   }
 

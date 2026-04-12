@@ -38,6 +38,7 @@ export async function executeSubagent(
       chatId,
       agentId,
       sessionId,
+      subagentId,
       env: {},
     };
 

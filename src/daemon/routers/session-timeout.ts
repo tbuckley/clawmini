@@ -35,6 +35,10 @@ export function createSessionTimeoutRouter(config: SessionTimeoutConfig = {}) {
       return state;
     }
 
+    if (state.subagentId) {
+      return state;
+    }
+
     const sessionId = state.sessionId || crypto.randomUUID();
     const jobId = `__session_timeout__${sessionId}`;
 
