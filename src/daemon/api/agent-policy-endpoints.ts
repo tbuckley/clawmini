@@ -12,6 +12,7 @@ import {
   generateRequestPreview,
   executeRequest,
   resolveRequestCwd,
+  truncateLargeOutput,
 } from '../policy-utils.js';
 import { appendMessage, type PolicyRequestMessage } from '../chats.js';
 
@@ -94,10 +95,13 @@ export const createPolicyRequest = apiProcedure
     if (isAutoApprove) {
       const hostCwd = await resolveRequestCwd(request.cwd, agentId, workspaceRoot);
 
-      const { stdout, stderr, exitCode, commandStr } = await executeRequest(
-        request,
-        policy,
-        hostCwd
+      const result = await executeRequest(request, policy, hostCwd);
+      const { exitCode, commandStr } = result;
+      const { stdout, stderr } = await truncateLargeOutput(
+        result.stdout,
+        result.stderr,
+        request.id,
+        agentId
       );
 
       request.executionResult = { stdout, stderr, exitCode };

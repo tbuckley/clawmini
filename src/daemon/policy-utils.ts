@@ -222,30 +222,46 @@ export async function executeRequest(
   const fullArgs = [...(policy.args || []), ...request.args];
   const interpolatedArgs = interpolateArgs(fullArgs, request.fileMappings);
 
-  const result = await executeSafe(policy.command, interpolatedArgs, cwd ? { cwd } : undefined);
-  let stdout = result.stdout;
-  let stderr = result.stderr;
-  const exitCode = result.exitCode;
-
-  const agentDir = await resolveAgentDir(request.agentId, getWorkspaceRoot());
-  const tmpDir = path.join(agentDir, 'tmp');
-
-  if (stdout.length >= MAX_INLINE_OUTPUT_LENGTH) {
-    await fs.mkdir(tmpDir, { recursive: true });
-    const stdoutPath = path.join(tmpDir, `stdout-${request.id}.txt`);
-    await fs.writeFile(stdoutPath, stdout, 'utf-8');
-    stdout = `stdout is ${stdout.length} characters, saved to ./tmp/stdout-${request.id}.txt\n`;
-  }
-
-  if (stderr.length >= MAX_INLINE_OUTPUT_LENGTH) {
-    await fs.mkdir(tmpDir, { recursive: true });
-    const stderrPath = path.join(tmpDir, `stderr-${request.id}.txt`);
-    await fs.writeFile(stderrPath, stderr, 'utf-8');
-    stderr = `stderr is ${stderr.length} characters, saved to ./tmp/stderr-${request.id}.txt\n`;
-  }
+  const { stdout, stderr, exitCode } = await executeSafe(
+    policy.command,
+    interpolatedArgs,
+    cwd ? { cwd } : undefined
+  );
 
   const commandStr = `${policy.command} ${interpolatedArgs.join(' ')}`;
   return { stdout, stderr, exitCode, commandStr };
+}
+
+/**
+ * Saves large stdout/stderr to files in the agent's tmp/ directory and returns
+ * placeholder strings pointing to those files. Small outputs are returned as-is.
+ */
+export async function truncateLargeOutput(
+  stdout: string,
+  stderr: string,
+  requestId: string,
+  agentId: string | undefined
+): Promise<{ stdout: string; stderr: string }> {
+  const agentDir = await resolveAgentDir(agentId, getWorkspaceRoot());
+  const tmpDir = path.join(agentDir, 'tmp');
+  const needsTmpDir =
+    stdout.length >= MAX_INLINE_OUTPUT_LENGTH || stderr.length >= MAX_INLINE_OUTPUT_LENGTH;
+
+  if (needsTmpDir) {
+    await fs.mkdir(tmpDir, { recursive: true });
+  }
+
+  if (stdout.length >= MAX_INLINE_OUTPUT_LENGTH) {
+    await fs.writeFile(path.join(tmpDir, `stdout-${requestId}.txt`), stdout, 'utf-8');
+    stdout = `stdout is ${stdout.length} characters, saved to ./tmp/stdout-${requestId}.txt\n`;
+  }
+
+  if (stderr.length >= MAX_INLINE_OUTPUT_LENGTH) {
+    await fs.writeFile(path.join(tmpDir, `stderr-${requestId}.txt`), stderr, 'utf-8');
+    stderr = `stderr is ${stderr.length} characters, saved to ./tmp/stderr-${requestId}.txt\n`;
+  }
+
+  return { stdout, stderr };
 }
 
 export async function generateRequestPreview(request: PolicyRequest): Promise<string> {
