@@ -92,7 +92,6 @@ export const createPolicyRequest = apiProcedure
     );
 
     if (isAutoApprove) {
-      const workspaceRoot = getWorkspaceRoot();
       const hostCwd = await resolveRequestCwd(request.cwd, agentId, workspaceRoot);
 
       const { stdout, stderr, exitCode, commandStr } = await executeRequest(
