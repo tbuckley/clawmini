@@ -15,6 +15,16 @@ import {
 export const MAX_SNAPSHOT_SIZE = 5 * 1024 * 1024;
 export const MAX_INLINE_OUTPUT_LENGTH = 500;
 
+/**
+ * Translates a sandbox-relative cwd into an absolute host path scoped to agentDir.
+ *
+ * Security note (TOCTOU): There is an inherent race between validating the
+ * resolved path here and the moment `spawn` uses it as cwd. A symlink created
+ * on the host filesystem in that window could redirect execution outside
+ * agentDir. We accept this because the sandboxed agent cannot modify the host
+ * filesystem — only a local user or process with host-level access could
+ * exploit the gap, and that is outside our threat model.
+ */
 export function translateSandboxPath(
   sandboxCwd: string,
   baseDir: string | undefined,
