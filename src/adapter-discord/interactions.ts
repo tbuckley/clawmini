@@ -59,12 +59,14 @@ export async function handleDiscordInteraction(
       ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
       : config.chatId;
 
+    let replied = false;
     await processDiscordMessage(
       commandStr,
       interaction.user,
       interaction.channelId,
       interaction.guild,
       async (text) => {
+        replied = true;
         await interaction.followUp({ content: text, ephemeral: true });
       },
       config,
@@ -72,6 +74,10 @@ export async function handleDiscordInteraction(
       filteringConfig,
       { explicitChatId: targetChatId, mentionsBot: true }
     );
+
+    if (!replied) {
+      await interaction.deleteReply();
+    }
     return;
   }
 

@@ -217,5 +217,6 @@ export async function processDiscordMessage(
     console.log('Message forwarded to daemon successfully.');
   } catch (error) {
     console.error('Failed to forward message to daemon:', error);
+    await reply('Failed to forward message to the daemon. Please check the logs.');
   }
 }

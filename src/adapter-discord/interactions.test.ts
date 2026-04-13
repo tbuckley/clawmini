@@ -31,6 +31,7 @@ describe('handleDiscordInteraction', () => {
       followUp: vi.fn().mockResolvedValue({}),
       reply: vi.fn().mockResolvedValue({}),
       deferReply: vi.fn().mockResolvedValue({}),
+      deleteReply: vi.fn().mockResolvedValue({}),
       showModal: vi.fn().mockResolvedValue({}),
     };
     vi.mocked(readDiscordState).mockResolvedValue({});
