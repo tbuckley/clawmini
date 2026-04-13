@@ -1,7 +1,32 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createE2EContext, setupSubagentEnv, waitForMessage } from './utils.js';
 
 const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-smart-output');
+
+function dumpChatLog(chatId: string) {
+  const logPath = path.resolve(e2eDir, `.clawmini/chats/${chatId}/chat.jsonl`);
+  if (fs.existsSync(logPath)) {
+    console.log(`[DEBUG] chat.jsonl for ${chatId}:`);
+    console.log(fs.readFileSync(logPath, 'utf8'));
+  } else {
+    console.log(`[DEBUG] chat.jsonl NOT FOUND at ${logPath}`);
+  }
+}
+
+function dumpDaemonLogs() {
+  const daemonLog = path.resolve(e2eDir, '.clawmini/daemon.log');
+  if (fs.existsSync(daemonLog)) {
+    const content = fs.readFileSync(daemonLog, 'utf8');
+    // Last 50 lines to keep output manageable
+    const lines = content.split('\n');
+    console.log(`[DEBUG] daemon.log (last 50 of ${lines.length} lines):`);
+    console.log(lines.slice(-50).join('\n'));
+  } else {
+    console.log(`[DEBUG] daemon.log NOT FOUND at ${daemonLog}`);
+  }
+}
 
 describe('Smart Output E2E', () => {
   beforeAll(async () => {
@@ -85,17 +110,20 @@ describe('Smart Output E2E', () => {
     );
 
     // Try reading the file
-    console.log('[DEBUG] sending more command');
+    dumpChatLog('chat-long-out');
+    dumpDaemonLogs();
+    console.log('[DEBUG] sending cat command (was: more)');
 
-    await runCli([
+    const catResult = await runCli([
       'messages',
       'send',
-      `more ./tmp/stdout-${replyMsg!.requestId}.txt`,
+      `cat ./tmp/stdout-${replyMsg!.requestId}.txt`,
       '--chat',
       'chat-long-out',
       '--agent',
       'debug-agent',
     ]);
+    console.log('[DEBUG] cat send result:', JSON.stringify(catResult));
 
     const replyMsg2 = await waitForMessage(
       e2eDir,
@@ -103,15 +131,18 @@ describe('Smart Output E2E', () => {
       (m: Record<string, unknown>) =>
         m.role === 'agent' &&
         typeof m.content === 'string' &&
-        m.content.includes('more ./tmp/stdout-')
+        m.content.includes('cat ./tmp/stdout-')
     );
     console.log('[DEBUG] waitForMessage2 result:', JSON.stringify(replyMsg2));
+    dumpChatLog('chat-long-out');
+    dumpDaemonLogs();
 
     expect(replyMsg2).not.toBeNull();
     expect(replyMsg2!.content).toContain('a'.repeat(600));
   }, 30000);
 
   it('should intercept large stderr and return a summary string', async () => {
+    dumpDaemonLogs();
     console.log('[DEBUG] creating chat-long-err');
     await runCli(['chats', 'add', 'chat-long-err']);
     console.log('[DEBUG] chat created, sending message');
@@ -133,6 +164,8 @@ describe('Smart Output E2E', () => {
       (m: Record<string, unknown>) => m.role === 'policy' && m.status === 'approved'
     );
     console.log('[DEBUG] waitForMessage result:', JSON.stringify(replyMsg));
+    dumpChatLog('chat-long-err');
+    dumpDaemonLogs();
 
     expect(replyMsg).not.toBeNull();
     expect(replyMsg!.content).toMatch(
