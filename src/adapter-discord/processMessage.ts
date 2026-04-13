@@ -13,6 +13,7 @@ export type ProcessMessageOptions = {
   attachments?: { name: string; size: number; url: string }[];
   referenceContent?: string;
   explicitChatId?: string;
+  adapterMessageId?: string;
 };
 
 export async function processDiscordMessage(
@@ -212,6 +213,7 @@ export async function processDiscordMessage(
         files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
         adapter: 'discord',
         noWait: true,
+        adapterMessageId: options.adapterMessageId,
       },
     });
     console.log('Message forwarded to daemon successfully.');

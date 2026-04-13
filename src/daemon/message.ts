@@ -38,7 +38,10 @@ export async function executeDirectMessage(
     });
     msgId = sysMsg.id;
   } else {
-    const userMsg = await logger.logUserMessage(userMessageContent ?? state.message);
+    const userMsg = await logger.logUserMessage(
+      userMessageContent ?? state.message,
+      state.adapterMessageId
+    );
     msgId = userMsg.id;
   }
 
@@ -64,6 +67,7 @@ export async function executeDirectMessage(
     id: state.messageId,
     content: state.message,
     env: state.env ?? {},
+    ...(state.adapterMessageId ? { adapterMessageId: state.adapterMessageId } : {}),
   };
 
   // Process actions
@@ -100,7 +104,8 @@ export async function getInitialRouterState(
   message: string,
   chatSettings: Partial<ChatSettings>,
   overrideAgentId?: string,
-  overrideSessionId?: string
+  overrideSessionId?: string,
+  adapterMessageId?: string
 ): Promise<RouterState> {
   const agentId = overrideAgentId ?? chatSettings.defaultAgent ?? 'default';
   const sessionId = overrideSessionId ?? chatSettings.sessions?.[agentId] ?? 'default';
@@ -112,6 +117,7 @@ export async function getInitialRouterState(
     chatId,
     agentId,
     sessionId,
+    ...(adapterMessageId ? { adapterMessageId } : {}),
     env: {},
   };
 }
@@ -123,7 +129,8 @@ export async function handleUserMessage(
   cwd: string = process.cwd(),
   noWait: boolean = false,
   sessionId?: string,
-  overrideAgentId?: string
+  overrideAgentId?: string,
+  adapterMessageId?: string
 ): Promise<void> {
   const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
 
@@ -137,7 +144,8 @@ export async function handleUserMessage(
     message,
     chatSettings,
     overrideAgentId,
-    sessionId
+    sessionId,
+    adapterMessageId
   );
 
   const routers = chatSettings.routers ?? settings?.routers ?? [];

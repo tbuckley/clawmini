@@ -137,7 +137,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
       return append<SubagentStatusMessage>(msg);
     },
 
-    logAgentReply: async ({ content, files }) => {
+    logAgentReply: async ({ content, files, messageId }) => {
       const msg: AgentReplyMessage = {
         id: crypto.randomUUID(),
         role: 'agent',
@@ -146,6 +146,9 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
       };
       if (files !== undefined) {
         msg.files = files;
+      }
+      if (messageId !== undefined) {
+        msg.messageId = messageId;
       }
       return append<AgentReplyMessage>(msg);
     },

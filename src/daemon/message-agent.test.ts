@@ -115,4 +115,36 @@ describe('Agent Configuration & Execution CWD', () => {
       })
     );
   });
+
+  it('passes adapterMessageId through to the AgentReplyMessage', async () => {
+    const mockSpawn = createAutoFinishMockSpawn();
+    (spawn as any).mockImplementation(mockSpawn);
+
+    vi.mocked(workspace.readChatSettings).mockResolvedValue({ defaultAgent: 'default' });
+    vi.mocked(workspace.getAgent).mockResolvedValue(null);
+    vi.mocked(workspace.getWorkspaceRoot).mockReturnValue('/base/workspace');
+
+    // We need to capture appendMessage to check the appended messages
+    const { appendMessage } = await import('../shared/chats.js');
+
+    const settings = { defaultAgent: { commands: { new: 'echo some reply' } } };
+
+    await handleUserMessage(
+      'chat-adapter',
+      'hi adapter',
+      settings as any,
+      '/base/workspace',
+      false,
+      'test-session',
+      undefined,
+      'ext-adapter-id-123'
+    );
+
+    // Look for the AgentReplyMessage
+    const appendCalls = vi.mocked(appendMessage).mock.calls;
+    const agentReplyCall = appendCalls.find((call) => call[1].role === 'agent');
+
+    expect(agentReplyCall).toBeDefined();
+    expect((agentReplyCall![1] as any).messageId).toBe('ext-adapter-id-123');
+  });
 });
