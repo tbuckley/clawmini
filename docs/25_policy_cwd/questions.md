@@ -1,0 +1,6 @@
+# Questions
+
+1. What should we name the property in `EnvironmentSchema` that represents the base directory inside the sandbox? (e.g., `baseDir`, `sandboxRoot`, `targetDir`)
+A: `baseDir`. It should be optional, and if unspecified we assume the environment and host share the same filesystem, so a path within the environment is the same as outside.
+2. Regarding the output file for `clawmini-lite.js request` ("We should figure out a standard way to pass the output of both stdout and stderr"): would you prefer separate flags (e.g., `--stdout-file` and `--stderr-file`), a single file interleaving both streams, or a single JSON file containing `{ "stdout": "...", "stderr": "..." }`?
+A: Instead of letting it specify a file, we instead look at the length of stdout/stderr. For each, we check if it's <500 characters and include it in the message if so. If >=500 characters, we create a tmp file (like inside the agent's directory in a ./tmp/ folder) and include the path + total length of the output in the message, like "stdout is 1234 characters, saved to ./tmp/stdout-foo.txt".

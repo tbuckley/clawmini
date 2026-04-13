@@ -11,6 +11,7 @@ describe('E2E Requests Tests (Lite)', () => {
   let litePath = '';
   let envUrl = '';
   let envToken = '';
+  let envDumperAgentDir = '';
 
   beforeAll(async () => {
     await setupE2E();
@@ -63,7 +64,7 @@ describe('E2E Requests Tests (Lite)', () => {
     await runCli(['export-lite', '--out', litePath]);
 
     // Setup env-dumper agent
-    const envDumperAgentDir = path.resolve(e2eDir, 'lite-env-dumper');
+    envDumperAgentDir = path.resolve(e2eDir, 'lite-env-dumper');
     fs.mkdirSync(envDumperAgentDir, { recursive: true });
     await runCli(['agents', 'add', 'lite-env-dumper', '--dir', 'lite-env-dumper']);
 
@@ -101,7 +102,7 @@ describe('E2E Requests Tests (Lite)', () => {
     return new Promise((resolve) => {
       const p = spawn('node', [litePath, ...args], {
         env: { ...process.env, CLAW_API_URL: envUrl, CLAW_API_TOKEN: envToken },
-        cwd: e2eDir,
+        cwd: envDumperAgentDir,
       });
       let stdout = '';
       let stderr = '';

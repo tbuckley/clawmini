@@ -22,7 +22,8 @@ export class PolicyRequestService {
     chatId: string,
     agentId: string,
     skipSave: boolean = false,
-    subagentId?: string
+    subagentId?: string,
+    cwd?: string
   ): Promise<PolicyRequest> {
     const allRequests = await this.store.list();
     const pendingCount = allRequests.filter((r) => r.state === 'Pending').length;
@@ -47,6 +48,7 @@ export class PolicyRequestService {
       commandName,
       args,
       fileMappings: snapshotMappings,
+      ...(cwd ? { cwd } : {}),
       state: skipSave ? 'Approved' : 'Pending',
       createdAt: Date.now(),
       chatId,

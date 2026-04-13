@@ -11,6 +11,8 @@ vi.mock('../../shared/chats.js', () => ({
 vi.mock('../../shared/workspace.js', () => ({
   getWorkspaceRoot: vi.fn().mockReturnValue('/mock/workspace'),
   getClawminiDir: vi.fn().mockReturnValue('/mock/.clawmini'),
+  getActiveEnvironmentInfo: vi.fn().mockResolvedValue(null),
+  readEnvironment: vi.fn().mockResolvedValue(null),
   readPolicies: vi.fn().mockResolvedValue({
     policies: {
       'test-cmd': {

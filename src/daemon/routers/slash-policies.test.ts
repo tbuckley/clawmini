@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { slashPolicies } from './slash-policies.js';
 import { RequestStore } from '../request-store.js';
 import { readPolicies } from '../../shared/workspace.js';
-import { executeRequest } from '../policy-utils.js';
+import { executeRequest, truncateLargeOutput } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
 import { executeDirectMessage } from '../message.js';
 import type { PolicyRequest } from '../../shared/policies.js';
@@ -56,6 +56,10 @@ describe('slashPolicies', () => {
       exitCode: 0,
       commandStr: 'echo hello world',
     });
+    vi.mocked(truncateLargeOutput).mockImplementation(async (stdout, stderr) => ({
+      stdout,
+      stderr,
+    }));
   });
 
   afterEach(() => {

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { RouterState } from './types.js';
 import { RequestStore } from '../request-store.js';
 import { readPolicies, getWorkspaceRoot } from '../../shared/workspace.js';
-import { executeRequest } from '../policy-utils.js';
+import { executeRequest, resolveRequestCwd, truncateLargeOutput } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
 import type { SystemMessage } from '../../shared/chats.js';
 import { executeDirectMessage } from '../message.js';
@@ -56,7 +56,17 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
 
     req.state = 'Approved';
 
-    const { stdout, stderr, exitCode } = await executeRequest(req, policy, getWorkspaceRoot());
+    const workspaceRoot = getWorkspaceRoot();
+    const hostCwd = await resolveRequestCwd(req.cwd, state.agentId, workspaceRoot);
+
+    const result = await executeRequest(req, policy, hostCwd);
+    const { exitCode } = result;
+    const { stdout, stderr } = await truncateLargeOutput(
+      result.stdout,
+      result.stderr,
+      req.id,
+      state.agentId
+    );
 
     req.executionResult = { stdout, stderr, exitCode };
     await store.save(req);

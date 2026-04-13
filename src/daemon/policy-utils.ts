@@ -1,12 +1,99 @@
 import fs from 'node:fs/promises';
-import { constants } from 'node:fs';
+import fsSync, { constants } from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { pathIsInsideDir } from '../shared/utils/fs.js';
 import type { PolicyRequest, PolicyDefinition } from '../shared/policies.js';
+import { resolveAgentDir } from './api/router-utils.js';
+import {
+  getWorkspaceRoot,
+  getActiveEnvironmentInfo,
+  readEnvironment,
+} from '../shared/workspace.js';
 
 export const MAX_SNAPSHOT_SIZE = 5 * 1024 * 1024;
+export const MAX_INLINE_OUTPUT_LENGTH = 500;
+
+/**
+ * Translates a sandbox-relative cwd into an absolute host path scoped to agentDir.
+ *
+ * Security note (TOCTOU): There is an inherent race between validating the
+ * resolved path here and the moment `spawn` uses it as cwd. A symlink created
+ * on the host filesystem in that window could redirect execution outside
+ * agentDir. We accept this because the sandboxed agent cannot modify the host
+ * filesystem — only a local user or process with host-level access could
+ * exploit the gap, and that is outside our threat model.
+ */
+export function translateSandboxPath(
+  sandboxCwd: string,
+  baseDir: string | undefined,
+  agentDir: string
+): string {
+  let relativePath = sandboxCwd;
+
+  let realSandboxCwd = sandboxCwd;
+  let realAgentDir = agentDir;
+  try {
+    realSandboxCwd = fsSync.realpathSync(sandboxCwd);
+  } catch (err: unknown) {
+    if (
+      !(err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT')
+    ) {
+      throw err;
+    }
+  }
+  try {
+    realAgentDir = fsSync.realpathSync(agentDir);
+  } catch (err: unknown) {
+    if (
+      !(err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT')
+    ) {
+      throw err;
+    }
+  }
+
+  if (baseDir && sandboxCwd.startsWith(baseDir)) {
+    relativePath = sandboxCwd.slice(baseDir.length);
+  } else if (
+    !baseDir &&
+    path.isAbsolute(realSandboxCwd) &&
+    pathIsInsideDir(realSandboxCwd, realAgentDir, { allowSameDir: true })
+  ) {
+    return realSandboxCwd;
+  }
+
+  // Remove leading slash to make it correctly relative when resolving against agentDir
+  if (relativePath.startsWith('/') || relativePath.startsWith('\\')) {
+    relativePath = relativePath.slice(1);
+  }
+
+  const resolvedPath = path.resolve(agentDir, relativePath);
+
+  // Security validation to prevent path traversal
+  if (!pathIsInsideDir(resolvedPath, agentDir, { allowSameDir: true })) {
+    throw new Error(
+      `Security Error: Path resolves outside the allowed agent directory: ${resolvedPath}`
+    );
+  }
+
+  return resolvedPath;
+}
+
+export async function resolveRequestCwd(
+  requestCwd: string | undefined,
+  agentId: string | undefined,
+  workspaceRoot: string
+): Promise<string> {
+  const agentDir = await resolveAgentDir(agentId, workspaceRoot);
+  const envInfo = await getActiveEnvironmentInfo(agentDir, workspaceRoot);
+  let baseDir: string | undefined;
+  if (envInfo) {
+    const envConfig = await readEnvironment(envInfo.name, workspaceRoot);
+    baseDir = envConfig?.baseDir;
+  }
+  return requestCwd ? translateSandboxPath(requestCwd, baseDir, agentDir) : workspaceRoot;
+}
 
 export async function createSnapshot(
   requestedPath: string,
@@ -143,6 +230,38 @@ export async function executeRequest(
 
   const commandStr = `${policy.command} ${interpolatedArgs.join(' ')}`;
   return { stdout, stderr, exitCode, commandStr };
+}
+
+/**
+ * Saves large stdout/stderr to files in the agent's tmp/ directory and returns
+ * placeholder strings pointing to those files. Small outputs are returned as-is.
+ */
+export async function truncateLargeOutput(
+  stdout: string,
+  stderr: string,
+  requestId: string,
+  agentId: string | undefined
+): Promise<{ stdout: string; stderr: string }> {
+  const agentDir = await resolveAgentDir(agentId, getWorkspaceRoot());
+  const tmpDir = path.join(agentDir, 'tmp');
+  const needsTmpDir =
+    stdout.length >= MAX_INLINE_OUTPUT_LENGTH || stderr.length >= MAX_INLINE_OUTPUT_LENGTH;
+
+  if (needsTmpDir) {
+    await fs.mkdir(tmpDir, { recursive: true });
+  }
+
+  if (stdout.length >= MAX_INLINE_OUTPUT_LENGTH) {
+    await fs.writeFile(path.join(tmpDir, `stdout-${requestId}.txt`), stdout, 'utf-8');
+    stdout = `stdout is ${stdout.length} characters, saved to ./tmp/stdout-${requestId}.txt\n`;
+  }
+
+  if (stderr.length >= MAX_INLINE_OUTPUT_LENGTH) {
+    await fs.writeFile(path.join(tmpDir, `stderr-${requestId}.txt`), stderr, 'utf-8');
+    stderr = `stderr is ${stderr.length} characters, saved to ./tmp/stderr-${requestId}.txt\n`;
+  }
+
+  return { stdout, stderr };
 }
 
 export async function generateRequestPreview(request: PolicyRequest): Promise<string> {
