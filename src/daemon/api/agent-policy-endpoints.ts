@@ -51,7 +51,12 @@ export const createPolicyRequest = apiProcedure
       commandName: z.string(),
       args: z.array(z.string()),
       fileMappings: z.record(z.string(), z.string()),
-      cwd: z.string().optional(),
+      cwd: z
+        .string()
+        .refine((p) => !p.split('/').includes('..') && !p.split('\\').includes('..'), {
+          message: 'cwd must not contain path traversal segments (..)',
+        })
+        .optional(),
     })
   )
   .mutation(async ({ input, ctx }) => {
