@@ -2,11 +2,20 @@ import { spawn, execSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import { createTRPCClient, httpLink, splitLink, httpSubscriptionLink } from '@trpc/client';
+import type { UserRouter as AppRouter } from '../../daemon/api/index.js';
+import { createUnixSocketFetch } from '../../shared/fetch.js';
+import { createUnixSocketEventSource } from '../../shared/event-source.js';
+import type { ChatMessage } from '../../daemon/chats.js';
 
 export class TestEnvironment {
   public e2eDir: string;
   public binPath: string;
   public id: string;
+  public trpcClient: ReturnType<typeof createTRPCClient<AppRouter>> | null = null;
+  public messageBuffer: ChatMessage[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private subscription: any | null = null;
 
   constructor(prefix: string) {
     this.id = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -52,6 +61,74 @@ export class TestEnvironment {
     });
   }
 
+  public async connect(chatId: string = 'default-chat') {
+    const socketPath = path.join(this.e2eDir, '.clawmini', 'daemon.sock');
+
+    // Wait for socket to exist
+    for (let i = 0; i < 50; i++) {
+      if (fs.existsSync(socketPath)) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    if (!fs.existsSync(socketPath)) {
+      throw new Error(`Daemon socket not found at ${socketPath}`);
+    }
+
+    const customFetch = createUnixSocketFetch(socketPath);
+    const CustomEventSource = createUnixSocketEventSource(socketPath);
+
+    this.trpcClient = createTRPCClient<AppRouter>({
+      links: [
+        splitLink({
+          condition(op) {
+            return op.type === 'subscription';
+          },
+          true: httpSubscriptionLink({
+            url: 'http://localhost',
+            EventSource: CustomEventSource as unknown as typeof EventSource,
+          }),
+          false: httpLink({
+            url: 'http://localhost',
+            fetch: customFetch,
+          }),
+        }),
+      ],
+    });
+
+    this.subscription = this.trpcClient.waitForMessages.subscribe(
+      { chatId },
+      {
+        onData: (messages) => {
+          this.messageBuffer.push(...messages);
+        },
+        onError: (err) => {
+          console.error('Subscription error:', err);
+        },
+      }
+    );
+  }
+
+  public async disconnect() {
+    if (this.subscription) {
+      this.subscription.unsubscribe();
+      this.subscription = null;
+    }
+    this.trpcClient = null;
+  }
+
+  public async waitForMessage(
+    predicate: (msg: ChatMessage) => boolean,
+    timeoutMs: number = 15000
+  ): Promise<ChatMessage> {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeoutMs) {
+      const match = this.messageBuffer.find(predicate);
+      if (match) return match;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`waitForMessage timed out after ${timeoutMs}ms`);
+  }
+
   public async setup() {
     if (fs.existsSync(this.e2eDir)) {
       fs.rmSync(this.e2eDir, { recursive: true, force: true });
@@ -61,6 +138,7 @@ export class TestEnvironment {
   }
 
   public async teardown() {
+    await this.disconnect();
     if (fs.existsSync(this.e2eDir)) {
       await this.runCli(['down']);
       if (fs.existsSync(this.e2eDir)) {
@@ -128,6 +206,7 @@ export class TestEnvironment {
     await this.init();
     await this.addAgent('debug-agent', { template: 'debug' });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const settingsUpdates: any = {};
     if (options.routers) settingsUpdates.routers = options.routers;
     if (options.port) settingsUpdates.api = { host: '127.0.0.1', port: options.port };

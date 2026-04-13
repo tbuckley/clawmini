@@ -12,11 +12,11 @@
 - **Verification**:
   - Test the SSE client integration against a running daemon manually or via unit tests.
   - Run `npm run validate`.
-- **Status**: not started
+- **Status**: complete
 
 ## Step 3: Migrate a Single Test to the New API
 - **Description**: Refactor one specific E2E test file (e.g., `src/cli/e2e/messages.test.ts`) to use the `TestEnvironment` API and the new SSE-based event waiting mechanism. Remove all manual file read/write polling from this specific test.
 - **Verification**:
   - Ensure the migrated E2E test passes reliably.
   - Run `npm run validate`.
-- **Status**: not started
+- **Status**: complete
