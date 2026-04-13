@@ -13,6 +13,7 @@ import {
 } from '../shared/workspace.js';
 
 export const MAX_SNAPSHOT_SIZE = 5 * 1024 * 1024;
+export const MAX_INLINE_OUTPUT_LENGTH = 500;
 
 export function translateSandboxPath(
   sandboxCwd: string,
@@ -219,14 +220,14 @@ export async function executeRequest(
   const agentDir = await resolveAgentDir(request.agentId, getWorkspaceRoot());
   const tmpDir = path.join(agentDir, 'tmp');
 
-  if (stdout.length >= 500) {
+  if (stdout.length >= MAX_INLINE_OUTPUT_LENGTH) {
     await fs.mkdir(tmpDir, { recursive: true });
     const stdoutPath = path.join(tmpDir, `stdout-${request.id}.txt`);
     await fs.writeFile(stdoutPath, stdout, 'utf-8');
     stdout = `stdout is ${stdout.length} characters, saved to ./tmp/stdout-${request.id}.txt\n`;
   }
 
-  if (stderr.length >= 500) {
+  if (stderr.length >= MAX_INLINE_OUTPUT_LENGTH) {
     await fs.mkdir(tmpDir, { recursive: true });
     const stderrPath = path.join(tmpDir, `stderr-${request.id}.txt`);
     await fs.writeFile(stderrPath, stderr, 'utf-8');
