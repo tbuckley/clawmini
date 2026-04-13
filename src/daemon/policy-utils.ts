@@ -25,9 +25,21 @@ export function translateSandboxPath(
   let realAgentDir = agentDir;
   try {
     realSandboxCwd = fsSync.realpathSync(sandboxCwd);
+  } catch (err: unknown) {
+    if (
+      !(err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT')
+    ) {
+      throw err;
+    }
+  }
+  try {
     realAgentDir = fsSync.realpathSync(agentDir);
-  } catch {
-    // Ignore errors, fallback to original paths
+  } catch (err: unknown) {
+    if (
+      !(err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT')
+    ) {
+      throw err;
+    }
   }
 
   if (baseDir && sandboxCwd.startsWith(baseDir)) {
