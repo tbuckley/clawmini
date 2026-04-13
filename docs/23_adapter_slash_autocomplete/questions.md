@@ -1,0 +1,6 @@
+# Questions for PRD
+
+1. **Google Chat Registration:** Google Chat slash commands generally need to be configured statically in the Google Cloud Console. Should we document this as a manual setup step for users, or should the adapter attempt to use the Google Workspace APIs to register them programmatically (which requires additional OAuth scopes)?
+2. **Discord Registration:** Since Discord requires bots to register slash commands via their API to appear in the autocomplete menu, should the adapter sync these commands automatically on startup, or only when a specific CLI flag/command is run?
+3. **Dynamic Autocomplete:** Discord supports *dynamic* autocomplete for arguments (e.g., suggesting specific chat IDs for `/approve`). Google Chat does not support dynamic argument autocomplete, only auto-completing the base command itself. Is it acceptable to implement dynamic argument autocomplete only for Discord?
+4. **Command List:** The prompt mentions `/new`, `/stop`, `/approve`, `/reject`, `/pending`, `/show`, `/hide`, `/debug`. Are there any arguments for these commands that we should provide specific autocomplete suggestions for (e.g., policy IDs for `/approve`)?

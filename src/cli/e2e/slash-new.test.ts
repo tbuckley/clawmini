@@ -51,9 +51,7 @@ describe('/new Command E2E', () => {
   it('should reset the session ID when /new is sent', async () => {
     // 1. Send an initial message
     const { code } = await runCli(['messages', 'send', 'message 1']);
-    expect(code).toBe(0);
-
-    // 2. Send another message to get an append
+    expect(code).toBe(0); // 2. Send another message to get an append
     await runCli(['messages', 'send', 'message 2']);
 
     // Get the first session ID

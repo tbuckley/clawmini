@@ -1,10 +1,11 @@
 import { spawn, execSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 
 export function createE2EContext(dirName: string) {
   const binPath = path.resolve(__dirname, '../../../dist/cli/index.mjs');
-  const e2eDir = path.resolve(__dirname, `../../../${dirName}`);
+  const e2eDir = path.join(os.homedir(), '.gemini', 'tmp', `clawmini-${dirName}`);
 
   function runCli(
     args: string[]
