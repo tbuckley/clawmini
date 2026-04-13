@@ -10,6 +10,34 @@ import { getWorkspaceRoot } from '../shared/workspace.js';
 
 export const MAX_SNAPSHOT_SIZE = 5 * 1024 * 1024;
 
+export function translateSandboxPath(
+  sandboxCwd: string,
+  baseDir: string | undefined,
+  agentDir: string
+): string {
+  let relativePath = sandboxCwd;
+
+  if (baseDir && sandboxCwd.startsWith(baseDir)) {
+    relativePath = sandboxCwd.slice(baseDir.length);
+  }
+
+  // Remove leading slash to make it correctly relative when resolving against agentDir
+  if (relativePath.startsWith('/') || relativePath.startsWith('\\')) {
+    relativePath = relativePath.slice(1);
+  }
+
+  const resolvedPath = path.resolve(agentDir, relativePath);
+
+  // Security validation to prevent path traversal
+  if (!pathIsInsideDir(resolvedPath, agentDir, { allowSameDir: true })) {
+    throw new Error(
+      `Security Error: Path resolves outside the allowed agent directory: ${resolvedPath}`
+    );
+  }
+
+  return resolvedPath;
+}
+
 export async function createSnapshot(
   requestedPath: string,
   agentDir: string,

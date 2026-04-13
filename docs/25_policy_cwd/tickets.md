@@ -13,7 +13,7 @@
 - Run `npm run validate` to ensure TypeScript compilation, linting, and formatting pass without errors.
 
 ## Ticket 2: Smart Output Handling & CLI Output
-**Status**: Not Started
+**Status**: Complete
 
 **Tasks:**
 - Write an E2E test using the `debug` agent template that creates two auto-approved policies: one generating < 500 characters of output, and one generating >= 500 characters. 
@@ -31,7 +31,7 @@
 - Run `npm run validate` to ensure all checks pass.
 
 ## Ticket 3: Path Translation Logic
-**Status**: Not Started
+**Status**: Complete
 
 **Tasks:**
 - Create a path translation helper function (e.g., in `src/daemon/api/router-utils.ts` or `src/daemon/policy-utils.ts`) that takes the sandbox `cwd`, environment `baseDir`, and host `agentDir`.

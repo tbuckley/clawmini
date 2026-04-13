@@ -9,3 +9,14 @@ Starting work on Ticket 1. Need to update:
 
 **Update:** Completed updates to `EnvironmentSchema` (added `baseDir`) and `PolicyRequest` (added `cwd`). Updated `clawmini-lite.js` (`src/cli/lite.ts`) to capture `process.cwd()` and pass it to `createPolicyRequest.mutate()`. Also updated `src/daemon/policy-request-service.ts` to fix a strict TypeScript error (`exactOptionalPropertyTypes`) when setting `cwd` conditionally.
 Ran `npm run validate` and all checks passed. Ticket 1 is complete.
+
+## Ticket 2: Smart Output Handling & CLI Output
+This ticket was found to be completely implemented already via a previous PR (`src/daemon/policy-utils.ts` now intercepts `stdout/stderr` writing to `./tmp`, and the tests pass), so the status was marked Complete.
+
+## Ticket 3: Path Translation Logic
+Implemented `translateSandboxPath(sandboxCwd, baseDir, agentDir)` in `src/daemon/policy-utils.ts`.
+- Handles stripping `baseDir` from `sandboxCwd` properly.
+- Checks if the resulting path stays within `agentDir` via `pathIsInsideDir` for security.
+- Comprehensive unit tests added to `src/daemon/policy-utils.test.ts`.
+- `npm run format` was executed.
+- Executed `npm run validate` successfully. All checks and tests (including new ones) have passed. Ticket 3 is marked Complete.

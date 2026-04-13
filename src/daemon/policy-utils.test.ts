@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { createSnapshot, interpolateArgs, executeSafe, MAX_SNAPSHOT_SIZE } from './policy-utils.js';
+import {
+  createSnapshot,
+  interpolateArgs,
+  executeSafe,
+  MAX_SNAPSHOT_SIZE,
+  translateSandboxPath,
+} from './policy-utils.js';
 
 describe('policy-utils', () => {
   let tempDir: string;
@@ -133,6 +139,70 @@ describe('policy-utils', () => {
       const result = await executeSafe('echo', ['hello', '&&', 'echo', 'injected']);
       expect(result.exitCode).toBe(0);
       expect(result.stdout.trim()).toBe('hello && echo injected');
+    });
+  });
+
+  describe('translateSandboxPath', () => {
+    it('strips baseDir from sandboxCwd and resolves against agentDir', () => {
+      const sandboxCwd = '/app/src/components';
+      const baseDir = '/app';
+      const hostAgentDir = '/Users/host/projects/agent1';
+
+      const result = translateSandboxPath(sandboxCwd, baseDir, hostAgentDir);
+      expect(result).toBe(path.resolve('/Users/host/projects/agent1', 'src/components'));
+    });
+
+    it('handles sandboxCwd exactly matching baseDir', () => {
+      const sandboxCwd = '/app';
+      const baseDir = '/app';
+      const hostAgentDir = '/Users/host/projects/agent1';
+
+      const result = translateSandboxPath(sandboxCwd, baseDir, hostAgentDir);
+      expect(result).toBe(path.resolve('/Users/host/projects/agent1'));
+    });
+
+    it('resolves properly when baseDir is undefined by treating sandboxCwd as relative to agentDir', () => {
+      const sandboxCwd = '/src/index.js';
+      const hostAgentDir = '/Users/host/projects/agent1';
+
+      const result = translateSandboxPath(sandboxCwd, undefined, hostAgentDir);
+      expect(result).toBe(path.resolve('/Users/host/projects/agent1', 'src/index.js'));
+    });
+
+    it('handles sandboxCwd without leading slash when baseDir is undefined', () => {
+      const sandboxCwd = 'src/index.js';
+      const hostAgentDir = '/Users/host/projects/agent1';
+
+      const result = translateSandboxPath(sandboxCwd, undefined, hostAgentDir);
+      expect(result).toBe(path.resolve('/Users/host/projects/agent1', 'src/index.js'));
+    });
+
+    it('throws error on directory escape (path traversal)', () => {
+      const sandboxCwd = '/app/../../etc/passwd';
+      const baseDir = '/app';
+      const hostAgentDir = '/Users/host/projects/agent1';
+
+      expect(() => translateSandboxPath(sandboxCwd, baseDir, hostAgentDir)).toThrow(
+        /Security Error: Path resolves outside the allowed agent directory/
+      );
+    });
+
+    it('throws error if sandboxCwd without baseDir tries to escape', () => {
+      const sandboxCwd = '../outside';
+      const hostAgentDir = '/Users/host/projects/agent1';
+
+      expect(() => translateSandboxPath(sandboxCwd, undefined, hostAgentDir)).toThrow(
+        /Security Error: Path resolves outside the allowed agent directory/
+      );
+    });
+
+    it('allows resolving to the agent directory itself', () => {
+      const sandboxCwd = '/app';
+      const baseDir = '/app';
+      const hostAgentDir = path.resolve('/Users/host/projects/agent1');
+
+      const result = translateSandboxPath(sandboxCwd, baseDir, hostAgentDir);
+      expect(result).toBe(hostAgentDir);
     });
   });
 });
