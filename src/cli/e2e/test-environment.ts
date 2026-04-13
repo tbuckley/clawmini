@@ -171,6 +171,67 @@ export class TestEnvironment {
     return this.runCli(['chats', 'add', id, '--agent', agentName]);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public getSettings(): any {
+    const settingsPath = path.resolve(this.e2eDir, '.clawmini/settings.json');
+    if (fs.existsSync(settingsPath)) {
+      return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    }
+    return {};
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public writeSettings(settings: any) {
+    const settingsPath = path.resolve(this.e2eDir, '.clawmini/settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public getAgentSettings(agentId: string): any {
+    const agentSettingsPath = path.resolve(
+      this.e2eDir,
+      `.clawmini/agents/${agentId}/settings.json`
+    );
+    if (fs.existsSync(agentSettingsPath)) {
+      return JSON.parse(fs.readFileSync(agentSettingsPath, 'utf8'));
+    }
+    return {};
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public writeAgentSettings(agentId: string, settings: any) {
+    const agentSettingsPath = path.resolve(
+      this.e2eDir,
+      `.clawmini/agents/${agentId}/settings.json`
+    );
+    const agentSettingsDir = path.dirname(agentSettingsPath);
+    if (!fs.existsSync(agentSettingsDir)) {
+      fs.mkdirSync(agentSettingsDir, { recursive: true });
+    }
+    fs.writeFileSync(agentSettingsPath, JSON.stringify(settings, null, 2));
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public getChatSettings(chatId: string): any {
+    const chatSettingsPath = path.resolve(this.e2eDir, `.clawmini/chats/${chatId}/settings.json`);
+    if (fs.existsSync(chatSettingsPath)) {
+      return JSON.parse(fs.readFileSync(chatSettingsPath, 'utf8'));
+    }
+    return {};
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public getSessionSettings(agentId: string, sessionId: string): any {
+    const sessionSettingsPath = path.resolve(
+      this.e2eDir,
+      `.clawmini/agents/${agentId}/sessions/${sessionId}/settings.json`
+    );
+    if (fs.existsSync(sessionSettingsPath)) {
+      return JSON.parse(fs.readFileSync(sessionSettingsPath, 'utf8'));
+    }
+    return {};
+  }
+
   public updateSettings(updates: Record<string, unknown>) {
     const settingsPath = path.resolve(this.e2eDir, '.clawmini/settings.json');
     let settings = {};

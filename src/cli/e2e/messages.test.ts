@@ -94,9 +94,7 @@ describe('E2E Messages Tests', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Message sent successfully.');
 
-    const chatSettingsPath = path.resolve(env.e2eDir, '.clawmini/chats/agent-chat/settings.json');
-    expect(fs.existsSync(chatSettingsPath)).toBe(true);
-    const chatSettings = JSON.parse(fs.readFileSync(chatSettingsPath, 'utf8'));
+    const chatSettings = env.getChatSettings('agent-chat');
     expect(chatSettings.defaultAgent).toBe('custom-agent');
 
     const { stderr: stderrFail, code: codeFail } = await env.runCli([
@@ -185,14 +183,13 @@ describe('E2E Messages Tests', () => {
   });
 
   it('should maintain atomic ordering of user and log messages with --no-wait', async () => {
-    const settingsPath = path.resolve(env.e2eDir, '.clawmini/settings.json');
-    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const settings = env.getSettings();
     const oldCmd = settings.defaultAgent?.commands?.new;
 
     settings.defaultAgent = typeof settings.defaultAgent === 'object' ? settings.defaultAgent : {};
     settings.defaultAgent.commands = settings.defaultAgent.commands || {};
     settings.defaultAgent.commands.new = 'sleep 1 && echo $CLAW_CLI_MESSAGE';
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    env.writeSettings(settings);
 
     await env.addChat('order-chat', 'default');
     await env.connect('order-chat');
@@ -210,7 +207,7 @@ describe('E2E Messages Tests', () => {
     const storedMessages = await env.trpcClient!.getMessages.query({ chatId: 'order-chat' });
 
     settings.defaultAgent.commands.new = oldCmd;
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    env.writeSettings(settings);
 
     const commandLogs = storedMessages.filter((m) => m.role === 'command');
     expect(commandLogs).toHaveLength(2);
@@ -225,8 +222,7 @@ describe('E2E Messages Tests', () => {
   }, 10000);
 
   it('should handle full multi-message session workflow (extraction & append)', async () => {
-    const settingsPath = path.resolve(env.e2eDir, '.clawmini/settings.json');
-    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const settings = env.getSettings();
     const oldCmds = settings.defaultAgent?.commands || {};
 
     settings.defaultAgent = typeof settings.defaultAgent === 'object' ? settings.defaultAgent : {};
@@ -236,7 +232,7 @@ describe('E2E Messages Tests', () => {
       getSessionId: 'echo "session-123"',
       getMessageContent: 'sed "s/^/EXTRACTED-/"',
     };
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    env.writeSettings(settings);
 
     await env.addChat('workflow-chat', 'default');
     await env.connect('workflow-chat');
@@ -258,13 +254,8 @@ describe('E2E Messages Tests', () => {
     expect((log1 as CommandLogMessage).stderr).toContain('ERR NEW');
     expect((log1 as CommandLogMessage).stdout).toContain('NEW msg-1');
 
-    const sessionSettings = JSON.parse(
-      fs.readFileSync(
-        path.resolve(env.e2eDir, '.clawmini/agents/default/sessions/default/settings.json'),
-        'utf8'
-      )
-    );
-    expect(sessionSettings.env.SESSION_ID).toBe('session-123');
+    const sessionSettings = env.getSessionSettings('default', 'default');
+    expect(sessionSettings.env?.SESSION_ID).toBe('session-123');
 
     await env.runCli(['messages', 'send', 'msg-2', '--chat', 'workflow-chat']);
 
@@ -284,7 +275,7 @@ describe('E2E Messages Tests', () => {
     expect((log2 as CommandLogMessage).stdout).toContain('APPEND msg-2');
 
     settings.defaultAgent.commands.getMessageContent = 'echo "EXTRACTION_FAIL" >&2 && exit 1';
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    env.writeSettings(settings);
 
     await env.runCli(['messages', 'send', 'msg-3', '--chat', 'workflow-chat']);
 
@@ -304,7 +295,7 @@ describe('E2E Messages Tests', () => {
     );
 
     settings.defaultAgent.commands = oldCmds;
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    env.writeSettings(settings);
 
     await env.disconnect();
   }, 15000);
