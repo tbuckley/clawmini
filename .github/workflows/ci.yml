@@ -56,4 +56,4 @@ jobs:
         run: npx playwright install --with-deps
 
       - name: Run Tests
-        run: npx vitest run src/cli/e2e/smart-output.test.ts --reporter=verbose
+        run: npm run test
