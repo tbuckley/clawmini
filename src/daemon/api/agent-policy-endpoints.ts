@@ -51,12 +51,10 @@ export const createPolicyRequest = apiProcedure
       commandName: z.string(),
       args: z.array(z.string()),
       fileMappings: z.record(z.string(), z.string()),
-      cwd: z
-        .string()
-        .refine((p) => !p.split('/').includes('..') && !p.split('\\').includes('..'), {
-          message: 'cwd must not contain path traversal segments (..)',
-        })
-        .optional(),
+      // Path traversal is guarded by pathIsInsideDir in translateSandboxPath
+      // (policy-utils.ts), which validates the fully-resolved path — not the
+      // raw string — so it covers encoded separators, symlinks, etc.
+      cwd: z.string().optional(),
     })
   )
   .mutation(async ({ input, ctx }) => {
