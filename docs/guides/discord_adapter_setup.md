@@ -11,7 +11,7 @@ This guide describes how to set up and configure the Discord adapter for Clawmin
 
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications).
 2. Click **New Application**.
-3. Give your application a name (e.g., "Clawmini-Bot") and click **Create**.
+3. Give your application a name (e.g., "Clawmini-Bot") and click **Create**. (Optional: Set the App Icon using [this default avatar image](./assets/clawmini-avatar.png)).
 4. In the left sidebar, click **Bot**.
 5. Under **Bot Token**, click **Reset Token** (or **Copy Token**) to retrieve your bot's token. **Save this token securely; you will need it later.**
 6. Scroll down to the **Privileged Gateway Intents** section.

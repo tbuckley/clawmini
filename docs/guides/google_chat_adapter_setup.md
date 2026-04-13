@@ -34,6 +34,7 @@ This step is optional, but recommended.
 4. Navigate to the Google Chat API configuration page.
 5. Uncheck **Build this Chat app as a Workspace add-on**.
 6. Provide App Information (Name, Avatar URL, Description).
+   * **Avatar URL:** You can use [this default avatar image](./assets/clawmini-avatar.png).
 7. Under **Interactive features**, optionally check **Join spaces and group conversations**.
 8. Under **Connection settings**, select **Cloud Pub/Sub**.
 9. Set the Pub/Sub topic to the topic you created earlier (e.g., `projects/YOUR_PROJECT_ID/topics/chat`).
