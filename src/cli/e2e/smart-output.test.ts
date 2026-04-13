@@ -57,9 +57,11 @@ describe('Smart Output E2E', () => {
   }, 30000);
 
   it('should intercept large stdout and return a summary string', async () => {
+    console.log('[DEBUG] creating chat-long-out');
     await runCli(['chats', 'add', 'chat-long-out']);
+    console.log('[DEBUG] chat created, sending message');
 
-    await runCli([
+    const sendResult = await runCli([
       'messages',
       'send',
       `clawmini-lite.js request long-cmd`,
@@ -68,12 +70,14 @@ describe('Smart Output E2E', () => {
       '--agent',
       'debug-agent',
     ]);
+    console.log('[DEBUG] send result:', JSON.stringify(sendResult));
 
     const replyMsg = await waitForMessage(
       e2eDir,
       'chat-long-out',
       (m: Record<string, unknown>) => m.role === 'policy' && m.status === 'approved'
     );
+    console.log('[DEBUG] waitForMessage result:', JSON.stringify(replyMsg));
 
     expect(replyMsg).not.toBeNull();
     expect(replyMsg!.content).toMatch(
@@ -81,6 +85,7 @@ describe('Smart Output E2E', () => {
     );
 
     // Try reading the file
+    console.log('[DEBUG] sending more command');
 
     await runCli([
       'messages',
@@ -100,15 +105,18 @@ describe('Smart Output E2E', () => {
         typeof m.content === 'string' &&
         m.content.includes('more ./tmp/stdout-')
     );
+    console.log('[DEBUG] waitForMessage2 result:', JSON.stringify(replyMsg2));
 
     expect(replyMsg2).not.toBeNull();
     expect(replyMsg2!.content).toContain('a'.repeat(600));
   }, 30000);
 
   it('should intercept large stderr and return a summary string', async () => {
+    console.log('[DEBUG] creating chat-long-err');
     await runCli(['chats', 'add', 'chat-long-err']);
+    console.log('[DEBUG] chat created, sending message');
 
-    await runCli([
+    const sendResult = await runCli([
       'messages',
       'send',
       `clawmini-lite.js request long-err`,
@@ -117,12 +125,14 @@ describe('Smart Output E2E', () => {
       '--agent',
       'debug-agent',
     ]);
+    console.log('[DEBUG] send result:', JSON.stringify(sendResult));
 
     const replyMsg = await waitForMessage(
       e2eDir,
       'chat-long-err',
       (m: Record<string, unknown>) => m.role === 'policy' && m.status === 'approved'
     );
+    console.log('[DEBUG] waitForMessage result:', JSON.stringify(replyMsg));
 
     expect(replyMsg).not.toBeNull();
     expect(replyMsg!.content).toMatch(
