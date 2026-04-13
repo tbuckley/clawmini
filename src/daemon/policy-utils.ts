@@ -5,6 +5,8 @@ import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { pathIsInsideDir } from '../shared/utils/fs.js';
 import type { PolicyRequest, PolicyDefinition } from '../shared/policies.js';
+import { resolveAgentDir } from './api/router-utils.js';
+import { getWorkspaceRoot } from '../shared/workspace.js';
 
 export const MAX_SNAPSHOT_SIZE = 5 * 1024 * 1024;
 
@@ -135,11 +137,27 @@ export async function executeRequest(
   const fullArgs = [...(policy.args || []), ...request.args];
   const interpolatedArgs = interpolateArgs(fullArgs, request.fileMappings);
 
-  const { stdout, stderr, exitCode } = await executeSafe(
-    policy.command,
-    interpolatedArgs,
-    cwd ? { cwd } : undefined
-  );
+  const result = await executeSafe(policy.command, interpolatedArgs, cwd ? { cwd } : undefined);
+  let stdout = result.stdout;
+  let stderr = result.stderr;
+  const exitCode = result.exitCode;
+
+  const agentDir = await resolveAgentDir(request.agentId, getWorkspaceRoot());
+  const tmpDir = path.join(agentDir, 'tmp');
+
+  if (stdout.length >= 500) {
+    await fs.mkdir(tmpDir, { recursive: true });
+    const stdoutPath = path.join(tmpDir, `stdout-${request.id}.txt`);
+    await fs.writeFile(stdoutPath, stdout, 'utf-8');
+    stdout = `stdout is ${stdout.length} characters, saved to ./tmp/stdout-${request.id}.txt\n`;
+  }
+
+  if (stderr.length >= 500) {
+    await fs.mkdir(tmpDir, { recursive: true });
+    const stderrPath = path.join(tmpDir, `stderr-${request.id}.txt`);
+    await fs.writeFile(stderrPath, stderr, 'utf-8');
+    stderr = `stderr is ${stderr.length} characters, saved to ./tmp/stderr-${request.id}.txt\n`;
+  }
 
   const commandStr = `${policy.command} ${interpolatedArgs.join(' ')}`;
   return { stdout, stderr, exitCode, commandStr };
