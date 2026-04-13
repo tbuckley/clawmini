@@ -17,6 +17,7 @@ export interface PolicyRequest {
   commandName: string;
   args: string[];
   fileMappings: Record<string, string>;
+  cwd?: string;
   state: RequestState;
   createdAt: number;
   rejectionReason?: string;

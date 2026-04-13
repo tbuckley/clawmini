@@ -122,6 +122,7 @@ export const EnvironmentSchema = z.looseObject({
   prefix: z.string().optional(),
   envFormat: z.string().optional(),
   exportLiteTo: z.string().optional(),
+  baseDir: z.string().optional(),
   env: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
 });
 

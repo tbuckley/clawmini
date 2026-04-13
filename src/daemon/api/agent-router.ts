@@ -206,6 +206,7 @@ export const createPolicyRequest = apiProcedure
       commandName: z.string(),
       args: z.array(z.string()),
       fileMappings: z.record(z.string(), z.string()),
+      cwd: z.string().optional(),
     })
   )
   .mutation(async ({ input, ctx }) => {
@@ -238,7 +239,8 @@ export const createPolicyRequest = apiProcedure
       chatId,
       agentId,
       isAutoApprove,
-      ctx.tokenPayload.subagentId
+      ctx.tokenPayload.subagentId,
+      input.cwd
     );
 
     if (isAutoApprove) {

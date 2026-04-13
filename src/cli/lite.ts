@@ -280,6 +280,7 @@ program
         commandName: cmdName,
         args: opaqueArgs,
         fileMappings,
+        cwd: process.cwd(),
       });
 
       if (request.executionResult) {
