@@ -57,3 +57,21 @@
 **Verification:**
 - The new Context-Aware Execution E2E test passes.
 - Run `npm run validate` to ensure all system checks pass.
+
+## Ticket 5: DRY Violation for host cwd resolution
+**Status**: Complete
+
+**Tasks:**
+- The logic to resolve the host working directory using `getActiveEnvironmentInfo`, `readEnvironment`, and `translateSandboxPath` is duplicated identically in `src/daemon/api/agent-policy-endpoints.ts` and `src/daemon/routers/slash-policies.ts`. Extract this into a reusable function in `src/daemon/policy-utils.ts`.
+
+**Verification:**
+- Run `npm run validate` to ensure all checks pass.
+
+## Ticket 6: Leftover Debug Logs
+**Status**: Complete
+
+**Tasks:**
+- `src/daemon/policy-utils.ts` contains `console.log` statements in `translateSandboxPath` that were likely meant for debugging and should be removed.
+
+**Verification:**
+- Run `npm run validate` to ensure all checks pass.

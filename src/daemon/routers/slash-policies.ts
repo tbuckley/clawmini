@@ -1,14 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { RouterState } from './types.js';
 import { RequestStore } from '../request-store.js';
-import {
-  readPolicies,
-  getWorkspaceRoot,
-  getActiveEnvironmentInfo,
-  readEnvironment,
-} from '../../shared/workspace.js';
-import { executeRequest, translateSandboxPath } from '../policy-utils.js';
-import { resolveAgentDir } from '../api/router-utils.js';
+import { readPolicies, getWorkspaceRoot } from '../../shared/workspace.js';
+import { executeRequest, resolveRequestCwd } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
 import type { SystemMessage } from '../../shared/chats.js';
 import { executeDirectMessage } from '../message.js';
@@ -63,14 +57,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     req.state = 'Approved';
 
     const workspaceRoot = getWorkspaceRoot();
-    const agentDir = await resolveAgentDir(state.agentId, workspaceRoot);
-    const envInfo = await getActiveEnvironmentInfo(agentDir, workspaceRoot);
-    let baseDir: string | undefined;
-    if (envInfo) {
-      const envConfig = await readEnvironment(envInfo.name, workspaceRoot);
-      baseDir = envConfig?.baseDir;
-    }
-    const hostCwd = req.cwd ? translateSandboxPath(req.cwd, baseDir, agentDir) : workspaceRoot;
+    const hostCwd = await resolveRequestCwd(req.cwd, state.agentId, workspaceRoot);
 
     const { stdout, stderr, exitCode } = await executeRequest(req, policy, hostCwd);
 

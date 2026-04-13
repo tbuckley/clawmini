@@ -6,7 +6,11 @@ import { spawn } from 'node:child_process';
 import { pathIsInsideDir } from '../shared/utils/fs.js';
 import type { PolicyRequest, PolicyDefinition } from '../shared/policies.js';
 import { resolveAgentDir } from './api/router-utils.js';
-import { getWorkspaceRoot } from '../shared/workspace.js';
+import {
+  getWorkspaceRoot,
+  getActiveEnvironmentInfo,
+  readEnvironment,
+} from '../shared/workspace.js';
 
 export const MAX_SNAPSHOT_SIZE = 5 * 1024 * 1024;
 
@@ -33,14 +37,7 @@ export function translateSandboxPath(
     path.isAbsolute(realSandboxCwd) &&
     pathIsInsideDir(realSandboxCwd, realAgentDir, { allowSameDir: true })
   ) {
-    console.log(
-      `[DEBUG] translateSandboxPath: baseDir is undefined, but realSandboxCwd (${realSandboxCwd}) is inside realAgentDir (${realAgentDir}), returning as is.`
-    );
     return realSandboxCwd;
-  } else if (!baseDir) {
-    console.log(
-      `[DEBUG] translateSandboxPath: baseDir is undefined, realSandboxCwd (${realSandboxCwd}) is NOT inside realAgentDir (${realAgentDir}). original: ${sandboxCwd}`
-    );
   }
 
   // Remove leading slash to make it correctly relative when resolving against agentDir
@@ -58,6 +55,21 @@ export function translateSandboxPath(
   }
 
   return resolvedPath;
+}
+
+export async function resolveRequestCwd(
+  requestCwd: string | undefined,
+  agentId: string | undefined,
+  workspaceRoot: string
+): Promise<string> {
+  const agentDir = await resolveAgentDir(agentId, workspaceRoot);
+  const envInfo = await getActiveEnvironmentInfo(agentDir, workspaceRoot);
+  let baseDir: string | undefined;
+  if (envInfo) {
+    const envConfig = await readEnvironment(envInfo.name, workspaceRoot);
+    baseDir = envConfig?.baseDir;
+  }
+  return requestCwd ? translateSandboxPath(requestCwd, baseDir, agentDir) : workspaceRoot;
 }
 
 export async function createSnapshot(

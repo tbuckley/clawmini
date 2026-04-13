@@ -3,13 +3,7 @@ import { TRPCError } from '@trpc/server';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { apiProcedure } from './trpc.js';
-import {
-  getWorkspaceRoot,
-  readPolicies,
-  getClawminiDir,
-  getActiveEnvironmentInfo,
-  readEnvironment,
-} from '../../shared/workspace.js';
+import { getWorkspaceRoot, readPolicies, getClawminiDir } from '../../shared/workspace.js';
 import { resolveAgentDir } from './router-utils.js';
 import { PolicyRequestService } from '../policy-request-service.js';
 import { RequestStore } from '../request-store.js';
@@ -17,7 +11,7 @@ import {
   executeSafe,
   generateRequestPreview,
   executeRequest,
-  translateSandboxPath,
+  resolveRequestCwd,
 } from '../policy-utils.js';
 import { appendMessage, type PolicyRequestMessage } from '../chats.js';
 
@@ -96,16 +90,7 @@ export const createPolicyRequest = apiProcedure
 
     if (isAutoApprove) {
       const workspaceRoot = getWorkspaceRoot();
-      const agentDir = await resolveAgentDir(agentId, workspaceRoot);
-      const envInfo = await getActiveEnvironmentInfo(agentDir, workspaceRoot);
-      let baseDir: string | undefined;
-      if (envInfo) {
-        const envConfig = await readEnvironment(envInfo.name, workspaceRoot);
-        baseDir = envConfig?.baseDir;
-      }
-      const hostCwd = request.cwd
-        ? translateSandboxPath(request.cwd, baseDir, agentDir)
-        : workspaceRoot;
+      const hostCwd = await resolveRequestCwd(request.cwd, agentId, workspaceRoot);
 
       const { stdout, stderr, exitCode, commandStr } = await executeRequest(
         request,
