@@ -21,7 +21,7 @@ describe('Context-Aware Execution E2E', () => {
     });
 
     // Create a subdirectory 'foo' in the debug-agent's directory
-    const agentDir = path.join(e2eDir, '.gemini', 'debug-agent');
+    const agentDir = path.join(e2eDir, 'debug-agent');
     await fs.mkdir(path.join(agentDir, 'foo'), { recursive: true });
   }, 30000);
 
@@ -34,7 +34,7 @@ describe('Context-Aware Execution E2E', () => {
     await runCli([
       'messages',
       'send',
-      `mkdir foo && cd foo && clawmini-lite.js request print-cwd`,
+      `cd foo && clawmini-lite.js request print-cwd`,
       '--chat',
       'chat-cwd',
       '--agent',
@@ -46,13 +46,6 @@ describe('Context-Aware Execution E2E', () => {
       'chat-cwd',
       (m: Record<string, unknown>) => m.role === 'policy' && m.status === 'approved'
     );
-
-    if (!replyMsg) {
-      const fs = await import('node:fs');
-      const file = path.resolve(e2eDir, '.clawmini/chats/chat-cwd/chat.jsonl');
-      console.log('--- FAILURE IN CWD ---');
-      console.log(fs.readFileSync(file, 'utf8'));
-    }
 
     expect(replyMsg).not.toBeNull();
     // The policy's output should contain 'foo' as the current working directory
