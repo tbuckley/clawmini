@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { constants } from 'node:fs';
+import fsSync, { constants } from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -17,8 +17,30 @@ export function translateSandboxPath(
 ): string {
   let relativePath = sandboxCwd;
 
+  let realSandboxCwd = sandboxCwd;
+  let realAgentDir = agentDir;
+  try {
+    realSandboxCwd = fsSync.realpathSync(sandboxCwd);
+    realAgentDir = fsSync.realpathSync(agentDir);
+  } catch {
+    // Ignore errors, fallback to original paths
+  }
+
   if (baseDir && sandboxCwd.startsWith(baseDir)) {
     relativePath = sandboxCwd.slice(baseDir.length);
+  } else if (
+    !baseDir &&
+    path.isAbsolute(realSandboxCwd) &&
+    pathIsInsideDir(realSandboxCwd, realAgentDir, { allowSameDir: true })
+  ) {
+    console.log(
+      `[DEBUG] translateSandboxPath: baseDir is undefined, but realSandboxCwd (${realSandboxCwd}) is inside realAgentDir (${realAgentDir}), returning as is.`
+    );
+    return realSandboxCwd;
+  } else if (!baseDir) {
+    console.log(
+      `[DEBUG] translateSandboxPath: baseDir is undefined, realSandboxCwd (${realSandboxCwd}) is NOT inside realAgentDir (${realAgentDir}). original: ${sandboxCwd}`
+    );
   }
 
   // Remove leading slash to make it correctly relative when resolving against agentDir

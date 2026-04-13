@@ -44,7 +44,7 @@
 - Run `npm run validate` to ensure all checks pass.
 
 ## Ticket 4: Context-Aware Execution Integration
-**Status**: Not Started
+**Status**: Complete
 
 **Tasks:**
 - Write an E2E test using the `debug` agent template where the agent navigates to a subdirectory (e.g., `cd foo`) and invokes a `pwd` policy.
