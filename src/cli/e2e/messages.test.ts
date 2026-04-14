@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
 import { TestEnvironment } from './test-environment.js';
@@ -18,6 +18,10 @@ describe('E2E Messages Tests', () => {
     await env.teardown();
   }, 30000);
 
+  afterEach(async () => {
+    await env.disconnect();
+  });
+
   it('should send a message via the daemon', async () => {
     await env.connect('default');
 
@@ -26,10 +30,7 @@ describe('E2E Messages Tests', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Message sent successfully.');
 
-    const msg = await env.waitForMessage((m) => m.content === 'e2e test message');
-    expect(msg).toBeDefined();
-
-    await env.disconnect();
+    await env.waitForMessage((m) => m.content === 'e2e test message');
   });
 
   it('should send a message to a specific chat', async () => {
@@ -47,10 +48,7 @@ describe('E2E Messages Tests', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Message sent successfully.');
 
-    const msg = await env.waitForMessage((m) => m.content === 'specific chat message');
-    expect(msg).toBeDefined();
-
-    await env.disconnect();
+    await env.waitForMessage((m) => m.content === 'specific chat message');
   });
 
   it('should send a message with a specific session ID', async () => {
@@ -70,10 +68,7 @@ describe('E2E Messages Tests', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Message sent successfully.');
 
-    const msg = await env.waitForMessage((m) => m.content === 'session test message');
-    expect(msg).toBeDefined();
-
-    await env.disconnect();
+    await env.waitForMessage((m) => m.content === 'session test message');
   });
 
   it('should send a message with a specific agent and persist it', async () => {
@@ -109,8 +104,6 @@ describe('E2E Messages Tests', () => {
 
     expect(codeFail).toBe(1);
     expect(stderrFail).toContain("Error: Agent 'non-existent-agent' not found.");
-
-    await env.disconnect();
   });
 
   it('should send a message with a file attachment', async () => {
@@ -133,31 +126,42 @@ describe('E2E Messages Tests', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Message sent successfully.');
 
-    const msg = await env.waitForMessage(
+    await env.waitForMessage(
       (m) =>
         !!(m.content && m.content.includes('here is a file') && m.content.includes('test-attach'))
     );
-    expect(msg).toBeDefined();
-
-    await env.disconnect();
   });
 
   it('should view history with tail and --json flag', async () => {
-    const { stdout, code } = await env.runCli(['messages', 'tail', '--chat', 'specific-chat']);
+    await env.addChat('tail-chat', 'default');
+    await env.connect('tail-chat');
+
+    const { code: sendCode } = await env.runCli([
+      'messages',
+      'send',
+      'tail chat message',
+      '--chat',
+      'tail-chat',
+    ]);
+    expect(sendCode).toBe(0);
+
+    await env.waitForMessage((m) => m.content === 'tail chat message');
+
+    const { stdout, code } = await env.runCli(['messages', 'tail', '--chat', 'tail-chat']);
     expect(code).toBe(0);
     expect(stdout).toContain('[USER]');
-    expect(stdout).toContain('specific chat message');
+    expect(stdout).toContain('tail chat message');
 
     const { stdout: jsonStdout, code: jsonCode } = await env.runCli([
       'messages',
       'tail',
       '--json',
       '--chat',
-      'specific-chat',
+      'tail-chat',
     ]);
     expect(jsonCode).toBe(0);
     expect(jsonStdout).toContain('"role":"user"');
-    expect(jsonStdout).toContain('"content":"specific chat message"');
+    expect(jsonStdout).toContain('"content":"tail chat message"');
   });
 
   it('should return immediately with --no-wait flag', async () => {
@@ -176,10 +180,7 @@ describe('E2E Messages Tests', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Message sent successfully.');
 
-    const msg = await env.waitForMessage((m) => m.content === 'no wait message');
-    expect(msg).toBeDefined();
-
-    await env.disconnect();
+    await env.waitForMessage((m) => m.content === 'no wait message');
   });
 
   it('should maintain atomic ordering of user and log messages with --no-wait', async () => {
@@ -211,8 +212,6 @@ describe('E2E Messages Tests', () => {
     expect(storedMessages[1]!.content).toBe('second');
     expect(commandLogs[0]!.content.trim()).toBe('first');
     expect(commandLogs[1]!.content.trim()).toBe('second');
-
-    await env.disconnect();
   }, 10000);
 
   it('should handle full multi-message session workflow (extraction & append)', async () => {
@@ -231,9 +230,9 @@ describe('E2E Messages Tests', () => {
 
     await env.runCli(['messages', 'send', 'msg-1', '--chat', 'workflow-chat']);
 
-    const log1 = (await env.waitForMessage(
-      (m) => m.role === 'command' && 'command' in m && m.command.includes('ERR NEW')
-    )) as CommandLogMessage;
+    const log1 = await env.waitForMessage(
+      (m): m is CommandLogMessage => m.role === 'command' && m.command.includes('ERR NEW')
+    );
     expect(log1.command).toBe('echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2');
     expect(log1.content).toContain('EXTRACTED-NEW msg-1');
     expect(log1.stderr).toContain('ERR NEW');
@@ -244,9 +243,9 @@ describe('E2E Messages Tests', () => {
 
     await env.runCli(['messages', 'send', 'msg-2', '--chat', 'workflow-chat']);
 
-    const log2 = (await env.waitForMessage(
-      (m) => m.role === 'command' && 'command' in m && m.command.includes('ERR APPEND')
-    )) as CommandLogMessage;
+    const log2 = await env.waitForMessage(
+      (m): m is CommandLogMessage => m.role === 'command' && m.command.includes('ERR APPEND')
+    );
     expect(log2.command).toBe('echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2');
     expect(log2.content).toContain('EXTRACTED-APPEND msg-2');
     expect(log2.stderr).toContain('ERR APPEND');
@@ -259,13 +258,11 @@ describe('E2E Messages Tests', () => {
 
     await env.runCli(['messages', 'send', 'msg-3', '--chat', 'workflow-chat']);
 
-    const log3 = (await env.waitForMessage(
-      (m) => m.role === 'command' && 'stderr' in m && m.stderr.includes('EXTRACTION_FAIL')
-    )) as CommandLogMessage;
+    const log3 = await env.waitForMessage(
+      (m): m is CommandLogMessage => m.role === 'command' && m.stderr.includes('EXTRACTION_FAIL')
+    );
     expect(log3.stdout).toContain('APPEND msg-3');
     expect(log3.stderr).toContain('ERR APPEND');
     expect(log3.stderr).toContain('getMessageContent failed: EXTRACTION_FAIL');
-
-    await env.disconnect();
   }, 15000);
 });

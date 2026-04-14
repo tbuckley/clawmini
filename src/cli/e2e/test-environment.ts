@@ -77,6 +77,8 @@ export class TestEnvironment {
     const customFetch = createUnixSocketFetch(socketPath);
     const CustomEventSource = createUnixSocketEventSource(socketPath);
 
+    this.messageBuffer = [];
+
     this.trpcClient = createTRPCClient<AppRouter>({
       links: [
         splitLink({
@@ -114,8 +116,17 @@ export class TestEnvironment {
       this.subscription = null;
     }
     this.trpcClient = null;
+    this.messageBuffer = [];
   }
 
+  public async waitForMessage<T extends ChatMessage>(
+    predicate: (msg: ChatMessage) => msg is T,
+    timeoutMs?: number
+  ): Promise<T>;
+  public async waitForMessage(
+    predicate: (msg: ChatMessage) => boolean,
+    timeoutMs?: number
+  ): Promise<ChatMessage>;
   public async waitForMessage(
     predicate: (msg: ChatMessage) => boolean,
     timeoutMs: number = 15000
