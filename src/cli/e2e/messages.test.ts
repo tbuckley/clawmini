@@ -183,15 +183,12 @@ describe('E2E Messages Tests', () => {
   });
 
   it('should maintain atomic ordering of user and log messages with --no-wait', async () => {
-    const settings = env.getSettings();
-    const oldCmd = settings.defaultAgent?.commands?.new;
+    await env.addAgent('order-agent');
+    env.writeAgentSettings('order-agent', {
+      commands: { new: 'sleep 1 && echo $CLAW_CLI_MESSAGE' },
+    });
 
-    settings.defaultAgent = typeof settings.defaultAgent === 'object' ? settings.defaultAgent : {};
-    settings.defaultAgent.commands = settings.defaultAgent.commands || {};
-    settings.defaultAgent.commands.new = 'sleep 1 && echo $CLAW_CLI_MESSAGE';
-    env.writeSettings(settings);
-
-    await env.addChat('order-chat', 'default');
+    await env.addChat('order-chat', 'order-agent');
     await env.connect('order-chat');
 
     await env.runCli(['messages', 'send', 'first', '--chat', 'order-chat', '--no-wait']);
@@ -206,9 +203,6 @@ describe('E2E Messages Tests', () => {
     // Retrieve the stored messages via trpcClient to ensure final ordering on disk
     const storedMessages = await env.trpcClient!.getMessages.query({ chatId: 'order-chat' });
 
-    settings.defaultAgent.commands.new = oldCmd;
-    env.writeSettings(settings);
-
     const commandLogs = storedMessages.filter((m) => m.role === 'command');
     expect(commandLogs).toHaveLength(2);
     expect(storedMessages[0]!.role).toBe('user');
@@ -222,80 +216,55 @@ describe('E2E Messages Tests', () => {
   }, 10000);
 
   it('should handle full multi-message session workflow (extraction & append)', async () => {
-    const settings = env.getSettings();
-    const oldCmds = settings.defaultAgent?.commands || {};
+    await env.addAgent('workflow-agent');
+    env.writeAgentSettings('workflow-agent', {
+      commands: {
+        new: 'echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2',
+        append: 'echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2',
+        getSessionId: 'echo "session-123"',
+        getMessageContent: 'sed "s/^/EXTRACTED-/"',
+      },
+    });
 
-    settings.defaultAgent = typeof settings.defaultAgent === 'object' ? settings.defaultAgent : {};
-    settings.defaultAgent.commands = {
-      new: 'echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2',
-      append: 'echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2',
-      getSessionId: 'echo "session-123"',
-      getMessageContent: 'sed "s/^/EXTRACTED-/"',
-    };
-    env.writeSettings(settings);
-
-    await env.addChat('workflow-chat', 'default');
+    await env.addChat('workflow-chat', 'workflow-agent');
     await env.connect('workflow-chat');
 
     await env.runCli(['messages', 'send', 'msg-1', '--chat', 'workflow-chat']);
 
-    const log1 = await env.waitForMessage(
-      (m) =>
-        !!(
-          m.role === 'command' &&
-          (m as CommandLogMessage).command &&
-          (m as CommandLogMessage).command.includes('ERR NEW')
-        )
-    );
-    expect((log1 as CommandLogMessage).command).toBe(
-      'echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2'
-    );
-    expect((log1 as CommandLogMessage).content).toContain('EXTRACTED-NEW msg-1');
-    expect((log1 as CommandLogMessage).stderr).toContain('ERR NEW');
-    expect((log1 as CommandLogMessage).stdout).toContain('NEW msg-1');
+    const log1 = (await env.waitForMessage(
+      (m) => m.role === 'command' && 'command' in m && m.command.includes('ERR NEW')
+    )) as CommandLogMessage;
+    expect(log1.command).toBe('echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2');
+    expect(log1.content).toContain('EXTRACTED-NEW msg-1');
+    expect(log1.stderr).toContain('ERR NEW');
+    expect(log1.stdout).toContain('NEW msg-1');
 
-    const sessionSettings = env.getSessionSettings('default', 'default');
+    const sessionSettings = env.getSessionSettings('workflow-agent', 'default');
     expect(sessionSettings.env?.SESSION_ID).toBe('session-123');
 
     await env.runCli(['messages', 'send', 'msg-2', '--chat', 'workflow-chat']);
 
-    const log2 = await env.waitForMessage(
-      (m) =>
-        !!(
-          m.role === 'command' &&
-          (m as CommandLogMessage).command &&
-          (m as CommandLogMessage).command.includes('ERR APPEND')
-        )
-    );
-    expect((log2 as CommandLogMessage).command).toBe(
-      'echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2'
-    );
-    expect((log2 as CommandLogMessage).content).toContain('EXTRACTED-APPEND msg-2');
-    expect((log2 as CommandLogMessage).stderr).toContain('ERR APPEND');
-    expect((log2 as CommandLogMessage).stdout).toContain('APPEND msg-2');
+    const log2 = (await env.waitForMessage(
+      (m) => m.role === 'command' && 'command' in m && m.command.includes('ERR APPEND')
+    )) as CommandLogMessage;
+    expect(log2.command).toBe('echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2');
+    expect(log2.content).toContain('EXTRACTED-APPEND msg-2');
+    expect(log2.stderr).toContain('ERR APPEND');
+    expect(log2.stdout).toContain('APPEND msg-2');
 
-    settings.defaultAgent.commands.getMessageContent = 'echo "EXTRACTION_FAIL" >&2 && exit 1';
-    env.writeSettings(settings);
+    // Break the extraction command and verify the failure is reported
+    const agentSettings = env.getAgentSettings('workflow-agent');
+    agentSettings.commands.getMessageContent = 'echo "EXTRACTION_FAIL" >&2 && exit 1';
+    env.writeAgentSettings('workflow-agent', agentSettings);
 
     await env.runCli(['messages', 'send', 'msg-3', '--chat', 'workflow-chat']);
 
-    // wait for 3rd command log
-    const log3 = await env.waitForMessage(
-      (m) =>
-        !!(
-          m.role === 'command' &&
-          (m as CommandLogMessage).stderr &&
-          (m as CommandLogMessage).stderr.includes('EXTRACTION_FAIL')
-        )
-    );
-    expect((log3 as CommandLogMessage).stdout).toContain('APPEND msg-3');
-    expect((log3 as CommandLogMessage).stderr).toContain('ERR APPEND');
-    expect((log3 as CommandLogMessage).stderr).toContain(
-      'getMessageContent failed: EXTRACTION_FAIL'
-    );
-
-    settings.defaultAgent.commands = oldCmds;
-    env.writeSettings(settings);
+    const log3 = (await env.waitForMessage(
+      (m) => m.role === 'command' && 'stderr' in m && m.stderr.includes('EXTRACTION_FAIL')
+    )) as CommandLogMessage;
+    expect(log3.stdout).toContain('APPEND msg-3');
+    expect(log3.stderr).toContain('ERR APPEND');
+    expect(log3.stderr).toContain('getMessageContent failed: EXTRACTION_FAIL');
 
     await env.disconnect();
   }, 15000);

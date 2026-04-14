@@ -168,7 +168,21 @@ export class TestEnvironment {
   }
 
   public async addChat(id: string, agentName: string) {
-    return this.runCli(['chats', 'add', id, '--agent', agentName]);
+    const result = await this.runCli(['chats', 'add', id]);
+    // The `chats add` CLI does not accept an agent flag, so persist the
+    // association directly to the chat's settings file.
+    this.writeChatSettings(id, { defaultAgent: agentName });
+    return result;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public writeChatSettings(chatId: string, settings: any) {
+    const chatSettingsPath = path.resolve(this.e2eDir, `.clawmini/chats/${chatId}/settings.json`);
+    const chatSettingsDir = path.dirname(chatSettingsPath);
+    if (!fs.existsSync(chatSettingsDir)) {
+      fs.mkdirSync(chatSettingsDir, { recursive: true });
+    }
+    fs.writeFileSync(chatSettingsPath, JSON.stringify(settings, null, 2));
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
