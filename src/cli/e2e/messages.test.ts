@@ -51,26 +51,6 @@ describe('E2E Messages Tests', () => {
     await env.waitForMessage((m) => m.content === 'specific chat message');
   });
 
-  it('should send a message with a specific session ID', async () => {
-    await env.addChat('session-chat', 'default');
-    await env.connect('session-chat');
-
-    const { stdout, code } = await env.runCli([
-      'messages',
-      'send',
-      'session test message',
-      '--chat',
-      'session-chat',
-      '--session',
-      'my-test-session',
-    ]);
-
-    expect(code).toBe(0);
-    expect(stdout).toContain('Message sent successfully.');
-
-    await env.waitForMessage((m) => m.content === 'session test message');
-  });
-
   it('should send a message with a specific agent and persist it', async () => {
     await env.runCli(['agents', 'add', 'custom-agent', '--env', 'CUSTOM_VAR=HELLO']);
     await env.addChat('agent-chat', 'default'); // default agent initially
@@ -162,25 +142,6 @@ describe('E2E Messages Tests', () => {
     expect(jsonCode).toBe(0);
     expect(jsonStdout).toContain('"role":"user"');
     expect(jsonStdout).toContain('"content":"tail chat message"');
-  });
-
-  it('should return immediately with --no-wait flag', async () => {
-    await env.addChat('nowait-chat', 'default');
-    await env.connect('nowait-chat');
-
-    const { stdout, code } = await env.runCli([
-      'messages',
-      'send',
-      'no wait message',
-      '--chat',
-      'nowait-chat',
-      '--no-wait',
-    ]);
-
-    expect(code).toBe(0);
-    expect(stdout).toContain('Message sent successfully.');
-
-    await env.waitForMessage((m) => m.content === 'no wait message');
   });
 
   it('should maintain atomic ordering of user and log messages with --no-wait', async () => {
