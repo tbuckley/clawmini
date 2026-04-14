@@ -2,15 +2,10 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
-import { spawn } from 'node:child_process';
 import { TestEnvironment } from '../_helpers/test-environment.js';
-import type { CommandLogMessage } from '../../src/daemon/chats.js';
 
 describe('E2E Requests Tests (Lite)', () => {
   let env: TestEnvironment;
-  let litePath = '';
-  let envUrl = '';
-  let envToken = '';
   let agentDir = '';
 
   beforeAll(async () => {
@@ -44,41 +39,15 @@ describe('E2E Requests Tests (Lite)', () => {
       },
     });
 
-    litePath = path.resolve(env.e2eDir, 'clawmini-lite.js');
     agentDir = path.resolve(env.e2eDir, 'debug-agent');
-
-    // Extract API credentials by asking debug-agent to echo its env vars.
-    await env.runCli(['chats', 'add', 'creds-chat']);
-    await env.connect('creds-chat');
-    await env.sendMessage(
-      'echo "URL=$CLAW_API_URL" && echo "TOKEN=$CLAW_API_TOKEN"',
-      { chat: 'creds-chat', agent: 'debug-agent' }
-    );
-    const log = await env.waitForMessage((m): m is CommandLogMessage => m.role === 'command');
-    // Match start-of-line to skip the debug template's own [DEBUG] ... echo
-    // line, which contains the literal text "URL=$CLAW_API_URL".
-    envUrl = log.stdout.match(/^URL=(.+)$/m)![1]!.trim();
-    envToken = log.stdout.match(/^TOKEN=(.+)$/m)![1]!.trim();
-    await env.disconnect();
+    await env.getAgentCredentials();
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
 
-  function runLite(
-    args: string[]
-  ): Promise<{ stdout: string; stderr: string; code: number | null }> {
-    return new Promise((resolve) => {
-      const p = spawn('node', [litePath, ...args], {
-        env: { ...process.env, CLAW_API_URL: envUrl, CLAW_API_TOKEN: envToken },
-        cwd: agentDir,
-      });
-      let stdout = '';
-      let stderr = '';
-      p.stdout.on('data', (d) => (stdout += d.toString()));
-      p.stderr.on('data', (d) => (stderr += d.toString()));
-      p.on('close', (code) => resolve({ stdout, stderr, code }));
-    });
-  }
+  // All requests tests spawn lite from the debug-agent's working dir so
+  // --file relative paths resolve correctly.
+  const runLite = (args: string[]) => env.runLite(args, { cwd: agentDir });
 
   it('should list policies', async () => {
     const { stdout, code } = await runLite(['requests', 'list']);

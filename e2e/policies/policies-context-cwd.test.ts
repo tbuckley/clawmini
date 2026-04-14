@@ -4,10 +4,7 @@ import fsPromises from 'node:fs/promises';
 import { createTRPCClient, httpLink, TRPCClientError } from '@trpc/client';
 import { TestEnvironment } from '../_helpers/test-environment.js';
 import type { AgentRouter } from '../../src/daemon/api/agent-router.js';
-import type {
-  CommandLogMessage,
-  PolicyRequestMessage,
-} from '../../src/daemon/chats.js';
+import type { PolicyRequestMessage } from '../../src/daemon/chats.js';
 
 describe('Context-Aware Execution E2E', () => {
   let env: TestEnvironment;
@@ -57,19 +54,7 @@ describe('Context-Aware Execution E2E', () => {
     let agentClient: ReturnType<typeof createTRPCClient<AgentRouter>>;
 
     beforeAll(async () => {
-      await env.runCli(['chats', 'add', 'creds-chat']);
-      await env.connect('creds-chat');
-      await env.sendMessage(
-        'echo "URL=$CLAW_API_URL" && echo "TOKEN=$CLAW_API_TOKEN"',
-        { chat: 'creds-chat', agent: 'debug-agent' }
-      );
-      const log = await env.waitForMessage((m): m is CommandLogMessage => m.role === 'command');
-      // Match start-of-line to skip the debug template's own [DEBUG] ... echo
-      // line, which contains the literal text "URL=$CLAW_API_URL".
-      const url = log.stdout.match(/^URL=(.+)$/m)![1]!.trim();
-      const token = log.stdout.match(/^TOKEN=(.+)$/m)![1]!.trim();
-      await env.disconnect();
-
+      const { url, token } = await env.getAgentCredentials();
       agentClient = createTRPCClient<AgentRouter>({
         links: [httpLink({ url, headers: () => ({ Authorization: `Bearer ${token}` }) })],
       });

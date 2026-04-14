@@ -7,7 +7,7 @@ import { createTRPCClient, httpLink, splitLink, httpSubscriptionLink } from '@tr
 import type { UserRouter as AppRouter } from '../../src/daemon/api/index.js';
 import { createUnixSocketFetch } from '../../src/shared/fetch.js';
 import { createUnixSocketEventSource } from '../../src/shared/event-source.js';
-import type { ChatMessage } from '../../src/daemon/chats.js';
+import type { ChatMessage, CommandLogMessage } from '../../src/daemon/chats.js';
 
 export async function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -34,6 +34,7 @@ export class TestEnvironment {
   public messageBuffer: ChatMessage[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private subscription: any | null = null;
+  private credentials: { url: string; token: string } | null = null;
 
   constructor(prefix: string) {
     this.id = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -305,6 +306,64 @@ export class TestEnvironment {
     };
     settings = merge(settings, updates);
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  }
+
+  // Extracts CLAW_API_URL/CLAW_API_TOKEN from a debug-agent session. Requires
+  // setupSubagentEnv() to have run (debug-agent + running daemon + exported
+  // lite). Result is cached for the lifetime of the TestEnvironment. Must not
+  // be called while a chat subscription is active — disconnect first.
+  public async getAgentCredentials(): Promise<{ url: string; token: string }> {
+    if (this.credentials) return this.credentials;
+    if (this.subscription) {
+      throw new Error(
+        'getAgentCredentials: a chat subscription is active. Call disconnect() first.'
+      );
+    }
+
+    const chatId = '__creds__';
+    await this.runCli(['chats', 'add', chatId]);
+    await this.connect(chatId);
+    try {
+      await this.sendMessage('echo "URL=$CLAW_API_URL" && echo "TOKEN=$CLAW_API_TOKEN"', {
+        chat: chatId,
+        agent: 'debug-agent',
+      });
+      const log = await this.waitForMessage((m): m is CommandLogMessage => m.role === 'command');
+      // Match start-of-line to skip the debug template's own [DEBUG] ... echo
+      // line, which contains the literal text "URL=$CLAW_API_URL".
+      const url = log.stdout.match(/^URL=(.+)$/m)![1]!.trim();
+      const token = log.stdout.match(/^TOKEN=(.+)$/m)![1]!.trim();
+      this.credentials = { url, token };
+      return this.credentials;
+    } finally {
+      await this.disconnect();
+    }
+  }
+
+  // Spawns the exported clawmini-lite.js with CLAW_API_URL/CLAW_API_TOKEN
+  // populated from the debug-agent. Fetches credentials lazily on first call.
+  public async runLite(
+    args: string[],
+    opts: { cwd?: string; env?: Record<string, string> } = {}
+  ): Promise<{ stdout: string; stderr: string; code: number | null }> {
+    const { url, token } = await this.getAgentCredentials();
+    const litePath = path.resolve(this.e2eDir, 'clawmini-lite.js');
+    return new Promise((resolve) => {
+      const p = spawn('node', [litePath, ...args], {
+        env: {
+          ...process.env,
+          CLAW_API_URL: url,
+          CLAW_API_TOKEN: token,
+          ...opts.env,
+        },
+        cwd: opts.cwd ?? this.e2eDir,
+      });
+      let stdout = '';
+      let stderr = '';
+      p.stdout.on('data', (d) => (stdout += d.toString()));
+      p.stderr.on('data', (d) => (stderr += d.toString()));
+      p.on('close', (code) => resolve({ stdout, stderr, code }));
+    });
   }
 
   public writePolicies(policies: unknown) {
