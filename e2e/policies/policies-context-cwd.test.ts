@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createE2EContext, setupSubagentEnv, waitForMessage } from './utils.js';
+import { createE2EContext, setupSubagentEnv, waitForMessage } from '../_helpers/utils.js';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 

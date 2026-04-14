@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createE2EContext } from './utils.js';
-import { getTRPCClient } from '../../adapter-discord/client.js';
-import { getSocketPath } from '../../shared/workspace.js';
+import { createE2EContext } from '../_helpers/utils.js';
+import { getTRPCClient } from '../../src/adapter-discord/client.js';
+import { getSocketPath } from '../../src/shared/workspace.js';
 
 const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-discord');
 describe('Discord Adapter Client E2E', () => {

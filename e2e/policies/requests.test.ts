@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { createE2EContext } from './utils.js';
+import { createE2EContext } from '../_helpers/utils.js';
 
 const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-tmp-requests');
 

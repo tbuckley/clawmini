@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { createE2EContext } from './utils.js';
+import { createE2EContext } from '../_helpers/utils.js';
 
 const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-export-lite');
 

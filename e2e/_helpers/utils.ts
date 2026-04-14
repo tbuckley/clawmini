@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 
 export function createE2EContext(dirName: string) {
-  const binPath = path.resolve(__dirname, '../../../dist/cli/index.mjs');
+  const binPath = path.resolve(__dirname, '../../dist/cli/index.mjs');
   const e2eDir = path.join(os.homedir(), '.gemini', 'tmp', `clawmini-${dirName}`);
 
   function runCli(

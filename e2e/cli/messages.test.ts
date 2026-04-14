@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { TestEnvironment } from './test-environment.js';
-import type { CommandLogMessage } from '../../daemon/chats.js';
+import { TestEnvironment } from '../_helpers/test-environment.js';
+import type { CommandLogMessage } from '../../src/daemon/chats.js';
 
 describe('E2E Messages Tests', () => {
   let env: TestEnvironment;

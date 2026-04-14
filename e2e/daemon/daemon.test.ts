@@ -2,8 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import { getSocketPath } from '../../shared/workspace.js';
-import { createE2EContext } from './utils.js';
+import { getSocketPath } from '../../src/shared/workspace.js';
+import { createE2EContext } from '../_helpers/utils.js';
 
 const { runCli, e2eDir, binPath, setupE2E, teardownE2E } = createE2EContext('e2e-tmp-daemon');
 
@@ -395,7 +395,7 @@ describe('E2E Daemon and Web Tests', () => {
     const envUrl = urlMatch![1]!.trim();
     const envToken = tokenMatch![1]!.trim();
 
-    const litePath = path.resolve(__dirname, '../../../dist/cli/lite.mjs');
+    const litePath = path.resolve(__dirname, '../../dist/cli/lite.mjs');
     const replyProcess = spawn('node', [litePath, 'reply', 'hello from custom env'], {
       env: {
         ...process.env,

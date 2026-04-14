@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createE2EContext } from './utils.js';
+import { createE2EContext } from '../_helpers/utils.js';
 import fs from 'node:fs';
 import path from 'node:path';
 

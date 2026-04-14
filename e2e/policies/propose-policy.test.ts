@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createE2EContext } from './utils.js';
+import { createE2EContext } from '../_helpers/utils.js';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 describe('propose-policy CLI', () => {
   const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-propose-policy');
-  const binPath = path.resolve(__dirname, '../../../dist/cli/propose-policy.mjs');
+  const binPath = path.resolve(__dirname, '../../dist/cli/propose-policy.mjs');
 
   beforeAll(async () => {
     await setupE2E();
@@ -153,7 +153,7 @@ describe('propose-policy CLI', () => {
 
 describe('propose-policy CLI (uninitialized)', () => {
   const { e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-propose-policy-uninit');
-  const binPath = path.resolve(__dirname, '../../../dist/cli/propose-policy.mjs');
+  const binPath = path.resolve(__dirname, '../../dist/cli/propose-policy.mjs');
 
   beforeAll(async () => {
     await setupE2E();

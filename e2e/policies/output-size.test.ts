@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createE2EContext, setupSubagentEnv, waitForMessage } from './utils.js';
+import { createE2EContext, setupSubagentEnv, waitForMessage } from '../_helpers/utils.js';
 
-const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-smart-output');
+const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-output-size');
 
-describe('Smart Output E2E', () => {
+describe('Output Size E2E', () => {
   beforeAll(async () => {
     await setupE2E();
     await setupSubagentEnv(runCli, e2eDir, {

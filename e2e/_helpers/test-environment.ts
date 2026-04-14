@@ -3,10 +3,10 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { createTRPCClient, httpLink, splitLink, httpSubscriptionLink } from '@trpc/client';
-import type { UserRouter as AppRouter } from '../../daemon/api/index.js';
-import { createUnixSocketFetch } from '../../shared/fetch.js';
-import { createUnixSocketEventSource } from '../../shared/event-source.js';
-import type { ChatMessage } from '../../daemon/chats.js';
+import type { UserRouter as AppRouter } from '../../src/daemon/api/index.js';
+import { createUnixSocketFetch } from '../../src/shared/fetch.js';
+import { createUnixSocketEventSource } from '../../src/shared/event-source.js';
+import type { ChatMessage } from '../../src/daemon/chats.js';
 
 export class TestEnvironment {
   public e2eDir: string;
@@ -20,7 +20,7 @@ export class TestEnvironment {
   constructor(prefix: string) {
     this.id = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     this.e2eDir = path.join(os.homedir(), '.gemini', 'tmp', `clawmini-${this.id}`);
-    this.binPath = path.resolve(__dirname, '../../../dist/cli/index.mjs');
+    this.binPath = path.resolve(__dirname, '../../dist/cli/index.mjs');
   }
 
   public runCli(args: string[]): Promise<{ stdout: string; stderr: string; code: number | null }> {
