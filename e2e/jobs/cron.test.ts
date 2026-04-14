@@ -38,6 +38,20 @@ describe('E2E Cron Tests', () => {
     expect(codeList1).toBe(0);
     expect(stdoutList1).toContain('- test-job-1 (every: 10m)');
 
+    // 2b. Verify flags persisted via JSON output
+    const { stdout: stdoutJson1, code: codeJson1 } = await runCli(['jobs', 'list', '--json']);
+    expect(codeJson1).toBe(0);
+    const jobs1 = JSON.parse(stdoutJson1);
+    expect(jobs1).toHaveLength(1);
+    expect(jobs1[0]).toMatchObject({
+      id: 'test-job-1',
+      message: 'hello world',
+      agentId: 'my-agent',
+      env: { FOO: 'BAR' },
+      session: { type: 'new' },
+      schedule: { every: '10m' },
+    });
+
     // 3. Add a second job using cron expression
     const { stdout: stdoutAdd2, code: codeAdd2 } = await runCli([
       'jobs',
@@ -122,6 +136,10 @@ describe('E2E Cron Tests', () => {
     // It should have used cron-exec-agent, not default
     expect(stdoutHistory).toContain('msg: hello from future');
     // Session ID should not be empty or undefined, it should have been set by the previous message
+
+    // One-off --at jobs should be removed from settings after firing.
+    const { stdout: stdoutListAfter } = await runCli(['jobs', 'list', '-c', 'cron-chat']);
+    expect(stdoutListAfter).not.toContain('test-exec-job');
   }, 10000);
 
   it('should reject jobs with invalid --at date format', async () => {
