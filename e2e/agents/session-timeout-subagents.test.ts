@@ -1,48 +1,47 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import path from 'node:path';
-import fs from 'node:fs';
-import { createE2EContext, setupSubagentEnv, waitForLogMatch } from '../_helpers/utils.js';
-
-const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-timeout-subagents');
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
+import type { CommandLogMessage } from '../../src/daemon/chats.js';
 
 describe('Session Timeout Subagents E2E', () => {
+  let env: TestEnvironment;
+  let chat: ChatSubscription | undefined;
+
   beforeAll(async () => {
-    await setupE2E();
-    await setupSubagentEnv(runCli, e2eDir, {
-      port: 3013,
-    });
+    env = new TestEnvironment('e2e-timeout-subagents');
+    await env.setup();
+    await env.setupSubagentEnv();
   }, 30000);
 
-  afterAll(teardownE2E, 30000);
+  afterAll(() => env.teardown(), 30000);
+  afterEach(async () => {
+    await chat?.disconnect();
+    chat = undefined;
+  });
 
   it('should not schedule a session timeout when a subagent sends a message', async () => {
-    await runCli(['chats', 'add', 'chat-timeout']);
+    await env.runCli(['chats', 'add', 'chat-timeout']);
+    chat = await env.connect('chat-timeout');
 
     // First, send a normal message so we have a timeout job started from the user.
-    await runCli(['messages', 'send', 'hello', '--chat', 'chat-timeout', '--agent', 'debug-agent']);
-
-    // Wait for the user message to be processed
-    await waitForLogMatch(e2eDir, 'chat-timeout', /\[DEBUG\] hello/);
+    await env.sendMessage('hello', { chat: 'chat-timeout', agent: 'debug-agent' });
+    await chat.waitForMessage(
+      (m): m is CommandLogMessage =>
+        m.role === 'command' && m.stdout.includes('[DEBUG] hello')
+    );
 
     // Now let the subagent spawn a message
-    await runCli([
-      'messages',
-      'send',
+    await env.sendMessage(
       'clawmini-lite.js subagents spawn --async "echo subagent-hello"',
-      '--chat',
-      'chat-timeout',
-      '--agent',
-      'debug-agent',
-    ]);
-
-    // Wait for async processing
-    const match = await waitForLogMatch(e2eDir, 'chat-timeout', /\[DEBUG\] echo subagent-hello:/);
-    expect(match).not.toBeNull();
+      { chat: 'chat-timeout', agent: 'debug-agent' }
+    );
+    const subLog = await chat.waitForMessage(
+      (m): m is CommandLogMessage =>
+        m.role === 'command' && m.stdout.includes('[DEBUG] echo subagent-hello:')
+    );
+    expect(subLog).toBeTruthy();
 
     // Check jobs list to verify no duplicate timeout was scheduled for the subagent interaction
-    const chatSettingsPath = path.resolve(e2eDir, '.clawmini/chats/chat-timeout/settings.json');
-    const chatSettings = JSON.parse(fs.readFileSync(chatSettingsPath, 'utf8'));
-    const jobsList = chatSettings.jobs || [];
+    const jobsList = env.getChatSettings('chat-timeout').jobs || [];
     const timeoutJobs = jobsList.filter(
       (j: Record<string, unknown>) =>
         typeof j.id === 'string' && j.id.startsWith('__session_timeout__')
