@@ -1,25 +1,26 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createE2EContext } from '../_helpers/utils.js';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TestEnvironment } from '../_helpers/test-environment.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe('propose-policy CLI', () => {
-  const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-propose-policy');
+  let env: TestEnvironment;
   const binPath = path.resolve(__dirname, '../../dist/cli/propose-policy.mjs');
 
   beforeAll(async () => {
-    await setupE2E();
-    const { code, stderr } = await runCli(['init']);
+    env = new TestEnvironment('e2e-propose-policy');
+    await env.setup();
+    const { code, stderr } = await env.init();
     if (code !== 0) throw new Error(`Init failed: ${stderr}`);
   });
 
   afterAll(async () => {
-    await teardownE2E();
+    await env.teardown();
   });
 
   function runProposePolicy(
@@ -27,7 +28,7 @@ describe('propose-policy CLI', () => {
   ): Promise<{ stdout: string; stderr: string; code: number | null }> {
     return new Promise((resolve) => {
       const child = spawn('node', [binPath, ...args], {
-        cwd: e2eDir,
+        cwd: env.e2eDir,
         env: { ...process.env },
       });
 
@@ -89,7 +90,7 @@ describe('propose-policy CLI', () => {
     expect(code).toBe(0);
     expect(stdout).toContain("Successfully proposed and registered policy 'echo-test'");
 
-    const policiesPath = path.resolve(e2eDir, '.clawmini/policies.json');
+    const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
     const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
 
     expect(policies.policies['echo-test']).toBeDefined();
@@ -100,7 +101,7 @@ describe('propose-policy CLI', () => {
   });
 
   it('should create a policy with a script file', async () => {
-    const scriptPath = path.resolve(e2eDir, 'test-script.sh');
+    const scriptPath = path.resolve(env.e2eDir, 'test-script.sh');
     fs.writeFileSync(scriptPath, '#!/bin/bash\necho "From script"', { mode: 0o755 });
 
     const { stdout, code } = await runProposePolicy([
@@ -115,10 +116,10 @@ describe('propose-policy CLI', () => {
     expect(code).toBe(0);
     expect(stdout).toContain("Successfully proposed and registered policy 'script-test'");
 
-    const destScriptPath = path.resolve(e2eDir, '.clawmini/policy-scripts/script-test.sh');
+    const destScriptPath = path.resolve(env.e2eDir, '.clawmini/policy-scripts/script-test.sh');
     expect(fs.existsSync(destScriptPath)).toBe(true);
 
-    const policiesPath = path.resolve(e2eDir, '.clawmini/policies.json');
+    const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
     const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
 
     expect(policies.policies['script-test']).toBeDefined();
@@ -141,7 +142,7 @@ describe('propose-policy CLI', () => {
     expect(code).toBe(0);
     expect(stdout).toContain("Successfully proposed and registered policy 'echo-test'");
 
-    const policiesPath = path.resolve(e2eDir, '.clawmini/policies.json');
+    const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
     const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
 
     expect(policies.policies['echo-test']).toBeDefined();
@@ -152,16 +153,17 @@ describe('propose-policy CLI', () => {
 });
 
 describe('propose-policy CLI (uninitialized)', () => {
-  const { e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-propose-policy-uninit');
+  let env: TestEnvironment;
   const binPath = path.resolve(__dirname, '../../dist/cli/propose-policy.mjs');
 
   beforeAll(async () => {
-    await setupE2E();
+    env = new TestEnvironment('e2e-propose-policy-uninit');
+    await env.setup();
     // Intentionally not running init
   });
 
   afterAll(async () => {
-    await teardownE2E();
+    await env.teardown();
   });
 
   function runProposePolicy(
@@ -169,7 +171,7 @@ describe('propose-policy CLI (uninitialized)', () => {
   ): Promise<{ stdout: string; stderr: string; code: number | null }> {
     return new Promise((resolve) => {
       const child = spawn('node', [binPath, ...args], {
-        cwd: e2eDir,
+        cwd: env.e2eDir,
         env: { ...process.env },
       });
 

@@ -2,11 +2,29 @@ import { spawn, execSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import net from 'node:net';
 import { createTRPCClient, httpLink, splitLink, httpSubscriptionLink } from '@trpc/client';
 import type { UserRouter as AppRouter } from '../../src/daemon/api/index.js';
 import { createUnixSocketFetch } from '../../src/shared/fetch.js';
 import { createUnixSocketEventSource } from '../../src/shared/event-source.js';
 import type { ChatMessage } from '../../src/daemon/chats.js';
+
+export async function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.on('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const address = srv.address();
+      if (!address || typeof address === 'string') {
+        srv.close();
+        reject(new Error('Failed to get free port'));
+        return;
+      }
+      const port = address.port;
+      srv.close(() => resolve(port));
+    });
+  });
+}
 
 export class TestEnvironment {
   public e2eDir: string;
@@ -178,6 +196,18 @@ export class TestEnvironment {
     return this.runCli(args);
   }
 
+  public async sendMessage(
+    content: string,
+    opts: { chat?: string; agent?: string; file?: string; noWait?: boolean } = {}
+  ) {
+    const args = ['messages', 'send', content];
+    if (opts.chat) args.push('--chat', opts.chat);
+    if (opts.agent) args.push('--agent', opts.agent);
+    if (opts.file) args.push('--file', opts.file);
+    if (opts.noWait) args.push('--no-wait');
+    return this.runCli(args);
+  }
+
   public async addChat(id: string, agentName: string) {
     const result = await this.runCli(['chats', 'add', id]);
     // The `chats add` CLI does not accept an agent flag, so persist the
@@ -292,10 +322,13 @@ export class TestEnvironment {
     await this.init();
     await this.addAgent('debug-agent', { template: 'debug' });
 
+    // Lite-based subagents need a real reachable HTTP port. init() stores
+    // port: 0 for daemon socket tests, but that produces CLAW_API_URL=
+    // http://127.0.0.1:0 which is unreachable. Pick a free port instead.
+    const port = options.port ?? (await findFreePort());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const settingsUpdates: any = {};
+    const settingsUpdates: any = { api: { host: '127.0.0.1', port } };
     if (options.routers) settingsUpdates.routers = options.routers;
-    if (options.port) settingsUpdates.api = { host: '127.0.0.1', port: options.port };
     this.updateSettings(settingsUpdates);
 
     if (options.policies) {

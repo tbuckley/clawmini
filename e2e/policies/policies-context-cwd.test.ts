@@ -1,18 +1,21 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createE2EContext, setupSubagentEnv, waitForMessage } from '../_helpers/utils.js';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import path from 'node:path';
-import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import { createTRPCClient, httpLink, TRPCClientError } from '@trpc/client';
+import { TestEnvironment } from '../_helpers/test-environment.js';
 import type { AgentRouter } from '../../src/daemon/api/agent-router.js';
-
-const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-context-cwd');
+import type {
+  CommandLogMessage,
+  PolicyRequestMessage,
+} from '../../src/daemon/chats.js';
 
 describe('Context-Aware Execution E2E', () => {
+  let env: TestEnvironment;
+
   beforeAll(async () => {
-    await setupE2E();
-    await setupSubagentEnv(runCli, e2eDir, {
-      port: 3018,
+    env = new TestEnvironment('e2e-context-cwd');
+    await env.setup();
+    await env.setupSubagentEnv({
       policies: {
         'print-cwd': {
           description: 'Print the current working directory',
@@ -23,83 +26,52 @@ describe('Context-Aware Execution E2E', () => {
       },
     });
 
-    // Create a subdirectory 'foo' in the debug-agent's directory
-    const agentDir = path.join(e2eDir, 'debug-agent');
-    await fsPromises.mkdir(path.join(agentDir, 'foo'), { recursive: true });
+    // Create a 'foo' subdirectory inside the debug-agent's working directory.
+    await fsPromises.mkdir(path.join(env.e2eDir, 'debug-agent', 'foo'), { recursive: true });
   }, 30000);
 
-  afterAll(teardownE2E, 30000);
+  afterAll(() => env.teardown(), 30000);
+  afterEach(() => env.disconnect());
 
   it('should execute policy in the requested subdirectory', async () => {
-    await runCli(['chats', 'add', 'chat-cwd']);
+    await env.runCli(['chats', 'add', 'chat-cwd']);
+    await env.connect('chat-cwd');
 
-    // Send a message that simulates the agent navigating to 'foo' and calling the policy.
-    await runCli([
-      'messages',
-      'send',
-      `cd foo && clawmini-lite.js request print-cwd`,
-      '--chat',
-      'chat-cwd',
-      '--agent',
-      'debug-agent',
-    ]);
+    // Simulate the agent navigating to 'foo' and calling the policy.
+    await env.sendMessage('cd foo && clawmini-lite.js request print-cwd', {
+      chat: 'chat-cwd',
+      agent: 'debug-agent',
+    });
 
-    const replyMsg = await waitForMessage(
-      e2eDir,
-      'chat-cwd',
-      (m: Record<string, unknown>) => m.role === 'policy' && m.status === 'approved'
+    const policy = await env.waitForMessage(
+      (m): m is PolicyRequestMessage => m.role === 'policy' && m.status === 'approved'
     );
-
-    expect(replyMsg).not.toBeNull();
-    // The policy's output should contain 'foo' as the current working directory
-    expect(replyMsg!.content).toContain('foo');
-
-    // Check that it's actually within the debug-agent's foo folder
-    expect(replyMsg!.content).toContain(path.join('debug-agent', 'foo'));
+    expect(policy.content).toContain(path.join('debug-agent', 'foo'));
   }, 30000);
 
-  // The tests below need to send a *crafted* sandbox-relative cwd directly to
-  // the tRPC endpoint, because lite always sends process.cwd() (an absolute
-  // host path). We extract the debug-agent's API credentials by dumping its
-  // environment into a file via the debug template's shell-eval command.
+  // The tests below send a *crafted* sandbox-relative cwd directly to the
+  // tRPC endpoint, because lite always sends process.cwd() (an absolute host
+  // path). We extract the debug-agent's API credentials by asking it to echo
+  // them to stdout.
   describe('direct tRPC cwd handling', () => {
     let agentClient: ReturnType<typeof createTRPCClient<AgentRouter>>;
 
     beforeAll(async () => {
-      await runCli(['chats', 'add', 'env-dump-chat']);
-      await runCli([
-        'messages',
-        'send',
-        'env > agent-env.txt',
-        '--chat',
-        'env-dump-chat',
-        '--agent',
-        'debug-agent',
-      ]);
-
-      const envFile = path.join(e2eDir, 'debug-agent', 'agent-env.txt');
-      for (let i = 0; i < 40; i++) {
-        if (fs.existsSync(envFile)) break;
-        await new Promise((r) => setTimeout(r, 250));
-      }
-      if (!fs.existsSync(envFile)) {
-        throw new Error('debug-agent env dump never produced agent-env.txt');
-      }
-
-      const envContent = fs.readFileSync(envFile, 'utf8');
-      const url = envContent.match(/CLAW_API_URL=(.+)/)?.[1]?.trim();
-      const token = envContent.match(/CLAW_API_TOKEN=(.+)/)?.[1]?.trim();
-      if (!url || !token) {
-        throw new Error('Could not extract API credentials from agent env');
-      }
+      await env.runCli(['chats', 'add', 'creds-chat']);
+      await env.connect('creds-chat');
+      await env.sendMessage(
+        'echo "URL=$CLAW_API_URL" && echo "TOKEN=$CLAW_API_TOKEN"',
+        { chat: 'creds-chat', agent: 'debug-agent' }
+      );
+      const log = await env.waitForMessage((m): m is CommandLogMessage => m.role === 'command');
+      // Match start-of-line to skip the debug template's own [DEBUG] ... echo
+      // line, which contains the literal text "URL=$CLAW_API_URL".
+      const url = log.stdout.match(/^URL=(.+)$/m)![1]!.trim();
+      const token = log.stdout.match(/^TOKEN=(.+)$/m)![1]!.trim();
+      await env.disconnect();
 
       agentClient = createTRPCClient<AgentRouter>({
-        links: [
-          httpLink({
-            url,
-            headers: () => ({ Authorization: `Bearer ${token}` }),
-          }),
-        ],
+        links: [httpLink({ url, headers: () => ({ Authorization: `Bearer ${token}` }) })],
       });
     }, 30000);
 
@@ -107,17 +79,14 @@ describe('Context-Aware Execution E2E', () => {
       // Configure an environment with a baseDir. The environment matches the
       // debug-agent directory, so when the agent reports cwd `/sandbox/foo`,
       // the server strips `/sandbox` and executes inside `<agentDir>/foo`.
-      const envConfigDir = path.resolve(e2eDir, '.clawmini/environments/sandboxed');
+      const envConfigDir = path.resolve(env.e2eDir, '.clawmini/environments/sandboxed');
       await fsPromises.mkdir(envConfigDir, { recursive: true });
       await fsPromises.writeFile(
         path.join(envConfigDir, 'env.json'),
         JSON.stringify({ baseDir: '/sandbox' })
       );
 
-      const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
-      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-      settings.environments = { ...(settings.environments ?? {}), './debug-agent': 'sandboxed' };
-      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+      env.updateSettings({ environments: { './debug-agent': 'sandboxed' } });
 
       const result = await agentClient.createPolicyRequest.mutate({
         commandName: 'print-cwd',
@@ -134,10 +103,9 @@ describe('Context-Aware Execution E2E', () => {
     it('should reject a cwd that escapes the agent directory', async () => {
       // Remove the environment setup from the previous test so the baseDir
       // branch does not apply here.
-      const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
-      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      const settings = env.getSettings();
       delete settings.environments;
-      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+      env.writeSettings(settings);
 
       await expect(
         agentClient.createPolicyRequest.mutate({
