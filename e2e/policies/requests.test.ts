@@ -40,6 +40,12 @@ describe('E2E Requests Tests (Lite)', () => {
             args: ['autoresult'],
             autoApprove: true,
           },
+          'interp-cmd': {
+            description: 'Auto-approve cat with {{myfile}} interpolation',
+            command: 'cat',
+            args: ['{{myfile}}'],
+            autoApprove: true,
+          },
         },
       })
     );
@@ -177,5 +183,92 @@ describe('E2E Requests Tests (Lite)', () => {
     expect(code).toBe(0);
     // Should output the result of `echo autoresult extra-auto`
     expect(stdout.trim()).toBe('autoresult extra-auto');
+  });
+
+  it('should interpolate {{placeholder}} in policy args with snapshot path', async () => {
+    const sourcePath = path.join(envDumperAgentDir, 'interp-source.txt');
+    await fsPromises.writeFile(sourcePath, 'interpolated file content');
+
+    const { stdout, stderr, code } = await runLite([
+      'request',
+      'interp-cmd',
+      '--file',
+      `myfile=interp-source.txt`,
+    ]);
+
+    expect(stderr).toBe('');
+    expect(code).toBe(0);
+    expect(stdout).toContain('interpolated file content');
+  });
+
+  describe('--file snapshot security', () => {
+    it('should reject a --file path that resolves outside the agent directory', async () => {
+      const { stderr, code } = await runLite([
+        'request',
+        'test-cmd',
+        '--file',
+        `target=../../../etc/hosts`,
+      ]);
+
+      expect(code).toBe(1);
+      expect(stderr).toMatch(/Security Error: Path resolves outside/);
+    });
+
+    it('should reject a --file pointing at an absolute path outside the agent directory', async () => {
+      const { stderr, code } = await runLite([
+        'request',
+        'test-cmd',
+        '--file',
+        `target=/etc/hosts`,
+      ]);
+
+      expect(code).toBe(1);
+      expect(stderr).toMatch(/Security Error: Path resolves outside/);
+    });
+
+    it('should reject a --file that is a symlink', async () => {
+      const linkPath = path.join(envDumperAgentDir, 'link-to-host.txt');
+      fs.symlinkSync('/etc/hosts', linkPath);
+
+      const { stderr, code } = await runLite([
+        'request',
+        'test-cmd',
+        '--file',
+        `target=link-to-host.txt`,
+      ]);
+
+      expect(code).toBe(1);
+      expect(stderr).toMatch(/Security Error: Symlinks are not allowed/);
+    });
+
+    it('should reject a --file larger than the 5MB snapshot cap', async () => {
+      const bigFilePath = path.join(envDumperAgentDir, 'big.bin');
+      await fsPromises.writeFile(bigFilePath, Buffer.alloc(6 * 1024 * 1024));
+
+      const { stderr, code } = await runLite([
+        'request',
+        'test-cmd',
+        '--file',
+        `target=big.bin`,
+      ]);
+
+      expect(code).toBe(1);
+      expect(stderr).toMatch(/exceeds maximum snapshot size of 5MB/);
+    });
+
+    it('should reject a --file pointing at a directory', async () => {
+      const dirPath = path.join(envDumperAgentDir, 'a-directory');
+      fs.mkdirSync(dirPath);
+
+      const { stderr, code } = await runLite([
+        'request',
+        'test-cmd',
+        '--file',
+        `target=a-directory`,
+      ]);
+
+      expect(code).toBe(1);
+      expect(stderr).toMatch(/Requested path is not a file/);
+    });
   });
 });
