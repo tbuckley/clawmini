@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { TestEnvironment } from '../_helpers/test-environment.js';
+import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
 import type { PolicyRequestMessage, SystemMessage } from '../../src/daemon/chats.js';
 
 describe('Policy Flows E2E', () => {
   let env: TestEnvironment;
+  let chat: ChatSubscription | undefined;
+  let secondChat: ChatSubscription | undefined;
 
   beforeAll(async () => {
     env = new TestEnvironment('e2e-policy-flows');
@@ -22,7 +24,12 @@ describe('Policy Flows E2E', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(() => env.disconnect());
+  afterEach(async () => {
+    await chat?.disconnect();
+    await secondChat?.disconnect();
+    chat = undefined;
+    secondChat = undefined;
+  });
 
   const sanitize = (content: string, reqId: string) =>
     content.replace(new RegExp(reqId, 'g'), '<REQ_ID>');
@@ -88,27 +95,27 @@ describe('Policy Flows E2E', () => {
 
   it.each(routeCases)(
     'routes policy notifications ($label)',
-    async ({ chat, spawn, action, event, subagentId, expectedUserContent, expectedActorContent }) => {
-      await env.runCli(['chats', 'add', chat]);
-      await env.connect(chat);
+    async ({ chat: chatId, spawn, action, event, subagentId, expectedUserContent, expectedActorContent }) => {
+      await env.runCli(['chats', 'add', chatId]);
+      chat = await env.connect(chatId);
 
-      await env.sendMessage(spawn, { chat, agent: 'debug-agent' });
+      await env.sendMessage(spawn, { chat: chatId, agent: 'debug-agent' });
 
-      const policy = await env.waitForMessage(
+      const policy = await chat.waitForMessage(
         (m): m is PolicyRequestMessage => m.role === 'policy'
       );
       const reqId = policy.requestId;
 
-      await env.sendMessage(`/${action} ${reqId}`, { chat });
+      await env.sendMessage(`/${action} ${reqId}`, { chat: chatId });
 
-      const userNotif = await env.waitForMessage(
+      const userNotif = await chat.waitForMessage(
         (m): m is SystemMessage =>
           m.role === 'system' && m.event === event && m.displayRole === 'agent'
       );
       expect(userNotif.subagentId).toBeUndefined();
       expect(sanitize(userNotif.content, reqId)).toBe(expectedUserContent);
 
-      const actorNotif = await env.waitForMessage(
+      const actorNotif = await chat.waitForMessage(
         (m): m is SystemMessage =>
           m.role === 'system' &&
           m.event === event &&
@@ -122,7 +129,7 @@ describe('Policy Flows E2E', () => {
 
   it('should list pending requests in /pending output', async () => {
     await env.runCli(['chats', 'add', 'chat-pending-list']);
-    await env.connect('chat-pending-list');
+    chat = await env.connect('chat-pending-list');
 
     await env.sendMessage('clawmini-lite.js request test-cmd', {
       chat: 'chat-pending-list',
@@ -130,12 +137,12 @@ describe('Policy Flows E2E', () => {
     });
 
     const reqId = (
-      await env.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
+      await chat.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
     ).requestId;
 
     await env.sendMessage('/pending', { chat: 'chat-pending-list' });
 
-    const reply = await env.waitForMessage(
+    const reply = await chat.waitForMessage(
       (m): m is SystemMessage =>
         m.role === 'system' &&
         m.event === 'router' &&
@@ -149,7 +156,7 @@ describe('Policy Flows E2E', () => {
 
   it('should persist a custom reason when /reject is given one', async () => {
     await env.runCli(['chats', 'add', 'chat-reject-reason']);
-    await env.connect('chat-reject-reason');
+    chat = await env.connect('chat-reject-reason');
 
     await env.sendMessage('clawmini-lite.js request test-cmd', {
       chat: 'chat-reject-reason',
@@ -157,20 +164,20 @@ describe('Policy Flows E2E', () => {
     });
 
     const reqId = (
-      await env.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
+      await chat.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
     ).requestId;
 
     await env.sendMessage(`/reject ${reqId} command looked suspicious`, {
       chat: 'chat-reject-reason',
     });
 
-    const userMsg = await env.waitForMessage(
+    const userMsg = await chat.waitForMessage(
       (m): m is SystemMessage =>
         m.role === 'system' && m.event === 'policy_rejected' && m.displayRole === 'agent'
     );
     expect(userMsg.content).toContain('command looked suspicious');
 
-    const agentMsg = await env.waitForMessage(
+    const agentMsg = await chat.waitForMessage(
       (m): m is SystemMessage =>
         m.role === 'system' && m.event === 'policy_rejected' && m.displayRole === 'user'
     );
@@ -184,11 +191,11 @@ describe('Policy Flows E2E', () => {
   describe('validation branches', () => {
     it('should reply "Request not found" for /approve with an unknown id', async () => {
       await env.runCli(['chats', 'add', 'chat-notfound']);
-      await env.connect('chat-notfound');
+      chat = await env.connect('chat-notfound');
 
       await env.sendMessage('/approve nonexistent-id', { chat: 'chat-notfound' });
 
-      await env.waitForMessage(
+      await chat.waitForMessage(
         (m): m is SystemMessage =>
           m.role === 'system' &&
           m.event === 'router' &&
@@ -200,7 +207,7 @@ describe('Policy Flows E2E', () => {
     it('should refuse cross-chat /approve', async () => {
       await env.runCli(['chats', 'add', 'chat-owner']);
       await env.runCli(['chats', 'add', 'chat-intruder']);
-      await env.connect('chat-owner');
+      chat = await env.connect('chat-owner');
 
       await env.sendMessage('clawmini-lite.js request test-cmd', {
         chat: 'chat-owner',
@@ -208,15 +215,14 @@ describe('Policy Flows E2E', () => {
       });
 
       const reqId = (
-        await env.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
+        await chat.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
       ).requestId;
 
-      await env.disconnect();
-      await env.connect('chat-intruder');
+      secondChat = await env.connect('chat-intruder');
 
       await env.sendMessage(`/approve ${reqId}`, { chat: 'chat-intruder' });
 
-      await env.waitForMessage(
+      await secondChat.waitForMessage(
         (m): m is SystemMessage =>
           m.role === 'system' &&
           m.event === 'router' &&
@@ -227,7 +233,7 @@ describe('Policy Flows E2E', () => {
 
     it('should refuse /approve on an already-approved request', async () => {
       await env.runCli(['chats', 'add', 'chat-double-approve']);
-      await env.connect('chat-double-approve');
+      chat = await env.connect('chat-double-approve');
 
       await env.sendMessage('clawmini-lite.js request test-cmd', {
         chat: 'chat-double-approve',
@@ -235,19 +241,19 @@ describe('Policy Flows E2E', () => {
       });
 
       const reqId = (
-        await env.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
+        await chat.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
       ).requestId;
 
       await env.sendMessage(`/approve ${reqId}`, { chat: 'chat-double-approve' });
 
       // Wait for the first approval to complete before sending a second one.
-      await env.waitForMessage(
+      await chat.waitForMessage(
         (m): m is SystemMessage => m.role === 'system' && m.event === 'policy_approved'
       );
 
       await env.sendMessage(`/approve ${reqId}`, { chat: 'chat-double-approve' });
 
-      await env.waitForMessage(
+      await chat.waitForMessage(
         (m): m is SystemMessage =>
           m.role === 'system' &&
           m.event === 'router' &&
@@ -269,7 +275,7 @@ describe('Policy Flows E2E', () => {
 
       try {
         await env.runCli(['chats', 'add', 'chat-policy-gone']);
-        await env.connect('chat-policy-gone');
+        chat = await env.connect('chat-policy-gone');
 
         await env.sendMessage('clawmini-lite.js request temp-cmd', {
           chat: 'chat-policy-gone',
@@ -277,7 +283,7 @@ describe('Policy Flows E2E', () => {
         });
 
         const reqId = (
-          await env.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
+          await chat.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
         ).requestId;
 
         // Remove the policy before /approve is processed
@@ -285,7 +291,7 @@ describe('Policy Flows E2E', () => {
 
         await env.sendMessage(`/approve ${reqId}`, { chat: 'chat-policy-gone' });
 
-        await env.waitForMessage(
+        await chat.waitForMessage(
           (m): m is SystemMessage =>
             m.role === 'system' &&
             m.event === 'router' &&

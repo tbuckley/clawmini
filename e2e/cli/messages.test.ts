@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { TestEnvironment } from '../_helpers/test-environment.js';
+import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
 import type { CommandLogMessage } from '../../src/daemon/chats.js';
 
 describe('E2E Messages Tests', () => {
   let env: TestEnvironment;
+  let chat: ChatSubscription | undefined;
 
   beforeAll(async () => {
     env = new TestEnvironment('e2e-tmp-messages');
@@ -19,23 +20,24 @@ describe('E2E Messages Tests', () => {
   }, 30000);
 
   afterEach(async () => {
-    await env.disconnect();
+    await chat?.disconnect();
+    chat = undefined;
   });
 
   it('should send a message via the daemon', async () => {
-    await env.connect('default');
+    chat = await env.connect('default');
 
     const { stdout, code } = await env.runCli(['messages', 'send', 'e2e test message']);
 
     expect(code).toBe(0);
     expect(stdout).toContain('Message sent successfully.');
 
-    await env.waitForMessage((m) => m.content === 'e2e test message');
+    await chat.waitForMessage((m) => m.content === 'e2e test message');
   });
 
   it('should send a message to a specific chat', async () => {
     await env.addChat('specific-chat', 'default');
-    await env.connect('specific-chat');
+    chat = await env.connect('specific-chat');
 
     const { stdout, code } = await env.runCli([
       'messages',
@@ -48,13 +50,13 @@ describe('E2E Messages Tests', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Message sent successfully.');
 
-    await env.waitForMessage((m) => m.content === 'specific chat message');
+    await chat.waitForMessage((m) => m.content === 'specific chat message');
   });
 
   it('should send a message with a specific agent and persist it', async () => {
     await env.runCli(['agents', 'add', 'custom-agent', '--env', 'CUSTOM_VAR=HELLO']);
     await env.addChat('agent-chat', 'default'); // default agent initially
-    await env.connect('agent-chat');
+    chat = await env.connect('agent-chat');
 
     const { stdout, code } = await env.runCli([
       'messages',
@@ -88,7 +90,7 @@ describe('E2E Messages Tests', () => {
 
   it('should send a message with a file attachment', async () => {
     await env.addChat('file-chat', 'default');
-    await env.connect('file-chat');
+    chat = await env.connect('file-chat');
 
     const testFilePath = path.resolve(env.e2eDir, 'test-attach.txt');
     fs.writeFileSync(testFilePath, 'file content');
@@ -106,7 +108,7 @@ describe('E2E Messages Tests', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Message sent successfully.');
 
-    await env.waitForMessage(
+    await chat.waitForMessage(
       (m) =>
         !!(m.content && m.content.includes('here is a file') && m.content.includes('test-attach'))
     );
@@ -114,7 +116,7 @@ describe('E2E Messages Tests', () => {
 
   it('should view history with tail and --json flag', async () => {
     await env.addChat('tail-chat', 'default');
-    await env.connect('tail-chat');
+    chat = await env.connect('tail-chat');
 
     const { code: sendCode } = await env.runCli([
       'messages',
@@ -125,7 +127,7 @@ describe('E2E Messages Tests', () => {
     ]);
     expect(sendCode).toBe(0);
 
-    await env.waitForMessage((m) => m.content === 'tail chat message');
+    await chat.waitForMessage((m) => m.content === 'tail chat message');
 
     const { stdout, code } = await env.runCli(['messages', 'tail', '--chat', 'tail-chat']);
     expect(code).toBe(0);
@@ -151,14 +153,14 @@ describe('E2E Messages Tests', () => {
     });
 
     await env.addChat('order-chat', 'order-agent');
-    await env.connect('order-chat');
+    chat = await env.connect('order-chat');
 
     await env.runCli(['messages', 'send', 'first', '--chat', 'order-chat', '--no-wait']);
     await env.runCli(['messages', 'send', 'second', '--chat', 'order-chat', '--no-wait']);
 
     // We wait for the second command log to arrive.
     // The messages buffer will collect all messages as they arrive via SSE.
-    await env.waitForMessage(
+    await chat.waitForMessage(
       (m) => !!(m.role === 'command' && m.content && m.content.trim() === 'second')
     );
 
@@ -175,6 +177,32 @@ describe('E2E Messages Tests', () => {
     expect(commandLogs[1]!.content.trim()).toBe('second');
   }, 10000);
 
+  it('should no-op (no command log, no agent reply) when the message is whitespace-only', async () => {
+    await env.addAgent('empty-msg-agent');
+    env.writeAgentSettings('empty-msg-agent', {
+      commands: { new: 'echo should-not-run' },
+    });
+    await env.addChat('empty-msg-chat', 'empty-msg-agent');
+    chat = await env.connect('empty-msg-chat');
+
+    const { code } = await env.runCli([
+      'messages',
+      'send',
+      '   ',
+      '--chat',
+      'empty-msg-chat',
+    ]);
+    expect(code).toBe(0);
+
+    // The user message is still persisted before the short-circuit,
+    await chat.waitForMessage((m) => m.role === 'user' && m.content.trim() === '');
+    // but handleMessage bails before the agent runs: no command log, no reply.
+    await new Promise((r) => setTimeout(r, 500));
+    expect(chat.messageBuffer.some((m) => m.role === 'command' || m.role === 'agent')).toBe(
+      false
+    );
+  });
+
   it('should handle full multi-message session workflow (extraction & append)', async () => {
     await env.addAgent('workflow-agent');
     env.writeAgentSettings('workflow-agent', {
@@ -187,11 +215,11 @@ describe('E2E Messages Tests', () => {
     });
 
     await env.addChat('workflow-chat', 'workflow-agent');
-    await env.connect('workflow-chat');
+    chat = await env.connect('workflow-chat');
 
     await env.runCli(['messages', 'send', 'msg-1', '--chat', 'workflow-chat']);
 
-    const log1 = await env.waitForMessage(
+    const log1 = await chat.waitForMessage(
       (m): m is CommandLogMessage => m.role === 'command' && m.command.includes('ERR NEW')
     );
     expect(log1.command).toBe('echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2');
@@ -204,7 +232,7 @@ describe('E2E Messages Tests', () => {
 
     await env.runCli(['messages', 'send', 'msg-2', '--chat', 'workflow-chat']);
 
-    const log2 = await env.waitForMessage(
+    const log2 = await chat.waitForMessage(
       (m): m is CommandLogMessage => m.role === 'command' && m.command.includes('ERR APPEND')
     );
     expect(log2.command).toBe('echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2');
@@ -219,7 +247,7 @@ describe('E2E Messages Tests', () => {
 
     await env.runCli(['messages', 'send', 'msg-3', '--chat', 'workflow-chat']);
 
-    const log3 = await env.waitForMessage(
+    const log3 = await chat.waitForMessage(
       (m): m is CommandLogMessage => m.role === 'command' && m.stderr.includes('EXTRACTION_FAIL')
     );
     expect(log3.stdout).toContain('APPEND msg-3');

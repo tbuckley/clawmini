@@ -26,14 +26,22 @@ export async function findFreePort(): Promise<number> {
   });
 }
 
+export interface ChatSubscription {
+  messageBuffer: ChatMessage[];
+  waitForMessage<T extends ChatMessage>(
+    predicate: (msg: ChatMessage) => msg is T,
+    timeoutMs?: number
+  ): Promise<T>;
+  waitForMessage(predicate: (msg: ChatMessage) => boolean, timeoutMs?: number): Promise<ChatMessage>;
+  disconnect(): Promise<void>;
+}
+
 export class TestEnvironment {
   public e2eDir: string;
   public binPath: string;
   public id: string;
   public trpcClient: ReturnType<typeof createTRPCClient<AppRouter>> | null = null;
-  public messageBuffer: ChatMessage[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private subscription: any | null = null;
+  private openSubscriptions: Set<ChatSubscription> = new Set();
   private credentials: { url: string; token: string } | null = null;
 
   constructor(prefix: string) {
@@ -80,23 +88,62 @@ export class TestEnvironment {
     });
   }
 
-  public async connect(chatId: string = 'default-chat') {
-    const socketPath = path.join(this.e2eDir, '.clawmini', 'daemon.sock');
+  public async connect(chatId: string = 'default'): Promise<ChatSubscription> {
+    await this.ensureTrpcClient();
 
-    // Wait for socket to exist
+    const messageBuffer: ChatMessage[] = [];
+    const sub = this.trpcClient!.waitForMessages.subscribe(
+      { chatId },
+      {
+        onData: (messages) => {
+          messageBuffer.push(...messages);
+        },
+        onError: (err) => {
+          console.error('Subscription error:', err);
+        },
+      }
+    );
+
+    const handle: ChatSubscription = {
+      messageBuffer,
+      waitForMessage: (
+        predicate: (msg: ChatMessage) => boolean,
+        timeoutMs: number = 15000
+      ): Promise<ChatMessage> => {
+        return (async () => {
+          const startTime = Date.now();
+          while (Date.now() - startTime < timeoutMs) {
+            const match = messageBuffer.find(predicate);
+            if (match) return match;
+            await new Promise((r) => setTimeout(r, 100));
+          }
+          throw new Error(`waitForMessage timed out after ${timeoutMs}ms`);
+        })();
+      },
+      disconnect: async () => {
+        sub.unsubscribe();
+        this.openSubscriptions.delete(handle);
+      },
+    };
+
+    this.openSubscriptions.add(handle);
+    return handle;
+  }
+
+  private async ensureTrpcClient() {
+    if (this.trpcClient) return;
+
+    const socketPath = path.join(this.e2eDir, '.clawmini', 'daemon.sock');
     for (let i = 0; i < 50; i++) {
       if (fs.existsSync(socketPath)) break;
       await new Promise((r) => setTimeout(r, 100));
     }
-
     if (!fs.existsSync(socketPath)) {
       throw new Error(`Daemon socket not found at ${socketPath}`);
     }
 
     const customFetch = createUnixSocketFetch(socketPath);
     const CustomEventSource = createUnixSocketEventSource(socketPath);
-
-    this.messageBuffer = [];
 
     this.trpcClient = createTRPCClient<AppRouter>({
       links: [
@@ -115,48 +162,6 @@ export class TestEnvironment {
         }),
       ],
     });
-
-    this.subscription = this.trpcClient.waitForMessages.subscribe(
-      { chatId },
-      {
-        onData: (messages) => {
-          this.messageBuffer.push(...messages);
-        },
-        onError: (err) => {
-          console.error('Subscription error:', err);
-        },
-      }
-    );
-  }
-
-  public async disconnect() {
-    if (this.subscription) {
-      this.subscription.unsubscribe();
-      this.subscription = null;
-    }
-    this.trpcClient = null;
-    this.messageBuffer = [];
-  }
-
-  public async waitForMessage<T extends ChatMessage>(
-    predicate: (msg: ChatMessage) => msg is T,
-    timeoutMs?: number
-  ): Promise<T>;
-  public async waitForMessage(
-    predicate: (msg: ChatMessage) => boolean,
-    timeoutMs?: number
-  ): Promise<ChatMessage>;
-  public async waitForMessage(
-    predicate: (msg: ChatMessage) => boolean,
-    timeoutMs: number = 15000
-  ): Promise<ChatMessage> {
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeoutMs) {
-      const match = this.messageBuffer.find(predicate);
-      if (match) return match;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    throw new Error(`waitForMessage timed out after ${timeoutMs}ms`);
   }
 
   public async setup() {
@@ -168,7 +173,10 @@ export class TestEnvironment {
   }
 
   public async teardown() {
-    await this.disconnect();
+    for (const sub of [...this.openSubscriptions]) {
+      await sub.disconnect();
+    }
+    this.trpcClient = null;
     if (fs.existsSync(this.e2eDir)) {
       await this.runCli(['down']);
       if (fs.existsSync(this.e2eDir)) {
@@ -310,25 +318,19 @@ export class TestEnvironment {
 
   // Extracts CLAW_API_URL/CLAW_API_TOKEN from a debug-agent session. Requires
   // setupSubagentEnv() to have run (debug-agent + running daemon + exported
-  // lite). Result is cached for the lifetime of the TestEnvironment. Must not
-  // be called while a chat subscription is active — disconnect first.
+  // lite). Result is cached for the lifetime of the TestEnvironment.
   public async getAgentCredentials(): Promise<{ url: string; token: string }> {
     if (this.credentials) return this.credentials;
-    if (this.subscription) {
-      throw new Error(
-        'getAgentCredentials: a chat subscription is active. Call disconnect() first.'
-      );
-    }
 
     const chatId = '__creds__';
     await this.runCli(['chats', 'add', chatId]);
-    await this.connect(chatId);
+    const chat = await this.connect(chatId);
     try {
       await this.sendMessage('echo "URL=$CLAW_API_URL" && echo "TOKEN=$CLAW_API_TOKEN"', {
         chat: chatId,
         agent: 'debug-agent',
       });
-      const log = await this.waitForMessage((m): m is CommandLogMessage => m.role === 'command');
+      const log = await chat.waitForMessage((m): m is CommandLogMessage => m.role === 'command');
       // Match start-of-line to skip the debug template's own [DEBUG] ... echo
       // line, which contains the literal text "URL=$CLAW_API_URL".
       const url = log.stdout.match(/^URL=(.+)$/m)![1]!.trim();
@@ -336,7 +338,7 @@ export class TestEnvironment {
       this.credentials = { url, token };
       return this.credentials;
     } finally {
-      await this.disconnect();
+      await chat.disconnect();
     }
   }
 

@@ -2,12 +2,13 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import path from 'node:path';
 import fsPromises from 'node:fs/promises';
 import { createTRPCClient, httpLink, TRPCClientError } from '@trpc/client';
-import { TestEnvironment } from '../_helpers/test-environment.js';
+import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
 import type { AgentRouter } from '../../src/daemon/api/agent-router.js';
 import type { PolicyRequestMessage } from '../../src/daemon/chats.js';
 
 describe('Context-Aware Execution E2E', () => {
   let env: TestEnvironment;
+  let chat: ChatSubscription | undefined;
 
   beforeAll(async () => {
     env = new TestEnvironment('e2e-context-cwd');
@@ -28,11 +29,14 @@ describe('Context-Aware Execution E2E', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(() => env.disconnect());
+  afterEach(async () => {
+    await chat?.disconnect();
+    chat = undefined;
+  });
 
   it('should execute policy in the requested subdirectory', async () => {
     await env.runCli(['chats', 'add', 'chat-cwd']);
-    await env.connect('chat-cwd');
+    chat = await env.connect('chat-cwd');
 
     // Simulate the agent navigating to 'foo' and calling the policy.
     await env.sendMessage('cd foo && clawmini-lite.js request print-cwd', {
@@ -40,7 +44,7 @@ describe('Context-Aware Execution E2E', () => {
       agent: 'debug-agent',
     });
 
-    const policy = await env.waitForMessage(
+    const policy = await chat.waitForMessage(
       (m): m is PolicyRequestMessage => m.role === 'policy' && m.status === 'approved'
     );
     expect(policy.content).toContain(path.join('debug-agent', 'foo'));

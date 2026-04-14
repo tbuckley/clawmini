@@ -1,91 +1,59 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import path from 'node:path';
-import fs from 'node:fs';
-import { createE2EContext } from '../_helpers/utils.js';
-
-const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-slash-new');
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
+import type { CommandLogMessage } from '../../src/daemon/chats.js';
 
 describe('/new Command E2E', () => {
-  beforeAll(async () => {
-    await setupE2E();
-    await runCli(['init', '--agent', 'test-agent', '--agent-template', 'debug']);
+  let env: TestEnvironment;
+  let chat: ChatSubscription | undefined;
 
-    const agentSettingsPath = path.join(
-      e2eDir,
-      '.clawmini',
-      'agents',
-      'test-agent',
-      'settings.json'
-    );
-    const agentSettings = JSON.parse(fs.readFileSync(agentSettingsPath, 'utf8'));
+  beforeAll(async () => {
+    env = new TestEnvironment('e2e-slash-new');
+    await env.setup();
+    await env.runCli(['init', '--agent', 'test-agent', '--agent-template', 'debug']);
+
+    const agentSettings = env.getAgentSettings('test-agent');
     agentSettings.commands.new = 'echo "[DEBUG NEW $SESSION_ID] $CLAW_CLI_MESSAGE"';
     agentSettings.commands.append = 'echo "[DEBUG APPEND $SESSION_ID] $CLAW_CLI_MESSAGE"';
-    fs.writeFileSync(agentSettingsPath, JSON.stringify(agentSettings, null, 2));
+    env.writeAgentSettings('test-agent', agentSettings);
+
+    await env.up();
   }, 30000);
 
-  afterAll(async () => {
-    await teardownE2E();
-  }, 30000);
+  afterAll(() => env.teardown(), 30000);
+  afterEach(async () => {
+    await chat?.disconnect();
+    chat = undefined;
+  });
 
-  function getMessages(stdout: string) {
-    return stdout
-      .trim()
-      .split('\n')
-      .filter((l) => l.trim().startsWith('{') && l.trim().endsWith('}'))
-      .map((l) => {
-        try {
-          return JSON.parse(l);
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
-  }
+  it('resets the session ID when /new is sent', async () => {
+    chat = await env.connect('test-agent');
 
-  function getAgentResponse(messages: any[], userMessage: string) {
-    return messages.find(
-      (m) => m.content && m.content.includes(userMessage) && m.content.includes('[DEBUG')
+    const { code } = await env.sendMessage('message 1');
+    expect(code).toBe(0);
+
+    await env.sendMessage('message 2');
+
+    const msg2Log = await chat.waitForMessage(
+      (m): m is CommandLogMessage =>
+        m.role === 'command' &&
+        typeof m.stdout === 'string' &&
+        m.stdout.includes('message 2') &&
+        m.stdout.includes('[DEBUG APPEND')
     );
-  }
-
-  it('should reset the session ID when /new is sent', async () => {
-    // 1. Send an initial message
-    const { code } = await runCli(['messages', 'send', 'message 1']);
-    expect(code).toBe(0); // 2. Send another message to get an append
-    await runCli(['messages', 'send', 'message 2']);
-
-    // Get the first session ID
-    const { stdout: history } = await runCli(['messages', 'tail', '-n', '30', '--json']);
-    let messages = getMessages(history);
-
-    const msg1Log = getAgentResponse(messages, 'message 1');
-    expect(msg1Log).toBeDefined();
-    const msg2Log = getAgentResponse(messages, 'message 2');
-    expect(msg2Log).toBeDefined();
-
-    // message 2 should be appended to the first session
-    const firstSessionMatch = msg2Log.content.match(/\[DEBUG APPEND (.*?)\]/);
-    expect(firstSessionMatch).toBeTruthy();
-    const firstSessionId = firstSessionMatch[1];
+    const firstSessionId = msg2Log.stdout.match(/\[DEBUG APPEND (.*?)\]/)?.[1];
     expect(firstSessionId).toBeTruthy();
 
-    // 3. Send /new
-    await runCli(['messages', 'send', '/new']);
+    await env.sendMessage('/new');
+    await env.sendMessage('message 3');
 
-    // 4. Send a third message
-    await runCli(['messages', 'send', 'message 3']);
-
-    // 5. Check the session ID of the third message
-    const { stdout: history2 } = await runCli(['messages', 'tail', '-n', '30', '--json']);
-    messages = getMessages(history2);
-
-    const msg3Log = getAgentResponse(messages, 'message 3');
-    expect(msg3Log).toBeDefined();
-
-    // Because it's a new session, it should use the 'new' command
-    expect(msg3Log.content).toContain('[DEBUG NEW ]');
-
-    // It should NOT be appended
-    expect(msg3Log.content).not.toContain('[DEBUG APPEND');
+    const msg3Log = await chat.waitForMessage(
+      (m): m is CommandLogMessage =>
+        m.role === 'command' &&
+        typeof m.stdout === 'string' &&
+        m.stdout.includes('message 3') &&
+        m.stdout.includes('[DEBUG')
+    );
+    expect(msg3Log.stdout).toContain('[DEBUG NEW ]');
+    expect(msg3Log.stdout).not.toContain('[DEBUG APPEND');
   }, 30000);
 });
