@@ -1,103 +1,85 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { createE2EContext } from '../_helpers/utils.js';
-
-const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-tmp-fallbacks');
+import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
+import type { AgentReplyMessage, CommandLogMessage } from '../../src/daemon/chats.js';
 
 describe('E2E Fallbacks Tests', () => {
+  let env: TestEnvironment;
+  let chat: ChatSubscription | undefined;
+
   beforeAll(async () => {
-    await setupE2E();
-    await runCli(['init']);
+    env = new TestEnvironment('e2e-fallbacks');
+    await env.setup();
+    await env.init();
+    await env.up();
   }, 30000);
 
-  afterAll(teardownE2E, 30000);
+  afterAll(() => env.teardown(), 30000);
+  afterEach(async () => {
+    await chat?.disconnect();
+    chat = undefined;
+  });
+
+  // updateSettings() deep-merges, which would leak `commands` keys between
+  // tests (e.g. test 2's getMessageContent bleeding into test 3). Replace
+  // defaultAgent wholesale instead.
+  function setDefaultAgent(defaultAgent: unknown) {
+    env.writeSettings({ ...env.getSettings(), defaultAgent });
+  }
 
   it('should fallback when base agent fails with exit code', async () => {
-    const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
-    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-
-    settings.defaultAgent = {
+    setDefaultAgent({
       commands: {
         new: 'if [ "$SUCCESS" = "true" ]; then echo "Succeeded"; else echo "Failed" >&2; exit 1; fi',
       },
-      fallbacks: [
-        {
-          env: { SUCCESS: 'true' },
-          retries: 0,
-          delayMs: 100,
-        },
-      ],
-    };
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+      fallbacks: [{ env: { SUCCESS: 'true' }, retries: 0, delayMs: 100 }],
+    });
 
-    await runCli(['chats', 'add', 'fb-chat-1']);
-    await runCli(['messages', 'send', 'test-1', '--chat', 'fb-chat-1']);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await env.runCli(['chats', 'add', 'fb-chat-1']);
+    chat = await env.connect('fb-chat-1');
+    await env.sendMessage('test-1', { chat: 'fb-chat-1' });
 
-    const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/fb-chat-1/chat.jsonl');
-    const chatLog = fs.readFileSync(chatLogPath, 'utf8');
-    const lines = chatLog
-      .trim()
-      .split('\n')
-      .filter((l) => l.trim().length > 0)
-      .map((l) => JSON.parse(l));
-
-    // Lines: USER, LOG (retry-delay), LOG (success)
-    expect(lines.some((l) => l.role === 'command' && l.content.includes('retrying'))).toBe(true);
-    const commandLogs = lines.filter((l) => l.role === 'command');
-    const lastLog = commandLogs[commandLogs.length - 1];
-    expect(lastLog.role).toBe('command');
-    expect(lastLog.content.trim()).toBe('Succeeded');
-    expect(lastLog.exitCode).toBe(0);
+    const success = await chat.waitForMessage(
+      (m): m is CommandLogMessage =>
+        m.role === 'command' && m.stdout.trim() === 'Succeeded' && m.exitCode === 0
+    );
+    expect(success).toBeTruthy();
+    expect(
+      chat.messageBuffer.some((m) => m.role === 'command' && m.content.includes('retrying'))
+    ).toBe(true);
   });
 
   it('should fallback when base agent returns empty content', async () => {
-    const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
-    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-
-    settings.defaultAgent = {
+    setDefaultAgent({
       commands: {
         new: 'echo "Base output"',
-        getMessageContent: 'echo ""', // Empty content
+        getMessageContent: 'echo ""',
       },
       fallbacks: [
         {
-          commands: {
-            getMessageContent: 'echo "Fallback success"',
-          },
+          commands: { getMessageContent: 'echo "Fallback success"' },
           retries: 0,
           delayMs: 100,
         },
       ],
-    };
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    });
 
-    await runCli(['chats', 'add', 'fb-chat-2']);
-    await runCli(['messages', 'send', 'test-2', '--chat', 'fb-chat-2']);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await env.runCli(['chats', 'add', 'fb-chat-2']);
+    chat = await env.connect('fb-chat-2');
+    await env.sendMessage('test-2', { chat: 'fb-chat-2' });
 
-    const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/fb-chat-2/chat.jsonl');
-    const chatLog = fs.readFileSync(chatLogPath, 'utf8');
-    const lines = chatLog
-      .trim()
-      .split('\n')
-      .filter((l) => l.trim().length > 0)
-      .map((l) => JSON.parse(l));
-
-    const lastLog = lines[lines.length - 1];
-    expect(lastLog.content.trim()).toBe('Fallback success');
+    const reply = await chat.waitForMessage(
+      (m): m is AgentReplyMessage => m.role === 'agent'
+    );
+    expect(reply.content.trim()).toBe('Fallback success');
   });
 
   it('should support multiple retries with exponential backoff logs', async () => {
-    const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
-    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-
-    // Use a file to track attempts
-    const attemptFile = path.resolve(e2eDir, 'attempts.txt');
+    const attemptFile = path.resolve(env.e2eDir, 'attempts.txt');
     fs.writeFileSync(attemptFile, '0');
 
-    settings.defaultAgent = {
+    setDefaultAgent({
       commands: {
         new: `
           attempts=$(cat ${attemptFile})
@@ -110,41 +92,27 @@ describe('E2E Fallbacks Tests', () => {
           fi
         `,
       },
-      fallbacks: [
-        {
-          retries: 2,
-          delayMs: 100,
-        },
-      ],
-    };
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+      fallbacks: [{ retries: 2, delayMs: 100 }],
+    });
 
-    await runCli(['chats', 'add', 'fb-chat-3']);
-    await runCli(['messages', 'send', 'test-3', '--chat', 'fb-chat-3']);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await env.runCli(['chats', 'add', 'fb-chat-3']);
+    chat = await env.connect('fb-chat-3');
+    await env.sendMessage('test-3', { chat: 'fb-chat-3' });
 
-    const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/fb-chat-3/chat.jsonl');
-    const chatLog = fs.readFileSync(chatLogPath, 'utf8');
-    const lines = chatLog
-      .trim()
-      .split('\n')
-      .filter((l) => l.trim().length > 0)
-      .map((l) => JSON.parse(l));
-
+    const success = await chat.waitForMessage(
+      (m): m is CommandLogMessage =>
+        m.role === 'command' && m.stdout.trim() === 'Third time is a charm'
+    );
+    expect(success).toBeTruthy();
     expect(
-      lines.filter((l) => l.role === 'command' && l.content.includes('retrying')).length
+      chat.messageBuffer.filter((m) => m.role === 'command' && m.content.includes('retrying'))
+        .length
     ).toBeGreaterThanOrEqual(1);
-    expect(lines[lines.length - 1].content.trim()).toBe('Third time is a charm');
   }, 10000);
 
   it('should report final failure when all fallbacks are exhausted', async () => {
-    const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
-    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-
-    settings.defaultAgent = {
-      commands: {
-        new: 'exit 1',
-      },
+    setDefaultAgent({
+      commands: { new: 'exit 1' },
       fallbacks: [
         {
           commands: { new: 'echo "Fallback 1 fail" && exit 1' },
@@ -152,24 +120,16 @@ describe('E2E Fallbacks Tests', () => {
           delayMs: 100,
         },
       ],
-    };
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    });
 
-    await runCli(['chats', 'add', 'fb-chat-4']);
-    await runCli(['messages', 'send', 'test-4', '--chat', 'fb-chat-4']);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await env.runCli(['chats', 'add', 'fb-chat-4']);
+    chat = await env.connect('fb-chat-4');
+    await env.sendMessage('test-4', { chat: 'fb-chat-4' });
 
-    const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/fb-chat-4/chat.jsonl');
-    const chatLog = fs.readFileSync(chatLogPath, 'utf8');
-    const lines = chatLog
-      .trim()
-      .split('\n')
-      .filter((l) => l.trim().length > 0)
-      .map((l) => JSON.parse(l));
-
-    const commandLogs = lines.filter((l) => l.role === 'command');
-    const lastLog = commandLogs[commandLogs.length - 1];
-    expect(lastLog.exitCode).toBe(1);
-    expect(lastLog.stdout.trim()).toBe('Fallback 1 fail');
+    const failure = await chat.waitForMessage(
+      (m): m is CommandLogMessage =>
+        m.role === 'command' && m.stdout.trim() === 'Fallback 1 fail' && m.exitCode === 1
+    );
+    expect(failure).toBeTruthy();
   });
 });

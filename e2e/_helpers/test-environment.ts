@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { spawn, execSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
