@@ -65,7 +65,7 @@ describe('E2E Agent Jobs (Lite)', () => {
     expect(Array.isArray(JSON.parse(stdout))).toBe(true);
   });
 
-  it('should add a job with all flags and persist them (agentId forced to token agent)', async () => {
+  it('should add a job with the allowed flags and stamp agentId from the token', async () => {
     const { stdout, code } = await runLite([
       'jobs',
       'add',
@@ -76,12 +76,6 @@ describe('E2E Agent Jobs (Lite)', () => {
       'hello from agent',
       '--reply',
       'queued',
-      '--agent',
-      'ignored-by-token',
-      '--env',
-      'FOO=BAR',
-      '--env',
-      'BAZ=qux',
       '--session',
       'new',
     ]);
@@ -94,12 +88,43 @@ describe('E2E Agent Jobs (Lite)', () => {
       id: 'agent-job-1',
       message: 'hello from agent',
       reply: 'queued',
-      // The server overrides agentId with the token's agentId (not the flag).
+      // Server stamps agentId from the token rather than accepting it as input.
       agentId: 'debug-agent',
-      env: { FOO: 'BAR', BAZ: 'qux' },
       session: { type: 'new' },
       schedule: { every: '999h' },
     });
+    // Internal-only fields must never leak in from agent input.
+    expect(job).not.toHaveProperty('env');
+    expect(job).not.toHaveProperty('action');
+    expect(job).not.toHaveProperty('nextSessionId');
+  });
+
+  it('should reject job input containing internal-only fields', async () => {
+    const attempts = [
+      { id: 'bad-env', schedule: { every: '999h' }, env: { FOO: 'BAR' } },
+      { id: 'bad-action', schedule: { every: '999h' }, action: 'stop' },
+      { id: 'bad-agent', schedule: { every: '999h' }, agentId: 'someone-else' },
+      { id: 'bad-next', schedule: { every: '999h' }, nextSessionId: 'abc' },
+    ];
+
+    for (const job of attempts) {
+      const res = await fetch(`${envUrl}/addCronJob`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${envToken}`,
+        },
+        body: JSON.stringify({ job }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error?: { message?: string } };
+      expect(body.error?.message ?? '').toMatch(/unrecognized|invalid/i);
+    }
+
+    const jobs = await listUserJobs();
+    for (const attempt of attempts) {
+      expect(jobs.find((j) => j.id === attempt.id)).toBeUndefined();
+    }
   });
 
   it('should add a job with --cron schedule', async () => {

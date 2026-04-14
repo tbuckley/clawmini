@@ -2,8 +2,7 @@
 
 import { Command } from 'commander';
 import { createTRPCClient, httpLink } from '@trpc/client';
-import type { AgentRouter as AppRouter } from '../daemon/api/index.js';
-import type { CronJob } from '../shared/config.js';
+import type { AgentRouter as AppRouter, AgentCronJobInput } from '../daemon/api/index.js';
 import { registerSubagentCommands } from './subagent-commands.js';
 
 /**
@@ -135,15 +134,7 @@ jobs
   .option('--cron <cron>', 'Schedule via cron expression')
   .option('-m, --message <msg>', 'Message to send')
   .option('-r, --reply <reply>', 'Reply text')
-  .option('-a, --agent <agentId>', 'Agent ID')
   .option('-s, --session <type>', 'Session type (must be "new")')
-  .option(
-    '-e, --env <env>',
-    'Environment variables in key=value format',
-    (val: string, prev: string[]) => prev.concat([val]),
-    []
-  )
-  .option('-c, --chat <chatId>', 'Chat ID')
   .action(async (name, options) => {
     try {
       let schedule;
@@ -152,27 +143,16 @@ jobs
       else if (options.cron) schedule = { cron: options.cron };
       else throw new Error('A schedule must be specified (--at, --every, or --cron).');
 
-      const job: CronJob = {
+      const job: AgentCronJobInput = {
         id: name,
-        createdAt: new Date().toISOString(),
         message: options.message || '',
         schedule,
       };
 
       if (options.reply) job.reply = options.reply;
-      if (options.agent) job.agentId = options.agent;
       if (options.session) {
         if (options.session !== 'new') throw new Error('Only "new" session type is supported.');
         job.session = { type: 'new' };
-      }
-
-      if (options.env && options.env.length > 0) {
-        const jobEnv: Record<string, string> = {};
-        for (const e of options.env) {
-          const [k, ...v] = e.split('=');
-          if (k) jobEnv[k] = v.join('=');
-        }
-        job.env = jobEnv;
       }
 
       const client = getClient();
