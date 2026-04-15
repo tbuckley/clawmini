@@ -1,22 +1,33 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { getSocketPath } from '../../src/shared/workspace.js';
-import { createE2EContext } from '../_helpers/utils.js';
-
-const { runCli, e2eDir, binPath, setupE2E, teardownE2E } = createE2EContext('e2e-tmp-daemon');
+import {
+  TestEnvironment,
+  findFreePort,
+  type ChatSubscription,
+} from '../_helpers/test-environment.js';
+import type { CommandLogMessage } from '../../src/daemon/chats.js';
 
 describe('E2E Daemon and Web Tests', () => {
+  let env: TestEnvironment;
+  let chat: ChatSubscription | undefined;
+
   beforeAll(async () => {
-    await setupE2E();
-    await runCli(['init']);
+    env = new TestEnvironment('e2e-daemon');
+    await env.setup();
+    await env.init();
   }, 30000);
 
-  afterAll(teardownE2E, 30000);
+  afterAll(() => env.teardown(), 30000);
+  afterEach(async () => {
+    await chat?.disconnect();
+    chat = undefined;
+  });
 
   it('should explicitly start the daemon via up command', async () => {
-    const { stdout, code } = await runCli(['up']);
+    const { stdout, code } = await env.runCli(['up']);
     expect(code).toBe(0);
     // Since the daemon is likely running from previous tests or init, it should say so
     // or it will start successfully.
@@ -24,29 +35,29 @@ describe('E2E Daemon and Web Tests', () => {
   });
 
   it('should successfully shut down the daemon', async () => {
-    const { stdout, code } = await runCli(['down']);
+    const { stdout, code } = await env.runCli(['down']);
 
     expect(code).toBe(0);
     expect(stdout).toContain('Successfully shut down clawmini daemon.');
 
     await new Promise((resolve) => setTimeout(resolve, 500));
 
-    const socketPath = getSocketPath(e2eDir);
+    const socketPath = getSocketPath(env.e2eDir);
     expect(fs.existsSync(socketPath)).toBe(false);
 
-    const { stdout: stdoutAgain, code: codeAgain } = await runCli(['down']);
+    const { stdout: stdoutAgain, code: codeAgain } = await env.runCli(['down']);
     expect(codeAgain).toBe(0);
     expect(stdoutAgain).toContain('Daemon is not running.');
 
-    const { stdout: stdoutUp, code: codeUp } = await runCli(['up']);
+    const { stdout: stdoutUp, code: codeUp } = await env.runCli(['up']);
     expect(codeUp).toBe(0);
     expect(stdoutUp).toContain('Successfully started clawmini daemon.');
   }, 15000);
 
   it('should run web command and serve static files', async () => {
-    const webPort = 8081;
-    const child = spawn('node', [binPath, 'web', '--port', webPort.toString()], {
-      cwd: e2eDir,
+    const webPort = await findFreePort();
+    const child = spawn('node', [env.binPath, 'web', '--port', webPort.toString()], {
+      cwd: env.e2eDir,
       env: { ...process.env },
     });
 
@@ -83,7 +94,7 @@ describe('E2E Daemon and Web Tests', () => {
     const html404 = await res404.text();
     expect(html404.toLowerCase()).toContain('<!doctype html>');
 
-    await runCli(['chats', 'add', 'api-test-chat']);
+    await env.runCli(['chats', 'add', 'api-test-chat']);
 
     const resChats = await fetch(`http://127.0.0.1:${webPort}/api/chats`);
     expect(resChats.status).toBe(200);
@@ -144,7 +155,7 @@ describe('E2E Daemon and Web Tests', () => {
     const reader = sseResponse.body.getReader();
     const decoder = new TextDecoder();
 
-    const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/api-test-chat/chat.jsonl');
+    const chatLogPath = path.resolve(env.e2eDir, '.clawmini/chats/api-test-chat/chat.jsonl');
     const mockMessage = {
       id: 'mock-1',
       role: 'user',
@@ -220,101 +231,61 @@ describe('E2E Daemon and Web Tests', () => {
   }, 30000);
 
   it('should optionally start an HTTP API server for the daemon when configured', async () => {
-    await runCli(['down']);
+    await env.runCli(['down']);
+    const originalSettings = env.getSettings();
 
-    const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
-    let originalSettings = '{}';
-    if (fs.existsSync(settingsPath)) {
-      originalSettings = fs.readFileSync(settingsPath, 'utf8');
-    }
+    const apiPort = await findFreePort();
+    env.writeSettings({ ...originalSettings, api: { host: '127.0.0.1', port: apiPort } });
 
-    fs.writeFileSync(
-      settingsPath,
-      JSON.stringify({
-        ...JSON.parse(originalSettings),
-        api: { host: '127.0.0.1', port: 3005 },
-      })
-    );
-
-    const { stdout, code } = await runCli(['up']);
+    const { stdout, code } = await env.runCli(['up']);
     expect(code).toBe(0);
     expect(stdout).toContain('Successfully started clawmini daemon.');
 
     await new Promise((resolve) => setTimeout(resolve, 500));
 
-    const res = await fetch('http://127.0.0.1:3005/ping');
+    const res = await fetch(`http://127.0.0.1:${apiPort}/ping`);
     expect(res.status).toBe(200);
     const data = (await res.json()) as { result: { data: { status: string } } };
     expect(data.result.data.status).toBe('ok');
 
-    await runCli(['down']);
-    fs.writeFileSync(settingsPath, originalSettings);
-    await runCli(['up']);
+    await env.runCli(['down']);
+    env.writeSettings(originalSettings);
+    await env.runCli(['up']);
   }, 15000);
 
   it('should inject CLAW_API_URL and CLAW_API_TOKEN into spawned agents when API is enabled', async () => {
-    await runCli(['down']);
-    const settingsPath = path.resolve(e2eDir, '.clawmini/settings.json');
-    let originalSettings = '{}';
-    if (fs.existsSync(settingsPath)) {
-      originalSettings = fs.readFileSync(settingsPath, 'utf8');
-    }
-    fs.writeFileSync(
-      settingsPath,
-      JSON.stringify({
-        ...JSON.parse(originalSettings),
-        api: { host: '127.0.0.1', port: 3006 },
-      })
-    );
-    await runCli(['up']);
+    await env.runCli(['down']);
+    const originalSettings = env.getSettings();
 
-    await runCli(['agents', 'add', 'env-dumper', '--dir', 'env-dumper']);
-    const envDumperSettingsPath = path.resolve(e2eDir, '.clawmini/agents/env-dumper/settings.json');
-    fs.mkdirSync(path.dirname(envDumperSettingsPath), { recursive: true });
+    const apiPort = await findFreePort();
+    env.writeSettings({ ...originalSettings, api: { host: '127.0.0.1', port: apiPort } });
+    await env.runCli(['up']);
 
+    await env.runCli(['agents', 'add', 'env-dumper', '--dir', 'env-dumper']);
     // Create the actual agent working directory so spawn doesn't fail with ENOENT
-    const agentWorkingDir = path.resolve(e2eDir, 'env-dumper');
-    fs.mkdirSync(agentWorkingDir, { recursive: true });
+    fs.mkdirSync(path.resolve(env.e2eDir, 'env-dumper'), { recursive: true });
+    env.writeAgentSettings('env-dumper', {
+      commands: {
+        new: process.platform === 'win32' ? 'set' : 'env',
+      },
+    });
 
-    fs.writeFileSync(
-      envDumperSettingsPath,
-      JSON.stringify({
-        commands: {
-          new: process.platform === 'win32' ? 'set' : 'env',
-        },
-      })
+    await env.runCli(['chats', 'add', 'env-chat']);
+    chat = await env.connect('env-chat');
+    await env.sendMessage('dump it', { chat: 'env-chat', agent: 'env-dumper' });
+
+    const log = await chat.waitForMessage(
+      (m): m is CommandLogMessage =>
+        m.role === 'command' && typeof m.stdout === 'string' && m.stdout.includes('CLAW_API_URL=')
     );
+    expect(log.stdout).toContain(`CLAW_API_URL=http://127.0.0.1:${apiPort}`);
+    expect(log.stdout).toMatch(/CLAW_API_TOKEN=.+/);
 
-    await runCli(['chats', 'add', 'env-chat']);
-    const { stdout, stderr, code } = await runCli([
-      'messages',
-      'send',
-      'dump it',
-      '--chat',
-      'env-chat',
-      '--agent',
-      'env-dumper',
-    ]);
-    if (code !== 0) {
-      console.error('send failed:', stdout, stderr);
-    }
+    await chat.disconnect();
+    chat = undefined;
 
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    const chatLogPath = path.resolve(e2eDir, '.clawmini/chats/env-chat/chat.jsonl');
-    expect(fs.existsSync(chatLogPath)).toBe(true);
-    const chatLogContent = fs.readFileSync(chatLogPath, 'utf8');
-
-    if (!chatLogContent.includes('CLAW_API_URL')) {
-      console.error('CHAT LOG:', chatLogContent);
-    }
-
-    expect(chatLogContent).toContain('CLAW_API_URL=http://127.0.0.1:3006');
-    expect(chatLogContent).toContain('CLAW_API_TOKEN=');
-
-    await runCli(['down']);
-    fs.writeFileSync(settingsPath, originalSettings);
-    await runCli(['up']);
+    await env.runCli(['down']);
+    env.writeSettings(originalSettings);
+    await env.runCli(['up']);
   }, 15000);
-
 });
