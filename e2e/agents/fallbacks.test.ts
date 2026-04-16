@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
-import type { AgentReplyMessage, CommandLogMessage } from '../../src/daemon/chats.js';
+import {
+  TestEnvironment,
+  type ChatSubscription,
+  commandMatching,
+  agentReply,
+} from '../_helpers/test-environment.js';
 
 describe('E2E Fallbacks Tests', () => {
   let env: TestEnvironment;
@@ -16,10 +20,7 @@ describe('E2E Fallbacks Tests', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(async () => {
-    await chat?.disconnect();
-    chat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   // updateSettings() deep-merges, which would leak `commands` keys between
   // tests (e.g. test 2's getMessageContent bleeding into test 3). Replace
@@ -41,8 +42,7 @@ describe('E2E Fallbacks Tests', () => {
     await env.sendMessage('test-1', { chat: 'fb-chat-1' });
 
     const success = await chat.waitForMessage(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' && m.stdout.trim() === 'Succeeded' && m.exitCode === 0
+      commandMatching((m) => m.stdout.trim() === 'Succeeded' && m.exitCode === 0)
     );
     expect(success).toBeTruthy();
     expect(
@@ -69,9 +69,7 @@ describe('E2E Fallbacks Tests', () => {
     chat = await env.connect('fb-chat-2');
     await env.sendMessage('test-2', { chat: 'fb-chat-2' });
 
-    const reply = await chat.waitForMessage(
-      (m): m is AgentReplyMessage => m.role === 'agent'
-    );
+    const reply = await chat.waitForMessage(agentReply());
     expect(reply.content.trim()).toBe('Fallback success');
   });
 
@@ -100,8 +98,7 @@ describe('E2E Fallbacks Tests', () => {
     await env.sendMessage('test-3', { chat: 'fb-chat-3' });
 
     const success = await chat.waitForMessage(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' && m.stdout.trim() === 'Third time is a charm'
+      commandMatching((m) => m.stdout.trim() === 'Third time is a charm')
     );
     expect(success).toBeTruthy();
     expect(
@@ -127,8 +124,7 @@ describe('E2E Fallbacks Tests', () => {
     await env.sendMessage('test-4', { chat: 'fb-chat-4' });
 
     const failure = await chat.waitForMessage(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' && m.stdout.trim() === 'Fallback 1 fail' && m.exitCode === 1
+      commandMatching((m) => m.stdout.trim() === 'Fallback 1 fail' && m.exitCode === 1)
     );
     expect(failure).toBeTruthy();
   });

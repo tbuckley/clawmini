@@ -8,7 +8,7 @@ import {
   findFreePort,
   type ChatSubscription,
 } from '../_helpers/test-environment.js';
-import type { CommandLogMessage } from '../../src/daemon/chats.js';
+import { commandWith } from '../_helpers/test-environment.js';
 
 describe('E2E Daemon and Web Tests', () => {
   let env: TestEnvironment;
@@ -21,10 +21,7 @@ describe('E2E Daemon and Web Tests', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(async () => {
-    await chat?.disconnect();
-    chat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   it('should explicitly start the daemon via up command', async () => {
     const { stdout, code } = await env.runCli(['up']);
@@ -274,15 +271,11 @@ describe('E2E Daemon and Web Tests', () => {
     chat = await env.connect('env-chat');
     await env.sendMessage('dump it', { chat: 'env-chat', agent: 'env-dumper' });
 
-    const log = await chat.waitForMessage(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' && typeof m.stdout === 'string' && m.stdout.includes('CLAW_API_URL=')
-    );
+    const log = await chat.waitForMessage(commandWith('CLAW_API_URL='));
     expect(log.stdout).toContain(`CLAW_API_URL=http://127.0.0.1:${apiPort}`);
     expect(log.stdout).toMatch(/CLAW_API_TOKEN=.+/);
 
-    await chat.disconnect();
-    chat = undefined;
+    await env.disconnectAll();
 
     await env.runCli(['down']);
     env.writeSettings(originalSettings);

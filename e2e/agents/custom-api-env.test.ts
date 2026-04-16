@@ -2,8 +2,12 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
-import type { CommandLogMessage, AgentReplyMessage } from '../../src/daemon/chats.js';
+import {
+  TestEnvironment,
+  type ChatSubscription,
+  commandWith,
+  agentReplyWith,
+} from '../_helpers/test-environment.js';
 
 describe('E2E Agent Custom API Env Var Names', () => {
   let env: TestEnvironment;
@@ -12,15 +16,11 @@ describe('E2E Agent Custom API Env Var Names', () => {
   beforeAll(async () => {
     env = new TestEnvironment('e2e-custom-api-env');
     await env.setup();
-    // setupSubagentEnv boots the daemon on a free port and exports lite.
     await env.setupSubagentEnv();
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(async () => {
-    await chat?.disconnect();
-    chat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   it('injects custom-named URL/token envs and lite consumes them via pointer vars', async () => {
     await env.runCli(['agents', 'add', 'custom-env-dumper']);
@@ -38,10 +38,7 @@ describe('E2E Agent Custom API Env Var Names', () => {
 
     await env.sendMessage('dump', { chat: 'custom-env-chat', agent: 'custom-env-dumper' });
 
-    const log = await chat.waitForMessage(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' && typeof m.stdout === 'string' && m.stdout.includes('MY_CUSTOM_URL=')
-    );
+    const log = await chat.waitForMessage(commandWith('MY_CUSTOM_URL='));
 
     expect(log.stdout).toContain('CLAW_LITE_API_VAR=MY_CUSTOM_TOKEN');
     expect(log.stdout).toContain('CLAW_LITE_URL_VAR=MY_CUSTOM_URL');
@@ -77,9 +74,7 @@ describe('E2E Agent Custom API Env Var Names', () => {
     });
     expect(reply.stdout).toContain('Reply message appended');
 
-    const replyMsg = await chat.waitForMessage(
-      (m): m is AgentReplyMessage => m.role === 'agent' && m.content === 'hello from custom env'
-    );
+    const replyMsg = await chat.waitForMessage(agentReplyWith('hello from custom env'));
     expect(replyMsg).toBeTruthy();
   }, 20000);
 });

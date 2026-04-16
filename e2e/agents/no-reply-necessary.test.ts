@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
-import type { CommandLogMessage, AgentReplyMessage } from '../../src/daemon/chats.js';
+import {
+  TestEnvironment,
+  type ChatSubscription,
+  commandWith,
+  agentReply,
+} from '../_helpers/test-environment.js';
 
 describe('E2E NO_REPLY_NECESSARY short-circuit', () => {
   let env: TestEnvironment;
@@ -14,10 +18,7 @@ describe('E2E NO_REPLY_NECESSARY short-circuit', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(async () => {
-    await chat?.disconnect();
-    chat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   it('skips the agent reply when NO_REPLY_NECESSARY appears anywhere in the output', async () => {
     await env.runCli(['agents', 'add', 'no-reply-agent']);
@@ -33,10 +34,7 @@ describe('E2E NO_REPLY_NECESSARY short-circuit', () => {
     await env.sendMessage('ping', { chat: 'no-reply-chat', agent: 'no-reply-agent' });
 
     // The command log is always written; only the agent reply should be suppressed.
-    await chat.waitForMessage(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' && m.stdout.includes('NO_REPLY_NECESSARY')
-    );
+    await chat.waitForMessage(commandWith('NO_REPLY_NECESSARY'));
     // Give the logger a beat in case an agent reply is (incorrectly) pending.
     await new Promise((r) => setTimeout(r, 300));
     expect(chat.messageBuffer.some((m) => m.role === 'agent')).toBe(false);
@@ -53,9 +51,7 @@ describe('E2E NO_REPLY_NECESSARY short-circuit', () => {
 
     await env.sendMessage('ping', { chat: 'reply-chat', agent: 'reply-agent' });
 
-    const reply = await chat.waitForMessage(
-      (m): m is AgentReplyMessage => m.role === 'agent'
-    );
+    const reply = await chat.waitForMessage(agentReply());
     expect(reply.content.trim()).toBe('normal reply');
   }, 15000);
 });

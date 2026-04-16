@@ -16,10 +16,7 @@ describe('E2E Subagents Depth Limit', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(async () => {
-    await chat?.disconnect();
-    chat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   it('rejects subagent spawns beyond MAX_SUBAGENT_DEPTH (currently 2)', async () => {
     await env.addChat('chat-limit', 'debug-agent');

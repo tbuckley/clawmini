@@ -8,7 +8,54 @@ import { createTRPCClient, httpLink, splitLink, httpSubscriptionLink } from '@tr
 import type { UserRouter as AppRouter } from '../../src/daemon/api/index.js';
 import { createUnixSocketFetch } from '../../src/shared/fetch.js';
 import { createUnixSocketEventSource } from '../../src/shared/event-source.js';
-import type { ChatMessage, CommandLogMessage } from '../../src/daemon/chats.js';
+import type {
+  ChatMessage,
+  CommandLogMessage,
+  AgentReplyMessage,
+  PolicyRequestMessage,
+  SystemMessage,
+  ToolMessage,
+} from '../../src/daemon/chats.js';
+
+export type {
+  ChatMessage,
+  CommandLogMessage,
+  AgentReplyMessage,
+  PolicyRequestMessage,
+  SystemMessage,
+  ToolMessage,
+};
+
+export function commandWith(
+  text: string
+): (msg: ChatMessage) => msg is CommandLogMessage {
+  return (msg): msg is CommandLogMessage =>
+    msg.role === 'command' && msg.stdout.includes(text);
+}
+
+export function commandMatching(
+  predicate: (msg: CommandLogMessage) => boolean
+): (msg: ChatMessage) => msg is CommandLogMessage {
+  return (msg): msg is CommandLogMessage => msg.role === 'command' && predicate(msg);
+}
+
+export function agentReply(): (msg: ChatMessage) => msg is AgentReplyMessage {
+  return (msg): msg is AgentReplyMessage => msg.role === 'agent';
+}
+
+export function agentReplyWith(
+  text: string
+): (msg: ChatMessage) => msg is AgentReplyMessage {
+  return (msg): msg is AgentReplyMessage =>
+    msg.role === 'agent' && msg.content === text;
+}
+
+export function policyWith(
+  status?: PolicyRequestMessage['status']
+): (msg: ChatMessage) => msg is PolicyRequestMessage {
+  return (msg): msg is PolicyRequestMessage =>
+    msg.role === 'policy' && (status === undefined || (msg as PolicyRequestMessage).status === status);
+}
 
 export async function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -105,11 +152,26 @@ export class TestEnvironment {
     await this.ensureTrpcClient();
 
     const messageBuffer: ChatMessage[] = [];
+    type Waiter = {
+      predicate: (msg: ChatMessage) => boolean;
+      resolve: (value: ChatMessage | PromiseLike<ChatMessage>) => void;
+    };
+    const waiters: Waiter[] = [];
+
     const sub = this.trpcClient!.waitForMessages.subscribe(
       { chatId },
       {
         onData: (messages) => {
-          messageBuffer.push(...messages);
+          for (const msg of messages) {
+            messageBuffer.push(msg);
+            for (let i = waiters.length - 1; i >= 0; i--) {
+              const waiter = waiters[i]!;
+              if (waiter.predicate(msg)) {
+                waiter.resolve(msg);
+                waiters.splice(i, 1);
+              }
+            }
+          }
         },
         onError: (err) => {
           console.error('Subscription error:', err);
@@ -123,15 +185,27 @@ export class TestEnvironment {
         predicate: (msg: ChatMessage) => boolean,
         timeoutMs: number = 15000
       ): Promise<ChatMessage> => {
-        return (async () => {
-          const startTime = Date.now();
-          while (Date.now() - startTime < timeoutMs) {
-            const match = messageBuffer.find(predicate);
-            if (match) return match;
-            await new Promise((r) => setTimeout(r, 100));
-          }
-          throw new Error(`waitForMessage timed out after ${timeoutMs}ms`);
-        })();
+        const existing = messageBuffer.find(predicate);
+        if (existing) return Promise.resolve(existing);
+
+        return new Promise<ChatMessage>((resolve, reject) => {
+          const waiter = { predicate, resolve };
+          waiters.push(waiter);
+
+          const timer = setTimeout(() => {
+            const idx = waiters.indexOf(waiter);
+            if (idx !== -1) {
+              waiters.splice(idx, 1);
+              reject(new Error(`waitForMessage timed out after ${timeoutMs}ms`));
+            }
+          }, timeoutMs);
+
+          const origResolve = waiter.resolve;
+          waiter.resolve = (value) => {
+            clearTimeout(timer);
+            origResolve(value);
+          };
+        });
       },
       disconnect: async () => {
         sub.unsubscribe();
@@ -185,10 +259,14 @@ export class TestEnvironment {
     execSync('git init', { cwd: this.e2eDir, stdio: 'ignore' });
   }
 
-  public async teardown() {
+  public async disconnectAll() {
     for (const sub of [...this.openSubscriptions]) {
       await sub.disconnect();
     }
+  }
+
+  public async teardown() {
+    await this.disconnectAll();
     this.trpcClient = null;
     if (fs.existsSync(this.e2eDir)) {
       await this.runCli(['down']);
@@ -238,8 +316,7 @@ export class TestEnvironment {
     return result;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public writeChatSettings(chatId: string, settings: any) {
+  public writeChatSettings(chatId: string, settings: Record<string, unknown>) {
     const chatSettingsPath = this.getChatPath(chatId, 'settings.json');
     const chatSettingsDir = path.dirname(chatSettingsPath);
     if (!fs.existsSync(chatSettingsDir)) {
@@ -248,8 +325,7 @@ export class TestEnvironment {
     fs.writeFileSync(chatSettingsPath, JSON.stringify(settings, null, 2));
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public getSettings(): any {
+  public getSettings(): Record<string, unknown> {
     const settingsPath = this.getClawminiPath('settings.json');
     if (fs.existsSync(settingsPath)) {
       return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
@@ -257,14 +333,12 @@ export class TestEnvironment {
     return {};
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public writeSettings(settings: any) {
+  public writeSettings(settings: Record<string, unknown>) {
     const settingsPath = this.getClawminiPath('settings.json');
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public getAgentSettings(agentId: string): any {
+  public getAgentSettings(agentId: string): Record<string, unknown> {
     const agentSettingsPath = this.getAgentPath(agentId, 'settings.json');
     if (fs.existsSync(agentSettingsPath)) {
       return JSON.parse(fs.readFileSync(agentSettingsPath, 'utf8'));
@@ -272,8 +346,7 @@ export class TestEnvironment {
     return {};
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public writeAgentSettings(agentId: string, settings: any) {
+  public writeAgentSettings(agentId: string, settings: Record<string, unknown>) {
     const agentSettingsPath = this.getAgentPath(agentId, 'settings.json');
     const agentSettingsDir = path.dirname(agentSettingsPath);
     if (!fs.existsSync(agentSettingsDir)) {
@@ -282,8 +355,7 @@ export class TestEnvironment {
     fs.writeFileSync(agentSettingsPath, JSON.stringify(settings, null, 2));
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public getChatSettings(chatId: string): any {
+  public getChatSettings(chatId: string): Record<string, unknown> {
     const chatSettingsPath = this.getChatPath(chatId, 'settings.json');
     if (fs.existsSync(chatSettingsPath)) {
       return JSON.parse(fs.readFileSync(chatSettingsPath, 'utf8'));
@@ -291,8 +363,7 @@ export class TestEnvironment {
     return {};
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public getSessionSettings(agentId: string, sessionId: string): any {
+  public getSessionSettings(agentId: string, sessionId: string): Record<string, unknown> {
     const sessionSettingsPath = this.getAgentPath(
       agentId,
       'sessions',
@@ -307,21 +378,11 @@ export class TestEnvironment {
 
   public updateSettings(updates: Record<string, unknown>) {
     const settingsPath = this.getClawminiPath('settings.json');
-    let settings = {};
+    let settings: Record<string, unknown> = {};
     if (fs.existsSync(settingsPath)) {
       settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const merge = (target: any, source: any) => {
-      for (const key of Object.keys(source)) {
-        if (source[key] instanceof Object && !Array.isArray(source[key])) {
-          Object.assign(source[key], merge(target[key] || {}, source[key]));
-        }
-      }
-      Object.assign(target || {}, source);
-      return target;
-    };
-    settings = merge(settings, updates);
+    settings = deepMerge(settings, updates);
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   }
 
@@ -396,8 +457,7 @@ export class TestEnvironment {
     // port: 0 for daemon socket tests, but that produces CLAW_API_URL=
     // http://127.0.0.1:0 which is unreachable. Pick a free port instead.
     const port = options.port ?? (await findFreePort());
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const settingsUpdates: any = { api: { host: '127.0.0.1', port } };
+    const settingsUpdates: Record<string, unknown> = { api: { host: '127.0.0.1', port } };
     if (options.routers) settingsUpdates.routers = options.routers;
     this.updateSettings(settingsUpdates);
 
@@ -417,9 +477,59 @@ export class TestEnvironment {
 
     if (fs.existsSync(this.getAgentPath('debug-agent', 'settings.json'))) {
       const agentSettings = this.getAgentSettings('debug-agent');
-      agentSettings.env = agentSettings.env || {};
-      agentSettings.env.PATH = `${binDir}:${process.env.PATH}`;
+      const env = (agentSettings.env as Record<string, string>) || {};
+      env.PATH = `${binDir}:${process.env.PATH}`;
+      agentSettings.env = env;
       this.writeAgentSettings('debug-agent', agentSettings);
     }
   }
+
+  public runBin(
+    binPath: string,
+    args: string[]
+  ): Promise<{ stdout: string; stderr: string; code: number | null }> {
+    return new Promise((resolve) => {
+      const child = spawn('node', [binPath, ...args], {
+        cwd: this.e2eDir,
+        env: { ...process.env },
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout.on('data', (data: Buffer) => (stdout += data.toString()));
+      child.stderr.on('data', (data: Buffer) => (stderr += data.toString()));
+
+      child.on('close', (code) => {
+        resolve({ stdout, stderr, code });
+      });
+    });
+  }
+}
+
+function deepMerge(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>
+): Record<string, unknown> {
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    const srcVal = source[key];
+    const tgtVal = result[key];
+    if (
+      srcVal !== null &&
+      typeof srcVal === 'object' &&
+      !Array.isArray(srcVal) &&
+      tgtVal !== null &&
+      typeof tgtVal === 'object' &&
+      !Array.isArray(tgtVal)
+    ) {
+      result[key] = deepMerge(
+        tgtVal as Record<string, unknown>,
+        srcVal as Record<string, unknown>
+      );
+    } else {
+      result[key] = srcVal;
+    }
+  }
+  return result;
 }

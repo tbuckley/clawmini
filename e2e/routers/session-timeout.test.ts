@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
-import type { CommandLogMessage } from '../../src/daemon/chats.js';
+import { TestEnvironment, type ChatSubscription, commandMatching } from '../_helpers/test-environment.js';
 
 describe('Session Timeout E2E', () => {
   let env: TestEnvironment;
@@ -16,18 +15,16 @@ describe('Session Timeout E2E', () => {
     });
 
     const agentSettings = env.getAgentSettings('test-agent');
-    agentSettings.commands.new = 'echo "[DEBUG NEW $SESSION_ID] $CLAW_CLI_MESSAGE"';
-    agentSettings.commands.append = 'echo "[DEBUG APPEND $SESSION_ID] $CLAW_CLI_MESSAGE"';
+    const commands = agentSettings.commands as Record<string, unknown>;
+    commands.new = 'echo "[DEBUG NEW $SESSION_ID] $CLAW_CLI_MESSAGE"';
+    commands.append = 'echo "[DEBUG APPEND $SESSION_ID] $CLAW_CLI_MESSAGE"';
     env.writeAgentSettings('test-agent', agentSettings);
 
     await env.up();
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(async () => {
-    await chat?.disconnect();
-    chat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   it('fires the timeout job and routes the next message to a new session', async () => {
     // `init --agent test-agent` sets the default chat id to 'test-agent'.
@@ -51,11 +48,7 @@ describe('Session Timeout E2E', () => {
 
     // The second message should use `commands.new` with an empty SESSION_ID.
     const secondMsgLog = await chat.waitForMessage(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' &&
-        typeof m.stdout === 'string' &&
-        m.stdout.includes('second message') &&
-        m.stdout.includes('[DEBUG')
+      commandMatching((m) => m.stdout.includes('second message') && m.stdout.includes('[DEBUG'))
     );
     expect(secondMsgLog.stdout).toContain('[DEBUG NEW ]');
     expect(secondMsgLog.stdout).not.toContain('[DEBUG APPEND ');
@@ -76,11 +69,9 @@ describe('Session Timeout E2E', () => {
     await env.sendMessage('msg KEEP ALIVE', { chat: 'test2' });
 
     const keepAliveLog = await chat.waitForMessage(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' &&
-        typeof m.stdout === 'string' &&
-        m.stdout.includes('msg KEEP ALIVE') &&
-        m.stdout.includes('[DEBUG APPEND')
+      commandMatching(
+        (m) => m.stdout.includes('msg KEEP ALIVE') && m.stdout.includes('[DEBUG APPEND')
+      )
     );
     const keepAliveSessionId = keepAliveLog.stdout.match(/\[DEBUG APPEND (.*?)\]/)?.[1];
     expect(keepAliveSessionId).toBeTruthy();
@@ -106,11 +97,7 @@ describe('Session Timeout E2E', () => {
     // Current session wasn't blown away by msg A's timeout.
     await env.sendMessage('msg C', { chat: 'test2' });
     const msgCLog = await chat.waitForMessage(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' &&
-        typeof m.stdout === 'string' &&
-        m.stdout.includes('msg C') &&
-        m.stdout.includes('[DEBUG')
+      commandMatching((m) => m.stdout.includes('msg C') && m.stdout.includes('[DEBUG'))
     );
     expect(msgCLog.stdout).toContain(`[DEBUG APPEND ${keepAliveSessionId}]`);
   }, 20000);

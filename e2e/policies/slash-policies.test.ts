@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
-import type { PolicyRequestMessage, SystemMessage } from '../../src/daemon/chats.js';
+import {
+  TestEnvironment,
+  type ChatSubscription,
+  type SystemMessage,
+  policyWith,
+} from '../_helpers/test-environment.js';
 
 describe('Policy Flows E2E', () => {
   let env: TestEnvironment;
@@ -24,12 +28,7 @@ describe('Policy Flows E2E', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(async () => {
-    await chat?.disconnect();
-    await secondChat?.disconnect();
-    chat = undefined;
-    secondChat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   const sanitize = (content: string, reqId: string) =>
     content.replace(new RegExp(reqId, 'g'), '<REQ_ID>');
@@ -102,7 +101,7 @@ describe('Policy Flows E2E', () => {
       await env.sendMessage(spawn, { chat: chatId, agent: 'debug-agent' });
 
       const policy = await chat.waitForMessage(
-        (m): m is PolicyRequestMessage => m.role === 'policy'
+        policyWith()
       );
       const reqId = policy.requestId;
 
@@ -137,7 +136,7 @@ describe('Policy Flows E2E', () => {
     });
 
     const reqId = (
-      await chat.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
+      await chat.waitForMessage(policyWith())
     ).requestId;
 
     await env.sendMessage('/pending', { chat: 'chat-pending-list' });
@@ -164,7 +163,7 @@ describe('Policy Flows E2E', () => {
     });
 
     const reqId = (
-      await chat.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
+      await chat.waitForMessage(policyWith())
     ).requestId;
 
     await env.sendMessage(`/reject ${reqId} command looked suspicious`, {
@@ -215,7 +214,7 @@ describe('Policy Flows E2E', () => {
       });
 
       const reqId = (
-        await chat.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
+        await chat.waitForMessage(policyWith())
       ).requestId;
 
       secondChat = await env.connect('chat-intruder');
@@ -241,7 +240,7 @@ describe('Policy Flows E2E', () => {
       });
 
       const reqId = (
-        await chat.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
+        await chat.waitForMessage(policyWith())
       ).requestId;
 
       await env.sendMessage(`/approve ${reqId}`, { chat: 'chat-double-approve' });
@@ -283,7 +282,7 @@ describe('Policy Flows E2E', () => {
         });
 
         const reqId = (
-          await chat.waitForMessage((m): m is PolicyRequestMessage => m.role === 'policy')
+          await chat.waitForMessage(policyWith())
         ).requestId;
 
         // Remove the policy before /approve is processed

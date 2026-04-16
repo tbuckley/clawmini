@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,10 +6,10 @@ import { TestEnvironment } from '../_helpers/test-environment.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const binPath = path.resolve(__dirname, '../../dist/cli/propose-policy.mjs');
 
 describe('propose-policy CLI', () => {
   let env: TestEnvironment;
-  const binPath = path.resolve(__dirname, '../../dist/cli/propose-policy.mjs');
 
   beforeAll(async () => {
     env = new TestEnvironment('e2e-propose-policy');
@@ -19,39 +18,16 @@ describe('propose-policy CLI', () => {
     if (code !== 0) throw new Error(`Init failed: ${stderr}`);
   });
 
-  afterAll(async () => {
-    await env.teardown();
-  });
-
-  function runProposePolicy(
-    args: string[]
-  ): Promise<{ stdout: string; stderr: string; code: number | null }> {
-    return new Promise((resolve) => {
-      const child = spawn('node', [binPath, ...args], {
-        cwd: env.e2eDir,
-        env: { ...process.env },
-      });
-
-      let stdout = '';
-      let stderr = '';
-
-      child.stdout.on('data', (data) => (stdout += data.toString()));
-      child.stderr.on('data', (data) => (stderr += data.toString()));
-
-      child.on('close', (code) => {
-        resolve({ stdout, stderr, code });
-      });
-    });
-  }
+  afterAll(() => env.teardown(), 30000);
 
   it('should fail if missing required arguments', async () => {
-    const { stderr, code } = await runProposePolicy([]);
+    const { stderr, code } = await env.runBin(binPath, []);
     expect(code).toBe(1);
     expect(stderr).toContain("error: required option '--name <policy_name>' not specified");
   });
 
   it('should fail if policy name is invalid', async () => {
-    const { stderr, code } = await runProposePolicy([
+    const { stderr, code } = await env.runBin(binPath, [
       '--name',
       'Invalid_Name!',
       '--description',
@@ -66,7 +42,7 @@ describe('propose-policy CLI', () => {
   });
 
   it('should fail if neither command nor script-file is provided', async () => {
-    const { stderr, code } = await runProposePolicy([
+    const { stderr, code } = await env.runBin(binPath, [
       '--name',
       'test-policy',
       '--description',
@@ -77,7 +53,7 @@ describe('propose-policy CLI', () => {
   });
 
   it('should create a policy with a command', async () => {
-    const { stdout, stderr, code } = await runProposePolicy([
+    const { stdout, stderr, code } = await env.runBin(binPath, [
       '--name',
       'echo-test',
       '--description',
@@ -104,7 +80,7 @@ describe('propose-policy CLI', () => {
     const scriptPath = path.resolve(env.e2eDir, 'test-script.sh');
     fs.writeFileSync(scriptPath, '#!/bin/bash\necho "From script"', { mode: 0o755 });
 
-    const { stdout, code } = await runProposePolicy([
+    const { stdout, code } = await env.runBin(binPath, [
       '--name',
       'script-test',
       '--description',
@@ -130,7 +106,7 @@ describe('propose-policy CLI', () => {
 
   it('should overwrite an existing policy with the same name', async () => {
     // Overwrite the 'echo-test' policy from previous test
-    const { stdout, code } = await runProposePolicy([
+    const { stdout, code } = await env.runBin(binPath, [
       '--name',
       'echo-test',
       '--description',
@@ -154,41 +130,16 @@ describe('propose-policy CLI', () => {
 
 describe('propose-policy CLI (uninitialized)', () => {
   let env: TestEnvironment;
-  const binPath = path.resolve(__dirname, '../../dist/cli/propose-policy.mjs');
 
   beforeAll(async () => {
     env = new TestEnvironment('e2e-propose-policy-uninit');
     await env.setup();
-    // Intentionally not running init
   });
 
-  afterAll(async () => {
-    await env.teardown();
-  });
-
-  function runProposePolicy(
-    args: string[]
-  ): Promise<{ stdout: string; stderr: string; code: number | null }> {
-    return new Promise((resolve) => {
-      const child = spawn('node', [binPath, ...args], {
-        cwd: env.e2eDir,
-        env: { ...process.env },
-      });
-
-      let stdout = '';
-      let stderr = '';
-
-      child.stdout.on('data', (data) => (stdout += data.toString()));
-      child.stderr.on('data', (data) => (stderr += data.toString()));
-
-      child.on('close', (code) => {
-        resolve({ stdout, stderr, code });
-      });
-    });
-  }
+  afterAll(() => env.teardown(), 30000);
 
   it('should fail if .clawmini directory does not exist', async () => {
-    const { stderr, code } = await runProposePolicy([
+    const { stderr, code } = await env.runBin(binPath, [
       '--name',
       'echo-test',
       '--description',

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
-import type { CommandLogMessage } from '../../src/daemon/chats.js';
+import { TestEnvironment, type ChatSubscription, commandMatching } from '../_helpers/test-environment.js';
 
 describe('E2E Agent subagentEnv Merge', () => {
   let env: TestEnvironment;
@@ -11,11 +10,9 @@ describe('E2E Agent subagentEnv Merge', () => {
     await env.setup();
     await env.setupSubagentEnv();
 
-    // Layer parent + subagent env on top of whatever setupSubagentEnv wrote
-    // (it adds a PATH entry for the lite symlink bin dir).
     const agentSettings = env.getAgentSettings('debug-agent');
     agentSettings.env = {
-      ...(agentSettings.env ?? {}),
+      ...((agentSettings.env as Record<string, string>) ?? {}),
       PARENT_VAR: 'parent',
     };
     agentSettings.subagentEnv = {
@@ -26,10 +23,7 @@ describe('E2E Agent subagentEnv Merge', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(async () => {
-    await chat?.disconnect();
-    chat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   it('applies subagentEnv only to subagent invocations, not the parent', async () => {
     await env.addChat('subenv-chat', 'debug-agent');
@@ -38,12 +32,9 @@ describe('E2E Agent subagentEnv Merge', () => {
     // 1) Parent: plain env dump should include PARENT_VAR and omit SUBAGENT_VAR.
     await env.sendMessage('env', { chat: 'subenv-chat', agent: 'debug-agent' });
     const parentLog = await chat.waitForMessage(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' &&
-        !m.subagentId &&
-        typeof m.stdout === 'string' &&
-        m.stdout.includes('[DEBUG] env:') &&
-        m.stdout.includes('PARENT_VAR=')
+      commandMatching(
+        (m) => !m.subagentId && m.stdout.includes('[DEBUG] env:') && m.stdout.includes('PARENT_VAR=')
+      )
     );
     expect(parentLog.stdout).toMatch(/^PARENT_VAR=parent$/m);
     expect(parentLog.stdout).not.toMatch(/^SUBAGENT_VAR=/m);
@@ -56,11 +47,7 @@ describe('E2E Agent subagentEnv Merge', () => {
     });
 
     const subLog = await chat.waitForMessage(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' &&
-        typeof m.subagentId === 'string' &&
-        typeof m.stdout === 'string' &&
-        m.stdout.includes('SUBAGENT_VAR=')
+      commandMatching((m) => typeof m.subagentId === 'string' && m.stdout.includes('SUBAGENT_VAR='))
     );
     expect(subLog.stdout).toMatch(/^SUBAGENT_VAR=sub$/m);
     expect(subLog.stdout).toMatch(/^PARENT_VAR=overridden$/m);

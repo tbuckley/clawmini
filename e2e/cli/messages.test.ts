@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
-import type { CommandLogMessage } from '../../src/daemon/chats.js';
+import { TestEnvironment, type ChatSubscription, commandMatching } from '../_helpers/test-environment.js';
 
 describe('E2E Messages Tests', () => {
   let env: TestEnvironment;
@@ -19,10 +18,7 @@ describe('E2E Messages Tests', () => {
     await env.teardown();
   }, 30000);
 
-  afterEach(async () => {
-    await chat?.disconnect();
-    chat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   it('should send a message via the daemon', async () => {
     chat = await env.connect('default');
@@ -220,7 +216,7 @@ describe('E2E Messages Tests', () => {
     await env.runCli(['messages', 'send', 'msg-1', '--chat', 'workflow-chat']);
 
     const log1 = await chat.waitForMessage(
-      (m): m is CommandLogMessage => m.role === 'command' && m.command.includes('ERR NEW')
+      commandMatching((m) => m.command.includes('ERR NEW'))
     );
     expect(log1.command).toBe('echo "NEW $CLAW_CLI_MESSAGE" && echo "ERR NEW" >&2');
     expect(log1.content).toContain('EXTRACTED-NEW msg-1');
@@ -228,12 +224,14 @@ describe('E2E Messages Tests', () => {
     expect(log1.stdout).toContain('NEW msg-1');
 
     const sessionSettings = env.getSessionSettings('workflow-agent', 'default');
-    expect(sessionSettings.env?.SESSION_ID).toBe('session-123');
+    expect(
+      (sessionSettings.env as Record<string, unknown> | undefined)?.SESSION_ID
+    ).toBe('session-123');
 
     await env.runCli(['messages', 'send', 'msg-2', '--chat', 'workflow-chat']);
 
     const log2 = await chat.waitForMessage(
-      (m): m is CommandLogMessage => m.role === 'command' && m.command.includes('ERR APPEND')
+      commandMatching((m) => m.command.includes('ERR APPEND'))
     );
     expect(log2.command).toBe('echo "APPEND $CLAW_CLI_MESSAGE" && echo "ERR APPEND" >&2');
     expect(log2.content).toContain('EXTRACTED-APPEND msg-2');
@@ -242,13 +240,14 @@ describe('E2E Messages Tests', () => {
 
     // Break the extraction command and verify the failure is reported
     const agentSettings = env.getAgentSettings('workflow-agent');
-    agentSettings.commands.getMessageContent = 'echo "EXTRACTION_FAIL" >&2 && exit 1';
+    const commands = agentSettings.commands as Record<string, unknown>;
+    commands.getMessageContent = 'echo "EXTRACTION_FAIL" >&2 && exit 1';
     env.writeAgentSettings('workflow-agent', agentSettings);
 
     await env.runCli(['messages', 'send', 'msg-3', '--chat', 'workflow-chat']);
 
     const log3 = await chat.waitForMessage(
-      (m): m is CommandLogMessage => m.role === 'command' && m.stderr.includes('EXTRACTION_FAIL')
+      commandMatching((m) => m.stderr.includes('EXTRACTION_FAIL'))
     );
     expect(log3.stdout).toContain('APPEND msg-3');
     expect(log3.stderr).toContain('ERR APPEND');

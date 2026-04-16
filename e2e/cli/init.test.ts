@@ -37,7 +37,7 @@ describe('initCmd with flags', () => {
     expect(fs.existsSync(env.getClawminiPath('settings.json'))).toBe(true);
 
     const settings = env.getSettings();
-    expect(settings.chats?.defaultId).toBe('test-agent');
+    expect((settings.chats as Record<string, unknown> | undefined)?.defaultId).toBe('test-agent');
 
     expect(fs.existsSync(env.getAgentPath('test-agent', 'settings.json'))).toBe(true);
     expect(fs.existsSync(env.getChatPath('test-agent', 'settings.json'))).toBe(true);
@@ -67,7 +67,9 @@ describe('initCmd with flags', () => {
     expect(fs.existsSync(env.getClawminiPath('settings.json'))).toBe(true);
 
     const settings = env.getSettings();
-    expect(settings.environments?.['./']).toBe('macos');
+    expect(
+      (settings.environments as Record<string, unknown> | undefined)?.['./']
+    ).toBe('macos');
 
     expect(fs.existsSync(env.getClawminiPath('environments', 'macos'))).toBe(true);
   });

@@ -2,9 +2,8 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import path from 'node:path';
 import fsPromises from 'node:fs/promises';
 import { createTRPCClient, httpLink, TRPCClientError } from '@trpc/client';
-import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
+import { TestEnvironment, type ChatSubscription, policyWith } from '../_helpers/test-environment.js';
 import type { AgentRouter } from '../../src/daemon/api/agent-router.js';
-import type { PolicyRequestMessage } from '../../src/daemon/chats.js';
 
 describe('Context-Aware Execution E2E', () => {
   let env: TestEnvironment;
@@ -29,10 +28,7 @@ describe('Context-Aware Execution E2E', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(async () => {
-    await chat?.disconnect();
-    chat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   it('should execute policy in the requested subdirectory', async () => {
     await env.runCli(['chats', 'add', 'chat-cwd']);
@@ -44,9 +40,7 @@ describe('Context-Aware Execution E2E', () => {
       agent: 'debug-agent',
     });
 
-    const policy = await chat.waitForMessage(
-      (m): m is PolicyRequestMessage => m.role === 'policy' && m.status === 'approved'
-    );
+    const policy = await chat.waitForMessage(policyWith('approved'));
     expect(policy.content).toContain(path.join('debug-agent', 'foo'));
   }, 30000);
 

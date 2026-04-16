@@ -36,9 +36,10 @@ describe('E2E Agents Tests', () => {
     const agentSettingsPath = env.getAgentPath('test-agent', 'settings.json');
     expect(fs.existsSync(agentSettingsPath)).toBe(true);
     const agentData = env.getAgentSettings('test-agent');
+    const agentEnv = agentData.env as Record<string, string> | undefined;
     expect(agentData.directory).toBe('./test-agent-dir');
-    expect(agentData.env?.FOO).toBe('BAR');
-    expect(agentData.env?.BAZ).toBe('QUX');
+    expect(agentEnv?.FOO).toBe('BAR');
+    expect(agentEnv?.BAZ).toBe('QUX');
 
     const { stdout: stdoutList1 } = await env.runCli(['agents', 'list']);
     expect(stdoutList1).toContain('- test-agent');
@@ -56,9 +57,10 @@ describe('E2E Agents Tests', () => {
     expect(stdoutUpdate).toContain('Agent test-agent updated successfully.');
 
     const updatedAgentData = env.getAgentSettings('test-agent');
+    const updatedEnv = updatedAgentData.env as Record<string, string> | undefined;
     expect(updatedAgentData.directory).toBe('./new-dir');
-    expect(updatedAgentData.env?.FOO).toBe('NEW_BAR');
-    expect(updatedAgentData.env?.BAZ).toBe('QUX');
+    expect(updatedEnv?.FOO).toBe('NEW_BAR');
+    expect(updatedEnv?.BAZ).toBe('QUX');
 
     const { stdout: stdoutDelete, code: codeDelete } = await env.runCli([
       'agents',
@@ -122,8 +124,9 @@ describe('E2E Agents Tests', () => {
     expect(agentData.directory).toBe('./custom-agent-dir');
 
     // Verify env merge
-    expect(agentData.env?.TEMPLATE_VAR).toBe('template_value');
-    expect(agentData.env?.FOO).toBe('BAR');
+    const templateEnv = agentData.env as Record<string, string> | undefined;
+    expect(templateEnv?.TEMPLATE_VAR).toBe('template_value');
+    expect(templateEnv?.FOO).toBe('BAR');
 
     // Verify template files were copied
     const customDir = path.resolve(env.e2eDir, 'custom-agent-dir');

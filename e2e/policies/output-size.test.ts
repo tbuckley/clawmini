@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
-import type { AgentReplyMessage, PolicyRequestMessage } from '../../src/daemon/chats.js';
+import {
+  TestEnvironment,
+  type ChatSubscription,
+  agentReply,
+  policyWith,
+  commandMatching,
+} from '../_helpers/test-environment.js';
 
 describe('Output Size E2E', () => {
   let env: TestEnvironment;
@@ -34,10 +39,7 @@ describe('Output Size E2E', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(async () => {
-    await chat?.disconnect();
-    chat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   it('should return inline output for < 500 characters', async () => {
     await env.runCli(['chats', 'add', 'chat-short']);
@@ -48,7 +50,7 @@ describe('Output Size E2E', () => {
       agent: 'debug-agent',
     });
 
-    const reply = await chat.waitForMessage((m): m is AgentReplyMessage => m.role === 'agent');
+    const reply = await chat.waitForMessage(agentReply());
     expect(reply.content).toContain('[DEBUG] clawmini-lite.js request short-cmd');
     expect(reply.content).toContain('short output');
   }, 30000);
@@ -62,9 +64,7 @@ describe('Output Size E2E', () => {
       agent: 'debug-agent',
     });
 
-    const policy = await chat.waitForMessage(
-      (m): m is PolicyRequestMessage => m.role === 'policy' && m.status === 'approved'
-    );
+    const policy = await chat.waitForMessage(policyWith('approved'));
     expect(policy.content).toMatch(
       /stdout is 60\d characters, saved to \.\/tmp\/stdout-[a-zA-Z0-9-]+\.txt/
     );
@@ -76,10 +76,7 @@ describe('Output Size E2E', () => {
     });
 
     const reply = await chat.waitForMessage(
-      (m): m is AgentReplyMessage =>
-        m.role === 'agent' &&
-        typeof m.content === 'string' &&
-        m.content.includes('cat ./tmp/stdout-')
+      commandMatching((m) => m.content.includes('cat ./tmp/stdout-'))
     );
     expect(reply.content).toContain('a'.repeat(600));
   }, 30000);
@@ -93,9 +90,7 @@ describe('Output Size E2E', () => {
       agent: 'debug-agent',
     });
 
-    const policy = await chat.waitForMessage(
-      (m): m is PolicyRequestMessage => m.role === 'policy' && m.status === 'approved'
-    );
+    const policy = await chat.waitForMessage(policyWith('approved'));
     expect(policy.content).toMatch(
       /stderr is 60\d characters, saved to \.\/tmp\/stderr-[a-zA-Z0-9-]+\.txt/
     );

@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
-import type { CommandLogMessage } from '../../src/daemon/chats.js';
+import {
+  TestEnvironment,
+  type ChatSubscription,
+  commandWith,
+} from '../_helpers/test-environment.js';
 
 describe('/stop Router E2E', () => {
   let env: TestEnvironment;
@@ -14,10 +17,7 @@ describe('/stop Router E2E', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(async () => {
-    await chat?.disconnect();
-    chat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   it('aborts the in-flight task and suppresses its command log', async () => {
     await env.runCli(['agents', 'add', 'stop-agent']);
@@ -45,10 +45,7 @@ describe('/stop Router E2E', () => {
     // Wait past the original sleep window so any surviving task would have
     // produced output by now.
     await new Promise((r) => setTimeout(r, 3500));
-    const leaked = chat.messageBuffer.some(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' && typeof m.stdout === 'string' && m.stdout.includes('DONE')
-    );
+    const leaked = chat.messageBuffer.some(commandWith('DONE'));
     expect(leaked).toBe(false);
   }, 20000);
 
@@ -75,11 +72,7 @@ describe('/stop Router E2E', () => {
     });
 
     await env.sendMessage('after', { chat: 'stop-recovery-chat' });
-    const ok = await chat.waitForMessage(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' && m.stdout.includes('RECOVERED'),
-      10000
-    );
+    const ok = await chat.waitForMessage(commandWith('RECOVERED'), 10000);
     expect(ok.exitCode).toBe(0);
   }, 25000);
 });

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
-import type { CommandLogMessage } from '../../src/daemon/chats.js';
+import { TestEnvironment, type ChatSubscription, commandMatching } from '../_helpers/test-environment.js';
 
 describe('E2E Agent Interrupt + Pending Message Merge', () => {
   let env: TestEnvironment;
@@ -14,10 +13,7 @@ describe('E2E Agent Interrupt + Pending Message Merge', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(async () => {
-    await chat?.disconnect();
-    chat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   it('aborts the active task and prepends pending payloads to the new message', async () => {
     await env.runCli(['agents', 'add', 'interrupt-agent']);
@@ -43,11 +39,7 @@ describe('E2E Agent Interrupt + Pending Message Merge', () => {
     await env.sendMessage('/interrupt third', { chat: 'interrupt-chat', noWait: true });
 
     const mergedLog = await chat.waitForMessage(
-      (m): m is CommandLogMessage =>
-        m.role === 'command' &&
-        typeof m.stdout === 'string' &&
-        m.stdout.includes('RAN:') &&
-        m.stdout.includes('third'),
+      commandMatching((m) => m.stdout.includes('RAN:') && m.stdout.includes('third')),
       20000
     );
 

@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { TestEnvironment, type ChatSubscription } from '../_helpers/test-environment.js';
-import type { AgentReplyMessage, ToolMessage } from '../../src/daemon/chats.js';
+import {
+  TestEnvironment,
+  type ChatSubscription,
+  type ToolMessage,
+  agentReplyWith,
+} from '../_helpers/test-environment.js';
 
 // Covers lite-only commands that aren't reachable via the main CLI: reply,
 // reply --file, tool, and fetch-pending. Lite's jobs CRUD is covered by
@@ -25,10 +29,7 @@ describe('E2E Export Lite Chat/Tool Commands', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
-  afterEach(async () => {
-    await chat?.disconnect();
-    chat = undefined;
-  });
+  afterEach(() => env.disconnectAll());
 
   it('reply appends an agent reply to the chat', async () => {
     chat = await env.connect('__creds__');
@@ -36,9 +37,7 @@ describe('E2E Export Lite Chat/Tool Commands', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Reply message appended');
 
-    const msg = await chat.waitForMessage(
-      (m): m is AgentReplyMessage => m.role === 'agent' && m.content === 'hello reply'
-    );
+    const msg = await chat.waitForMessage(agentReplyWith('hello reply'));
     expect(msg).toBeTruthy();
   }, 15000);
 
@@ -55,9 +54,7 @@ describe('E2E Export Lite Chat/Tool Commands', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Reply message appended');
 
-    const msg = await chat.waitForMessage(
-      (m): m is AgentReplyMessage => m.role === 'agent' && m.content === 'hello with file'
-    );
+    const msg = await chat.waitForMessage(agentReplyWith('hello with file'));
     expect(msg.files).toEqual(['debug-agent/attach.txt']);
   }, 15000);
 
