@@ -1,25 +1,26 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { createE2EContext } from '../_helpers/utils.js';
+import { TestEnvironment } from '../_helpers/test-environment.js';
 
 describe('Environments E2E', () => {
-  const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-env');
+  let env: TestEnvironment;
 
   beforeAll(async () => {
-    await setupE2E();
-    await runCli(['init']);
+    env = new TestEnvironment('e2e-env');
+    await env.setup();
+    await env.init();
   }, 30000);
 
-  afterAll(teardownE2E, 30000);
+  afterAll(() => env.teardown(), 30000);
 
   it('should run environment up and down commands on daemon start and stop', async () => {
     // Create an environment with up and down commands
-    const envDir = path.join(e2eDir, '.clawmini', 'environments', 'test-env');
+    const envDir = path.join(env.e2eDir, '.clawmini', 'environments', 'test-env');
     fs.mkdirSync(envDir, { recursive: true });
 
-    const upHookPath = path.join(e2eDir, 'up-hook-run.txt');
-    const downHookPath = path.join(e2eDir, 'down-hook-run.txt');
+    const upHookPath = path.join(env.e2eDir, 'up-hook-run.txt');
+    const downHookPath = path.join(env.e2eDir, 'down-hook-run.txt');
 
     fs.writeFileSync(
       path.join(envDir, 'env.json'),
@@ -30,10 +31,10 @@ describe('Environments E2E', () => {
     );
 
     // Enable the environment
-    await runCli(['environments', 'enable', 'test-env']);
+    await env.runCli(['environments', 'enable', 'test-env']);
 
     // Start the daemon (should trigger up hook)
-    const { stdout: upStdout, code: upCode } = await runCli(['up']);
+    const { stdout: upStdout, code: upCode } = await env.runCli(['up']);
     expect(upCode).toBe(0);
     expect(upStdout).toMatch(
       /(Daemon is already running\.|Successfully started clawmini daemon\.)/
@@ -44,7 +45,7 @@ describe('Environments E2E', () => {
 
     // The daemon might have already been running since beforeAll init might start it.
     // So let's actually shut it down, then start it to be sure.
-    await runCli(['down']);
+    await env.runCli(['down']);
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Clear out files if they exist
@@ -52,13 +53,13 @@ describe('Environments E2E', () => {
     if (fs.existsSync(downHookPath)) fs.unlinkSync(downHookPath);
 
     // Start daemon
-    await runCli(['up']);
+    await env.runCli(['up']);
     await new Promise((resolve) => setTimeout(resolve, 1000));
     expect(fs.existsSync(upHookPath)).toBe(true);
     expect(fs.readFileSync(upHookPath, 'utf8').trim()).toBe('env-up');
 
     // Stop daemon
-    await runCli(['down']);
+    await env.runCli(['down']);
     await new Promise((resolve) => setTimeout(resolve, 1000));
     expect(fs.existsSync(downHookPath)).toBe(true);
     expect(fs.readFileSync(downHookPath, 'utf8').trim()).toBe('env-down');

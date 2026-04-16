@@ -1,29 +1,28 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createE2EContext } from '../_helpers/utils.js';
+import { TestEnvironment } from '../_helpers/test-environment.js';
 import { getTRPCClient } from '../../src/adapter-discord/client.js';
 import { getSocketPath } from '../../src/shared/workspace.js';
 
-const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-discord');
 describe('Discord Adapter Client E2E', () => {
+  let env: TestEnvironment;
+
   beforeAll(async () => {
-    await setupE2E();
-    await runCli(['init']);
-    await runCli(['up']);
+    env = new TestEnvironment('e2e-discord');
+    await env.setup();
+    await env.init();
+    await env.up();
   }, 30000);
 
-  afterAll(async () => {
-    await runCli(['down']);
-    await teardownE2E();
-  }, 30000);
+  afterAll(() => env.teardown(), 30000);
 
   it('should successfully connect to the daemon and subscribe to messages', async () => {
-    const socketPath = getSocketPath(e2eDir);
+    const socketPath = getSocketPath(env.e2eDir);
     const trpc = getTRPCClient({ socketPath });
 
     const pingResult = await trpc.ping.query();
     expect(pingResult).toEqual({ status: 'ok' });
 
-    await runCli(['chats', 'add', 'discord-chat']);
+    await env.runCli(['chats', 'add', 'discord-chat']);
 
     let subscription: { unsubscribe: () => void } | undefined;
     const messages: Record<string, unknown>[] = [];
@@ -47,14 +46,10 @@ describe('Discord Adapter Client E2E', () => {
       // Wait a brief moment to ensure subscription is established before sending a message
       setTimeout(async () => {
         try {
-          await runCli([
-            'messages',
-            'send',
-            'hello from adapter e2e test',
-            '--chat',
-            'discord-chat',
-            '--no-wait',
-          ]);
+          await env.sendMessage('hello from adapter e2e test', {
+            chat: 'discord-chat',
+            noWait: true,
+          });
         } catch (e) {
           reject(e);
         }
