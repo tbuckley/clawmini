@@ -1,20 +1,21 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { createE2EContext } from '../_helpers/utils.js';
-
-const { runCli, e2eDir, setupE2E, teardownE2E } = createE2EContext('e2e-tmp-agents');
+import { TestEnvironment } from '../_helpers/test-environment.js';
 
 describe('E2E Agents Tests', () => {
+  let env: TestEnvironment;
+
   beforeAll(async () => {
-    await setupE2E();
-    await runCli(['init']);
+    env = new TestEnvironment('e2e-tmp-agents');
+    await env.setup();
+    await env.init();
   }, 30000);
 
-  afterAll(teardownE2E, 30000);
+  afterAll(() => env.teardown(), 30000);
 
   it('should create, list, update and delete agents', async () => {
-    const { stdout: stdoutAdd, code: codeAdd } = await runCli([
+    const { stdout: stdoutAdd, code: codeAdd } = await env.runCli([
       'agents',
       'add',
       'test-agent',
@@ -28,22 +29,21 @@ describe('E2E Agents Tests', () => {
     expect(codeAdd).toBe(0);
     expect(stdoutAdd).toContain('Agent test-agent created successfully.');
 
-    const chatSettingsPath = path.resolve(e2eDir, '.clawmini/chats/test-agent/settings.json');
-    expect(fs.existsSync(chatSettingsPath)).toBe(true);
-    const chatData = JSON.parse(fs.readFileSync(chatSettingsPath, 'utf8'));
+    expect(fs.existsSync(env.getChatPath('test-agent', 'settings.json'))).toBe(true);
+    const chatData = env.getChatSettings('test-agent');
     expect(chatData.defaultAgent).toBe('test-agent');
 
-    const agentSettingsPath = path.resolve(e2eDir, '.clawmini/agents/test-agent/settings.json');
+    const agentSettingsPath = env.getAgentPath('test-agent', 'settings.json');
     expect(fs.existsSync(agentSettingsPath)).toBe(true);
-    const agentData = JSON.parse(fs.readFileSync(agentSettingsPath, 'utf8'));
+    const agentData = env.getAgentSettings('test-agent');
     expect(agentData.directory).toBe('./test-agent-dir');
     expect(agentData.env?.FOO).toBe('BAR');
     expect(agentData.env?.BAZ).toBe('QUX');
 
-    const { stdout: stdoutList1 } = await runCli(['agents', 'list']);
+    const { stdout: stdoutList1 } = await env.runCli(['agents', 'list']);
     expect(stdoutList1).toContain('- test-agent');
 
-    const { stdout: stdoutUpdate, code: codeUpdate } = await runCli([
+    const { stdout: stdoutUpdate, code: codeUpdate } = await env.runCli([
       'agents',
       'update',
       'test-agent',
@@ -55,12 +55,12 @@ describe('E2E Agents Tests', () => {
     expect(codeUpdate).toBe(0);
     expect(stdoutUpdate).toContain('Agent test-agent updated successfully.');
 
-    const updatedAgentData = JSON.parse(fs.readFileSync(agentSettingsPath, 'utf8'));
+    const updatedAgentData = env.getAgentSettings('test-agent');
     expect(updatedAgentData.directory).toBe('./new-dir');
     expect(updatedAgentData.env?.FOO).toBe('NEW_BAR');
     expect(updatedAgentData.env?.BAZ).toBe('QUX');
 
-    const { stdout: stdoutDelete, code: codeDelete } = await runCli([
+    const { stdout: stdoutDelete, code: codeDelete } = await env.runCli([
       'agents',
       'delete',
       'test-agent',
@@ -72,10 +72,9 @@ describe('E2E Agents Tests', () => {
 
   it('should output a warning if chat already exists when adding an agent', async () => {
     // First, manually create a chat directory
-    const chatDir = path.resolve(e2eDir, '.clawmini/chats/existing-chat');
-    fs.mkdirSync(chatDir, { recursive: true });
+    fs.mkdirSync(env.getChatPath('existing-chat'), { recursive: true });
 
-    const { stdout, stderr, code } = await runCli(['agents', 'add', 'existing-chat']);
+    const { stdout, stderr, code } = await env.addAgent('existing-chat');
 
     expect(code).toBe(0);
     expect(stderr).toContain('Warning: Chat existing-chat already exists.');
@@ -84,7 +83,7 @@ describe('E2E Agents Tests', () => {
 
   it('should create an agent using a template and merge settings correctly', async () => {
     // Create a local template
-    const templateDir = path.resolve(e2eDir, '.clawmini/templates/test-template');
+    const templateDir = env.getClawminiPath('templates', 'test-template');
     fs.mkdirSync(templateDir, { recursive: true });
 
     // Create some template files
@@ -100,7 +99,7 @@ describe('E2E Agents Tests', () => {
     };
     fs.writeFileSync(path.join(templateDir, 'settings.json'), JSON.stringify(templateSettings));
 
-    const { stdout, stderr, code } = await runCli([
+    const { stdout, stderr, code } = await env.runCli([
       'agents',
       'add',
       'test-template-agent',
@@ -115,13 +114,9 @@ describe('E2E Agents Tests', () => {
     expect(code).toBe(0);
     expect(stderr).toContain("Warning: Ignoring 'directory' field from template settings.json");
     expect(stdout).toContain('Agent test-template-agent created successfully.');
-    const agentSettingsPath = path.resolve(
-      e2eDir,
-      '.clawmini/agents/test-template-agent/settings.json'
-    );
-    expect(fs.existsSync(agentSettingsPath)).toBe(true);
+    expect(fs.existsSync(env.getAgentPath('test-template-agent', 'settings.json'))).toBe(true);
 
-    const agentData = JSON.parse(fs.readFileSync(agentSettingsPath, 'utf8'));
+    const agentData = env.getAgentSettings('test-template-agent');
 
     // Verify directory override
     expect(agentData.directory).toBe('./custom-agent-dir');
@@ -131,7 +126,7 @@ describe('E2E Agents Tests', () => {
     expect(agentData.env?.FOO).toBe('BAR');
 
     // Verify template files were copied
-    const customDir = path.resolve(e2eDir, 'custom-agent-dir');
+    const customDir = path.resolve(env.e2eDir, 'custom-agent-dir');
     expect(fs.existsSync(path.join(customDir, 'hello.txt'))).toBe(true);
 
     // Verify settings.json was deleted from the agent working dir

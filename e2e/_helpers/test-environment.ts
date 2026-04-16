@@ -51,6 +51,18 @@ export class TestEnvironment {
     this.binPath = path.resolve(__dirname, '../../dist/cli/index.mjs');
   }
 
+  public getClawminiPath(...parts: string[]): string {
+    return path.resolve(this.e2eDir, '.clawmini', ...parts);
+  }
+
+  public getChatPath(chatId: string, ...parts: string[]): string {
+    return this.getClawminiPath('chats', chatId, ...parts);
+  }
+
+  public getAgentPath(agentId: string, ...parts: string[]): string {
+    return this.getClawminiPath('agents', agentId, ...parts);
+  }
+
   public runCli(args: string[]): Promise<{ stdout: string; stderr: string; code: number | null }> {
     const isInit = args[0] === 'init';
     return new Promise((resolve) => {
@@ -73,7 +85,7 @@ export class TestEnvironment {
       child.on('close', (code) => {
         if (isInit && code === 0) {
           // Update settings to set API port to 0, assigning a random available port
-          const settingsPath = path.resolve(this.e2eDir, '.clawmini/settings.json');
+          const settingsPath = this.getClawminiPath('settings.json');
           if (fs.existsSync(settingsPath)) {
             try {
               const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
@@ -134,7 +146,7 @@ export class TestEnvironment {
   private async ensureTrpcClient() {
     if (this.trpcClient) return;
 
-    const socketPath = path.join(this.e2eDir, '.clawmini', 'daemon.sock');
+    const socketPath = this.getClawminiPath('daemon.sock');
     for (let i = 0; i < 50; i++) {
       if (fs.existsSync(socketPath)) break;
       await new Promise((r) => setTimeout(r, 100));
@@ -228,7 +240,7 @@ export class TestEnvironment {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public writeChatSettings(chatId: string, settings: any) {
-    const chatSettingsPath = path.resolve(this.e2eDir, `.clawmini/chats/${chatId}/settings.json`);
+    const chatSettingsPath = this.getChatPath(chatId, 'settings.json');
     const chatSettingsDir = path.dirname(chatSettingsPath);
     if (!fs.existsSync(chatSettingsDir)) {
       fs.mkdirSync(chatSettingsDir, { recursive: true });
@@ -238,7 +250,7 @@ export class TestEnvironment {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public getSettings(): any {
-    const settingsPath = path.resolve(this.e2eDir, '.clawmini/settings.json');
+    const settingsPath = this.getClawminiPath('settings.json');
     if (fs.existsSync(settingsPath)) {
       return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     }
@@ -247,16 +259,13 @@ export class TestEnvironment {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public writeSettings(settings: any) {
-    const settingsPath = path.resolve(this.e2eDir, '.clawmini/settings.json');
+    const settingsPath = this.getClawminiPath('settings.json');
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public getAgentSettings(agentId: string): any {
-    const agentSettingsPath = path.resolve(
-      this.e2eDir,
-      `.clawmini/agents/${agentId}/settings.json`
-    );
+    const agentSettingsPath = this.getAgentPath(agentId, 'settings.json');
     if (fs.existsSync(agentSettingsPath)) {
       return JSON.parse(fs.readFileSync(agentSettingsPath, 'utf8'));
     }
@@ -265,10 +274,7 @@ export class TestEnvironment {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public writeAgentSettings(agentId: string, settings: any) {
-    const agentSettingsPath = path.resolve(
-      this.e2eDir,
-      `.clawmini/agents/${agentId}/settings.json`
-    );
+    const agentSettingsPath = this.getAgentPath(agentId, 'settings.json');
     const agentSettingsDir = path.dirname(agentSettingsPath);
     if (!fs.existsSync(agentSettingsDir)) {
       fs.mkdirSync(agentSettingsDir, { recursive: true });
@@ -278,7 +284,7 @@ export class TestEnvironment {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public getChatSettings(chatId: string): any {
-    const chatSettingsPath = path.resolve(this.e2eDir, `.clawmini/chats/${chatId}/settings.json`);
+    const chatSettingsPath = this.getChatPath(chatId, 'settings.json');
     if (fs.existsSync(chatSettingsPath)) {
       return JSON.parse(fs.readFileSync(chatSettingsPath, 'utf8'));
     }
@@ -287,9 +293,11 @@ export class TestEnvironment {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public getSessionSettings(agentId: string, sessionId: string): any {
-    const sessionSettingsPath = path.resolve(
-      this.e2eDir,
-      `.clawmini/agents/${agentId}/sessions/${sessionId}/settings.json`
+    const sessionSettingsPath = this.getAgentPath(
+      agentId,
+      'sessions',
+      sessionId,
+      'settings.json'
     );
     if (fs.existsSync(sessionSettingsPath)) {
       return JSON.parse(fs.readFileSync(sessionSettingsPath, 'utf8'));
@@ -298,7 +306,7 @@ export class TestEnvironment {
   }
 
   public updateSettings(updates: Record<string, unknown>) {
-    const settingsPath = path.resolve(this.e2eDir, '.clawmini/settings.json');
+    const settingsPath = this.getClawminiPath('settings.json');
     let settings = {};
     if (fs.existsSync(settingsPath)) {
       settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
@@ -370,7 +378,7 @@ export class TestEnvironment {
   }
 
   public writePolicies(policies: unknown) {
-    const policiesPath = path.resolve(this.e2eDir, '.clawmini/policies.json');
+    const policiesPath = this.getClawminiPath('policies.json');
     const policiesDir = path.dirname(policiesPath);
     if (!fs.existsSync(policiesDir)) {
       fs.mkdirSync(policiesDir, { recursive: true });
@@ -407,15 +415,11 @@ export class TestEnvironment {
     fs.mkdirSync(binDir);
     fs.symlinkSync(litePath, path.join(binDir, 'clawmini-lite.js'));
 
-    const agentSettingsPath = path.resolve(
-      this.e2eDir,
-      '.clawmini/agents/debug-agent/settings.json'
-    );
-    if (fs.existsSync(agentSettingsPath)) {
-      const agentSettings = JSON.parse(fs.readFileSync(agentSettingsPath, 'utf8'));
+    if (fs.existsSync(this.getAgentPath('debug-agent', 'settings.json'))) {
+      const agentSettings = this.getAgentSettings('debug-agent');
       agentSettings.env = agentSettings.env || {};
       agentSettings.env.PATH = `${binDir}:${process.env.PATH}`;
-      fs.writeFileSync(agentSettingsPath, JSON.stringify(agentSettings, null, 2));
+      this.writeAgentSettings('debug-agent', agentSettings);
     }
   }
 }
