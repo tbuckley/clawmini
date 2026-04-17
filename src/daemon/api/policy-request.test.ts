@@ -32,7 +32,7 @@ vi.mock('../policy-request-service.js', () => {
     PolicyRequestService: class {
       async createRequest() {
         return {
-          id: 'req-123',
+          id: 'REQ-123',
           commandName: 'test-cmd',
           args: ['arg1', 'arg2'],
           fileMappings: {
@@ -103,7 +103,7 @@ describe('createPolicyRequest preview message', () => {
       },
     });
 
-    expect(result.id).toBe('req-123');
+    expect(result.id).toBe('REQ-123');
 
     expect(chats.appendMessage).toHaveBeenCalledTimes(1);
     const callArgs = vi.mocked(chats.appendMessage).mock.calls[0]!;
@@ -116,14 +116,14 @@ describe('createPolicyRequest preview message', () => {
     // Assert preview content format
     const content = logMsg.content;
     expect(content).toContain('Sandbox Policy Request: test-cmd');
-    expect(content).toContain('ID: req-123');
+    expect(content).toContain('ID: REQ-123');
     expect(content).toContain('Args: arg1 arg2');
 
     expect(content).toContain('File [file1]:\n' + shortContent);
 
     // The long file should be truncated to 500 chars + suffix
     expect(content).toContain('File [file2]:\n' + 'A'.repeat(500) + '\n... (truncated)');
-    expect(content).toContain('Use /approve req-123 or /reject req-123 [reason]');
+    expect(content).toContain('Use /approve REQ-123 or /reject REQ-123 [reason]');
   });
 
   it('should create an auto-approved request and execute it immediately', async () => {

@@ -33,11 +33,13 @@ describe('slashPolicies', () => {
       list: vi.fn(),
       load: vi.fn(),
       save: vi.fn(),
+      delete: vi.fn(),
     };
     vi.mocked(RequestStore).mockImplementation(function (this: any) {
       this.list = mockStore.list;
       this.load = mockStore.load;
       this.save = mockStore.save;
+      this.delete = mockStore.delete;
       return this;
     } as any);
 
@@ -111,11 +113,8 @@ describe('slashPolicies', () => {
     const state = { message: '/approve req-1', messageId: 'mock-msg-id', chatId: 'chat-1' };
     const result = await slashPolicies(state);
 
-    expect(mockStore.save).toHaveBeenCalledWith({
-      ...pendingReq,
-      state: 'Approved',
-      executionResult: { stdout: 'hello world', stderr: '', exitCode: 0 },
-    });
+    expect(mockStore.save).not.toHaveBeenCalled();
+    expect(mockStore.delete).toHaveBeenCalledWith('req-1');
     expect(executeRequest).toHaveBeenCalledWith(pendingReq, expect.any(Object), undefined);
     expect(appendMessage).toHaveBeenCalledWith(
       'chat-1',
@@ -151,11 +150,8 @@ describe('slashPolicies', () => {
     };
     const result = await slashPolicies(state);
 
-    expect(mockStore.save).toHaveBeenCalledWith({
-      ...pendingReq,
-      state: 'Rejected',
-      rejectionReason: 'Not allowed',
-    });
+    expect(mockStore.save).not.toHaveBeenCalled();
+    expect(mockStore.delete).toHaveBeenCalledWith('req-1');
     expect(appendMessage).toHaveBeenCalledTimes(1);
     expect(appendMessage).toHaveBeenCalledWith(
       'chat-1',
