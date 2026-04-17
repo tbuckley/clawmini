@@ -533,7 +533,7 @@ describe('Google Chat Adapter Client', () => {
 
       vi.mocked(google.chat({ version: 'v1' }).spaces.messages.list).mockResolvedValueOnce({
         data: { messages: [{ sender: { type: 'BOT' } }] },
-      } as any);
+      } as never);
 
       const mockMsg = {
         data: Buffer.from(
