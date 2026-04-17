@@ -381,6 +381,10 @@ export class TestEnvironment {
     return {};
   }
 
+  public setDefaultAgent(defaultAgent: unknown) {
+    this.writeSettings({ ...this.getSettings(), defaultAgent });
+  }
+
   public updateSettings(updates: Record<string, unknown>) {
     const settingsPath = this.getClawminiPath('settings.json');
     let settings: Record<string, unknown> = {};

@@ -22,15 +22,8 @@ describe('E2E Fallbacks Tests', () => {
   afterAll(() => env.teardown(), 30000);
   afterEach(() => env.disconnectAll());
 
-  // updateSettings() deep-merges, which would leak `commands` keys between
-  // tests (e.g. test 2's getMessageContent bleeding into test 3). Replace
-  // defaultAgent wholesale instead.
-  function setDefaultAgent(defaultAgent: unknown) {
-    env.writeSettings({ ...env.getSettings(), defaultAgent });
-  }
-
   it('should fallback when base agent fails with exit code', async () => {
-    setDefaultAgent({
+    env.setDefaultAgent({
       commands: {
         new: 'if [ "$SUCCESS" = "true" ]; then echo "Succeeded"; else echo "Failed" >&2; exit 1; fi',
       },
@@ -51,7 +44,7 @@ describe('E2E Fallbacks Tests', () => {
   });
 
   it('should fallback when base agent returns empty content', async () => {
-    setDefaultAgent({
+    env.setDefaultAgent({
       commands: {
         new: 'echo "Base output"',
         getMessageContent: 'echo ""',
@@ -77,7 +70,7 @@ describe('E2E Fallbacks Tests', () => {
     const attemptFile = path.resolve(env.e2eDir, 'attempts.txt');
     fs.writeFileSync(attemptFile, '0');
 
-    setDefaultAgent({
+    env.setDefaultAgent({
       commands: {
         new: `
           attempts=$(cat ${attemptFile})
@@ -108,7 +101,7 @@ describe('E2E Fallbacks Tests', () => {
   }, 10000);
 
   it('should report final failure when all fallbacks are exhausted', async () => {
-    setDefaultAgent({
+    env.setDefaultAgent({
       commands: { new: 'exit 1' },
       fallbacks: [
         {
