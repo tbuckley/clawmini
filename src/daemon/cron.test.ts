@@ -49,6 +49,26 @@ describe('CronManager', () => {
     }).toThrow("Invalid date format for 'at' schedule: invalid-date");
   });
 
+  it('fires an overdue "at" job immediately instead of dropping it', () => {
+    const cronManager = new CronManager();
+    vi.mocked(schedule.scheduleJob as any).mockImplementation((rule: any, _cb: any) => {
+      return { cancel: vi.fn(), rule } as any;
+    });
+
+    const past = new Date(Date.now() - 60_000).toISOString();
+    cronManager.scheduleJob('chat-overdue', {
+      id: 'job-overdue',
+      createdAt: new Date().toISOString(),
+      message: 'hello',
+      schedule: { at: past },
+    });
+
+    expect(schedule.scheduleJob).toHaveBeenCalledTimes(1);
+    const [rule] = vi.mocked(schedule.scheduleJob as any).mock.calls[0]!;
+    expect(rule).toBeInstanceOf(Date);
+    expect((rule as Date).getTime()).toBeGreaterThan(Date.now() - 1_000);
+  });
+
   it('correctly schedules an absolute "at" schedule', () => {
     const cronManager = new CronManager();
     expect(() => {

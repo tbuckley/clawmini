@@ -95,6 +95,15 @@ export class CronManager {
       if (isNaN(rule.getTime())) {
         throw new Error(`Invalid date format for 'at' schedule: ${atStr}`);
       }
+      // If the target time has already passed (e.g. daemon was down past it),
+      // node-schedule returns null and the job silently never fires. Push it
+      // just into the future so it executes on the next tick and cleans up.
+      if (rule.getTime() <= Date.now()) {
+        console.warn(
+          `One-off job ${job.id} for chat ${chatId} is overdue (target ${atStr}); firing immediately.`
+        );
+        rule = new Date(Date.now() + 100);
+      }
       isOneOff = true;
     } else {
       console.warn(`Unknown schedule format for job ${job.id}`);
