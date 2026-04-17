@@ -122,6 +122,9 @@ describe('Policy Flows E2E', () => {
           m.subagentId === subagentId
       );
       expect(sanitize(actorNotif.content, reqId)).toBe(expectedActorContent);
+
+      const reqPath = path.resolve(env.e2eDir, `.clawmini/tmp/requests/${reqId}.json`);
+      expect(fs.existsSync(reqPath)).toBe(false);
     },
     15000
   );
@@ -153,7 +156,7 @@ describe('Policy Flows E2E', () => {
     expect(reply.content).toContain(`- ID: ${reqId} | Command: test-cmd`);
   }, 15000);
 
-  it('should persist a custom reason when /reject is given one', async () => {
+  it('should include a custom reason in /reject notifications and delete the request file', async () => {
     await env.addChat('chat-reject-reason');
     chat = await env.connect('chat-reject-reason');
 
@@ -183,8 +186,7 @@ describe('Policy Flows E2E', () => {
     expect(agentMsg.content).toContain('command looked suspicious');
 
     const reqPath = path.resolve(env.e2eDir, `.clawmini/tmp/requests/${reqId}.json`);
-    const stored = JSON.parse(fs.readFileSync(reqPath, 'utf8'));
-    expect(stored.rejectionReason).toBe('command looked suspicious');
+    expect(fs.existsSync(reqPath)).toBe(false);
   }, 15000);
 
   describe('validation branches', () => {
@@ -252,12 +254,13 @@ describe('Policy Flows E2E', () => {
 
       await env.sendMessage(`/approve ${reqId}`, { chat: 'chat-double-approve' });
 
+      // Approved requests are deleted, so the second /approve sees the request as gone.
       await chat.waitForMessage(
         (m): m is SystemMessage =>
           m.role === 'system' &&
           m.event === 'router' &&
           typeof m.content === 'string' &&
-          m.content.includes('Request is not pending')
+          m.content.includes(`Request not found: ${reqId}`)
       );
     }, 15000);
 
