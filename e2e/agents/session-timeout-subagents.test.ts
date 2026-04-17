@@ -46,6 +46,7 @@ describe('Session Timeout Subagents E2E', () => {
         nextSessionId: expect.any(String),
         session: { id: expect.any(String) },
         jobs: { remove: [expect.stringMatching(/^__session_timeout__/)] },
+        schedule: { at: expect.any(String) },
       },
       `
       {
@@ -62,7 +63,7 @@ describe('Session Timeout Subagents E2E', () => {
         "nextSessionId": Any<String>,
         "reply": "[@clawmini/session-timeout] Starting a fresh session...",
         "schedule": {
-          "at": "60m",
+          "at": Any<String>,
         },
         "session": {
           "id": Any<String>,

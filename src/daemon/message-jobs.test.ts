@@ -36,6 +36,7 @@ vi.mock('./cron.js', () => ({
     scheduleJob: vi.fn(),
     unscheduleJob: vi.fn(),
   },
+  normalizeJob: (job: unknown) => job,
 }));
 
 describe('Jobs and Session Handling in handleUserMessage', () => {

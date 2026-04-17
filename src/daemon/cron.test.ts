@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { CronManager } from './cron.js';
+import { CronManager, normalizeJob } from './cron.js';
 // @ts-expect-error - node-schedule types are missing
 import schedule from 'node-schedule';
 import { getInitialRouterState } from './message.js';
@@ -49,16 +49,74 @@ describe('CronManager', () => {
     }).toThrow("Invalid date format for 'at' schedule: invalid-date");
   });
 
-  it('correctly schedules an interval "at" schedule', () => {
+  it('fires an overdue "at" job immediately instead of dropping it', () => {
+    const cronManager = new CronManager();
+    vi.mocked(schedule.scheduleJob as any).mockImplementation((rule: any, _cb: any) => {
+      return { cancel: vi.fn(), rule } as any;
+    });
+
+    const past = new Date(Date.now() - 60_000).toISOString();
+    cronManager.scheduleJob('chat-overdue', {
+      id: 'job-overdue',
+      createdAt: new Date().toISOString(),
+      message: 'hello',
+      schedule: { at: past },
+    });
+
+    expect(schedule.scheduleJob).toHaveBeenCalledTimes(1);
+    const [rule] = vi.mocked(schedule.scheduleJob as any).mock.calls[0]!;
+    expect(rule).toBeInstanceOf(Date);
+    expect((rule as Date).getTime()).toBeGreaterThan(Date.now() - 1_000);
+  });
+
+  it('correctly schedules an absolute "at" schedule', () => {
     const cronManager = new CronManager();
     expect(() => {
       cronManager.scheduleJob('chat2', {
         id: 'job2',
         createdAt: new Date().toISOString(),
         message: 'hello',
-        schedule: { at: '2m' },
+        schedule: { at: new Date(Date.now() + 120_000).toISOString() },
       });
     }).not.toThrow();
+  });
+
+  it('normalizeJob resolves interval "at" to an absolute ISO timestamp', () => {
+    const before = Date.now();
+    const normalized = normalizeJob({
+      id: 'job-norm',
+      createdAt: new Date().toISOString(),
+      message: 'hi',
+      schedule: { at: '2s' },
+    });
+    const after = Date.now();
+    expect('at' in normalized.schedule).toBe(true);
+    const at = (normalized.schedule as { at: string }).at;
+    const ms = new Date(at).getTime();
+    expect(ms).toBeGreaterThanOrEqual(before + 2000);
+    expect(ms).toBeLessThanOrEqual(after + 2000);
+  });
+
+  it('normalizeJob preserves an already-absolute "at" value', () => {
+    const iso = new Date(Date.now() + 60_000).toISOString();
+    const normalized = normalizeJob({
+      id: 'job-abs',
+      createdAt: new Date().toISOString(),
+      message: 'hi',
+      schedule: { at: iso },
+    });
+    expect((normalized.schedule as { at: string }).at).toBe(iso);
+  });
+
+  it('normalizeJob throws on unparseable "at" value', () => {
+    expect(() =>
+      normalizeJob({
+        id: 'job-bad',
+        createdAt: new Date().toISOString(),
+        message: 'hi',
+        schedule: { at: 'not-a-date' },
+      })
+    ).toThrow("Invalid date format for 'at' schedule: not-a-date");
   });
 
   it('passes job.session.id to getInitialRouterState when session type is existing', async () => {
@@ -73,7 +131,7 @@ describe('CronManager', () => {
       id: 'job3',
       createdAt: new Date().toISOString(),
       message: 'test existing session',
-      schedule: { at: '1m' },
+      schedule: { at: new Date(Date.now() + 60_000).toISOString() },
       session: { type: 'existing', id: 'my-old-session-id' },
     });
 
