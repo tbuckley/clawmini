@@ -8,7 +8,7 @@ import {
   type ToolMessage,
 } from '../chats.js';
 import { getWorkspaceRoot } from '../../shared/workspace.js';
-import { CronJobSchema } from '../../shared/config.js';
+import type { CronJob } from '../../shared/config.js';
 import { apiProcedure, router } from './trpc.js';
 import { taskScheduler } from '../agent/task-scheduler.js';
 import { formatPendingMessages } from '../agent/utils.js';
@@ -149,12 +149,42 @@ export const agentListCronJobs = apiProcedure.query(async ({ ctx }) => {
   return listCronJobsShared(chatId);
 });
 
+// Agents may only set a restricted subset of CronJob fields. The remaining
+// fields (agentId, createdAt, env, nextSessionId, action, jobs) are reserved
+// for internal use and filled in by the server.
+export const AgentCronJobInputSchema = z.strictObject({
+  id: z.string().min(1),
+  message: z.string().default(''),
+  reply: z.string().optional(),
+  session: z
+    .union([
+      z.strictObject({ type: z.literal('new') }),
+      z.strictObject({ type: z.literal('existing'), id: z.string() }),
+    ])
+    .optional(),
+  schedule: z.union([
+    z.strictObject({ cron: z.string() }),
+    z.strictObject({ every: z.string() }),
+    z.strictObject({ at: z.string() }),
+  ]),
+});
+
+export type AgentCronJobInput = z.infer<typeof AgentCronJobInputSchema>;
+
 export const agentAddCronJob = apiProcedure
-  .input(z.object({ job: CronJobSchema }))
+  .input(z.object({ job: AgentCronJobInputSchema }))
   .mutation(async ({ input, ctx }) => {
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
-    const job = { ...input.job, agentId: ctx.tokenPayload.agentId };
+    const job: CronJob = {
+      id: input.job.id,
+      message: input.job.message,
+      schedule: input.job.schedule,
+      createdAt: new Date().toISOString(),
+      agentId: ctx.tokenPayload.agentId,
+      ...(input.job.reply !== undefined ? { reply: input.job.reply } : {}),
+      ...(input.job.session !== undefined ? { session: input.job.session } : {}),
+    };
     return addCronJobShared(chatId, job);
   });
 

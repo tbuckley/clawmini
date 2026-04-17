@@ -77,7 +77,7 @@ vi.mock('./state.js', () => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   updateGoogleChatState: (updates: any) => {
     const currentState = { lastSyncedMessageIds: { otherChat: 'msg-other' } };
-    const result = typeof updates === 'function' ? updates(currentState as any) : updates;
+    const result = typeof updates === 'function' ? updates(currentState) : updates;
     mockStateDeps.mockWriteState(result);
     return Promise.resolve(result);
   },
