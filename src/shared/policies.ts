@@ -6,9 +6,26 @@ export interface PolicyDefinition {
   autoApprove?: boolean;
 }
 
+// Resolved policy config: built-ins merged in, `false` overrides stripped.
+// This is what every consumer should see.
 export interface PolicyConfig {
+  policies: Record<string, PolicyDefinition>;
+}
+
+// On-disk shape: `false` opts a built-in out, a definition opts in / overrides.
+export interface PolicyConfigFile {
   policies: Record<string, PolicyDefinition | false>;
 }
+
+export const BUILTIN_POLICY_SCRIPTS_DIR = '.clawmini/policy-scripts';
+
+export const BUILTIN_POLICIES: Record<string, PolicyDefinition> = {
+  'propose-policy': {
+    description: 'Propose a new policy for the clawmini agent',
+    command: `./${BUILTIN_POLICY_SCRIPTS_DIR}/propose-policy.js`,
+    allowHelp: true,
+  },
+};
 
 export type RequestState = 'Pending' | 'Approved' | 'Rejected';
 

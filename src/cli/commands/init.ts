@@ -47,8 +47,7 @@ export const initCmd = new Command('init')
 
     fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2));
     console.log('Initialized .clawmini/settings.json');
-    
-    // Create policy-scripts dir and copy built-ins
+
     await installBuiltinPolicies(dirPath);
 
     if (options.agent) {

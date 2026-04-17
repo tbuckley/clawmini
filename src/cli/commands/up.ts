@@ -11,7 +11,6 @@ export const upCmd = new Command('up')
       const socketPath = getSocketPath();
       const wasRunning = fs.existsSync(socketPath);
 
-      // We are in a clawmini directory structure, ensure built-ins are updated
       await installBuiltinPolicies();
 
       const client = await getDaemonClient({ autoStart: true });

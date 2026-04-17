@@ -2,10 +2,11 @@
 import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { PolicyConfig, PolicyDefinition } from '../shared/policies.js';
+import { pathToFileURL } from 'node:url';
+import type { PolicyConfigFile, PolicyDefinition } from '../shared/policies.js';
 import { getClawminiDir } from '../shared/workspace.js';
 
-export const proposePolicyCmd = new Command('propose-policy');
+const proposePolicyCmd = new Command('propose-policy');
 
 proposePolicyCmd
   .description('Proposes and registers a new policy.')
@@ -32,7 +33,9 @@ Examples:
     const scriptFile = options.scriptFile;
 
     if (!/^[a-z0-9-]+$/.test(name)) {
-      console.error('Error: Policy name must only contain lowercase letters, numbers, and hyphens.');
+      console.error(
+        'Error: Policy name must only contain lowercase letters, numbers, and hyphens.'
+      );
       process.exit(1);
     }
 
@@ -49,7 +52,7 @@ Examples:
       process.exit(1);
     }
 
-    let policies: PolicyConfig = { policies: {} };
+    let policies: PolicyConfigFile = { policies: {} };
     if (fs.existsSync(policiesPath)) {
       policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
     }
@@ -87,10 +90,6 @@ Examples:
     console.log(`Successfully proposed and registered policy '${name}'.`);
   });
 
-// Execute if run directly as a script
-if (
-  process.argv[1] &&
-  (process.argv[1].endsWith('propose-policy.mjs') || process.argv[1].endsWith('propose-policy.js'))
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   proposePolicyCmd.parse(process.argv);
 }

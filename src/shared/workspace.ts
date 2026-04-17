@@ -1,6 +1,11 @@
 /* eslint-disable max-lines */
 import { execSync } from 'node:child_process';
-import type { PolicyConfig } from './policies.js';
+import {
+  BUILTIN_POLICIES,
+  type PolicyConfig,
+  type PolicyConfigFile,
+  type PolicyDefinition,
+} from './policies.js';
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
@@ -516,29 +521,40 @@ export async function writeSettings(data: Settings, startDir = process.cwd()): P
   await writeJsonFile(getSettingsPath(startDir), data as Record<string, unknown>);
 }
 
-export async function readPolicies(startDir = process.cwd()): Promise<PolicyConfig | null> {
+export async function readPoliciesFile(startDir = process.cwd()): Promise<PolicyConfigFile | null> {
   const data = await readJsonFile(getPoliciesPath(startDir));
   if (!data) return null;
-  // Basic validation, assuming PolicyConfig structure
   if (data.policies && typeof data.policies === 'object') {
-    const config = data as unknown as PolicyConfig;
-    if (config.policies['propose-policy'] !== false && !config.policies['propose-policy']) {
-      config.policies['propose-policy'] = {
-        description: 'Propose a new policy for the clawmini agent',
-        command: './.clawmini/policy-scripts/propose-policy.js',
-        allowHelp: true,
-      };
-    }
-    
-    // Strip out any policies that are explicitly set to false
-    for (const [key, value] of Object.entries(config.policies)) {
-      if (value === false) {
-        delete config.policies[key];
-      }
-    }
-    return config as PolicyConfig; // Now it conforms since false values are removed
+    return data as unknown as PolicyConfigFile;
   }
   return null;
+}
+
+// Merge built-ins, drop any user entries explicitly set to `false`. Pure: never
+// mutates the input. A built-in is only injected when its installed script
+// exists on disk, so the resolved config never advertises a command we know is
+// missing.
+export function resolvePolicies(
+  file: PolicyConfigFile | null,
+  clawminiDir: string
+): PolicyConfig | null {
+  if (!file) return null;
+  const resolved: Record<string, PolicyDefinition> = {};
+  for (const [name, value] of Object.entries(file.policies)) {
+    if (value !== false) resolved[name] = value;
+  }
+  for (const [name, definition] of Object.entries(BUILTIN_POLICIES)) {
+    if (name in file.policies) continue;
+    const scriptPath = path.join(clawminiDir, 'policy-scripts', `${name}.js`);
+    if (!fs.existsSync(scriptPath)) continue;
+    resolved[name] = definition;
+  }
+  return { policies: resolved };
+}
+
+export async function readPolicies(startDir = process.cwd()): Promise<PolicyConfig | null> {
+  const file = await readPoliciesFile(startDir);
+  return resolvePolicies(file, getClawminiDir(startDir));
 }
 
 export function getEnvironmentPath(name: string, startDir = process.cwd()): string {
