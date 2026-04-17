@@ -80,13 +80,9 @@ describe('E2E Export Lite Chat/Tool Commands', () => {
     // the task queue and the second send stays pending until fetch-pending.
     // Both `new` and `append` must be overridden — getAgentCredentials has
     // already captured a SESSION_ID, so subsequent sends use `append`.
-    const agentSettings = env.getAgentSettings('debug-agent');
-    agentSettings.commands = {
-      ...(agentSettings.commands ?? {}),
-      new: 'sleep 5',
-      append: 'sleep 5',
-    };
-    env.writeAgentSettings('debug-agent', agentSettings);
+    env.updateAgentSettings('debug-agent', {
+      commands: { new: 'sleep 5', append: 'sleep 5' },
+    });
 
     await env.sendMessage('block queue', {
       chat: '__creds__',

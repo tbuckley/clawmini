@@ -239,10 +239,9 @@ describe('E2E Messages Tests', () => {
     expect(log2.stdout).toContain('APPEND msg-2');
 
     // Break the extraction command and verify the failure is reported
-    const agentSettings = env.getAgentSettings('workflow-agent');
-    const commands = agentSettings.commands as Record<string, unknown>;
-    commands.getMessageContent = 'echo "EXTRACTION_FAIL" >&2 && exit 1';
-    env.writeAgentSettings('workflow-agent', agentSettings);
+    env.updateAgentSettings('workflow-agent', {
+      commands: { getMessageContent: 'echo "EXTRACTION_FAIL" >&2 && exit 1' },
+    });
 
     await env.runCli(['messages', 'send', 'msg-3', '--chat', 'workflow-chat']);
 

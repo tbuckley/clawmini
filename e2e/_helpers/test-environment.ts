@@ -355,6 +355,11 @@ export class TestEnvironment {
     fs.writeFileSync(agentSettingsPath, JSON.stringify(settings, null, 2));
   }
 
+  public updateAgentSettings(agentId: string, updates: Record<string, unknown>) {
+    const settings = this.getAgentSettings(agentId);
+    this.writeAgentSettings(agentId, deepMerge(settings, updates));
+  }
+
   public getChatSettings(chatId: string): Record<string, unknown> {
     const chatSettingsPath = this.getChatPath(chatId, 'settings.json');
     if (fs.existsSync(chatSettingsPath)) {
@@ -476,11 +481,9 @@ export class TestEnvironment {
     fs.symlinkSync(litePath, path.join(binDir, 'clawmini-lite.js'));
 
     if (fs.existsSync(this.getAgentPath('debug-agent', 'settings.json'))) {
-      const agentSettings = this.getAgentSettings('debug-agent');
-      const env = (agentSettings.env as Record<string, string>) || {};
-      env.PATH = `${binDir}:${process.env.PATH}`;
-      agentSettings.env = env;
-      this.writeAgentSettings('debug-agent', agentSettings);
+      this.updateAgentSettings('debug-agent', {
+        env: { PATH: `${binDir}:${process.env.PATH}` },
+      });
     }
   }
 

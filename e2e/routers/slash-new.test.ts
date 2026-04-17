@@ -10,11 +10,12 @@ describe('/new Command E2E', () => {
     await env.setup();
     await env.runCli(['init', '--agent', 'test-agent', '--agent-template', 'debug']);
 
-    const agentSettings = env.getAgentSettings('test-agent');
-    const commands = agentSettings.commands as Record<string, unknown>;
-    commands.new = 'echo "[DEBUG NEW $SESSION_ID] $CLAW_CLI_MESSAGE"';
-    commands.append = 'echo "[DEBUG APPEND $SESSION_ID] $CLAW_CLI_MESSAGE"';
-    env.writeAgentSettings('test-agent', agentSettings);
+    env.updateAgentSettings('test-agent', {
+      commands: {
+        new: 'echo "[DEBUG NEW $SESSION_ID] $CLAW_CLI_MESSAGE"',
+        append: 'echo "[DEBUG APPEND $SESSION_ID] $CLAW_CLI_MESSAGE"',
+      },
+    });
 
     await env.up();
   }, 30000);

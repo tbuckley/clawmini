@@ -18,11 +18,9 @@ describe('E2E Cron Tests', () => {
 
   it('should execute a job and inherit chat default agent and session', async () => {
     await env.runCli(['agents', 'add', 'cron-exec-agent']);
-    const agentSettings = env.getAgentSettings('cron-exec-agent');
-    agentSettings.commands = {
-      new: 'echo "executed with $SESSION_ID and msg: $CLAW_CLI_MESSAGE"',
-    };
-    env.writeAgentSettings('cron-exec-agent', agentSettings);
+    env.updateAgentSettings('cron-exec-agent', {
+      commands: { new: 'echo "executed with $SESSION_ID and msg: $CLAW_CLI_MESSAGE"' },
+    });
 
     await env.runCli(['chats', 'add', 'cron-chat']);
     const { code: codeSetup, stderr: stderrSetup } = await env.runCli([

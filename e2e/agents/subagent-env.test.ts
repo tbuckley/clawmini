@@ -10,16 +10,10 @@ describe('E2E Agent subagentEnv Merge', () => {
     await env.setup();
     await env.setupSubagentEnv();
 
-    const agentSettings = env.getAgentSettings('debug-agent');
-    agentSettings.env = {
-      ...((agentSettings.env as Record<string, string>) ?? {}),
-      PARENT_VAR: 'parent',
-    };
-    agentSettings.subagentEnv = {
-      SUBAGENT_VAR: 'sub',
-      PARENT_VAR: 'overridden',
-    };
-    env.writeAgentSettings('debug-agent', agentSettings);
+    env.updateAgentSettings('debug-agent', {
+      env: { PARENT_VAR: 'parent' },
+      subagentEnv: { SUBAGENT_VAR: 'sub', PARENT_VAR: 'overridden' },
+    });
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);

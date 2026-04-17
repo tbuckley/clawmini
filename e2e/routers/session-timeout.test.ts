@@ -14,11 +14,12 @@ describe('Session Timeout E2E', () => {
       routers: [{ use: '@clawmini/session-timeout', with: { timeout: '5s' } }],
     });
 
-    const agentSettings = env.getAgentSettings('test-agent');
-    const commands = agentSettings.commands as Record<string, unknown>;
-    commands.new = 'echo "[DEBUG NEW $SESSION_ID] $CLAW_CLI_MESSAGE"';
-    commands.append = 'echo "[DEBUG APPEND $SESSION_ID] $CLAW_CLI_MESSAGE"';
-    env.writeAgentSettings('test-agent', agentSettings);
+    env.updateAgentSettings('test-agent', {
+      commands: {
+        new: 'echo "[DEBUG NEW $SESSION_ID] $CLAW_CLI_MESSAGE"',
+        append: 'echo "[DEBUG APPEND $SESSION_ID] $CLAW_CLI_MESSAGE"',
+      },
+    });
 
     await env.up();
   }, 30000);
