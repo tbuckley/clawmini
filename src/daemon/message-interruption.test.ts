@@ -19,6 +19,7 @@ vi.mock('../shared/workspace.js', () => ({
 
   readChatSettings: vi.fn().mockResolvedValue(null),
   writeChatSettings: vi.fn().mockResolvedValue(undefined),
+  updateChatSettings: vi.fn().mockResolvedValue(undefined),
   readAgentSessionSettings: vi.fn().mockResolvedValue(null),
   writeAgentSessionSettings: vi.fn().mockResolvedValue(undefined),
   getAgent: vi.fn().mockResolvedValue(null),

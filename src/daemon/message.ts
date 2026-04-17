@@ -1,11 +1,12 @@
 import { executeRouterPipeline, resolveRouters } from './routers.js';
 import type { RouterState } from './routers/types.js';
 import { type ChatSettings, type Settings } from '../shared/config.js';
-import { readChatSettings, writeChatSettings } from '../shared/workspace.js';
-import { cronManager } from './cron.js';
+import { readChatSettings, updateChatSettings, writeChatSettings } from '../shared/workspace.js';
+import { cronManager, normalizeJob } from './cron.js';
 import type { Message } from './agent/types.js';
 import { createAgentSession } from './agent/agent-session.js';
 import { createChatLogger } from './agent/chat-logger.js';
+import { taskScheduler } from './agent/task-scheduler.js';
 
 export { calculateDelay } from './agent/agent-runner.js';
 
@@ -69,6 +70,9 @@ export async function executeDirectMessage(
   // Process actions
   if (state.action === 'stop') {
     agentSession.stop();
+    if (!subagentId) {
+      await stopActiveSubagents(chatId, cwd);
+    }
     return;
   }
   if (state.action === 'interrupt') {
@@ -193,12 +197,13 @@ export async function applyRouterStateUpdates(
     }
 
     if (finalState.jobs.add?.length) {
-      const addMap = new Map(finalState.jobs.add.map((job) => [job.id, job]));
-      for (const job of finalState.jobs.add) {
+      const normalized = finalState.jobs.add.map(normalizeJob);
+      const addMap = new Map(normalized.map((job) => [job.id, job]));
+      for (const job of normalized) {
         cronManager.scheduleJob(chatId, job);
       }
       chatSettings.jobs = chatSettings.jobs.filter((job) => !addMap.has(job.id));
-      chatSettings.jobs.push(...finalState.jobs.add);
+      chatSettings.jobs.push(...normalized);
       settingsChanged = true;
     }
   }
@@ -213,5 +218,27 @@ export async function applyRouterStateUpdates(
   }
   if (finalState.agentId === undefined) {
     finalState.agentId = currentAgentId;
+  }
+}
+
+async function stopActiveSubagents(chatId: string, cwd: string): Promise<void> {
+  const sessionsToAbort: string[] = [];
+  await updateChatSettings(
+    chatId,
+    (settings) => {
+      if (settings.subagents) {
+        for (const sub of Object.values(settings.subagents)) {
+          if (sub.status === 'active') {
+            if (sub.sessionId) sessionsToAbort.push(sub.sessionId);
+            sub.status = 'failed';
+          }
+        }
+      }
+      return settings;
+    },
+    cwd
+  );
+  for (const sessionId of sessionsToAbort) {
+    taskScheduler.abortTasks(sessionId);
   }
 }

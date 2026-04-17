@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { TestEnvironment } from '../_helpers/test-environment.js';
+import { TestEnvironment, commandWith } from '../_helpers/test-environment.js';
 
 describe('E2E Agent Jobs (Lite)', () => {
   let env: TestEnvironment;
@@ -100,6 +100,69 @@ describe('E2E Agent Jobs (Lite)', () => {
     const job = jobs.find((j) => j.id === 'agent-job-cron');
     expect(job).toMatchObject({ schedule: { cron: '0 0 * * *' }, message: 'nightly' });
   });
+
+  it('should add a job with --at schedule (interval), execute it, and auto-delete it', async () => {
+    // Jobs created via agent credentials run in the __creds__ chat (the chat
+    // the agent token is bound to); subscribe there to observe execution.
+    const chat = await env.connect('__creds__');
+    try {
+      const { code, stdout } = await env.runLite([
+        'jobs', 'add', 'agent-job-at-interval',
+        '--at', '2s',
+        '--message', 'echo job-ran-interval',
+        '--reply', 'queued',
+        '--session', 'new',
+      ]);
+      expect(code).toBe(0);
+      expect(stdout).toContain("Job 'agent-job-at-interval' created successfully.");
+
+      const jobsBefore = await listUserJobs();
+      const jobBefore = jobsBefore.find((j) => j.id === 'agent-job-at-interval');
+      expect(jobBefore).toMatchObject({
+        schedule: { at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) },
+        message: 'echo job-ran-interval',
+      });
+
+      // Wait for the debug agent to echo the job message — proves the job
+      // actually fired end-to-end, not just that it was scheduled.
+      await chat.waitForMessage(commandWith('[DEBUG] echo job-ran-interval'), 8000);
+
+      const jobsAfter = await listUserJobs();
+      expect(jobsAfter.find((j) => j.id === 'agent-job-at-interval')).toBeUndefined();
+    } finally {
+      await chat.disconnect();
+    }
+  }, 15000);
+
+  it('should add a job with --at schedule (timestamp), execute it, and auto-delete it', async () => {
+    const chat = await env.connect('__creds__');
+    try {
+      const futureTime = new Date(Date.now() + 2000).toISOString();
+      const { code, stdout } = await env.runLite([
+        'jobs', 'add', 'agent-job-at-timestamp',
+        '--at', futureTime,
+        '--message', 'echo job-ran-timestamp',
+        '--reply', 'queued',
+        '--session', 'new',
+      ]);
+      expect(code).toBe(0);
+      expect(stdout).toContain("Job 'agent-job-at-timestamp' created successfully.");
+
+      const jobsBefore = await listUserJobs();
+      const jobBefore = jobsBefore.find((j) => j.id === 'agent-job-at-timestamp');
+      expect(jobBefore).toMatchObject({
+        schedule: { at: futureTime },
+        message: 'echo job-ran-timestamp',
+      });
+
+      await chat.waitForMessage(commandWith('[DEBUG] echo job-ran-timestamp'), 8000);
+
+      const jobsAfter = await listUserJobs();
+      expect(jobsAfter.find((j) => j.id === 'agent-job-at-timestamp')).toBeUndefined();
+    } finally {
+      await chat.disconnect();
+    }
+  }, 15000);
 
   it('should reject jobs with no schedule flag', async () => {
     const { stderr, code } = await env.runLite(['jobs', 'add', 'no-sched', '--message', 'x']);
