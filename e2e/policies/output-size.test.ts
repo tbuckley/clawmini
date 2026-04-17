@@ -42,7 +42,7 @@ describe('Output Size E2E', () => {
   afterEach(() => env.disconnectAll());
 
   it('should return inline output for < 500 characters', async () => {
-    await env.runCli(['chats', 'add', 'chat-short']);
+    await env.addChat('chat-short');
     chat = await env.connect('chat-short');
 
     await env.sendMessage('clawmini-lite.js request short-cmd', {
@@ -56,7 +56,7 @@ describe('Output Size E2E', () => {
   }, 30000);
 
   it('should intercept large stdout and return a summary string', async () => {
-    await env.runCli(['chats', 'add', 'chat-long-out']);
+    await env.addChat('chat-long-out');
     chat = await env.connect('chat-long-out');
 
     await env.sendMessage('clawmini-lite.js request long-cmd', {
@@ -82,7 +82,7 @@ describe('Output Size E2E', () => {
   }, 30000);
 
   it('should intercept large stderr and return a summary string', async () => {
-    await env.runCli(['chats', 'add', 'chat-long-err']);
+    await env.addChat('chat-long-err');
     chat = await env.connect('chat-long-err');
 
     await env.sendMessage('clawmini-lite.js request long-err', {

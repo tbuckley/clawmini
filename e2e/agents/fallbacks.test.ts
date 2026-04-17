@@ -37,7 +37,7 @@ describe('E2E Fallbacks Tests', () => {
       fallbacks: [{ env: { SUCCESS: 'true' }, retries: 0, delayMs: 100 }],
     });
 
-    await env.runCli(['chats', 'add', 'fb-chat-1']);
+    await env.addChat('fb-chat-1');
     chat = await env.connect('fb-chat-1');
     await env.sendMessage('test-1', { chat: 'fb-chat-1' });
 
@@ -65,7 +65,7 @@ describe('E2E Fallbacks Tests', () => {
       ],
     });
 
-    await env.runCli(['chats', 'add', 'fb-chat-2']);
+    await env.addChat('fb-chat-2');
     chat = await env.connect('fb-chat-2');
     await env.sendMessage('test-2', { chat: 'fb-chat-2' });
 
@@ -93,7 +93,7 @@ describe('E2E Fallbacks Tests', () => {
       fallbacks: [{ retries: 2, delayMs: 100 }],
     });
 
-    await env.runCli(['chats', 'add', 'fb-chat-3']);
+    await env.addChat('fb-chat-3');
     chat = await env.connect('fb-chat-3');
     await env.sendMessage('test-3', { chat: 'fb-chat-3' });
 
@@ -119,7 +119,7 @@ describe('E2E Fallbacks Tests', () => {
       ],
     });
 
-    await env.runCli(['chats', 'add', 'fb-chat-4']);
+    await env.addChat('fb-chat-4');
     chat = await env.connect('fb-chat-4');
     await env.sendMessage('test-4', { chat: 'fb-chat-4' });
 

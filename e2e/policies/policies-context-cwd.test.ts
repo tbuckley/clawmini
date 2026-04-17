@@ -31,7 +31,7 @@ describe('Context-Aware Execution E2E', () => {
   afterEach(() => env.disconnectAll());
 
   it('should execute policy in the requested subdirectory', async () => {
-    await env.runCli(['chats', 'add', 'chat-cwd']);
+    await env.addChat('chat-cwd');
     chat = await env.connect('chat-cwd');
 
     // Simulate the agent navigating to 'foo' and calling the policy.

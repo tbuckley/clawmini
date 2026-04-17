@@ -22,7 +22,7 @@ describe('Discord Adapter Client E2E', () => {
     const pingResult = await trpc.ping.query();
     expect(pingResult).toEqual({ status: 'ok' });
 
-    await env.runCli(['chats', 'add', 'discord-chat']);
+    await env.addChat('discord-chat');
 
     let subscription: { unsubscribe: () => void } | undefined;
     const messages: Record<string, unknown>[] = [];

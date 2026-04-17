@@ -308,11 +308,11 @@ export class TestEnvironment {
     return this.runCli(args);
   }
 
-  public async addChat(id: string, agentName: string) {
+  public async addChat(id: string, agentName?: string) {
     const result = await this.runCli(['chats', 'add', id]);
-    // The `chats add` CLI does not accept an agent flag, so persist the
-    // association directly to the chat's settings file.
-    this.writeChatSettings(id, { defaultAgent: agentName });
+    if (agentName) {
+      this.writeChatSettings(id, { defaultAgent: agentName });
+    }
     return result;
   }
 

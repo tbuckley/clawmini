@@ -15,7 +15,7 @@ describe('Session Timeout Subagents E2E', () => {
   afterEach(() => env.disconnectAll());
 
   it('should not schedule a session timeout when a subagent sends a message', async () => {
-    await env.runCli(['chats', 'add', 'chat-timeout']);
+    await env.addChat('chat-timeout');
     chat = await env.connect('chat-timeout');
 
     // First, send a normal message so we have a timeout job started from the user.

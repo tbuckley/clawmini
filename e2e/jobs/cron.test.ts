@@ -22,7 +22,7 @@ describe('E2E Cron Tests', () => {
       commands: { new: 'echo "executed with $SESSION_ID and msg: $CLAW_CLI_MESSAGE"' },
     });
 
-    await env.runCli(['chats', 'add', 'cron-chat']);
+    await env.addChat('cron-chat');
     const { code: codeSetup, stderr: stderrSetup } = await env.runCli([
       'messages', 'send', 'setup session',
       '-c', 'cron-chat',

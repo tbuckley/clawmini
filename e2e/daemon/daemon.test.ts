@@ -91,7 +91,7 @@ describe('E2E Daemon and Web Tests', () => {
     const html404 = await res404.text();
     expect(html404.toLowerCase()).toContain('<!doctype html>');
 
-    await env.runCli(['chats', 'add', 'api-test-chat']);
+    await env.addChat('api-test-chat');
 
     const resChats = await fetch(`http://127.0.0.1:${webPort}/api/chats`);
     expect(resChats.status).toBe(200);
@@ -267,7 +267,7 @@ describe('E2E Daemon and Web Tests', () => {
       },
     });
 
-    await env.runCli(['chats', 'add', 'env-chat']);
+    await env.addChat('env-chat');
     chat = await env.connect('env-chat');
     await env.sendMessage('dump it', { chat: 'env-chat', agent: 'env-dumper' });
 

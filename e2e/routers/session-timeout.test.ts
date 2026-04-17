@@ -56,7 +56,7 @@ describe('Session Timeout E2E', () => {
   }, 20000);
 
   it('/new before timeout: old session gets a background prompt, no user-facing fresh-session notice', async () => {
-    await env.runCli(['chats', 'add', 'test2']);
+    await env.addChat('test2');
     chat = await env.connect('test2');
 
     await env.sendMessage('msg A', { chat: 'test2', agent: 'test-agent' });

@@ -95,7 +95,7 @@ describe('Policy Flows E2E', () => {
   it.each(routeCases)(
     'routes policy notifications ($label)',
     async ({ chat: chatId, spawn, action, event, subagentId, expectedUserContent, expectedActorContent }) => {
-      await env.runCli(['chats', 'add', chatId]);
+      await env.addChat(chatId);
       chat = await env.connect(chatId);
 
       await env.sendMessage(spawn, { chat: chatId, agent: 'debug-agent' });
@@ -127,7 +127,7 @@ describe('Policy Flows E2E', () => {
   );
 
   it('should list pending requests in /pending output', async () => {
-    await env.runCli(['chats', 'add', 'chat-pending-list']);
+    await env.addChat('chat-pending-list');
     chat = await env.connect('chat-pending-list');
 
     await env.sendMessage('clawmini-lite.js request test-cmd', {
@@ -154,7 +154,7 @@ describe('Policy Flows E2E', () => {
   }, 15000);
 
   it('should persist a custom reason when /reject is given one', async () => {
-    await env.runCli(['chats', 'add', 'chat-reject-reason']);
+    await env.addChat('chat-reject-reason');
     chat = await env.connect('chat-reject-reason');
 
     await env.sendMessage('clawmini-lite.js request test-cmd', {
@@ -189,7 +189,7 @@ describe('Policy Flows E2E', () => {
 
   describe('validation branches', () => {
     it('should reply "Request not found" for /approve with an unknown id', async () => {
-      await env.runCli(['chats', 'add', 'chat-notfound']);
+      await env.addChat('chat-notfound');
       chat = await env.connect('chat-notfound');
 
       await env.sendMessage('/approve nonexistent-id', { chat: 'chat-notfound' });
@@ -204,8 +204,8 @@ describe('Policy Flows E2E', () => {
     }, 15000);
 
     it('should refuse cross-chat /approve', async () => {
-      await env.runCli(['chats', 'add', 'chat-owner']);
-      await env.runCli(['chats', 'add', 'chat-intruder']);
+      await env.addChat('chat-owner');
+      await env.addChat('chat-intruder');
       chat = await env.connect('chat-owner');
 
       await env.sendMessage('clawmini-lite.js request test-cmd', {
@@ -231,7 +231,7 @@ describe('Policy Flows E2E', () => {
     }, 15000);
 
     it('should refuse /approve on an already-approved request', async () => {
-      await env.runCli(['chats', 'add', 'chat-double-approve']);
+      await env.addChat('chat-double-approve');
       chat = await env.connect('chat-double-approve');
 
       await env.sendMessage('clawmini-lite.js request test-cmd', {
@@ -273,7 +273,7 @@ describe('Policy Flows E2E', () => {
       fs.writeFileSync(policiesPath, JSON.stringify(mutated));
 
       try {
-        await env.runCli(['chats', 'add', 'chat-policy-gone']);
+        await env.addChat('chat-policy-gone');
         chat = await env.connect('chat-policy-gone');
 
         await env.sendMessage('clawmini-lite.js request temp-cmd', {
