@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { TestEnvironment } from '../_helpers/test-environment.js';
 import { getTRPCClient } from '../../src/adapter-discord/client.js';
 import { getSocketPath } from '../../src/shared/workspace.js';
@@ -14,6 +14,7 @@ describe('Discord Adapter Client E2E', () => {
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
+  afterEach(() => env.disconnectAll());
 
   it('should successfully connect to the daemon and subscribe to messages', async () => {
     const socketPath = getSocketPath(env.e2eDir);
