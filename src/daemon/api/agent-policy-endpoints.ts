@@ -105,7 +105,6 @@ export const createPolicyRequest = apiProcedure
       );
 
       request.executionResult = { stdout, stderr, exitCode };
-      await store.save(request);
 
       const logMsg: PolicyRequestMessage = {
         id: randomUUID(),

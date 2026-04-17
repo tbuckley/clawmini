@@ -47,6 +47,35 @@ export class RequestStore {
     await fs.writeFile(filePath, JSON.stringify(request, null, 2), 'utf8');
   }
 
+  async delete(id: string): Promise<void> {
+    const normalizedId = normalizePolicyId(id);
+    const filePath = this.getFilePath(normalizedId);
+    try {
+      await fs.unlink(filePath);
+    } catch (err: unknown) {
+      if (!isENOENT(err)) throw err;
+    }
+  }
+
+  async cleanupCompleted(): Promise<number> {
+    let removed = 0;
+    try {
+      const files = await fs.readdir(this.baseDir);
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        const id = path.basename(file, '.json');
+        const req = await this.load(id);
+        if (req && req.state !== 'Pending') {
+          await this.delete(id);
+          removed++;
+        }
+      }
+    } catch (err: unknown) {
+      if (!isENOENT(err)) throw err;
+    }
+    return removed;
+  }
+
   async load(id: string): Promise<PolicyRequest | null> {
     const normalizedId = normalizePolicyId(id);
     const filePath = this.getFilePath(normalizedId);
