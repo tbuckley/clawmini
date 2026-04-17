@@ -6,6 +6,7 @@ import { setDefaultChatId } from '../../shared/chats.js';
 import { type Agent } from '../../shared/config.js';
 import { createAgentWithChat } from '../../shared/agent-utils.js';
 import { handleError } from '../utils.js';
+import { installBuiltinPolicies } from '../builtin-policies.js';
 
 export const initCmd = new Command('init')
   .description('Initialize a new .clawmini settings folder')
@@ -46,6 +47,9 @@ export const initCmd = new Command('init')
 
     fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2));
     console.log('Initialized .clawmini/settings.json');
+    
+    // Create policy-scripts dir and copy built-ins
+    await installBuiltinPolicies(dirPath);
 
     if (options.agent) {
       try {

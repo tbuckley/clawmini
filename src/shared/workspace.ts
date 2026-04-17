@@ -521,7 +521,22 @@ export async function readPolicies(startDir = process.cwd()): Promise<PolicyConf
   if (!data) return null;
   // Basic validation, assuming PolicyConfig structure
   if (data.policies && typeof data.policies === 'object') {
-    return data as unknown as PolicyConfig;
+    const config = data as unknown as PolicyConfig;
+    if (config.policies['propose-policy'] !== false && !config.policies['propose-policy']) {
+      config.policies['propose-policy'] = {
+        description: 'Propose a new policy for the clawmini agent',
+        command: './.clawmini/policy-scripts/propose-policy.js',
+        allowHelp: true,
+      };
+    }
+    
+    // Strip out any policies that are explicitly set to false
+    for (const [key, value] of Object.entries(config.policies)) {
+      if (value === false) {
+        delete config.policies[key];
+      }
+    }
+    return config as PolicyConfig; // Now it conforms since false values are removed
   }
   return null;
 }

@@ -5,10 +5,9 @@ import path from 'node:path';
 import type { PolicyConfig, PolicyDefinition } from '../shared/policies.js';
 import { getClawminiDir } from '../shared/workspace.js';
 
-const program = new Command();
+export const proposePolicyCmd = new Command('propose-policy');
 
-program
-  .name('propose-policy')
+proposePolicyCmd
   .description('Proposes and registers a new policy.')
   .requiredOption('--name <policy_name>', 'Name of the policy')
   .requiredOption('--description <description>', 'Description of the policy')
@@ -26,66 +25,72 @@ Examples:
      clawmini-lite request propose-policy --file script=./install.sh -- --name custom-install --description "Run custom install script" --script-file "{{script}}"
 `
   )
-  .parse(process.argv);
+  .action((options) => {
+    const name = options.name;
+    const description = options.description;
+    const commandStr = options.command;
+    const scriptFile = options.scriptFile;
 
-const options = program.opts();
+    if (!/^[a-z0-9-]+$/.test(name)) {
+      console.error('Error: Policy name must only contain lowercase letters, numbers, and hyphens.');
+      process.exit(1);
+    }
 
-const name = options.name;
-const description = options.description;
-const commandStr = options.command;
-const scriptFile = options.scriptFile;
+    if (!commandStr && !scriptFile) {
+      console.error('Error: Must provide either --command or --script-file.');
+      process.exit(1);
+    }
 
-if (!/^[a-z0-9-]+$/.test(name)) {
-  console.error('Error: Policy name must only contain lowercase letters, numbers, and hyphens.');
-  process.exit(1);
+    const dirPath = getClawminiDir();
+    const policiesPath = path.join(dirPath, 'policies.json');
+
+    if (!fs.existsSync(dirPath)) {
+      console.error('Error: .clawmini directory not found. Please run "clawmini init" first.');
+      process.exit(1);
+    }
+
+    let policies: PolicyConfig = { policies: {} };
+    if (fs.existsSync(policiesPath)) {
+      policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
+    }
+
+    const policyDefinition: PolicyDefinition = {
+      description,
+      allowHelp: true,
+      command: '',
+    };
+
+    if (scriptFile) {
+      const scriptsDir = path.join(dirPath, 'policy-scripts');
+      if (!fs.existsSync(scriptsDir)) {
+        fs.mkdirSync(scriptsDir, { recursive: true });
+      }
+
+      const ext = path.extname(scriptFile) || '.sh';
+      const destScript = path.join(scriptsDir, `${name}${ext}`);
+      fs.copyFileSync(scriptFile, destScript);
+      fs.chmodSync(destScript, 0o755);
+
+      policyDefinition.command = `./.clawmini/policy-scripts/${path.basename(destScript)}`;
+    } else if (commandStr) {
+      const parts = commandStr.split(' ');
+      if (parts[0]) {
+        policyDefinition.command = parts[0];
+      }
+      if (parts.length > 1) {
+        policyDefinition.args = parts.slice(1);
+      }
+    }
+
+    policies.policies[name] = policyDefinition;
+    fs.writeFileSync(policiesPath, JSON.stringify(policies, null, 2));
+    console.log(`Successfully proposed and registered policy '${name}'.`);
+  });
+
+// Execute if run directly as a script
+if (
+  process.argv[1] &&
+  (process.argv[1].endsWith('propose-policy.mjs') || process.argv[1].endsWith('propose-policy.js'))
+) {
+  proposePolicyCmd.parse(process.argv);
 }
-
-if (!commandStr && !scriptFile) {
-  console.error('Error: Must provide either --command or --script-file.');
-  process.exit(1);
-}
-
-const dirPath = getClawminiDir();
-const policiesPath = path.join(dirPath, 'policies.json');
-
-if (!fs.existsSync(dirPath)) {
-  console.error('Error: .clawmini directory not found. Please run "clawmini init" first.');
-  process.exit(1);
-}
-
-let policies: PolicyConfig = { policies: {} };
-if (fs.existsSync(policiesPath)) {
-  policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
-}
-
-const policyDefinition: PolicyDefinition = {
-  description,
-  allowHelp: true,
-  command: '',
-};
-
-if (scriptFile) {
-  const scriptsDir = path.join(dirPath, 'policy-scripts');
-  if (!fs.existsSync(scriptsDir)) {
-    fs.mkdirSync(scriptsDir, { recursive: true });
-  }
-
-  const ext = path.extname(scriptFile) || '.sh';
-  const destScript = path.join(scriptsDir, `${name}${ext}`);
-  fs.copyFileSync(scriptFile, destScript);
-  fs.chmodSync(destScript, 0o755);
-
-  policyDefinition.command = `./.clawmini/policy-scripts/${path.basename(destScript)}`;
-} else if (commandStr) {
-  const parts = commandStr.split(' ');
-  if (parts[0]) {
-    policyDefinition.command = parts[0];
-  }
-  if (parts.length > 1) {
-    policyDefinition.args = parts.slice(1);
-  }
-}
-
-policies.policies[name] = policyDefinition;
-fs.writeFileSync(policiesPath, JSON.stringify(policies, null, 2));
-console.log(`Successfully proposed and registered policy '${name}'.`);

@@ -7,7 +7,7 @@ export interface PolicyDefinition {
 }
 
 export interface PolicyConfig {
-  policies: Record<string, PolicyDefinition>;
+  policies: Record<string, PolicyDefinition | false>;
 }
 
 export type RequestState = 'Pending' | 'Approved' | 'Rejected';

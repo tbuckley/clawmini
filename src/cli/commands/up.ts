@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { getDaemonClient } from '../client.js';
 import { getSocketPath } from '../../shared/workspace.js';
 import fs from 'node:fs';
+import { installBuiltinPolicies } from '../builtin-policies.js';
 
 export const upCmd = new Command('up')
   .description('Start the local clawmini daemon server')
@@ -9,6 +10,9 @@ export const upCmd = new Command('up')
     try {
       const socketPath = getSocketPath();
       const wasRunning = fs.existsSync(socketPath);
+
+      // We are in a clawmini directory structure, ensure built-ins are updated
+      await installBuiltinPolicies();
 
       const client = await getDaemonClient({ autoStart: true });
       // Perform a ping to ensure the server is responding
