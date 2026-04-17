@@ -8,7 +8,7 @@ import {
   readChatSettings,
   writeChatSettings,
 } from '../../shared/workspace.js';
-import { cronManager } from '../cron.js';
+import { cronManager, normalizeJob } from '../cron.js';
 import type { z } from 'zod';
 import type { CronJobSchema } from '../../shared/config.js';
 
@@ -129,17 +129,18 @@ export async function listCronJobsShared(chatId: string) {
 }
 
 export async function addCronJobShared(chatId: string, job: z.infer<typeof CronJobSchema>) {
+  const normalized = normalizeJob(job);
   const settings = (await readChatSettings(chatId)) || {};
   const cronJobs = settings.jobs ?? [];
-  const existingIndex = cronJobs.findIndex((j) => j.id === job.id);
+  const existingIndex = cronJobs.findIndex((j) => j.id === normalized.id);
   if (existingIndex >= 0) {
-    cronJobs[existingIndex] = job;
+    cronJobs[existingIndex] = normalized;
   } else {
-    cronJobs.push(job);
+    cronJobs.push(normalized);
   }
   settings.jobs = cronJobs;
-  cronManager.scheduleJob(chatId, job);
   await writeChatSettings(chatId, settings);
+  cronManager.scheduleJob(chatId, normalized);
   return { success: true };
 }
 

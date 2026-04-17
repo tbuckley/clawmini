@@ -9,6 +9,34 @@ import fs from 'node:fs/promises';
 import { getSettingsPath } from '../shared/workspace.js';
 import { applyEnvOverrides } from '../shared/utils/env.js';
 
+// Resolves relative `at` intervals (e.g. "2s", "5m") to absolute ISO timestamps
+// so a job's target time is stable across daemon restarts. Throws on unparseable
+// `at` values so invalid input is rejected at creation rather than silently
+// shifted by `scheduleJob`. `cron` and `every` schedules pass through unchanged.
+export function normalizeJob(job: CronJob): CronJob {
+  if (!('at' in job.schedule)) return job;
+
+  const atStr = job.schedule.at;
+  const match = atStr.match(/^(\d+)\s*(m|min|minutes?|h|hours?|d|days?|s|sec|seconds?)$/i);
+  let absolute: Date;
+  if (match) {
+    const val = parseInt(match[1]!, 10);
+    const unit = match[2]!.toLowerCase();
+    let ms = 0;
+    if (unit.startsWith('s')) ms = val * 1000;
+    else if (unit.startsWith('m')) ms = val * 60 * 1000;
+    else if (unit.startsWith('h')) ms = val * 60 * 60 * 1000;
+    else if (unit.startsWith('d')) ms = val * 24 * 60 * 60 * 1000;
+    absolute = new Date(Date.now() + ms);
+  } else {
+    absolute = new Date(atStr);
+    if (isNaN(absolute.getTime())) {
+      throw new Error(`Invalid date format for 'at' schedule: ${atStr}`);
+    }
+  }
+  return { ...job, schedule: { at: absolute.toISOString() } };
+}
+
 export class CronManager {
   private jobs = new Map<string, schedule.Job>();
 
@@ -62,25 +90,10 @@ export class CronManager {
         rule = everyStr;
       }
     } else if ('at' in job.schedule) {
-      const atStr = (job.schedule as { at: string }).at;
-      const match = atStr.match(/^(\d+)\s*(m|min|minutes?|h|hours?|d|days?|s|sec|seconds?)$/i);
-      if (match) {
-        const val = parseInt(match[1]!, 10);
-        const unit = match[2]!.toLowerCase();
-        let ms = 0;
-        if (unit.startsWith('s')) ms = val * 1000;
-        else if (unit.startsWith('m')) ms = val * 60 * 1000;
-        else if (unit.startsWith('h')) ms = val * 60 * 60 * 1000;
-        else if (unit.startsWith('d')) ms = val * 24 * 60 * 60 * 1000;
-        rule = new Date(Date.now() + ms);
-        
-        // Mutate the schedule to an absolute timestamp so it survives server restarts correctly.
-        (job.schedule as { at: string }).at = rule.toISOString();
-      } else {
-        rule = new Date(atStr);
-        if (isNaN(rule.getTime())) {
-          throw new Error(`Invalid date format for 'at' schedule: ${atStr}`);
-        }
+      const atStr = job.schedule.at;
+      rule = new Date(atStr);
+      if (isNaN(rule.getTime())) {
+        throw new Error(`Invalid date format for 'at' schedule: ${atStr}`);
       }
       isOneOff = true;
     } else {
