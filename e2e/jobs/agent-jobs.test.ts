@@ -101,6 +101,58 @@ describe('E2E Agent Jobs (Lite)', () => {
     expect(job).toMatchObject({ schedule: { cron: '0 0 * * *' }, message: 'nightly' });
   });
 
+  it('should add a job with --at schedule (interval), execute it, and auto-delete it', async () => {
+    const { code, stdout } = await env.runLite([
+      'jobs', 'add', 'agent-job-at-interval',
+      '--at', '2s',
+      '--message', 'hello from 2s interval',
+      '--reply', 'queued',
+      '--session', 'new',
+    ]);
+    expect(code).toBe(0);
+    expect(stdout).toContain("Job 'agent-job-at-interval' created successfully.");
+
+    let jobs = await listUserJobs();
+    let job = jobs.find((j) => j.id === 'agent-job-at-interval');
+    expect(job).toMatchObject({
+      schedule: { at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) },
+      message: 'hello from 2s interval'
+    });
+
+    // Wait for the job to execute
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // The job should be auto-deleted
+    jobs = await listUserJobs();
+    job = jobs.find((j) => j.id === 'agent-job-at-interval');
+    expect(job).toBeUndefined();
+  }, 10000);
+
+  it('should add a job with --at schedule (timestamp), execute it, and auto-delete it', async () => {
+    const futureTime = new Date(Date.now() + 2000).toISOString();
+    const { code, stdout } = await env.runLite([
+      'jobs', 'add', 'agent-job-at-timestamp',
+      '--at', futureTime,
+      '--message', 'hello from timestamp',
+      '--reply', 'queued',
+      '--session', 'new',
+    ]);
+    expect(code).toBe(0);
+    expect(stdout).toContain("Job 'agent-job-at-timestamp' created successfully.");
+
+    let jobs = await listUserJobs();
+    let job = jobs.find((j) => j.id === 'agent-job-at-timestamp');
+    expect(job).toMatchObject({ schedule: { at: futureTime }, message: 'hello from timestamp' });
+
+    // Wait for the job to execute
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // The job should be auto-deleted
+    jobs = await listUserJobs();
+    job = jobs.find((j) => j.id === 'agent-job-at-timestamp');
+    expect(job).toBeUndefined();
+  }, 10000);
+
   it('should reject jobs with no schedule flag', async () => {
     const { stderr, code } = await env.runLite(['jobs', 'add', 'no-sched', '--message', 'x']);
     expect(code).toBe(1);

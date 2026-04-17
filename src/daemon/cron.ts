@@ -73,6 +73,9 @@ export class CronManager {
         else if (unit.startsWith('h')) ms = val * 60 * 60 * 1000;
         else if (unit.startsWith('d')) ms = val * 24 * 60 * 60 * 1000;
         rule = new Date(Date.now() + ms);
+        
+        // Mutate the schedule to an absolute timestamp so it survives server restarts correctly.
+        (job.schedule as { at: string }).at = rule.toISOString();
       } else {
         rule = new Date(atStr);
         if (isNaN(rule.getTime())) {

@@ -138,8 +138,8 @@ export async function addCronJobShared(chatId: string, job: z.infer<typeof CronJ
     cronJobs.push(job);
   }
   settings.jobs = cronJobs;
-  await writeChatSettings(chatId, settings);
   cronManager.scheduleJob(chatId, job);
+  await writeChatSettings(chatId, settings);
   return { success: true };
 }
 
