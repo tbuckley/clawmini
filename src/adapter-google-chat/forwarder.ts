@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import { google } from 'googleapis';
 import { getAuthClient } from './auth.js';
-import type { getTRPCClient } from './client.js';
+import type { getTRPCClient, GoogleChatApi } from './client.js';
 import type { ChatMessage } from '../shared/chats.js';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -15,13 +15,25 @@ import {
 import { buildPolicyCard, chunkString } from './utils.js';
 import { uploadFilesToDrive } from './upload.js';
 
+export interface GoogleChatForwarderDeps {
+  /** Google Chat API client (defaults to `google.chat()` with ADC credentials). */
+  chatApi?: GoogleChatApi;
+}
+
 export async function startDaemonToGoogleChatForwarder(
   trpc: ReturnType<typeof getTRPCClient>,
   config: GoogleChatConfig,
   filteringConfig: FilteringConfig,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  deps: GoogleChatForwarderDeps = {}
 ) {
   const defaultChatId = config.chatId || 'default';
+
+  const getChatApi = async (): Promise<GoogleChatApi> => {
+    if (deps.chatApi) return deps.chatApi;
+    const authClient = await getAuthClient();
+    return google.chat({ version: 'v1', auth: authClient });
+  };
 
   const activeSubscriptions = new Map<string, { unsubscribe: () => void }>();
   let currentLastSyncedMessageIds = (await readGoogleChatState()).lastSyncedMessageIds || {};
@@ -124,8 +136,7 @@ export async function startDaemonToGoogleChatForwarder(
                       }
 
                       try {
-                        const client = await getAuthClient();
-                        const chatApi = google.chat({ version: 'v1', auth: client });
+                        const chatApi = await getChatApi();
 
                         try {
                           await chatApi.spaces.messages.create({
@@ -183,8 +194,7 @@ export async function startDaemonToGoogleChatForwarder(
                     }
 
                     try {
-                      const client = await getAuthClient();
-                      const chatApi = google.chat({ version: 'v1', auth: client });
+                      const chatApi = await getChatApi();
 
                       let text = formatMessage(logMessage) || '';
 

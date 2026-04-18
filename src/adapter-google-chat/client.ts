@@ -52,13 +52,38 @@ export function getTRPCClient(options: { socketPath?: string } = {}) {
   });
 }
 
+export type GoogleChatApi = ReturnType<typeof google.chat>;
+
+export interface MessageSourceLike {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(event: string, listener: (...args: any[]) => void | Promise<void>): unknown;
+}
+
+export interface GoogleChatIngestionDeps {
+  /** Inbound message source (defaults to a real Pub/Sub subscription). */
+  subscription?: MessageSourceLike;
+  /** Google Chat API client (defaults to `google.chat()` with ADC credentials). */
+  chatApi?: GoogleChatApi;
+}
+
 export function startGoogleChatIngestion(
   config: GoogleChatConfig,
   trpc: ReturnType<typeof getTRPCClient>,
-  filteringConfig: FilteringConfig
+  filteringConfig: FilteringConfig,
+  deps: GoogleChatIngestionDeps = {}
 ) {
-  const pubsub = new PubSub({ projectId: config.projectId });
-  const subscription = pubsub.subscription(config.subscriptionName);
+  const subscription: MessageSourceLike =
+    deps.subscription ??
+    (() => {
+      const pubsub = new PubSub({ projectId: config.projectId });
+      return pubsub.subscription(config.subscriptionName);
+    })();
+
+  const getChatApi = async (): Promise<GoogleChatApi> => {
+    if (deps.chatApi) return deps.chatApi;
+    const authClient = await getAuthClient();
+    return google.chat({ version: 'v1', auth: authClient });
+  };
 
   const seenMessageIds = new Map<string, number>();
 
@@ -210,8 +235,7 @@ export function startGoogleChatIngestion(
           }
 
           try {
-            const authClient = await getAuthClient();
-            const chatApi = google.chat({ version: 'v1', auth: authClient });
+            const chatApi = await getChatApi();
             await chatApi.spaces.messages.create({
               parent: externalContextId,
               requestBody: { text: routingResult.text },
@@ -257,8 +281,7 @@ export function startGoogleChatIngestion(
           if (isDirectMessage || isMentioned || isSlashCommand) {
             console.log(`Unmapped space ${externalContextId}, sending first contact warning.`);
             try {
-              const authClient = await getAuthClient();
-              const chatApi = google.chat({ version: 'v1', auth: authClient });
+              const chatApi = await getChatApi();
               await chatApi.spaces.messages.create({
                 parent: externalContextId,
                 requestBody: {
@@ -300,8 +323,7 @@ export function startGoogleChatIngestion(
           let isReplyToBot = false;
           if (eventMessage?.threadReply && eventMessage.thread?.name) {
             try {
-              const authClient = await getAuthClient();
-              const chatApi = google.chat({ version: 'v1', auth: authClient });
+              const chatApi = await getChatApi();
               const response = await chatApi.spaces.messages.list({
                 parent: externalContextId,
                 filter: `thread.name="${eventMessage.thread.name}"`,
@@ -361,8 +383,7 @@ export function startGoogleChatIngestion(
                 commandResult.messages.map((msg) => formatMessage(msg)).join('\n\n---\n\n');
         }
 
-        const authClient = await getAuthClient();
-        const chatApi = google.chat({ version: 'v1', auth: authClient });
+        const chatApi = await getChatApi();
         await chatApi.spaces.messages.create({
           parent: spaceName as string,
           requestBody: { text: resultText },
