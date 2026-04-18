@@ -415,4 +415,200 @@ describe('E2E Subagent Lifecycle', () => {
     // wait(a) runs before wait(b), so A's wait output appears first.
     expect(bIdx).toBeGreaterThan(aIdx);
   }, 30000);
+
+  it('list --blocking returns empty for the main agent', async () => {
+    await env.addChat('blocking-root-chat', 'debug-agent');
+    chat = await env.connect('blocking-root-chat');
+
+    // Main agent spawns an active subagent, then lists with --blocking.
+    // Per the router, main-agent `--blocking` is always empty — blocking
+    // is meaningful only for subagents deciding whether to wait for their
+    // own children.
+    await env.sendMessage(
+      'clawmini-lite.js subagents spawn --id block-root-sub --async "sleep 2 && echo done"',
+      { chat: 'blocking-root-chat', agent: 'debug-agent' }
+    );
+    for (let i = 0; i < 50; i++) {
+      const settings = env.getChatSettings('blocking-root-chat') as {
+        subagents?: Record<string, { status: string }>;
+      };
+      if (settings.subagents?.['block-root-sub']?.status === 'active') break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    await env.sendMessage('clawmini-lite.js subagents list --blocking --json', {
+      chat: 'blocking-root-chat',
+      agent: 'debug-agent',
+    });
+    const log = await chat.waitForMessage(
+      commandMatching(
+        (m) => !m.subagentId && m.stdout.includes('subagents list --blocking --json:')
+      )
+    );
+    // Extract the JSON body between the first `[` and last `]` — the CLI
+    // prints "[\n  ...\n]" for an empty or populated array.
+    const jsonStart = log.stdout.indexOf('[', log.stdout.indexOf(':'));
+    const jsonEnd = log.stdout.lastIndexOf(']');
+    const body = log.stdout.slice(jsonStart, jsonEnd + 1).trim();
+    expect(body).toBe('[]');
+  }, 30000);
+
+  it('list --blocking returns only active children when called from a subagent', async () => {
+    await env.addChat('blocking-sub-chat', 'debug-agent');
+    chat = await env.connect('blocking-sub-chat');
+
+    // Outer subagent spawns two children: one instant (will be completed),
+    // one sleeping (will still be active). `list --blocking --json` from
+    // outer must return ONLY block-active, not block-done.
+    await env.sendMessage(
+      [
+        'clawmini-lite.js subagents spawn --id block-outer --async',
+        '"clawmini-lite.js subagents spawn --id block-done --async \\"echo done-fast\\"',
+        '&& clawmini-lite.js subagents spawn --id block-active --async \\"sleep 3 && echo late\\"',
+        '&& sleep 1',
+        '&& clawmini-lite.js subagents list --blocking --json"',
+      ].join(' '),
+      { chat: 'blocking-sub-chat', agent: 'debug-agent' }
+    );
+
+    const outerLog = await chat.waitForMessage(
+      commandMatching(
+        (m) =>
+          m.subagentId === 'block-outer' && m.stdout.includes('"id": "block-active"')
+      ),
+      20000
+    );
+    expect(outerLog.stdout).toContain('"id": "block-active"');
+    expect(outerLog.stdout).not.toMatch(/"id":\s*"block-done"/);
+  }, 30000);
+
+  it('spawn without --id auto-generates a UUID that the CLI reports back', async () => {
+    await env.addChat('auto-id-chat', 'debug-agent');
+    chat = await env.connect('auto-id-chat');
+
+    await env.sendMessage(
+      'clawmini-lite.js subagents spawn --async "echo auto-id-output"',
+      { chat: 'auto-id-chat', agent: 'debug-agent' }
+    );
+
+    // CLI prints "Subagent spawned successfully with ID: <uuid>" on the
+    // parent's stdout. Capture the UUID and verify a subagent tracker
+    // exists for it in chat settings.
+    const announce = await chat.waitForMessage(
+      commandMatching(
+        (m) =>
+          !m.subagentId && /Subagent spawned successfully with ID: [0-9a-f-]{36}/.test(m.stdout)
+      )
+    );
+    const match = announce.stdout.match(/Subagent spawned successfully with ID: ([0-9a-f-]{36})/);
+    expect(match).not.toBeNull();
+    const generatedId = match![1]!;
+
+    // Wait for the subagent's own output to land, then verify its tracker.
+    await chat.waitForMessage(
+      commandMatching((m) => m.subagentId === generatedId && m.stdout.includes('auto-id-output'))
+    );
+    const settings = env.getChatSettings('auto-id-chat') as {
+      subagents?: Record<string, { id?: string }>;
+    };
+    expect(settings.subagents?.[generatedId]?.id).toBe(generatedId);
+  }, 30000);
+
+  it('spawn --agent <other> routes the subagent through a different agent', async () => {
+    await env.addChat('alt-agent-chat', 'debug-agent');
+    chat = await env.connect('alt-agent-chat');
+
+    // Define a second agent whose template prefixes output with [ALT] so
+    // we can verify the spawn actually routed through it rather than
+    // inheriting the parent's debug-agent.
+    await env.addAgent('alt-agent');
+    env.writeAgentSettings('alt-agent', {
+      commands: {
+        new: 'echo "[ALT] $CLAW_CLI_MESSAGE:" && eval "$CLAW_CLI_MESSAGE"',
+        append: 'echo "[ALT] $CLAW_CLI_MESSAGE:" && eval "$CLAW_CLI_MESSAGE"',
+        getSessionId: 'node -e "console.log(Math.random().toString(36).slice(2, 10))"',
+      },
+    });
+
+    await env.sendMessage(
+      'clawmini-lite.js subagents spawn --id alt-sub --agent alt-agent --async "echo alt-output"',
+      { chat: 'alt-agent-chat', agent: 'debug-agent' }
+    );
+
+    // The subagent's command_log should show the [ALT] prefix, proving
+    // alt-agent's template ran rather than debug-agent's [DEBUG] one.
+    const subLog = await chat.waitForMessage(
+      commandMatching(
+        (m) => m.subagentId === 'alt-sub' && m.stdout.includes('[ALT] echo alt-output:')
+      )
+    );
+    expect(subLog.stdout).toContain('alt-output');
+    expect(subLog.stdout).not.toContain('[DEBUG]');
+
+    const settings = env.getChatSettings('alt-agent-chat') as {
+      subagents?: Record<string, { agentId?: string }>;
+    };
+    expect(settings.subagents?.['alt-sub']?.agentId).toBe('alt-agent');
+  }, 30000);
+
+  it('spawn with a duplicate --id is rejected', async () => {
+    await env.addChat('dup-id-chat', 'debug-agent');
+    chat = await env.connect('dup-id-chat');
+
+    await env.sendMessage(
+      'clawmini-lite.js subagents spawn --id dup-sub --async "echo first"',
+      { chat: 'dup-id-chat', agent: 'debug-agent' }
+    );
+    await chat.waitForMessage(
+      commandMatching((m) => m.subagentId === 'dup-sub' && m.stdout.includes('first'))
+    );
+
+    // Second spawn with the same id must hit the router's duplicate-id
+    // guard (`Subagent ID already exists`). The CLI surfaces the TRPC
+    // error via stderr + exit 1, so we match on the serialized message.
+    await env.sendMessage(
+      'clawmini-lite.js subagents spawn --id dup-sub --async "echo second"',
+      { chat: 'dup-id-chat', agent: 'debug-agent' }
+    );
+    await chat.waitForMessage(
+      (m) => JSON.stringify(m).includes('Subagent ID already exists'),
+      15000
+    );
+
+    // The duplicate spawn must not have overwritten the first: there's
+    // still exactly one 'first'-producing subagent and no 'second' output.
+    expect(
+      chat.messageBuffer.some(
+        (m) =>
+          (m as { subagentId?: string }).subagentId === 'dup-sub' &&
+          typeof (m as { stdout?: string }).stdout === 'string' &&
+          (m as { stdout?: string }).stdout!.includes('second')
+      )
+    ).toBe(false);
+  }, 30000);
+
+  it('operations on a nonexistent subagent id return NOT_FOUND', async () => {
+    await env.addChat('missing-id-chat', 'debug-agent');
+    chat = await env.connect('missing-id-chat');
+
+    // Each of these CLI calls should hit the router and fail with a
+    // NOT_FOUND error surfaced back to the caller's stderr. We rely on
+    // the serialized message — both 'Subagent not found' and the CLI's
+    // 'Error:' prefix land in the command log.
+    const ops = [
+      'clawmini-lite.js subagents wait ghost',
+      'clawmini-lite.js subagents stop ghost',
+      'clawmini-lite.js subagents delete ghost',
+      'clawmini-lite.js subagents tail ghost --json',
+      "clawmini-lite.js subagents send ghost --async -p 'echo x'",
+    ];
+    for (const op of ops) {
+      await env.sendMessage(op, { chat: 'missing-id-chat', agent: 'debug-agent' });
+      const log = await chat.waitForMessage(
+        commandMatching((m) => !m.subagentId && m.stdout.includes(`${op}:`)),
+        15000
+      );
+      expect(JSON.stringify(log)).toMatch(/Subagent not found/);
+    }
+  }, 60000);
 });
