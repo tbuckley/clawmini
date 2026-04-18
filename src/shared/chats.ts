@@ -14,6 +14,7 @@ export interface BaseMessage {
   content: string;
   timestamp: string;
   subagentId?: string;
+  sessionId: string | undefined;
 }
 
 export interface UserMessage extends BaseMessage {

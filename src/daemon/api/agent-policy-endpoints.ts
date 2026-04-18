@@ -117,6 +117,7 @@ export const createPolicyRequest = apiProcedure
         status: 'approved',
         content: `[Auto-approved] Policy ${input.commandName} was executed.\n\nCommand: ${commandStr}\nExit Code: ${exitCode}\n\nStdout:\n${stdout}\n\nStderr:\n${stderr}`,
         timestamp: new Date().toISOString(),
+        sessionId: ctx.tokenPayload.sessionId,
         ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
       };
 
@@ -138,6 +139,7 @@ export const createPolicyRequest = apiProcedure
       content: previewContent,
       timestamp: new Date().toISOString(),
       displayRole: 'agent',
+      sessionId: ctx.tokenPayload.sessionId,
     };
 
     await appendMessage(chatId, logMsg);
