@@ -102,20 +102,23 @@ describe('E2E Subagent Lifecycle', () => {
     });
     await chat.waitForMessage(commandWith('Subagent stop-sub stopped'));
 
-    // Abort must take the subagent out of the active state well before the
-    // 30s sleep would have finished. (executeDirectMessage swallows the
-    // AbortError, so the tracker settles at 'completed' rather than 'failed'.)
+    // Stop transiently flips the tracker to 'failed' (router writes it
+    // before calling session.stop()), but executeDirectMessage swallows
+    // the AbortError and executeSubagent's success path then writes
+    // 'completed'. The tracker therefore settles at 'completed' — not
+    // 'active' (the sleep would still be running) and not 'failed' (the
+    // post-abort update wins the race). Assert the settled value directly
+    // so a regression to either other state surfaces.
     let finalStatus: string | undefined;
     for (let i = 0; i < 50; i++) {
       const settings = env.getChatSettings('stop-chat') as {
         subagents?: Record<string, { status: string }>;
       };
       finalStatus = settings.subagents?.['stop-sub']?.status;
-      if (finalStatus && finalStatus !== 'active') break;
+      if (finalStatus === 'completed') break;
       await new Promise((r) => setTimeout(r, 100));
     }
-    expect(finalStatus).not.toBe('active');
-    expect(finalStatus).toBeDefined();
+    expect(finalStatus).toBe('completed');
 
     // The aborted command must never have reached its echo. The literal text
     // "should-not-print" appears in the debug template's prefix echo of the

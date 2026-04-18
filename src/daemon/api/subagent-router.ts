@@ -252,11 +252,7 @@ export const subagentDelete = apiProcedure
     let subToDelete: SubagentTracker | undefined;
 
     await updateChatSettings(chatId, (settings) => {
-      subToDelete = assertSubagentAccess(
-        settings,
-        input.subagentId,
-        ctx.tokenPayload!.subagentId
-      );
+      subToDelete = assertSubagentAccess(settings, input.subagentId, ctx.tokenPayload!.subagentId);
       delete settings.subagents![input.subagentId];
       return settings;
     });
