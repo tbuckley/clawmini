@@ -587,6 +587,171 @@ describe('E2E Subagent Lifecycle', () => {
     ).toBe(false);
   }, 30000);
 
+  it('send without --async blocks the caller and returns <subagent_output>', async () => {
+    await env.addChat('send-sync-chat', 'debug-agent');
+    chat = await env.connect('send-sync-chat');
+
+    // Spawn a child and let it complete first so the second `send` is
+    // exercising the wake-a-completed-child path, not the initial spawn.
+    await env.sendMessage(
+      'clawmini-lite.js subagents spawn --id send-sync-sub --async "echo sync-initial"',
+      { chat: 'send-sync-chat', agent: 'debug-agent' }
+    );
+    await chat.waitForMessage(
+      commandMatching(
+        (m) => m.subagentId === 'send-sync-sub' && m.stdout.includes('sync-initial')
+      )
+    );
+
+    // `send` without --async: the CLI polls subagentWait and prints the
+    // subagent's agent-role output wrapped in <subagent_output> tags.
+    await env.sendMessage(
+      "clawmini-lite.js subagents send send-sync-sub -p 'echo sync-send-output'",
+      { chat: 'send-sync-chat', agent: 'debug-agent' }
+    );
+    const log = await chat.waitForMessage(
+      commandMatching(
+        (m) =>
+          !m.subagentId &&
+          m.stdout.includes('<subagent_output>') &&
+          m.stdout.includes('sync-send-output')
+      ),
+      20000
+    );
+    expect(log.stdout).toContain('</subagent_output>');
+  }, 30000);
+
+  it('send wakes a completed child, flipping status active → completed', async () => {
+    await env.addChat('send-wake-chat', 'debug-agent');
+    chat = await env.connect('send-wake-chat');
+
+    await env.sendMessage(
+      'clawmini-lite.js subagents spawn --id wake-sub --async "echo initial"',
+      { chat: 'send-wake-chat', agent: 'debug-agent' }
+    );
+    await chat.waitForMessage(
+      commandMatching((m) => m.subagentId === 'wake-sub' && m.stdout.includes('initial'))
+    );
+    // Child is now completed — confirm before sending.
+    for (let i = 0; i < 50; i++) {
+      const s = env.getChatSettings('send-wake-chat') as {
+        subagents?: Record<string, { status: string }>;
+      };
+      if (s.subagents?.['wake-sub']?.status === 'completed') break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    await env.sendMessage(
+      "clawmini-lite.js subagents send wake-sub --async -p 'echo after-wake'",
+      { chat: 'send-wake-chat', agent: 'debug-agent' }
+    );
+
+    // The child's command_log should contain the wake-up output (runs via
+    // `append`, so it has the `[DEBUG <sessionId>]` prefix).
+    const followUp = await chat.waitForMessage(
+      commandMatching((m) => m.subagentId === 'wake-sub' && m.stdout.includes('after-wake'))
+    );
+    expect(followUp.stdout).toMatch(/\[DEBUG [^\]]+\] echo after-wake:/);
+
+    // And the tracker eventually settles back on completed.
+    let status: string | undefined;
+    for (let i = 0; i < 50; i++) {
+      const s = env.getChatSettings('send-wake-chat') as {
+        subagents?: Record<string, { status: string }>;
+      };
+      status = s.subagents?.['wake-sub']?.status;
+      if (status === 'completed') break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(status).toBe('completed');
+  }, 30000);
+
+  it('send queues a second message while the child is still running', async () => {
+    await env.addChat('send-queue-chat', 'debug-agent');
+    chat = await env.connect('send-queue-chat');
+
+    // Start a slow initial command so the follow-up `send` lands while
+    // the first turn is still in flight. The task scheduler keys queues
+    // by `rootChatId:sessionId`, so the second handleMessage call must
+    // wait for the first before running.
+    await env.sendMessage(
+      'clawmini-lite.js subagents spawn --id queue-sub --async "sleep 2 && echo queued-first"',
+      { chat: 'send-queue-chat', agent: 'debug-agent' }
+    );
+    // Wait for active, then immediately send the follow-up.
+    for (let i = 0; i < 50; i++) {
+      const s = env.getChatSettings('send-queue-chat') as {
+        subagents?: Record<string, { status: string }>;
+      };
+      if (s.subagents?.['queue-sub']?.status === 'active') break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    await env.sendMessage(
+      "clawmini-lite.js subagents send queue-sub --async -p 'echo queued-second'",
+      { chat: 'send-queue-chat', agent: 'debug-agent' }
+    );
+
+    // Both outputs must land, and the first must come before the second.
+    await chat.waitForMessage(
+      commandMatching((m) => m.subagentId === 'queue-sub' && m.stdout.includes('queued-first')),
+      20000
+    );
+    await chat.waitForMessage(
+      commandMatching((m) => m.subagentId === 'queue-sub' && m.stdout.includes('queued-second')),
+      20000
+    );
+    const firstIdx = chat.messageBuffer.findIndex(
+      (m) =>
+        (m as { subagentId?: string; stdout?: string }).subagentId === 'queue-sub' &&
+        typeof (m as { stdout?: string }).stdout === 'string' &&
+        (m as { stdout?: string }).stdout!.includes('queued-first')
+    );
+    const secondIdx = chat.messageBuffer.findIndex(
+      (m) =>
+        (m as { subagentId?: string; stdout?: string }).subagentId === 'queue-sub' &&
+        typeof (m as { stdout?: string }).stdout === 'string' &&
+        (m as { stdout?: string }).stdout!.includes('queued-second')
+    );
+    expect(firstIdx).toBeGreaterThanOrEqual(0);
+    expect(secondIdx).toBeGreaterThan(firstIdx);
+  }, 40000);
+
+  it('async completion notification wakes the parent agent to run a new turn', async () => {
+    await env.addChat('wake-parent-chat', 'debug-agent');
+    chat = await env.connect('wake-parent-chat');
+
+    // The parent's shell command is just the spawn — it returns immediately
+    // after the subagent is registered. When the subagent finishes later,
+    // executeSubagent injects `<notification>Subagent … completed.</notification>`
+    // as a new message into the parent's session, which causes the parent's
+    // debug-agent command to RUN against that notification content. The
+    // result is a fresh command_log (no subagentId) with the [DEBUG …]
+    // prefix wrapping the notification text.
+    await env.sendMessage(
+      'clawmini-lite.js subagents spawn --id wake-parent-sub --async "echo wake-content"',
+      { chat: 'wake-parent-chat', agent: 'debug-agent' }
+    );
+    await chat.waitForMessage(
+      commandMatching(
+        (m) => m.subagentId === 'wake-parent-sub' && m.stdout.includes('wake-content')
+      )
+    );
+
+    // A command_log with no subagentId and the [DEBUG …] prefix wrapping
+    // `<notification>` text is the proof the parent actually ran — the raw
+    // system message alone would not carry that prefix.
+    const wakeLog = await chat.waitForMessage(
+      commandMatching(
+        (m) =>
+          !m.subagentId &&
+          /\[DEBUG[^\]]*\] <notification>Subagent wake-parent-sub completed/.test(m.stdout)
+      ),
+      15000
+    );
+    expect(wakeLog.stdout).toContain('wake-parent-sub completed');
+  }, 30000);
+
   it('operations on a nonexistent subagent id return NOT_FOUND', async () => {
     await env.addChat('missing-id-chat', 'debug-agent');
     chat = await env.connect('missing-id-chat');
