@@ -258,6 +258,47 @@ describe('E2E Messages Tests', () => {
     expect(log3.stderr).toContain('ERR APPEND');
     expect(log3.stderr).toContain('getMessageContent failed: EXTRACTION_FAIL');
   }, 15000);
+
+  it('should tail legacy chat entries that predate the sessionId field', async () => {
+    await env.addChat('legacy-chat', 'default');
+
+    const ts = new Date().toISOString();
+    const legacyLines = [
+      { id: 'u1', role: 'user', content: 'legacy user message', timestamp: ts },
+      {
+        id: 'c1',
+        role: 'command',
+        content: 'legacy cmd output',
+        messageId: 'u1',
+        command: 'echo legacy',
+        cwd: '/tmp',
+        stdout: 'legacy',
+        stderr: '',
+        exitCode: 0,
+        timestamp: ts,
+      },
+      { id: 'a1', role: 'agent', content: 'legacy agent reply', timestamp: ts },
+    ];
+    const chatFile = env.getChatPath('legacy-chat', 'chat.jsonl');
+    fs.writeFileSync(chatFile, legacyLines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+
+    const { stdout, code } = await env.runCli(['messages', 'tail', '--chat', 'legacy-chat']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('legacy user message');
+    expect(stdout).toContain('legacy agent reply');
+
+    const { stdout: jsonStdout, code: jsonCode } = await env.runCli([
+      'messages',
+      'tail',
+      '--json',
+      '--chat',
+      'legacy-chat',
+    ]);
+    expect(jsonCode).toBe(0);
+    expect(jsonStdout).toContain('"content":"legacy user message"');
+    expect(jsonStdout).toContain('"content":"legacy cmd output"');
+    expect(jsonStdout).toContain('"content":"legacy agent reply"');
+  });
 });
 
 describe('E2E Messages sessionId Persistence', () => {
