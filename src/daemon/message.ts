@@ -27,7 +27,7 @@ export async function executeDirectMessage(
     | 'other',
   displayRole?: 'user' | 'agent'
 ) {
-  const logger = createChatLogger(chatId, subagentId);
+  const logger = createChatLogger(chatId, subagentId, state.sessionId);
 
   let msgId: string;
   if (systemEvent) {

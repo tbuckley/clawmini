@@ -13,11 +13,12 @@ import {
 } from '../chats.js';
 import type { Logger } from './types.js';
 
-export function createChatLogger(chatId: string, subagentId?: string): Logger {
+export function createChatLogger(chatId: string, subagentId?: string, sessionId?: string): Logger {
   async function append<T extends ChatMessage>(msg: T): Promise<T> {
-    const finalMsg = subagentId ? { ...msg, subagentId } : msg;
+    let finalMsg: T = msg;
+    if (subagentId) finalMsg = { ...finalMsg, subagentId };
     await appendMessage(chatId, finalMsg);
-    return finalMsg as T;
+    return finalMsg;
   }
 
   return {
@@ -45,6 +46,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         role: 'user',
         content: msg,
         timestamp: new Date().toISOString(),
+        sessionId,
       } satisfies UserMessage),
 
     logCommandResult: async ({ messageId, content, command, cwd, result }) =>
@@ -53,6 +55,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         role: 'command',
         content,
         timestamp: new Date().toISOString(),
+        sessionId,
 
         messageId,
 
@@ -61,7 +64,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         stdout: result.stdout,
         stderr: result.stderr,
         exitCode: result.exitCode,
-      }),
+      } satisfies CommandLogMessage),
 
     logSystemEvent: async ({ content }) =>
       append({
@@ -69,6 +72,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         role: 'command',
         content,
         timestamp: new Date().toISOString(),
+        sessionId,
 
         messageId: crypto.randomUUID(),
 
@@ -85,6 +89,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         role: 'system',
         content,
         timestamp: new Date().toISOString(),
+        sessionId,
 
         messageId,
         event: 'router',
@@ -97,6 +102,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         role: 'command',
         content,
         timestamp: new Date().toISOString(),
+        sessionId,
 
         messageId,
 
@@ -115,6 +121,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         content,
         event,
         timestamp: new Date().toISOString(),
+        sessionId,
       };
       if (messageId !== undefined) {
         msg.messageId = messageId;
@@ -133,6 +140,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         subagentId: targetSubagentId,
         status,
         timestamp: new Date().toISOString(),
+        sessionId,
       };
       return append<SubagentStatusMessage>(msg);
     },
@@ -143,6 +151,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         role: 'agent',
         content,
         timestamp: new Date().toISOString(),
+        sessionId,
       };
       if (files !== undefined) {
         msg.files = files;
@@ -159,6 +168,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         name,
         payload,
         timestamp: new Date().toISOString(),
+        sessionId,
       };
       return append<ToolMessage>(msg);
     },
@@ -181,6 +191,7 @@ export function createChatLogger(chatId: string, subagentId?: string): Logger {
         args,
         status,
         timestamp: new Date().toISOString(),
+        sessionId,
       };
       return append<PolicyRequestMessage>(msg);
     },

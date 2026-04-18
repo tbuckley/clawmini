@@ -57,6 +57,7 @@ export const logMessage = apiProcedure
       command: `clawmini-lite log${filesArgStr}`,
       cwd: process.cwd(),
       exitCode: 0,
+      sessionId: ctx.tokenPayload.sessionId,
       ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
       ...(filePaths.length > 0 ? { files: filePaths } : {}),
     };
@@ -94,6 +95,7 @@ export const logReplyMessage = apiProcedure
       role: 'agent',
       content: input.message,
       timestamp,
+      sessionId: ctx.tokenPayload.sessionId,
       ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
       ...(filePaths.length > 0 ? { files: filePaths } : {}),
     };
@@ -136,6 +138,7 @@ export const logToolMessage = apiProcedure
       payload: payloadObj,
       content: contentStr,
       timestamp,
+      sessionId: ctx.tokenPayload.sessionId,
       ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
     };
 

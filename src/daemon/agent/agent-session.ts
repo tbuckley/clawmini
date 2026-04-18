@@ -46,7 +46,7 @@ export class AgentSession {
     this.workspaceRoot = config.workspaceRoot;
     this.globalSettings = config.globalSettings;
 
-    this.logger = config.logger ?? createChatLogger(this.chatId, this.subagentId);
+    this.logger = config.logger ?? createChatLogger(this.chatId, this.subagentId, this.sessionId);
   }
 
   async buildExecutionContext(
