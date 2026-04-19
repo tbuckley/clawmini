@@ -8,9 +8,22 @@ import { on } from 'node:events';
 import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
 import { createAgentSession } from '../agent/agent-session.js';
 import { executeSubagent, getSubagentDepth } from './subagent-utils.js';
-import type { SubagentTracker } from '../../shared/config.js';
+import type { ChatSettings, SubagentTracker } from '../../shared/config.js';
 
 const MAX_SUBAGENT_DEPTH = 2;
+
+function assertSubagentAccess(
+  settings: ChatSettings | null | undefined,
+  subagentId: string,
+  callerSubagentId: string | undefined
+): SubagentTracker {
+  const sub = settings?.subagents?.[subagentId];
+  if (!sub) throw new TRPCError({ code: 'NOT_FOUND', message: 'Subagent not found' });
+  if (sub.parentId !== callerSubagentId) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Subagent is not a child of the caller' });
+  }
+  return sub;
+}
 
 export const subagentSpawn = apiProcedure
   .input(
@@ -91,12 +104,8 @@ export const subagentSend = apiProcedure
     let sub: SubagentTracker | undefined;
 
     await updateChatSettings(chatId, (settings) => {
-      if (!settings.subagents?.[input.subagentId]) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Subagent not found' });
-      }
-
-      sub = settings.subagents[input.subagentId];
-      sub!.status = 'active';
+      sub = assertSubagentAccess(settings, input.subagentId, ctx.tokenPayload!.subagentId);
+      sub.status = 'active';
       return settings;
     });
 
@@ -117,10 +126,13 @@ export const subagentSend = apiProcedure
     return { success: true };
   });
 
-async function checkSubagentStatus(chatId: string, subagentId: string) {
+async function checkSubagentStatus(
+  chatId: string,
+  subagentId: string,
+  callerSubagentId: string | undefined
+) {
   const settings = await readChatSettings(chatId);
-  const sub = settings?.subagents?.[subagentId];
-  if (!sub) throw new TRPCError({ code: 'NOT_FOUND', message: 'Subagent not found' });
+  const sub = assertSubagentAccess(settings, subagentId, callerSubagentId);
 
   if (sub.status === 'completed' || sub.status === 'failed') {
     let outputContent: string | undefined;
@@ -160,7 +172,11 @@ export const subagentWait = apiProcedure
 
     try {
       // Check status immediately before listening, but after event iterator is buffering
-      const initialStatus = await checkSubagentStatus(chatId, input.subagentId);
+      const initialStatus = await checkSubagentStatus(
+        chatId,
+        input.subagentId,
+        ctx.tokenPayload.subagentId
+      );
       if (initialStatus) {
         clearTimeout(timeout);
         if (signal) signal.removeEventListener('abort', onAbort);
@@ -171,7 +187,11 @@ export const subagentWait = apiProcedure
         if (event.chatId === chatId && event.message?.subagentId === input.subagentId) {
           const msg = event.message;
           if (msg.role === 'subagent_status') {
-            const status = await checkSubagentStatus(chatId, input.subagentId);
+            const status = await checkSubagentStatus(
+              chatId,
+              input.subagentId,
+              ctx.tokenPayload.subagentId
+            );
             if (status) {
               clearTimeout(timeout);
               if (signal) signal.removeEventListener('abort', onAbort);
@@ -203,13 +223,9 @@ export const subagentStop = apiProcedure
     let subToStop: SubagentTracker | undefined;
 
     await updateChatSettings(chatId, (settings) => {
-      if (settings.subagents) {
-        const sub = settings.subagents[input.subagentId];
-        if (sub) {
-          sub.status = 'failed';
-          subToStop = sub;
-        }
-      }
+      const sub = assertSubagentAccess(settings, input.subagentId, ctx.tokenPayload!.subagentId);
+      sub.status = 'failed';
+      subToStop = sub;
       return settings;
     });
 
@@ -236,10 +252,8 @@ export const subagentDelete = apiProcedure
     let subToDelete: SubagentTracker | undefined;
 
     await updateChatSettings(chatId, (settings) => {
-      if (settings.subagents && settings.subagents[input.subagentId]) {
-        subToDelete = settings.subagents[input.subagentId]!;
-        delete settings.subagents[input.subagentId];
-      }
+      subToDelete = assertSubagentAccess(settings, input.subagentId, ctx.tokenPayload!.subagentId);
+      delete settings.subagents![input.subagentId];
       return settings;
     });
 
@@ -288,6 +302,9 @@ export const subagentTail = apiProcedure
   .query(async ({ input, ctx }) => {
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
+
+    const settings = await readChatSettings(chatId);
+    assertSubagentAccess(settings, input.subagentId, ctx.tokenPayload.subagentId);
 
     const logger = createChatLogger(chatId, input.subagentId);
     const messages = await logger.getMessages(input.limit);
