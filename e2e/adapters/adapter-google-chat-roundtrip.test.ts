@@ -4,15 +4,16 @@ import {
   startGoogleChatIngestion,
 } from '../../src/adapter-google-chat/client.js';
 import { startDaemonToGoogleChatForwarder } from '../../src/adapter-google-chat/forwarder.js';
+import { updateGoogleChatState } from '../../src/adapter-google-chat/state.js';
 import { getSocketPath } from '../../src/shared/workspace.js';
 import {
   BASE_CONFIG,
+  findCreateByText,
   instrumentTrpcForReadiness,
   makeFakeChatApi,
   makeFakeSubscription,
   makePubsubMessage,
   useGoogleChatAdapterEnv,
-  writeState,
 } from './_google-chat-fixtures.js';
 
 describe('Google Chat Adapter E2E — round-trip (Pub/Sub → daemon → forwarder → chat API)', () => {
@@ -25,9 +26,10 @@ describe('Google Chat Adapter E2E — round-trip (Pub/Sub → daemon → forward
     const subscription = makeFakeSubscription();
     const { api, create } = makeFakeChatApi();
 
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/roundtrip': { chatId: 'gc-chat' } },
-    });
+    await updateGoogleChatState(
+      { channelChatMap: { 'spaces/roundtrip': { chatId: 'gc-chat' } } },
+      env.e2eDir
+    );
     await env.addChat('gc-chat');
 
     startGoogleChatIngestion(
@@ -62,12 +64,7 @@ describe('Google Chat Adapter E2E — round-trip (Pub/Sub → daemon → forward
 
     await vi.waitFor(
       () => {
-        const match = create.mock.calls.find(
-          (c) =>
-            (c[0] as { parent: string; requestBody: { text: string } }).requestBody.text ===
-            'round trip'
-        );
-        expect(match).toBeDefined();
+        expect(findCreateByText(create, 'round trip')).toBeDefined();
       },
       { timeout: 10000 }
     );

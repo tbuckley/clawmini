@@ -3,15 +3,17 @@ import {
   getTRPCClient,
   startGoogleChatIngestion,
 } from '../../src/adapter-google-chat/client.js';
+import {
+  readGoogleChatState,
+  updateGoogleChatState,
+} from '../../src/adapter-google-chat/state.js';
 import { getSocketPath } from '../../src/shared/workspace.js';
 import {
   BASE_CONFIG,
   makeFakeChatApi,
   makeFakeSubscription,
   makePubsubMessage,
-  readState,
   useGoogleChatAdapterEnv,
-  writeState,
 } from './_google-chat-fixtures.js';
 
 describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
@@ -106,9 +108,10 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
 
     // Seed the state with an existing mapping so the routing path is exercised rather
     // than the "first-ever message" auto-map branch.
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/existing': { chatId: 'gc-chat' } },
-    });
+    await updateGoogleChatState(
+      { channelChatMap: { 'spaces/existing': { chatId: 'gc-chat' } } },
+      env.e2eDir
+    );
     await env.addChat('gc-chat');
     await env.addChat('other-chat');
 
@@ -137,8 +140,8 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
       parent: 'spaces/route',
     });
 
-    await vi.waitFor(() => {
-      const state = readState(env.e2eDir);
+    await vi.waitFor(async () => {
+      const state = await readGoogleChatState(env.e2eDir);
       expect(state.channelChatMap?.['spaces/route']?.chatId).toBe('other-chat');
     });
   });
@@ -149,9 +152,10 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     const subscription = makeFakeSubscription();
     const { api, create } = makeFakeChatApi();
 
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/known': { chatId: 'gc-chat' } },
-    });
+    await updateGoogleChatState(
+      { channelChatMap: { 'spaces/known': { chatId: 'gc-chat' } } },
+      env.e2eDir
+    );
     await env.addChat('gc-chat');
 
     startGoogleChatIngestion(
@@ -176,10 +180,7 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
 
     await vi.waitFor(() => expect(create).toHaveBeenCalled(), { timeout: 5000 });
 
-    const call = create.mock.calls[0]![0] as {
-      parent: string;
-      requestBody: { text: string };
-    };
+    const call = create.mock.calls[0]![0];
     expect(call.parent).toBe('spaces/unmapped');
     expect(call.requestBody.text).toContain('not currently mapped');
   });
@@ -190,9 +191,10 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     const subscription = makeFakeSubscription();
     const { api } = makeFakeChatApi();
 
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/wsp': { chatId: 'gc-chat' } },
-    });
+    await updateGoogleChatState(
+      { channelChatMap: { 'spaces/wsp': { chatId: 'gc-chat' } } },
+      env.e2eDir
+    );
     await env.addChat('gc-chat');
     const chat = await env.connect('gc-chat');
 
@@ -229,9 +231,8 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     const subscription = makeFakeSubscription();
     const { api } = makeFakeChatApi();
 
-    // Empty state — no channelChatMap entries at all, so any incoming message
+    // No seeding — afterEach already reset state, so any incoming message
     // should trigger the "first-ever message" auto-map branch.
-    writeState(env.e2eDir, {});
     await env.addChat('gc-chat');
     const chat = await env.connect('gc-chat');
 
@@ -261,8 +262,8 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     expect(msg.role).toBe('user');
 
     // The space should now be mapped to the default chat id from config.
-    await vi.waitFor(() => {
-      const state = readState(env.e2eDir);
+    await vi.waitFor(async () => {
+      const state = await readGoogleChatState(env.e2eDir);
       expect(state.channelChatMap?.['spaces/first']?.chatId).toBe('gc-chat');
     });
   });
@@ -273,9 +274,10 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     const subscription = makeFakeSubscription();
     const { api } = makeFakeChatApi();
 
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/rm': { chatId: 'gc-chat' } },
-    });
+    await updateGoogleChatState(
+      { channelChatMap: { 'spaces/rm': { chatId: 'gc-chat' } } },
+      env.e2eDir
+    );
     await env.addChat('gc-chat');
     const chat = await env.connect('gc-chat');
 
@@ -345,13 +347,16 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
 
       // Force the user-auth client cache to look already-authed by pre-seeding oauthTokens
       // in state so getUserAuthClient doesn't attempt the interactive OAuth flow.
-      writeState(env.e2eDir, {
-        oauthTokens: {
-          access_token: 'fake',
-          refresh_token: 'fake',
-          expiry_date: Date.now() + 1_000_000,
+      await updateGoogleChatState(
+        {
+          oauthTokens: {
+            access_token: 'fake',
+            refresh_token: 'fake',
+            expiry_date: Date.now() + 1_000_000,
+          },
         },
-      });
+        env.e2eDir
+      );
 
       subscription.emitMessage(
         makePubsubMessage({
@@ -367,8 +372,8 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
       expect(url).toBe('https://workspaceevents.googleapis.com/v1/subscriptions');
       expect(init.method).toBe('POST');
 
-      await vi.waitFor(() => {
-        const state = readState(env.e2eDir);
+      await vi.waitFor(async () => {
+        const state = await readGoogleChatState(env.e2eDir);
         expect(state.channelChatMap?.['spaces/added']?.subscriptionId).toBe('subscriptions/abc');
       });
     } finally {
@@ -382,20 +387,23 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     const subscription = makeFakeSubscription();
     const { api } = makeFakeChatApi();
 
-    writeState(env.e2eDir, {
-      channelChatMap: {
-        'spaces/rm-done': {
-          chatId: 'gc-chat',
-          subscriptionId: 'subscriptions/rm-done',
-          expirationDate: '2099-01-01T00:00:00Z',
+    await updateGoogleChatState(
+      {
+        channelChatMap: {
+          'spaces/rm-done': {
+            chatId: 'gc-chat',
+            subscriptionId: 'subscriptions/rm-done',
+            expirationDate: '2099-01-01T00:00:00Z',
+          },
+        },
+        oauthTokens: {
+          access_token: 'fake',
+          refresh_token: 'fake',
+          expiry_date: Date.now() + 1_000_000,
         },
       },
-      oauthTokens: {
-        access_token: 'fake',
-        refresh_token: 'fake',
-        expiry_date: Date.now() + 1_000_000,
-      },
-    });
+      env.e2eDir
+    );
     await env.addChat('gc-chat');
 
     const fetchMock = vi
@@ -432,8 +440,9 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
 
       // The subscription fields should be stripped, but chatId preserved
       // because entry.chatId was set.
-      await vi.waitFor(() => {
-        const entry = readState(env.e2eDir).channelChatMap?.['spaces/rm-done'];
+      await vi.waitFor(async () => {
+        const state = await readGoogleChatState(env.e2eDir);
+        const entry = state.channelChatMap?.['spaces/rm-done'];
         expect(entry?.chatId).toBe('gc-chat');
         expect(entry?.subscriptionId).toBeUndefined();
         expect(entry?.expirationDate).toBeUndefined();
@@ -449,9 +458,10 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     const subscription = makeFakeSubscription();
     const { api, update } = makeFakeChatApi();
 
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/cc': { chatId: 'gc-chat' } },
-    });
+    await updateGoogleChatState(
+      { channelChatMap: { 'spaces/cc': { chatId: 'gc-chat' } } },
+      env.e2eDir
+    );
     await env.addChat('gc-chat');
     const chat = await env.connect('gc-chat');
 
@@ -496,14 +506,10 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
 
     // Card update strips buttons and updates the subtitle to 'Policy Approved'.
     await vi.waitFor(() => expect(update).toHaveBeenCalled(), { timeout: 5000 });
-    const updateCall = update.mock.calls[0]![0] as {
-      name: string;
-      updateMask: string;
-      requestBody: { cardsV2: unknown[] };
-    };
+    const updateCall = update.mock.calls[0]![0];
     expect(updateCall.name).toBe('spaces/cc/messages/card-1');
     expect(updateCall.updateMask).toBe('cardsV2');
-    const updatedCard = updateCall.requestBody.cardsV2[0] as {
+    const updatedCard = updateCall.requestBody.cardsV2![0] as {
       card: {
         header: { subtitle: string };
         sections: { widgets: Array<Record<string, unknown>> }[];
@@ -528,9 +534,10 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     const subscription = makeFakeSubscription();
     const { api, create } = makeFakeChatApi();
 
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/seed': { chatId: 'gc-chat' } },
-    });
+    await updateGoogleChatState(
+      { channelChatMap: { 'spaces/seed': { chatId: 'gc-chat' } } },
+      env.e2eDir
+    );
     await env.addChat('gc-chat');
     await env.addAgent('router-agent');
 
@@ -554,15 +561,12 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     );
 
     await vi.waitFor(() => expect(create).toHaveBeenCalled(), { timeout: 5000 });
-    const reply = create.mock.calls[0]![0] as {
-      parent: string;
-      requestBody: { text: string };
-    };
+    const reply = create.mock.calls[0]![0];
     expect(reply.parent).toBe('spaces/agent-route');
     expect(reply.requestBody.text).toMatch(/Successfully created new chat/);
 
-    await vi.waitFor(() => {
-      const state = readState(env.e2eDir);
+    await vi.waitFor(async () => {
+      const state = await readGoogleChatState(env.e2eDir);
       const newChatId = state.channelChatMap?.['spaces/agent-route']?.chatId;
       expect(newChatId).toMatch(/^router-agent-google-chat/);
     });
@@ -574,9 +578,10 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     const subscription = makeFakeSubscription();
     const { api } = makeFakeChatApi();
 
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/att': { chatId: 'gc-chat' } },
-    });
+    await updateGoogleChatState(
+      { channelChatMap: { 'spaces/att': { chatId: 'gc-chat' } } },
+      env.e2eDir
+    );
     await env.addChat('gc-chat');
     const chat = await env.connect('gc-chat');
 

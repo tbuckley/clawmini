@@ -1,7 +1,5 @@
 import { afterAll, afterEach, beforeAll, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import fs from 'node:fs';
-import path from 'node:path';
 import { TestEnvironment } from '../_helpers/test-environment.js';
 import {
   getTRPCClient,
@@ -9,10 +7,7 @@ import {
   type MessageSourceLike,
 } from '../../src/adapter-google-chat/client.js';
 import type { GoogleChatConfig } from '../../src/adapter-google-chat/config.js';
-import {
-  updateGoogleChatState,
-  type GoogleChatState,
-} from '../../src/adapter-google-chat/state.js';
+import { updateGoogleChatState } from '../../src/adapter-google-chat/state.js';
 
 export const BASE_CONFIG: GoogleChatConfig = {
   projectId: 'fake-project',
@@ -43,9 +38,31 @@ export function makePubsubMessage(
   };
 }
 
+export interface ChatCreateParams {
+  parent: string;
+  requestBody: {
+    text?: string;
+    cardsV2?: unknown[];
+    [key: string]: unknown;
+  };
+}
+
+export interface ChatUpdateParams {
+  name: string;
+  updateMask: string;
+  requestBody: {
+    text?: string;
+    cardsV2?: unknown[];
+    [key: string]: unknown;
+  };
+}
+
+type ChatCreateFn = (params: ChatCreateParams) => Promise<unknown>;
+type ChatUpdateFn = (params: ChatUpdateParams) => Promise<unknown>;
+
 export function makeFakeChatApi() {
-  const create = vi.fn().mockResolvedValue({});
-  const update = vi.fn().mockResolvedValue({});
+  const create = vi.fn<ChatCreateFn>().mockResolvedValue({});
+  const update = vi.fn<ChatUpdateFn>().mockResolvedValue({});
   const list = vi.fn().mockResolvedValue({ data: { messages: [] } });
   const api = {
     spaces: {
@@ -53,6 +70,26 @@ export function makeFakeChatApi() {
     },
   } as unknown as GoogleChatApi;
   return { api, create, update, list };
+}
+
+/** Find a `chatApi.spaces.messages.create` call by `requestBody.text`. */
+export function findCreateByText(
+  create: ReturnType<typeof makeFakeChatApi>['create'],
+  match: string | ((text: string) => boolean)
+): ChatCreateParams | undefined {
+  const test = typeof match === 'string' ? (t: string) => t === match : match;
+  return create.mock.calls.find(
+    ([params]) => typeof params.requestBody.text === 'string' && test(params.requestBody.text)
+  )?.[0];
+}
+
+/** Find the first `create` call carrying a non-empty `cardsV2` payload. */
+export function findCreateWithCard(
+  create: ReturnType<typeof makeFakeChatApi>['create']
+): ChatCreateParams | undefined {
+  return create.mock.calls.find(
+    ([params]) => Array.isArray(params.requestBody.cardsV2) && params.requestBody.cardsV2.length > 0
+  )?.[0];
 }
 
 export function makeFakeSubscription(): MessageSourceLike & {
@@ -115,18 +152,6 @@ export function makeQueuingFakeSubscription(): QueuingFakeSubscription {
   return sub;
 }
 
-export function readState(e2eDir: string): GoogleChatState {
-  const p = path.join(e2eDir, '.clawmini', 'adapters', 'google-chat', 'state.json');
-  if (!fs.existsSync(p)) return {};
-  return JSON.parse(fs.readFileSync(p, 'utf-8')) as GoogleChatState;
-}
-
-export function writeState(e2eDir: string, state: GoogleChatState) {
-  const dir = path.join(e2eDir, '.clawmini', 'adapters', 'google-chat');
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(state, null, 2));
-}
-
 /**
  * Wrap a trpc client so we can observe when `waitForMessages.subscribe` has been
  * acknowledged by the server (SSE `started` frame). Tests `await ready` before
@@ -167,10 +192,10 @@ export function instrumentTrpcForReadiness(trpc: ReturnType<typeof getTRPCClient
  * Boilerplate for a Google Chat adapter e2e suite: spins up a dedicated
  * TestEnvironment for the suite and resets adapter state between tests.
  *
- * The reset drains pending `updateGoogleChatState` writes before atomically
- * overwriting the state file — otherwise a late `saveLastMessageId` from the
- * prior test's forwarder can resurrect `channelChatMap` entries after
- * `writeState({})` runs.
+ * The reset is queued through `updateGoogleChatState` so it runs after any
+ * pending writes (e.g. a late `saveLastMessageId` from the prior test's
+ * forwarder) — otherwise those writes could resurrect `channelChatMap`
+ * entries after the reset.
  */
 export function useGoogleChatAdapterEnv(suiteName: string) {
   const ref: { env: TestEnvironment } = { env: null as unknown as TestEnvironment };
@@ -188,8 +213,15 @@ export function useGoogleChatAdapterEnv(suiteName: string) {
 
   afterEach(async () => {
     await ref.env.disconnectAll();
-    await updateGoogleChatState({}, ref.env.e2eDir);
-    writeState(ref.env.e2eDir, {});
+    await updateGoogleChatState(
+      () => ({
+        lastSyncedMessageIds: {},
+        channelChatMap: {},
+        oauthTokens: undefined,
+        filters: {},
+      }),
+      ref.env.e2eDir
+    );
   });
 
   return ref;

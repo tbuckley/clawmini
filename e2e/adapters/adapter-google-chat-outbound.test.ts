@@ -2,15 +2,19 @@ import crypto from 'node:crypto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getTRPCClient } from '../../src/adapter-google-chat/client.js';
 import { startDaemonToGoogleChatForwarder } from '../../src/adapter-google-chat/forwarder.js';
+import {
+  readGoogleChatState,
+  updateGoogleChatState,
+} from '../../src/adapter-google-chat/state.js';
 import { getSocketPath } from '../../src/shared/workspace.js';
 import { appendMessage, type ChatMessage } from '../../src/shared/chats.js';
 import {
   BASE_CONFIG,
+  findCreateByText,
+  findCreateWithCard,
   instrumentTrpcForReadiness,
   makeFakeChatApi,
-  readState,
   useGoogleChatAdapterEnv,
-  writeState,
 } from './_google-chat-fixtures.js';
 
 /**
@@ -58,9 +62,10 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
     const { api, create } = makeFakeChatApi();
 
     // Map a fake space to our chat so the forwarder knows where to post.
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/outbound': { chatId: 'gc-chat' } },
-    });
+    await updateGoogleChatState(
+      { channelChatMap: { 'spaces/outbound': { chatId: 'gc-chat' } } },
+      env.e2eDir
+    );
     await env.addChat('gc-chat');
 
     // user-role messages are filtered out by default; allow them through so we don't need
@@ -78,23 +83,12 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
 
     await vi.waitFor(
       () => {
-        expect(create).toHaveBeenCalled();
-        const call = create.mock.calls.find(
-          (c) =>
-            (c[0] as { parent: string; requestBody: { text: string } }).requestBody.text ===
-            'outbound payload'
-        );
-        expect(call).toBeDefined();
+        expect(findCreateByText(create, 'outbound payload')).toBeDefined();
       },
       { timeout: 10000 }
     );
 
-    const match = create.mock.calls.find(
-      (c) =>
-        (c[0] as { parent: string; requestBody: { text: string } }).requestBody.text ===
-        'outbound payload'
-    )!;
-    expect((match[0] as { parent: string }).parent).toBe('spaces/outbound');
+    expect(findCreateByText(create, 'outbound payload')!.parent).toBe('spaces/outbound');
 
     abortController.abort();
     await forwarderPromise;
@@ -107,7 +101,6 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
     const { api, create } = makeFakeChatApi();
 
     // No channelChatMap entry → forwarder should advance lastSyncedMessageIds but not post.
-    writeState(env.e2eDir, {});
     await env.addChat('gc-chat');
 
     const forwarderPromise = startDaemonToGoogleChatForwarder(
@@ -122,22 +115,19 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
     // Capture the forwarder's baseline cursor (it seeds to the chat's current latest
     // message id on start), then send and wait for that cursor to advance — which
     // proves the drop path executed without relying on a wall-clock delay.
-    const baseline = readState(env.e2eDir).lastSyncedMessageIds?.['gc-chat'];
+    const baseline = (await readGoogleChatState(env.e2eDir)).lastSyncedMessageIds?.['gc-chat'];
     await env.sendMessage('unmapped payload', { chat: 'gc-chat', noWait: true });
 
     await vi.waitFor(
-      () => {
-        const cur = readState(env.e2eDir).lastSyncedMessageIds?.['gc-chat'];
+      async () => {
+        const cur = (await readGoogleChatState(env.e2eDir)).lastSyncedMessageIds?.['gc-chat'];
         expect(cur).toBeDefined();
         expect(cur).not.toBe(baseline);
       },
       { timeout: 10000 }
     );
 
-    const match = create.mock.calls.find(
-      (c) => (c[0] as { requestBody: { text: string } }).requestBody.text === 'unmapped payload'
-    );
-    expect(match).toBeUndefined();
+    expect(findCreateByText(create, 'unmapped payload')).toBeUndefined();
 
     abortController.abort();
     await forwarderPromise;
@@ -164,10 +154,13 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
     };
     const markerId = await seedChatForForwarderCatchup(env.e2eDir, 'gc-policy', [policyMsg]);
 
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/policy': { chatId: 'gc-policy' } },
-      lastSyncedMessageIds: { 'gc-policy': markerId },
-    });
+    await updateGoogleChatState(
+      {
+        channelChatMap: { 'spaces/policy': { chatId: 'gc-policy' } },
+        lastSyncedMessageIds: { 'gc-policy': markerId },
+      },
+      env.e2eDir
+    );
 
     const forwarderPromise = startDaemonToGoogleChatForwarder(
       trpc,
@@ -181,29 +174,18 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
 
     await vi.waitFor(
       () => {
-        const cardCall = create.mock.calls.find((c) => {
-          const body = c[0] as { requestBody: { cardsV2?: unknown[] } };
-          return Array.isArray(body.requestBody.cardsV2) && body.requestBody.cardsV2.length > 0;
-        });
-        expect(cardCall).toBeDefined();
+        expect(findCreateWithCard(create)).toBeDefined();
       },
       { timeout: 10000 }
     );
 
-    const cardCall = create.mock.calls.find((c) => {
-      const body = c[0] as { requestBody: { cardsV2?: unknown[] } };
-      return Array.isArray(body.requestBody.cardsV2) && body.requestBody.cardsV2.length > 0;
-    })!;
-    const body = cardCall[0] as {
-      parent: string;
-      requestBody: {
-        text: string;
-        cardsV2: Array<{ card: { sections: Array<{ widgets: unknown[] }> } }>;
-      };
-    };
-    expect(body.parent).toBe('spaces/policy');
-    expect(body.requestBody.text).toBe('');
-    expect(body.requestBody.cardsV2[0]!.card.sections[0]!.widgets.length).toBeGreaterThan(0);
+    const cardCall = findCreateWithCard(create)!;
+    expect(cardCall.parent).toBe('spaces/policy');
+    expect(cardCall.requestBody.text).toBe('');
+    const cards = cardCall.requestBody.cardsV2 as Array<{
+      card: { sections: Array<{ widgets: unknown[] }> };
+    }>;
+    expect(cards[0]!.card.sections[0]!.widgets.length).toBeGreaterThan(0);
 
     abortController.abort();
     await forwarderPromise;
@@ -236,10 +218,13 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
       policyMsg,
     ]);
 
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/policy-fb': { chatId: 'gc-policy-fallback' } },
-      lastSyncedMessageIds: { 'gc-policy-fallback': markerId },
-    });
+    await updateGoogleChatState(
+      {
+        channelChatMap: { 'spaces/policy-fb': { chatId: 'gc-policy-fallback' } },
+        lastSyncedMessageIds: { 'gc-policy-fallback': markerId },
+      },
+      env.e2eDir
+    );
 
     const forwarderPromise = startDaemonToGoogleChatForwarder(
       trpc,
@@ -253,16 +238,12 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
 
     await vi.waitFor(
       () => {
-        const plain = create.mock.calls.find((c) => {
-          const body = c[0] as { requestBody: { text?: string; cardsV2?: unknown[] } };
-          return (
-            !body.requestBody.cardsV2 &&
-            typeof body.requestBody.text === 'string' &&
-            body.requestBody.text.includes('Action Required: Policy Request') &&
-            body.requestBody.text.includes('req-pol-fb')
-          );
-        });
+        const plain = findCreateByText(
+          create,
+          (text) => text.includes('Action Required: Policy Request') && text.includes('req-pol-fb')
+        );
         expect(plain).toBeDefined();
+        expect(plain!.requestBody.cardsV2).toBeUndefined();
       },
       { timeout: 10000 }
     );
@@ -288,10 +269,13 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
     };
     const markerId = await seedChatForForwarderCatchup(env.e2eDir, 'gc-chunk', [longMsg]);
 
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/chunk': { chatId: 'gc-chunk' } },
-      lastSyncedMessageIds: { 'gc-chunk': markerId },
-    });
+    await updateGoogleChatState(
+      {
+        channelChatMap: { 'spaces/chunk': { chatId: 'gc-chunk' } },
+        lastSyncedMessageIds: { 'gc-chunk': markerId },
+      },
+      env.e2eDir
+    );
 
     const forwarderPromise = startDaemonToGoogleChatForwarder(
       trpc,
@@ -305,20 +289,15 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
 
     await vi.waitFor(
       () => {
-        const chunkCalls = create.mock.calls.filter((c) => {
-          const body = c[0] as { parent: string; requestBody: { text: string } };
-          return body.parent === 'spaces/chunk' && body.requestBody.text.length > 0;
-        });
+        const chunkCalls = create.mock.calls
+          .map(([params]) => params)
+          .filter((p) => p.parent === 'spaces/chunk' && (p.requestBody.text?.length ?? 0) > 0);
         // 7000 chars at 4000 per chunk -> 2 calls.
         expect(chunkCalls.length).toBeGreaterThanOrEqual(2);
-        const joined = chunkCalls
-          .map((c) => (c[0] as { requestBody: { text: string } }).requestBody.text)
-          .join('');
+        const joined = chunkCalls.map((p) => p.requestBody.text ?? '').join('');
         expect(joined).toBe(longContent);
-        for (const c of chunkCalls) {
-          expect((c[0] as { requestBody: { text: string } }).requestBody.text.length).toBeLessThanOrEqual(
-            4000
-          );
+        for (const p of chunkCalls) {
+          expect(p.requestBody.text!.length).toBeLessThanOrEqual(4000);
         }
       },
       { timeout: 15000 }
@@ -345,10 +324,13 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
     };
     const markerId = await seedChatForForwarderCatchup(env.e2eDir, 'gc-files', [fileMsg]);
 
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/files': { chatId: 'gc-files' } },
-      lastSyncedMessageIds: { 'gc-files': markerId },
-    });
+    await updateGoogleChatState(
+      {
+        channelChatMap: { 'spaces/files': { chatId: 'gc-files' } },
+        lastSyncedMessageIds: { 'gc-files': markerId },
+      },
+      env.e2eDir
+    );
 
     // Default filters let agent messages through; no overrides needed.
     const forwarderPromise = startDaemonToGoogleChatForwarder(
@@ -363,15 +345,14 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
 
     await vi.waitFor(
       () => {
-        const fileCall = create.mock.calls.find((c) => {
-          const body = c[0] as { parent: string; requestBody: { text: string } };
-          return (
-            body.parent === 'spaces/files' &&
-            body.requestBody.text.includes('here is the report') &&
-            body.requestBody.text.includes('(Files generated: report.pdf, diagram.png)')
-          );
-        });
+        const fileCall = findCreateByText(
+          create,
+          (text) =>
+            text.includes('here is the report') &&
+            text.includes('(Files generated: report.pdf, diagram.png)')
+        );
         expect(fileCall).toBeDefined();
+        expect(fileCall!.parent).toBe('spaces/files');
       },
       { timeout: 10000 }
     );

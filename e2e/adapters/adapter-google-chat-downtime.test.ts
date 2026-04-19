@@ -4,16 +4,19 @@ import {
   startGoogleChatIngestion,
 } from '../../src/adapter-google-chat/client.js';
 import { startDaemonToGoogleChatForwarder } from '../../src/adapter-google-chat/forwarder.js';
+import {
+  readGoogleChatState,
+  updateGoogleChatState,
+} from '../../src/adapter-google-chat/state.js';
 import { getSocketPath } from '../../src/shared/workspace.js';
 import {
   BASE_CONFIG,
+  findCreateByText,
   instrumentTrpcForReadiness,
   makeFakeChatApi,
   makePubsubMessage,
   makeQueuingFakeSubscription,
-  readState,
   useGoogleChatAdapterEnv,
-  writeState,
 } from './_google-chat-fixtures.js';
 
 describe('Google Chat Adapter E2E — adapter downtime', () => {
@@ -25,9 +28,10 @@ describe('Google Chat Adapter E2E — adapter downtime', () => {
     const subscription = makeQueuingFakeSubscription();
     const { api } = makeFakeChatApi();
 
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/dt-in': { chatId: 'gc-dt-in' } },
-    });
+    await updateGoogleChatState(
+      { channelChatMap: { 'spaces/dt-in': { chatId: 'gc-dt-in' } } },
+      env.e2eDir
+    );
     await env.addChat('gc-dt-in');
     const chat = await env.connect('gc-dt-in');
 
@@ -106,9 +110,10 @@ describe('Google Chat Adapter E2E — adapter downtime', () => {
     const { trpc, ready } = instrumentTrpcForReadiness(rawTrpc);
     const { api, create } = makeFakeChatApi();
 
-    writeState(env.e2eDir, {
-      channelChatMap: { 'spaces/dt-out': { chatId: 'gc-dt-out' } },
-    });
+    await updateGoogleChatState(
+      { channelChatMap: { 'spaces/dt-out': { chatId: 'gc-dt-out' } } },
+      env.e2eDir
+    );
     await env.addChat('gc-dt-out');
 
     // Scope the forwarder to just `gc-dt-out` so we don't also spin up a
@@ -135,18 +140,17 @@ describe('Google Chat Adapter E2E — adapter downtime', () => {
     await env.sendMessage('msg 1', { chat: 'gc-dt-out', noWait: true });
     await vi.waitFor(
       () => {
-        const match = create.mock.calls.find(
-          (c) => (c[0] as { requestBody: { text: string } }).requestBody.text === 'msg 1'
-        );
-        expect(match).toBeDefined();
+        expect(findCreateByText(create, 'msg 1')).toBeDefined();
       },
       { timeout: 10000 }
     );
-    await vi.waitFor(() => {
-      const id = readState(env.e2eDir).lastSyncedMessageIds?.['gc-dt-out'];
+    await vi.waitFor(async () => {
+      const id = (await readGoogleChatState(env.e2eDir)).lastSyncedMessageIds?.['gc-dt-out'];
       expect(id).toBeTruthy();
     });
-    const cursorAfterMsg1 = readState(env.e2eDir).lastSyncedMessageIds!['gc-dt-out']!;
+    const cursorAfterMsg1 = (await readGoogleChatState(env.e2eDir)).lastSyncedMessageIds![
+      'gc-dt-out'
+    ]!;
 
     // Tear down the forwarder (adapter process exits).
     abort1.abort();
@@ -159,16 +163,8 @@ describe('Google Chat Adapter E2E — adapter downtime', () => {
 
     // Nothing should have been posted to Google Chat while the forwarder was
     // down.
-    expect(
-      create.mock.calls.find(
-        (c) => (c[0] as { requestBody: { text: string } }).requestBody.text === 'msg 2'
-      )
-    ).toBeUndefined();
-    expect(
-      create.mock.calls.find(
-        (c) => (c[0] as { requestBody: { text: string } }).requestBody.text === 'msg 3'
-      )
-    ).toBeUndefined();
+    expect(findCreateByText(create, 'msg 2')).toBeUndefined();
+    expect(findCreateByText(create, 'msg 3')).toBeUndefined();
 
     // Restart the forwarder with a fresh abort controller but the same
     // startDir — so it reads back lastSyncedMessageIds and resumes.
@@ -186,29 +182,21 @@ describe('Google Chat Adapter E2E — adapter downtime', () => {
 
     await vi.waitFor(
       () => {
-        const match2 = create.mock.calls.find(
-          (c) => (c[0] as { requestBody: { text: string } }).requestBody.text === 'msg 2'
-        );
-        const match3 = create.mock.calls.find(
-          (c) => (c[0] as { requestBody: { text: string } }).requestBody.text === 'msg 3'
-        );
-        expect(match2).toBeDefined();
-        expect(match3).toBeDefined();
+        expect(findCreateByText(create, 'msg 2')).toBeDefined();
+        expect(findCreateByText(create, 'msg 3')).toBeDefined();
       },
       { timeout: 15000 }
     );
 
     // And the cursor should have advanced past the restart-point.
-    await vi.waitFor(() => {
-      const now = readState(env.e2eDir).lastSyncedMessageIds?.['gc-dt-out'];
+    await vi.waitFor(async () => {
+      const now = (await readGoogleChatState(env.e2eDir)).lastSyncedMessageIds?.['gc-dt-out'];
       expect(now).toBeDefined();
       expect(now).not.toBe(cursorAfterMsg1);
     });
 
     // msg 1 must not be re-posted by the resumed forwarder.
-    const msg1Calls = create.mock.calls.filter(
-      (c) => (c[0] as { requestBody: { text: string } }).requestBody.text === 'msg 1'
-    );
+    const msg1Calls = create.mock.calls.filter(([params]) => params.requestBody.text === 'msg 1');
     expect(msg1Calls.length).toBe(1);
 
     abort2.abort();
