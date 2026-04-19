@@ -9,11 +9,12 @@ export async function handleAddedToSpace(
   spaceType: string | undefined,
   targetChatId: string | null | undefined,
   mappedChatId: string | null | undefined,
-  config: GoogleChatConfig
+  config: GoogleChatConfig,
+  startDir: string = process.cwd()
 ) {
   if (spaceType !== 'DIRECT_MESSAGE') {
     try {
-      const userAuthClient = await getUserAuthClient(config);
+      const userAuthClient = await getUserAuthClient(config, startDir);
       const tokenResponse = await userAuthClient.getAccessToken();
       const token = tokenResponse.token;
 
@@ -48,7 +49,7 @@ export async function handleAddedToSpace(
                 },
               },
             };
-          });
+          }, startDir);
           console.log(`Created subscription ${subData.name} for space ${externalContextId}`);
         } else {
           const errText = await res.text();
@@ -79,12 +80,13 @@ export async function handleAddedToSpace(
 export async function handleRemovedFromSpace(
   externalContextId: string,
   currentState: GoogleChatState,
-  config: GoogleChatConfig
+  config: GoogleChatConfig,
+  startDir: string = process.cwd()
 ) {
   const subId = currentState.channelChatMap?.[externalContextId]?.subscriptionId;
   if (subId) {
     try {
-      const userAuthClient = await getUserAuthClient(config);
+      const userAuthClient = await getUserAuthClient(config, startDir);
       const tokenResponse = await userAuthClient.getAccessToken();
       const token = tokenResponse.token;
 
@@ -120,5 +122,5 @@ export async function handleRemovedFromSpace(
       }
     }
     return { channelChatMap: map };
-  });
+  }, startDir);
 }

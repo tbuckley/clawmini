@@ -71,17 +71,21 @@ describe('auth.ts', () => {
     const newTokens = { access_token: 'new_token' };
     await tokenCallback(newTokens);
 
-    expect(state.updateGoogleChatState).toHaveBeenCalledWith({
-      oauthTokens: {
-        access_token: 'new_token',
+    expect(state.updateGoogleChatState).toHaveBeenCalledWith(
+      {
+        oauthTokens: {
+          access_token: 'new_token',
+        },
       },
-    });
+      expect.any(String)
+    );
 
     expect(state.updateGoogleChatState).not.toHaveBeenCalledWith(
       expect.objectContaining({
         lastSyncedMessageIds: { default: '123' },
         activeSpaceName: 'Space1',
-      })
+      }),
+      expect.any(String)
     );
   });
 });

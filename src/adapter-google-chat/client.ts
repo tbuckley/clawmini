@@ -64,6 +64,8 @@ export interface GoogleChatIngestionDeps {
   subscription?: MessageSourceLike;
   /** Google Chat API client (defaults to `google.chat()` with ADC credentials). */
   chatApi?: GoogleChatApi;
+  /** Root directory for resolving adapter state/config (defaults to `process.cwd()`). */
+  startDir?: string;
 }
 
 export function startGoogleChatIngestion(
@@ -72,6 +74,7 @@ export function startGoogleChatIngestion(
   filteringConfig: FilteringConfig,
   deps: GoogleChatIngestionDeps = {}
 ) {
+  const startDir = deps.startDir ?? process.cwd();
   const subscription: MessageSourceLike =
     deps.subscription ??
     (() => {
@@ -167,7 +170,7 @@ export function startGoogleChatIngestion(
           `Automatically authorizing user ID ${senderName} based on authorized email ${email}`
         );
         config.authorizedUsers.push(senderName);
-        updateGoogleChatConfig(config).catch((err) =>
+        updateGoogleChatConfig(config, startDir).catch((err) =>
           console.error('Failed to update config with new user ID:', err)
         );
       }
@@ -182,7 +185,7 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      const currentState = await readGoogleChatState();
+      const currentState = await readGoogleChatState(startDir);
 
       const externalContextId = spaceName;
       const mappedChatId = currentState.channelChatMap?.[externalContextId]?.chatId;
@@ -195,7 +198,8 @@ export function startGoogleChatIngestion(
           space?.type,
           mappedChatId,
           mappedChatId,
-          config
+          config,
+          startDir
         );
         if (!text) {
           message.ack();
@@ -204,7 +208,7 @@ export function startGoogleChatIngestion(
       }
 
       if (eventType === 'REMOVED_FROM_SPACE') {
-        await handleRemovedFromSpace(externalContextId, currentState, config);
+        await handleRemovedFromSpace(externalContextId, currentState, config, startDir);
         message.ack();
         return;
       }
@@ -223,15 +227,18 @@ export function startGoogleChatIngestion(
 
         if (routingResult) {
           if (routingResult.type === 'mapped') {
-            await updateGoogleChatState((latestState) => ({
-              channelChatMap: {
-                ...(latestState.channelChatMap || {}),
-                [externalContextId]: {
-                  ...(latestState.channelChatMap?.[externalContextId] || {}),
-                  chatId: routingResult.newChatId,
+            await updateGoogleChatState(
+              (latestState) => ({
+                channelChatMap: {
+                  ...(latestState.channelChatMap || {}),
+                  [externalContextId]: {
+                    ...(latestState.channelChatMap?.[externalContextId] || {}),
+                    chatId: routingResult.newChatId,
+                  },
                 },
-              },
-            }));
+              }),
+              startDir
+            );
           }
 
           try {
@@ -261,15 +268,18 @@ export function startGoogleChatIngestion(
           console.log(
             `First contact detected. Automatically mapping space ${externalContextId} to chat ${targetChatId}.`
           );
-          await updateGoogleChatState((latestState) => ({
-            channelChatMap: {
-              ...(latestState.channelChatMap || {}),
-              [externalContextId]: {
-                ...(latestState.channelChatMap?.[externalContextId] || {}),
-                chatId: targetChatId as string,
+          await updateGoogleChatState(
+            (latestState) => ({
+              channelChatMap: {
+                ...(latestState.channelChatMap || {}),
+                [externalContextId]: {
+                  ...(latestState.channelChatMap?.[externalContextId] || {}),
+                  chatId: targetChatId as string,
+                },
               },
-            },
-          }));
+            }),
+            startDir
+          );
         } else {
           const isDirectMessage =
             space?.type === 'DIRECT_MESSAGE' || space?.singleUserBotDm === true;
@@ -372,7 +382,7 @@ export function startGoogleChatIngestion(
         if (commandResult.type === 'text') {
           if (commandResult.newConfig) {
             filteringConfig.filters = commandResult.newConfig.filters;
-            await updateGoogleChatState({ filters: filteringConfig.filters });
+            await updateGoogleChatState({ filters: filteringConfig.filters }, startDir);
           }
           resultText = commandResult.text;
         } else if (commandResult.type === 'debug') {
@@ -394,7 +404,7 @@ export function startGoogleChatIngestion(
       const attachments = eventMessage?.attachment || [];
 
       if (attachments.length > 0) {
-        const tmpDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'google-chat');
+        const tmpDir = path.join(getClawminiDir(startDir), 'tmp', 'google-chat');
         await fsPromises.mkdir(tmpDir, { recursive: true });
 
         for (const att of attachments) {
