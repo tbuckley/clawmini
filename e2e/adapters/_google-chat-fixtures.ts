@@ -65,6 +65,56 @@ export function makeFakeSubscription(): MessageSourceLike & {
   });
 }
 
+export interface QueuingFakeSubscription extends MessageSourceLike {
+  emitMessage: (msg: FakeMessage) => void;
+  detach: () => void;
+  pendingCount: () => number;
+}
+
+/**
+ * Fake Pub/Sub subscription that buffers emitted messages until a 'message'
+ * listener is attached, and replays them on attach. Models Pub/Sub's at-least-
+ * once redelivery: when the consumer (adapter process) is offline, messages
+ * aren't lost — they reappear when a new consumer connects.
+ *
+ * `detach()` removes the current listener, simulating the adapter crashing/
+ * shutting down. Subsequent `emitMessage` calls queue until a fresh
+ * `.on('message', ...)` attaches.
+ */
+export function makeQueuingFakeSubscription(): QueuingFakeSubscription {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let listener: ((msg: any) => void | Promise<void>) | null = null;
+  const queue: FakeMessage[] = [];
+
+  const sub: QueuingFakeSubscription = {
+    on(event, l) {
+      if (event === 'message') {
+        listener = l;
+        while (queue.length > 0 && listener) {
+          const next = queue.shift()!;
+          listener(next);
+        }
+      }
+      return sub;
+    },
+    emitMessage(msg) {
+      if (listener) {
+        listener(msg);
+      } else {
+        queue.push(msg);
+      }
+    },
+    detach() {
+      listener = null;
+    },
+    pendingCount() {
+      return queue.length;
+    },
+  };
+
+  return sub;
+}
+
 export function readState(e2eDir: string): GoogleChatState {
   const p = path.join(e2eDir, '.clawmini', 'adapters', 'google-chat', 'state.json');
   if (!fs.existsSync(p)) return {};

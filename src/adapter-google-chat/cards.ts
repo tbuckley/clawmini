@@ -2,11 +2,14 @@ import { google } from 'googleapis';
 import { getAuthClient } from './auth.js';
 import type { RoutingTrpcClient } from '../shared/adapters/routing.js';
 
+type ChatApiLike = ReturnType<typeof google.chat>;
+
 export async function handleCardClicked(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   event: any,
   targetChatId: string,
-  trpc: RoutingTrpcClient
+  trpc: RoutingTrpcClient,
+  getChatApi?: () => Promise<ChatApiLike>
 ) {
   const action = event.action;
   if (!action) return;
@@ -22,7 +25,9 @@ export async function handleCardClicked(
 
     if (event.message?.name) {
       try {
-        const chatApi = google.chat({ version: 'v1', auth: await getAuthClient() });
+        const chatApi = getChatApi
+          ? await getChatApi()
+          : google.chat({ version: 'v1', auth: await getAuthClient() });
 
         const originalCards = event.message.cardsV2 || [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

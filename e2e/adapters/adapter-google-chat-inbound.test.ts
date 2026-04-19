@@ -375,4 +375,250 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it('tears down the workspace-events subscription on REMOVED_FROM_SPACE', async () => {
+    const { env } = envRef;
+    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
+    const subscription = makeFakeSubscription();
+    const { api } = makeFakeChatApi();
+
+    writeState(env.e2eDir, {
+      channelChatMap: {
+        'spaces/rm-done': {
+          chatId: 'gc-chat',
+          subscriptionId: 'subscriptions/rm-done',
+          expirationDate: '2099-01-01T00:00:00Z',
+        },
+      },
+      oauthTokens: {
+        access_token: 'fake',
+        refresh_token: 'fake',
+        expiry_date: Date.now() + 1_000_000,
+      },
+    });
+    await env.addChat('gc-chat');
+
+    const fetchMock = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(new Response(null, { status: 200 }));
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock;
+
+    try {
+      startGoogleChatIngestion(
+        { ...BASE_CONFIG, oauthClientId: 'id', oauthClientSecret: 'secret' },
+        trpc,
+        {},
+        { subscription, chatApi: api, startDir: env.e2eDir }
+      );
+
+      subscription.emitMessage(
+        makePubsubMessage({
+          type: 'REMOVED_FROM_SPACE',
+          space: { name: 'spaces/rm-done', type: 'SPACE' },
+          user: { email: 'user@example.com' },
+        })
+      );
+
+      await vi.waitFor(() => {
+        const deleteCall = fetchMock.mock.calls.find(
+          ([url, init]) =>
+            typeof url === 'string' &&
+            url.endsWith('/v1/subscriptions/rm-done') &&
+            (init as RequestInit | undefined)?.method === 'DELETE'
+        );
+        expect(deleteCall).toBeDefined();
+      }, { timeout: 5000 });
+
+      // The subscription fields should be stripped, but chatId preserved
+      // because entry.chatId was set.
+      await vi.waitFor(() => {
+        const entry = readState(env.e2eDir).channelChatMap?.['spaces/rm-done'];
+        expect(entry?.chatId).toBe('gc-chat');
+        expect(entry?.subscriptionId).toBeUndefined();
+        expect(entry?.expirationDate).toBeUndefined();
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('handles CARD_CLICKED by stripping buttons and forwarding /approve to the daemon', async () => {
+    const { env } = envRef;
+    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
+    const subscription = makeFakeSubscription();
+    const { api, update } = makeFakeChatApi();
+
+    writeState(env.e2eDir, {
+      channelChatMap: { 'spaces/cc': { chatId: 'gc-chat' } },
+    });
+    await env.addChat('gc-chat');
+    const chat = await env.connect('gc-chat');
+
+    startGoogleChatIngestion(
+      BASE_CONFIG,
+      trpc,
+      {},
+      { subscription, chatApi: api, startDir: env.e2eDir }
+    );
+
+    subscription.emitMessage(
+      makePubsubMessage({
+        type: 'CARD_CLICKED',
+        space: { name: 'spaces/cc', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
+        user: { email: 'user@example.com' },
+        message: {
+          name: 'spaces/cc/messages/card-1',
+          sender: { email: 'user@example.com', type: 'USER' },
+          cardsV2: [
+            {
+              cardId: 'c1',
+              card: {
+                header: { title: 'Policy', subtitle: 'Pending' },
+                sections: [
+                  {
+                    widgets: [
+                      { textParagraph: { text: 'please approve' } },
+                      { buttonList: { buttons: [{ text: 'Approve' }, { text: 'Reject' }] } },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        action: {
+          actionMethodName: 'approve',
+          parameters: [{ key: 'policyId', value: 'pol-cc-1' }],
+        },
+      })
+    );
+
+    // Card update strips buttons and updates the subtitle to 'Policy Approved'.
+    await vi.waitFor(() => expect(update).toHaveBeenCalled(), { timeout: 5000 });
+    const updateCall = update.mock.calls[0]![0] as {
+      name: string;
+      updateMask: string;
+      requestBody: { cardsV2: unknown[] };
+    };
+    expect(updateCall.name).toBe('spaces/cc/messages/card-1');
+    expect(updateCall.updateMask).toBe('cardsV2');
+    const updatedCard = updateCall.requestBody.cardsV2[0] as {
+      card: {
+        header: { subtitle: string };
+        sections: { widgets: Array<Record<string, unknown>> }[];
+      };
+    };
+    expect(updatedCard.card.header.subtitle).toBe('Policy Approved');
+    for (const section of updatedCard.card.sections) {
+      for (const widget of section.widgets) {
+        expect(widget).not.toHaveProperty('buttonList');
+      }
+    }
+
+    // The daemon should receive a user message with the slash command.
+    await chat.waitForMessage(
+      (m) => m.role === 'user' && m.content === '/approve pol-cc-1'
+    );
+  });
+
+  it('handles /agent by creating a new chat and mapping the space to it', async () => {
+    const { env } = envRef;
+    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
+    const subscription = makeFakeSubscription();
+    const { api, create } = makeFakeChatApi();
+
+    writeState(env.e2eDir, {
+      channelChatMap: { 'spaces/seed': { chatId: 'gc-chat' } },
+    });
+    await env.addChat('gc-chat');
+    await env.addAgent('router-agent');
+
+    startGoogleChatIngestion(
+      BASE_CONFIG,
+      trpc,
+      {},
+      { subscription, chatApi: api, startDir: env.e2eDir }
+    );
+
+    subscription.emitMessage(
+      makePubsubMessage({
+        type: 'MESSAGE',
+        space: { name: 'spaces/agent-route', type: 'SPACE' },
+        user: { email: 'user@example.com' },
+        message: {
+          name: 'spaces/agent-route/messages/cmd',
+          text: '/agent router-agent',
+        },
+      })
+    );
+
+    await vi.waitFor(() => expect(create).toHaveBeenCalled(), { timeout: 5000 });
+    const reply = create.mock.calls[0]![0] as {
+      parent: string;
+      requestBody: { text: string };
+    };
+    expect(reply.parent).toBe('spaces/agent-route');
+    expect(reply.requestBody.text).toMatch(/Successfully created new chat/);
+
+    await vi.waitFor(() => {
+      const state = readState(env.e2eDir);
+      const newChatId = state.channelChatMap?.['spaces/agent-route']?.chatId;
+      expect(newChatId).toMatch(/^router-agent-google-chat/);
+    });
+  });
+
+  it('downloads attachments and forwards them with the message to the daemon', async () => {
+    const { env } = envRef;
+    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
+    const subscription = makeFakeSubscription();
+    const { api } = makeFakeChatApi();
+
+    writeState(env.e2eDir, {
+      channelChatMap: { 'spaces/att': { chatId: 'gc-chat' } },
+    });
+    await env.addChat('gc-chat');
+    const chat = await env.connect('gc-chat');
+
+    const fakePayload = Buffer.from('hello attachment payload');
+    const downloadAttachment = vi.fn(async () => fakePayload);
+
+    startGoogleChatIngestion(
+      BASE_CONFIG,
+      trpc,
+      {},
+      { subscription, chatApi: api, startDir: env.e2eDir, downloadAttachment }
+    );
+
+    subscription.emitMessage(
+      makePubsubMessage({
+        type: 'MESSAGE',
+        space: { name: 'spaces/att', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
+        message: {
+          name: 'spaces/att/messages/att1',
+          sender: { email: 'user@example.com', type: 'USER' },
+          text: 'with attachment',
+          attachment: [
+            {
+              contentName: 'note.txt',
+              attachmentDataRef: { resourceName: 'media/note' },
+            },
+          ],
+        },
+      })
+    );
+
+    const msg = await chat.waitForMessage(
+      (m) =>
+        m.role === 'user' &&
+        m.content.startsWith('with attachment') &&
+        m.content.includes('note.txt')
+    );
+    expect(downloadAttachment).toHaveBeenCalledWith('media/note', undefined);
+
+    // The daemon relocates uploaded files into the agent's files dir and
+    // suffixes the message content with an "Attached files:" block referencing
+    // the relative path.
+    expect(msg.content).toMatch(/Attached files:/);
+  });
 });

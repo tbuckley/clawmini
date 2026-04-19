@@ -13,7 +13,7 @@ import { createUnixSocketEventSource } from '../shared/event-source.js';
 import type { GoogleChatConfig } from './config.js';
 import { isAuthorized, updateGoogleChatConfig } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
-import { downloadAttachment } from './utils.js';
+import { downloadAttachment as defaultDownloadAttachment } from './utils.js';
 import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 import { google } from 'googleapis';
@@ -66,6 +66,8 @@ export interface GoogleChatIngestionDeps {
   chatApi?: GoogleChatApi;
   /** Root directory for resolving adapter state/config (defaults to `process.cwd()`). */
   startDir?: string;
+  /** Attachment downloader (defaults to the real Chat media endpoint). */
+  downloadAttachment?: (resourceName: string, maxSizeMB?: number) => Promise<Buffer>;
 }
 
 export function startGoogleChatIngestion(
@@ -87,6 +89,8 @@ export function startGoogleChatIngestion(
     const authClient = await getAuthClient();
     return google.chat({ version: 'v1', auth: authClient });
   };
+
+  const downloadAttachment = deps.downloadAttachment ?? defaultDownloadAttachment;
 
   const seenMessageIds = new Map<string, number>();
 
@@ -364,7 +368,8 @@ export function startGoogleChatIngestion(
         await handleCardClicked(
           parsedData,
           targetChatId as string,
-          trpc as unknown as RoutingTrpcClient
+          trpc as unknown as RoutingTrpcClient,
+          getChatApi
         );
         message.ack();
         return;
