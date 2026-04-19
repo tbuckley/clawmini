@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { TestEnvironment, type ChatSubscription, commandMatching } from '../_helpers/test-environment.js';
+import {
+  TestEnvironment,
+  type ChatSubscription,
+  commandMatching,
+  type SystemMessage,
+  type ToolMessage,
+} from '../_helpers/test-environment.js';
 
 describe('E2E Messages Tests', () => {
   let env: TestEnvironment;
@@ -252,4 +258,106 @@ describe('E2E Messages Tests', () => {
     expect(log3.stderr).toContain('ERR APPEND');
     expect(log3.stderr).toContain('getMessageContent failed: EXTRACTION_FAIL');
   }, 15000);
+
+  it('should tail legacy chat entries that predate the sessionId field', async () => {
+    await env.addChat('legacy-chat', 'default');
+
+    const ts = new Date().toISOString();
+    const legacyLines = [
+      { id: 'u1', role: 'user', content: 'legacy user message', timestamp: ts },
+      {
+        id: 'c1',
+        role: 'command',
+        content: 'legacy cmd output',
+        messageId: 'u1',
+        command: 'echo legacy',
+        cwd: '/tmp',
+        stdout: 'legacy',
+        stderr: '',
+        exitCode: 0,
+        timestamp: ts,
+      },
+      { id: 'a1', role: 'agent', content: 'legacy agent reply', timestamp: ts },
+    ];
+    const chatFile = env.getChatPath('legacy-chat', 'chat.jsonl');
+    fs.writeFileSync(chatFile, legacyLines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+
+    const { stdout, code } = await env.runCli(['messages', 'tail', '--chat', 'legacy-chat']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('legacy user message');
+    expect(stdout).toContain('legacy agent reply');
+
+    const { stdout: jsonStdout, code: jsonCode } = await env.runCli([
+      'messages',
+      'tail',
+      '--json',
+      '--chat',
+      'legacy-chat',
+    ]);
+    expect(jsonCode).toBe(0);
+    expect(jsonStdout).toContain('"content":"legacy user message"');
+    expect(jsonStdout).toContain('"content":"legacy cmd output"');
+    expect(jsonStdout).toContain('"content":"legacy agent reply"');
+  });
+});
+
+describe('E2E Messages sessionId Persistence', () => {
+  let env: TestEnvironment;
+  let chat: ChatSubscription | undefined;
+
+  beforeAll(async () => {
+    env = new TestEnvironment('e2e-tmp-msg-sid');
+    await env.setup();
+    await env.setupSubagentEnv();
+    await env.getAgentCredentials();
+  }, 30000);
+
+  afterAll(() => env.teardown(), 30000);
+  afterEach(() => env.disconnectAll());
+
+  it('stamps sessionId on user, command, agent, tool, and cron system messages', async () => {
+    chat = await env.connect('__creds__');
+
+    await env.sendMessage('echo hello-session', {
+      chat: '__creds__',
+      agent: 'debug-agent',
+    });
+
+    const userMsg = await chat.waitForMessage(
+      (m) => m.role === 'user' && m.content === 'echo hello-session'
+    );
+    const cmdMsg = await chat.waitForMessage(
+      commandMatching((m) => m.stdout.includes('echo hello-session'))
+    );
+    const replyMsg = await chat.waitForMessage((m) => m.role === 'agent');
+
+    expect(userMsg.sessionId).toBeTruthy();
+    expect(cmdMsg.sessionId).toBe(userMsg.sessionId);
+    expect(replyMsg.sessionId).toBe(userMsg.sessionId);
+
+    await env.runLite(['tool', 'session-tool', JSON.stringify({ probe: 1 })]);
+    const toolMsg = await chat.waitForMessage(
+      (m): m is ToolMessage => m.role === 'tool' && m.name === 'session-tool'
+    );
+    expect(toolMsg.sessionId).toBe(userMsg.sessionId);
+
+    await env.runLite([
+      'jobs', 'add', 'session-id-cron',
+      '--at', '1s',
+      '--message', 'echo session-cron-fired',
+      '--session', 'new',
+    ]);
+    const sysMsg = await chat.waitForMessage(
+      (m): m is SystemMessage =>
+        m.role === 'system' && (m as SystemMessage).event === 'cron',
+      10000
+    );
+    expect(sysMsg.sessionId).toBeTruthy();
+
+    const cronCmd = await chat.waitForMessage(
+      commandMatching((m) => m.stdout.includes('echo session-cron-fired')),
+      10000
+    );
+    expect(cronCmd.sessionId).toBe(sysMsg.sessionId);
+  }, 45000);
 });

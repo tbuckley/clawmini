@@ -1,11 +1,12 @@
 import { executeRouterPipeline, resolveRouters } from './routers.js';
 import type { RouterState } from './routers/types.js';
 import { type ChatSettings, type Settings } from '../shared/config.js';
-import { readChatSettings, writeChatSettings } from '../shared/workspace.js';
+import { readChatSettings, updateChatSettings, writeChatSettings } from '../shared/workspace.js';
 import { cronManager, normalizeJob } from './cron.js';
 import type { Message } from './agent/types.js';
 import { createAgentSession } from './agent/agent-session.js';
 import { createChatLogger } from './agent/chat-logger.js';
+import { taskScheduler } from './agent/task-scheduler.js';
 
 export { calculateDelay } from './agent/agent-runner.js';
 
@@ -26,7 +27,7 @@ export async function executeDirectMessage(
     | 'other',
   displayRole?: 'user' | 'agent'
 ) {
-  const logger = createChatLogger(chatId, subagentId);
+  const logger = createChatLogger(chatId, subagentId, state.sessionId);
 
   let msgId: string;
   if (systemEvent) {
@@ -69,6 +70,9 @@ export async function executeDirectMessage(
   // Process actions
   if (state.action === 'stop') {
     agentSession.stop();
+    if (!subagentId) {
+      await stopActiveSubagents(chatId, cwd);
+    }
     return;
   }
   if (state.action === 'interrupt') {
@@ -214,5 +218,27 @@ export async function applyRouterStateUpdates(
   }
   if (finalState.agentId === undefined) {
     finalState.agentId = currentAgentId;
+  }
+}
+
+async function stopActiveSubagents(chatId: string, cwd: string): Promise<void> {
+  const sessionsToAbort: string[] = [];
+  await updateChatSettings(
+    chatId,
+    (settings) => {
+      if (settings.subagents) {
+        for (const sub of Object.values(settings.subagents)) {
+          if (sub.status === 'active') {
+            if (sub.sessionId) sessionsToAbort.push(sub.sessionId);
+            sub.status = 'failed';
+          }
+        }
+      }
+      return settings;
+    },
+    cwd
+  );
+  for (const sessionId of sessionsToAbort) {
+    taskScheduler.abortTasks(sessionId);
   }
 }

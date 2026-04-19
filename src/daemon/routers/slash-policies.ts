@@ -54,8 +54,6 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       return { ...state, message: '', reply: `Policy not found: ${req.commandName}` };
     }
 
-    req.state = 'Approved';
-
     const workspaceRoot = getWorkspaceRoot();
     const hostCwd = await resolveRequestCwd(req.cwd, state.agentId, workspaceRoot);
 
@@ -68,8 +66,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       state.agentId
     );
 
-    req.executionResult = { stdout, stderr, exitCode };
-    await store.save(req);
+    await store.delete(req.id);
 
     const agentMessage = `Request ${id} approved.\n\n${wrapInHtml('stdout', stdout)}\n\n${wrapInHtml('stderr', stderr)}\n\nExit Code: ${exitCode}`;
 
@@ -82,6 +79,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       content: `Request ${id} (\`${req.commandName}\`) approved.`,
       timestamp: new Date().toISOString(),
       // Explicitly omitted subagentId to show in main chat
+      sessionId: state.sessionId,
     };
 
     await appendMessage(state.chatId, userNotificationMsg);
@@ -120,9 +118,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     if (error) return error;
     if (!req || !store) return state; // Should not happen if error is undefined
 
-    req.state = 'Rejected';
-    req.rejectionReason = reason;
-    await store.save(req);
+    await store.delete(req.id);
 
     const agentMessage = `Request ${id} rejected. Reason: ${reason}`;
 
@@ -135,6 +131,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       content: `Request ${id} (\`${req.commandName}\`) rejected. Reason: ${reason}`,
       timestamp: new Date().toISOString(),
       // Explicitly omitted subagentId to show in main chat
+      sessionId: state.sessionId,
     };
 
     await appendMessage(state.chatId, userNotificationMsg);

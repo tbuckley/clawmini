@@ -75,7 +75,7 @@ export async function executeSubagent(
       return finalSettings;
     });
 
-    const logger = createChatLogger(chatId, subagentId);
+    const logger = createChatLogger(chatId, subagentId, sessionId);
 
     // Emit debug message to wake up waiters
     await logger.logSubagentStatus({ subagentId, status: 'completed' });
@@ -125,7 +125,7 @@ export async function executeSubagent(
       }
       return errSettings;
     });
-    const logger = createChatLogger(chatId, subagentId);
+    const logger = createChatLogger(chatId, subagentId, sessionId);
     await logger.logSubagentStatus({ subagentId, status: 'failed' });
   }
 }

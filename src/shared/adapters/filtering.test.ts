@@ -12,17 +12,30 @@ describe('shouldDisplayMessage', () => {
       content: 'hello',
       subagentId: 'sub1',
       timestamp: '',
+      sessionId: undefined,
     };
     expect(shouldDisplayMessage(msg, defaultConfig)).toBe(false);
   });
 
   it('hides standard user messages without subagentId', () => {
-    const msg: ChatMessage = { id: '1', role: 'user', content: 'hello', timestamp: '' };
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'user',
+      content: 'hello',
+      timestamp: '',
+      sessionId: undefined,
+    };
     expect(shouldDisplayMessage(msg, defaultConfig)).toBe(false);
   });
 
   it('displays standard agent messages without subagentId', () => {
-    const msg: ChatMessage = { id: '1', role: 'agent', content: 'hello', timestamp: '' };
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'agent',
+      content: 'hello',
+      timestamp: '',
+      sessionId: undefined,
+    };
     expect(shouldDisplayMessage(msg, defaultConfig)).toBe(true);
   });
 
@@ -38,6 +51,7 @@ describe('shouldDisplayMessage', () => {
       stderr: '',
       exitCode: 0,
       timestamp: '',
+      sessionId: undefined,
     };
     expect(shouldDisplayMessage(msg, defaultConfig)).toBe(false);
   });
@@ -49,6 +63,7 @@ describe('shouldDisplayMessage', () => {
       content: 'hello',
       subagentId: 'sub1',
       timestamp: '',
+      sessionId: undefined,
     };
     expect(shouldDisplayMessage(msg, { filters: { subagent: true } })).toBe(true);
   });
@@ -60,6 +75,7 @@ describe('shouldDisplayMessage', () => {
       content: 'hello subagent',
       subagentId: 'sub1',
       timestamp: '',
+      sessionId: undefined,
     };
     expect(shouldDisplayMessage(msg, { filters: { subagent: true } })).toBe(true);
   });
@@ -76,6 +92,7 @@ describe('shouldDisplayMessage', () => {
       stderr: '',
       exitCode: 0,
       timestamp: '',
+      sessionId: undefined,
     };
     expect(shouldDisplayMessage(msg, { filters: { command: true } })).toBe(true);
   });
@@ -83,7 +100,13 @@ describe('shouldDisplayMessage', () => {
 
 describe('formatMessage', () => {
   it('returns content as-is for messages without subagentId', () => {
-    const msg: ChatMessage = { id: '1', role: 'agent', content: 'hello world', timestamp: '' };
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'agent',
+      content: 'hello world',
+      timestamp: '',
+      sessionId: undefined,
+    };
     expect(formatMessage(msg)).toBe('hello world');
   });
 
@@ -94,6 +117,7 @@ describe('formatMessage', () => {
       content: 'do task',
       subagentId: 'sub1',
       timestamp: '',
+      sessionId: undefined,
     };
     expect(formatMessage(msg)).toBe('[To:sub1]\ndo task');
   });
@@ -105,6 +129,7 @@ describe('formatMessage', () => {
       content: 'done',
       subagentId: 'sub1',
       timestamp: '',
+      sessionId: undefined,
     };
     expect(formatMessage(msg)).toBe('[From:sub1]\ndone');
   });
