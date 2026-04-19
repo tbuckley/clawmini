@@ -58,6 +58,7 @@ describe('chats utilities', () => {
       role: 'user',
       content: 'Hello',
       timestamp: new Date().toISOString(),
+      sessionId: undefined,
     };
 
     const msg2: CommandLogMessage = {
@@ -71,6 +72,7 @@ describe('chats utilities', () => {
       command: 'echo output',
       cwd: '/tmp',
       exitCode: 0,
+      sessionId: undefined,
     };
 
     const msg3: CommandLogMessage = {
@@ -84,6 +86,7 @@ describe('chats utilities', () => {
       command: 'router',
       cwd: '/tmp',
       exitCode: 0,
+      sessionId: undefined,
     };
 
     await appendMessage('chat1', msg1, TEST_DIR);
@@ -129,6 +132,7 @@ describe('chats utilities', () => {
       role: 'user',
       content: `Message ${i + 1}`,
       timestamp: new Date().toISOString(),
+      sessionId: undefined,
     }));
 
     for (const msg of msgs) {

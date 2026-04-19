@@ -79,6 +79,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       content: `Request ${id} (\`${req.commandName}\`) approved.`,
       timestamp: new Date().toISOString(),
       // Explicitly omitted subagentId to show in main chat
+      sessionId: state.sessionId,
     };
 
     await appendMessage(state.chatId, userNotificationMsg);
@@ -130,6 +131,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       content: `Request ${id} (\`${req.commandName}\`) rejected. Reason: ${reason}`,
       timestamp: new Date().toISOString(),
       // Explicitly omitted subagentId to show in main chat
+      sessionId: state.sessionId,
     };
 
     await appendMessage(state.chatId, userNotificationMsg);
