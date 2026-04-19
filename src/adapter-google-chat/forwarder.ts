@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import { google } from 'googleapis';
 import { getAuthClient } from './auth.js';
-import type { getTRPCClient } from './client.js';
+import type { getTRPCClient, GoogleChatApi } from './client.js';
 import type { ChatMessage } from '../shared/chats.js';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -15,25 +15,44 @@ import {
 import { buildPolicyCard, chunkString } from './utils.js';
 import { uploadFilesToDrive } from './upload.js';
 
+export interface GoogleChatForwarderDeps {
+  /** Google Chat API client (defaults to `google.chat()` with ADC credentials). */
+  chatApi?: GoogleChatApi;
+  /** Root directory for resolving adapter state (defaults to `process.cwd()`). */
+  startDir?: string;
+}
+
 export async function startDaemonToGoogleChatForwarder(
   trpc: ReturnType<typeof getTRPCClient>,
   config: GoogleChatConfig,
   filteringConfig: FilteringConfig,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  deps: GoogleChatForwarderDeps = {}
 ) {
   const defaultChatId = config.chatId || 'default';
+  const startDir = deps.startDir ?? process.cwd();
+
+  const getChatApi = async (): Promise<GoogleChatApi> => {
+    if (deps.chatApi) return deps.chatApi;
+    const authClient = await getAuthClient();
+    return google.chat({ version: 'v1', auth: authClient });
+  };
 
   const activeSubscriptions = new Map<string, { unsubscribe: () => void }>();
-  let currentLastSyncedMessageIds = (await readGoogleChatState()).lastSyncedMessageIds || {};
+  let currentLastSyncedMessageIds =
+    (await readGoogleChatState(startDir)).lastSyncedMessageIds || {};
 
   const saveLastMessageId = async (chatId: string, id: string) => {
     currentLastSyncedMessageIds = { ...currentLastSyncedMessageIds, [chatId]: id };
-    return updateGoogleChatState((state) => ({
-      lastSyncedMessageIds: {
-        ...state.lastSyncedMessageIds,
-        ...currentLastSyncedMessageIds,
-      },
-    }));
+    return updateGoogleChatState(
+      (state) => ({
+        lastSyncedMessageIds: {
+          ...state.lastSyncedMessageIds,
+          ...currentLastSyncedMessageIds,
+        },
+      }),
+      startDir
+    );
   };
 
   const startSubscriptionForChat = async (chatId: string) => {
@@ -95,7 +114,7 @@ export async function startDaemonToGoogleChatForwarder(
                   if (isDisplayed) {
                     const logMessage = message;
 
-                    const currentState = await readGoogleChatState();
+                    const currentState = await readGoogleChatState(startDir);
                     let activeSpaceName: string | undefined;
 
                     if (!activeSpaceName && currentState.channelChatMap) {
@@ -124,8 +143,7 @@ export async function startDaemonToGoogleChatForwarder(
                       }
 
                       try {
-                        const client = await getAuthClient();
-                        const chatApi = google.chat({ version: 'v1', auth: client });
+                        const chatApi = await getChatApi();
 
                         try {
                           await chatApi.spaces.messages.create({
@@ -183,8 +201,7 @@ export async function startDaemonToGoogleChatForwarder(
                     }
 
                     try {
-                      const client = await getAuthClient();
-                      const chatApi = google.chat({ version: 'v1', auth: client });
+                      const chatApi = await getChatApi();
 
                       let text = formatMessage(logMessage) || '';
 
@@ -287,7 +304,7 @@ export async function startDaemonToGoogleChatForwarder(
 
   const syncSubscriptions = async () => {
     if (signal?.aborted) return;
-    const state = await readGoogleChatState();
+    const state = await readGoogleChatState(startDir);
 
     // Update local copy of last message IDs
     if (state.lastSyncedMessageIds) {
@@ -324,7 +341,7 @@ export async function startDaemonToGoogleChatForwarder(
   return new Promise<void>((resolve) => {
     syncSubscriptions().catch(console.error);
 
-    const statePath = getGoogleChatStatePath();
+    const statePath = getGoogleChatStatePath(startDir);
     const stateDir = path.dirname(statePath);
     if (!fs.existsSync(stateDir)) {
       fs.mkdirSync(stateDir, { recursive: true });

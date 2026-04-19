@@ -13,7 +13,7 @@ import { createUnixSocketEventSource } from '../shared/event-source.js';
 import type { GoogleChatConfig } from './config.js';
 import { isAuthorized, updateGoogleChatConfig } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
-import { downloadAttachment } from './utils.js';
+import { downloadAttachment as defaultDownloadAttachment } from './utils.js';
 import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 import { google } from 'googleapis';
@@ -52,13 +52,45 @@ export function getTRPCClient(options: { socketPath?: string } = {}) {
   });
 }
 
+export type GoogleChatApi = ReturnType<typeof google.chat>;
+
+export interface MessageSourceLike {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(event: string, listener: (...args: any[]) => void | Promise<void>): unknown;
+}
+
+export interface GoogleChatIngestionDeps {
+  /** Inbound message source (defaults to a real Pub/Sub subscription). */
+  subscription?: MessageSourceLike;
+  /** Google Chat API client (defaults to `google.chat()` with ADC credentials). */
+  chatApi?: GoogleChatApi;
+  /** Root directory for resolving adapter state/config (defaults to `process.cwd()`). */
+  startDir?: string;
+  /** Attachment downloader (defaults to the real Chat media endpoint). */
+  downloadAttachment?: (resourceName: string, maxSizeMB?: number) => Promise<Buffer>;
+}
+
 export function startGoogleChatIngestion(
   config: GoogleChatConfig,
   trpc: ReturnType<typeof getTRPCClient>,
-  filteringConfig: FilteringConfig
+  filteringConfig: FilteringConfig,
+  deps: GoogleChatIngestionDeps = {}
 ) {
-  const pubsub = new PubSub({ projectId: config.projectId });
-  const subscription = pubsub.subscription(config.subscriptionName);
+  const startDir = deps.startDir ?? process.cwd();
+  const subscription: MessageSourceLike =
+    deps.subscription ??
+    (() => {
+      const pubsub = new PubSub({ projectId: config.projectId });
+      return pubsub.subscription(config.subscriptionName);
+    })();
+
+  const getChatApi = async (): Promise<GoogleChatApi> => {
+    if (deps.chatApi) return deps.chatApi;
+    const authClient = await getAuthClient();
+    return google.chat({ version: 'v1', auth: authClient });
+  };
+
+  const downloadAttachment = deps.downloadAttachment ?? defaultDownloadAttachment;
 
   const seenMessageIds = new Map<string, number>();
 
@@ -142,7 +174,7 @@ export function startGoogleChatIngestion(
           `Automatically authorizing user ID ${senderName} based on authorized email ${email}`
         );
         config.authorizedUsers.push(senderName);
-        updateGoogleChatConfig(config).catch((err) =>
+        updateGoogleChatConfig(config, startDir).catch((err) =>
           console.error('Failed to update config with new user ID:', err)
         );
       }
@@ -157,7 +189,7 @@ export function startGoogleChatIngestion(
         return;
       }
 
-      const currentState = await readGoogleChatState();
+      const currentState = await readGoogleChatState(startDir);
 
       const externalContextId = spaceName;
       const mappedChatId = currentState.channelChatMap?.[externalContextId]?.chatId;
@@ -170,7 +202,8 @@ export function startGoogleChatIngestion(
           space?.type,
           mappedChatId,
           mappedChatId,
-          config
+          config,
+          startDir
         );
         if (!text) {
           message.ack();
@@ -179,7 +212,7 @@ export function startGoogleChatIngestion(
       }
 
       if (eventType === 'REMOVED_FROM_SPACE') {
-        await handleRemovedFromSpace(externalContextId, currentState, config);
+        await handleRemovedFromSpace(externalContextId, currentState, config, startDir);
         message.ack();
         return;
       }
@@ -198,20 +231,22 @@ export function startGoogleChatIngestion(
 
         if (routingResult) {
           if (routingResult.type === 'mapped') {
-            await updateGoogleChatState((latestState) => ({
-              channelChatMap: {
-                ...(latestState.channelChatMap || {}),
-                [externalContextId]: {
-                  ...(latestState.channelChatMap?.[externalContextId] || {}),
-                  chatId: routingResult.newChatId,
+            await updateGoogleChatState(
+              (latestState) => ({
+                channelChatMap: {
+                  ...(latestState.channelChatMap || {}),
+                  [externalContextId]: {
+                    ...(latestState.channelChatMap?.[externalContextId] || {}),
+                    chatId: routingResult.newChatId,
+                  },
                 },
-              },
-            }));
+              }),
+              startDir
+            );
           }
 
           try {
-            const authClient = await getAuthClient();
-            const chatApi = google.chat({ version: 'v1', auth: authClient });
+            const chatApi = await getChatApi();
             await chatApi.spaces.messages.create({
               parent: externalContextId,
               requestBody: { text: routingResult.text },
@@ -237,15 +272,18 @@ export function startGoogleChatIngestion(
           console.log(
             `First contact detected. Automatically mapping space ${externalContextId} to chat ${targetChatId}.`
           );
-          await updateGoogleChatState((latestState) => ({
-            channelChatMap: {
-              ...(latestState.channelChatMap || {}),
-              [externalContextId]: {
-                ...(latestState.channelChatMap?.[externalContextId] || {}),
-                chatId: targetChatId as string,
+          await updateGoogleChatState(
+            (latestState) => ({
+              channelChatMap: {
+                ...(latestState.channelChatMap || {}),
+                [externalContextId]: {
+                  ...(latestState.channelChatMap?.[externalContextId] || {}),
+                  chatId: targetChatId as string,
+                },
               },
-            },
-          }));
+            }),
+            startDir
+          );
         } else {
           const isDirectMessage =
             space?.type === 'DIRECT_MESSAGE' || space?.singleUserBotDm === true;
@@ -257,8 +295,7 @@ export function startGoogleChatIngestion(
           if (isDirectMessage || isMentioned || isSlashCommand) {
             console.log(`Unmapped space ${externalContextId}, sending first contact warning.`);
             try {
-              const authClient = await getAuthClient();
-              const chatApi = google.chat({ version: 'v1', auth: authClient });
+              const chatApi = await getChatApi();
               await chatApi.spaces.messages.create({
                 parent: externalContextId,
                 requestBody: {
@@ -300,8 +337,7 @@ export function startGoogleChatIngestion(
           let isReplyToBot = false;
           if (eventMessage?.threadReply && eventMessage.thread?.name) {
             try {
-              const authClient = await getAuthClient();
-              const chatApi = google.chat({ version: 'v1', auth: authClient });
+              const chatApi = await getChatApi();
               const response = await chatApi.spaces.messages.list({
                 parent: externalContextId,
                 filter: `thread.name="${eventMessage.thread.name}"`,
@@ -332,7 +368,8 @@ export function startGoogleChatIngestion(
         await handleCardClicked(
           parsedData,
           targetChatId as string,
-          trpc as unknown as RoutingTrpcClient
+          trpc as unknown as RoutingTrpcClient,
+          getChatApi
         );
         message.ack();
         return;
@@ -350,7 +387,7 @@ export function startGoogleChatIngestion(
         if (commandResult.type === 'text') {
           if (commandResult.newConfig) {
             filteringConfig.filters = commandResult.newConfig.filters;
-            await updateGoogleChatState({ filters: filteringConfig.filters });
+            await updateGoogleChatState({ filters: filteringConfig.filters }, startDir);
           }
           resultText = commandResult.text;
         } else if (commandResult.type === 'debug') {
@@ -361,8 +398,7 @@ export function startGoogleChatIngestion(
                 commandResult.messages.map((msg) => formatMessage(msg)).join('\n\n---\n\n');
         }
 
-        const authClient = await getAuthClient();
-        const chatApi = google.chat({ version: 'v1', auth: authClient });
+        const chatApi = await getChatApi();
         await chatApi.spaces.messages.create({
           parent: spaceName as string,
           requestBody: { text: resultText },
@@ -373,7 +409,7 @@ export function startGoogleChatIngestion(
       const attachments = eventMessage?.attachment || [];
 
       if (attachments.length > 0) {
-        const tmpDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'google-chat');
+        const tmpDir = path.join(getClawminiDir(startDir), 'tmp', 'google-chat');
         await fsPromises.mkdir(tmpDir, { recursive: true });
 
         for (const att of attachments) {

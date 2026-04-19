@@ -13,12 +13,14 @@ export async function getAuthClient() {
   return authClient;
 }
 
-let userAuthClient: InstanceType<typeof google.auth.OAuth2> | null = null;
-let userAuthPromise: Promise<InstanceType<typeof google.auth.OAuth2>> | null = null;
+const userAuthClients = new Map<string, InstanceType<typeof google.auth.OAuth2>>();
+const userAuthPromises = new Map<string, Promise<InstanceType<typeof google.auth.OAuth2>>>();
 
-export async function getUserAuthClient(config: GoogleChatConfig) {
-  if (userAuthClient) return userAuthClient;
-  if (userAuthPromise) return userAuthPromise;
+export async function getUserAuthClient(config: GoogleChatConfig, startDir = process.cwd()) {
+  const cached = userAuthClients.get(startDir);
+  if (cached) return cached;
+  const pending = userAuthPromises.get(startDir);
+  if (pending) return pending;
 
   if (!config.oauthClientId || !config.oauthClientSecret) {
     console.error('DEBUG config:', config);
@@ -27,7 +29,7 @@ export async function getUserAuthClient(config: GoogleChatConfig) {
     );
   }
 
-  userAuthPromise = (async () => {
+  const promise = (async () => {
     const oauth2Client = new google.auth.OAuth2(
       config.oauthClientId,
       config.oauthClientSecret,
@@ -36,23 +38,26 @@ export async function getUserAuthClient(config: GoogleChatConfig) {
 
     oauth2Client.on('tokens', async (tokens) => {
       try {
-        const currentState = await readGoogleChatState();
-        await updateGoogleChatState({
-          oauthTokens: {
-            ...currentState.oauthTokens,
-            ...tokens,
+        const currentState = await readGoogleChatState(startDir);
+        await updateGoogleChatState(
+          {
+            oauthTokens: {
+              ...currentState.oauthTokens,
+              ...tokens,
+            },
           },
-        });
+          startDir
+        );
       } catch (err) {
         console.error('Failed to save refreshed Google User tokens', err);
       }
     });
 
-    const state = await readGoogleChatState();
+    const state = await readGoogleChatState(startDir);
     if (state.oauthTokens) {
       oauth2Client.setCredentials(state.oauthTokens);
-      userAuthClient = oauth2Client;
-      userAuthPromise = null;
+      userAuthClients.set(startDir, oauth2Client);
+      userAuthPromises.delete(startDir);
       return oauth2Client;
     }
 
@@ -86,22 +91,22 @@ export async function getUserAuthClient(config: GoogleChatConfig) {
               const { tokens } = await oauth2Client.getToken(code);
               oauth2Client.setCredentials(tokens);
 
-              await updateGoogleChatState({ oauthTokens: tokens });
+              await updateGoogleChatState({ oauthTokens: tokens }, startDir);
 
               console.log('Google User authorization successful!');
-              userAuthClient = oauth2Client;
-              userAuthPromise = null;
+              userAuthClients.set(startDir, oauth2Client);
+              userAuthPromises.delete(startDir);
               resolve(oauth2Client);
             } catch (err) {
               console.error('Failed to get token', err);
-              userAuthPromise = null;
+              userAuthPromises.delete(startDir);
               reject(err);
             }
           } else {
             res.end('Authentication failed!');
             clearTimeout(timeoutId);
             server.close();
-            userAuthPromise = null;
+            userAuthPromises.delete(startDir);
             reject(new Error('No code provided in OAuth callback'));
           }
         }
@@ -110,7 +115,7 @@ export async function getUserAuthClient(config: GoogleChatConfig) {
       server.on('error', (err) => {
         console.error('Failed to start local OAuth server on port 31338', err);
         clearTimeout(timeoutId);
-        userAuthPromise = null;
+        userAuthPromises.delete(startDir);
         reject(err);
       });
 
@@ -118,7 +123,7 @@ export async function getUserAuthClient(config: GoogleChatConfig) {
         timeoutId = setTimeout(
           () => {
             server.close();
-            userAuthPromise = null;
+            userAuthPromises.delete(startDir);
             console.error('Google User authorization timed out after 5 minutes.');
             reject(new Error('Google User authorization timed out.'));
           },
@@ -128,5 +133,6 @@ export async function getUserAuthClient(config: GoogleChatConfig) {
     });
   })();
 
-  return userAuthPromise;
+  userAuthPromises.set(startDir, promise);
+  return promise;
 }
