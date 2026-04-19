@@ -7,6 +7,7 @@ import {
   type MessageSourceLike,
 } from '../../src/adapter-google-chat/client.js';
 import type { GoogleChatConfig } from '../../src/adapter-google-chat/config.js';
+import { startDaemonToGoogleChatForwarder } from '../../src/adapter-google-chat/forwarder.js';
 import { updateGoogleChatState } from '../../src/adapter-google-chat/state.js';
 
 export const BASE_CONFIG: GoogleChatConfig = {
@@ -36,6 +37,66 @@ export function makePubsubMessage(
     ack: vi.fn(),
     nack: vi.fn(),
   };
+}
+
+/**
+ * Pub/Sub-shaped MESSAGE event in a DIRECT_MESSAGE (singleUserBotDm) space.
+ * `sender` defaults to the authorized user. Pass `attachment` for attachment tests.
+ */
+export function makeDmMessage(opts: {
+  space: string;
+  messageId: string;
+  text: string;
+  sender?: string;
+  attachment?: unknown[];
+}): FakeMessage {
+  const sender = opts.sender ?? 'user@example.com';
+  return makePubsubMessage({
+    type: 'MESSAGE',
+    space: { name: opts.space, type: 'DIRECT_MESSAGE', singleUserBotDm: true },
+    message: {
+      name: `${opts.space}/messages/${opts.messageId}`,
+      sender: { email: sender, type: 'USER' },
+      text: opts.text,
+      ...(opts.attachment ? { attachment: opts.attachment } : {}),
+    },
+  });
+}
+
+/**
+ * Pub/Sub-shaped MESSAGE event in a non-DM SPACE. `authUser` authenticates the
+ * caller (top-level `user.email`); `sender` (if provided) sets
+ * `message.sender` — omit it for command-style messages that arrive without a
+ * sender. `mention: true` adds the bot-targeted USER_MENTION annotation used
+ * by the `requireMention` path; pass `annotations` directly to control the
+ * exact shape (e.g. the simpler `[{ type: 'USER_MENTION' }]` form).
+ */
+export function makeSpaceMessage(opts: {
+  space: string;
+  messageId: string;
+  text: string;
+  authUser?: string;
+  sender?: string;
+  mention?: boolean;
+  annotations?: unknown[];
+}): FakeMessage {
+  const authUser = opts.authUser ?? 'user@example.com';
+  const annotations =
+    opts.annotations ??
+    (opts.mention
+      ? [{ type: 'USER_MENTION', userMention: { user: { type: 'BOT' } } }]
+      : undefined);
+  return makePubsubMessage({
+    type: 'MESSAGE',
+    space: { name: opts.space, type: 'SPACE' },
+    user: { email: authUser },
+    message: {
+      name: `${opts.space}/messages/${opts.messageId}`,
+      text: opts.text,
+      ...(opts.sender ? { sender: { email: opts.sender, type: 'USER' } } : {}),
+      ...(annotations ? { annotations } : {}),
+    },
+  });
 }
 
 export interface ChatCreateParams {
@@ -186,6 +247,40 @@ export function instrumentTrpcForReadiness(trpc: ReturnType<typeof getTRPCClient
     },
   }) as ReturnType<typeof getTRPCClient>;
   return { trpc: wrapped, ready };
+}
+
+/**
+ * Run the daemon → Google Chat forwarder for the duration of `body`. Wraps
+ * `trpc` with readiness instrumentation, awaits the SSE `started` frame so
+ * body code can rely on the subscription being live, and aborts + joins the
+ * forwarder in a finally block so a throwing body doesn't leak it.
+ */
+export async function runForwarder(
+  options: {
+    trpc: ReturnType<typeof getTRPCClient>;
+    chatApi: GoogleChatApi;
+    startDir: string;
+    config?: GoogleChatConfig;
+    filters?: Record<string, boolean>;
+  },
+  body: () => Promise<void>
+): Promise<void> {
+  const { trpc, ready } = instrumentTrpcForReadiness(options.trpc);
+  const abort = new AbortController();
+  const forwarderPromise = startDaemonToGoogleChatForwarder(
+    trpc,
+    options.config ?? BASE_CONFIG,
+    { filters: options.filters ?? {} },
+    abort.signal,
+    { chatApi: options.chatApi, startDir: options.startDir }
+  );
+  try {
+    await ready;
+    await body();
+  } finally {
+    abort.abort();
+    await forwarderPromise;
+  }
 }
 
 /**

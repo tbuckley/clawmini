@@ -1,7 +1,6 @@
 import crypto from 'node:crypto';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { getTRPCClient } from '../../src/adapter-google-chat/client.js';
-import { startDaemonToGoogleChatForwarder } from '../../src/adapter-google-chat/forwarder.js';
 import {
   readGoogleChatState,
   updateGoogleChatState,
@@ -9,11 +8,10 @@ import {
 import { getSocketPath } from '../../src/shared/workspace.js';
 import { appendMessage, type ChatMessage } from '../../src/shared/chats.js';
 import {
-  BASE_CONFIG,
   findCreateByText,
   findCreateWithCard,
-  instrumentTrpcForReadiness,
   makeFakeChatApi,
+  runForwarder,
   useGoogleChatAdapterEnv,
 } from './_google-chat-fixtures.js';
 
@@ -45,20 +43,10 @@ async function seedChatForForwarderCatchup(
 
 describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarder)', () => {
   const envRef = useGoogleChatAdapterEnv('e2e-google-chat-outbound');
-  let abortController: AbortController;
-
-  beforeEach(() => {
-    abortController = new AbortController();
-  });
-
-  afterEach(() => {
-    abortController.abort();
-  });
 
   it('forwards agent-visible messages from the daemon to the chat API', async () => {
     const { env } = envRef;
-    const rawTrpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
-    const { trpc, ready } = instrumentTrpcForReadiness(rawTrpc);
+    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
     const { api, create } = makeFakeChatApi();
 
     // Map a fake space to our chat so the forwarder knows where to post.
@@ -70,73 +58,57 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
 
     // user-role messages are filtered out by default; allow them through so we don't need
     // a real agent to produce the side of the conversation.
-    const forwarderPromise = startDaemonToGoogleChatForwarder(
-      trpc,
-      BASE_CONFIG,
-      { filters: { user: true } },
-      abortController.signal,
-      { chatApi: api, startDir: env.e2eDir }
+    await runForwarder(
+      { trpc, chatApi: api, startDir: env.e2eDir, filters: { user: true } },
+      async () => {
+        await env.sendMessage('outbound payload', { chat: 'gc-chat', noWait: true });
+
+        await vi.waitFor(
+          () => {
+            expect(findCreateByText(create, 'outbound payload')).toBeDefined();
+          },
+          { timeout: 10000 }
+        );
+
+        expect(findCreateByText(create, 'outbound payload')!.parent).toBe('spaces/outbound');
+      }
     );
-
-    await ready;
-    await env.sendMessage('outbound payload', { chat: 'gc-chat', noWait: true });
-
-    await vi.waitFor(
-      () => {
-        expect(findCreateByText(create, 'outbound payload')).toBeDefined();
-      },
-      { timeout: 10000 }
-    );
-
-    expect(findCreateByText(create, 'outbound payload')!.parent).toBe('spaces/outbound');
-
-    abortController.abort();
-    await forwarderPromise;
   }, 30000);
 
   it('drops messages when no mapped space exists for the chat', async () => {
     const { env } = envRef;
-    const rawTrpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
-    const { trpc, ready } = instrumentTrpcForReadiness(rawTrpc);
+    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
     const { api, create } = makeFakeChatApi();
 
     // No channelChatMap entry → forwarder should advance lastSyncedMessageIds but not post.
     await env.addChat('gc-chat');
 
-    const forwarderPromise = startDaemonToGoogleChatForwarder(
-      trpc,
-      BASE_CONFIG,
-      { filters: { user: true } },
-      abortController.signal,
-      { chatApi: api, startDir: env.e2eDir }
-    );
-
-    await ready;
-    // Capture the forwarder's baseline cursor (it seeds to the chat's current latest
-    // message id on start), then send and wait for that cursor to advance — which
-    // proves the drop path executed without relying on a wall-clock delay.
-    const baseline = (await readGoogleChatState(env.e2eDir)).lastSyncedMessageIds?.['gc-chat'];
-    await env.sendMessage('unmapped payload', { chat: 'gc-chat', noWait: true });
-
-    await vi.waitFor(
+    await runForwarder(
+      { trpc, chatApi: api, startDir: env.e2eDir, filters: { user: true } },
       async () => {
-        const cur = (await readGoogleChatState(env.e2eDir)).lastSyncedMessageIds?.['gc-chat'];
-        expect(cur).toBeDefined();
-        expect(cur).not.toBe(baseline);
-      },
-      { timeout: 10000 }
+        // Capture the forwarder's baseline cursor (it seeds to the chat's current latest
+        // message id on start), then send and wait for that cursor to advance — which
+        // proves the drop path executed without relying on a wall-clock delay.
+        const baseline = (await readGoogleChatState(env.e2eDir)).lastSyncedMessageIds?.['gc-chat'];
+        await env.sendMessage('unmapped payload', { chat: 'gc-chat', noWait: true });
+
+        await vi.waitFor(
+          async () => {
+            const cur = (await readGoogleChatState(env.e2eDir)).lastSyncedMessageIds?.['gc-chat'];
+            expect(cur).toBeDefined();
+            expect(cur).not.toBe(baseline);
+          },
+          { timeout: 10000 }
+        );
+
+        expect(findCreateByText(create, 'unmapped payload')).toBeUndefined();
+      }
     );
-
-    expect(findCreateByText(create, 'unmapped payload')).toBeUndefined();
-
-    abortController.abort();
-    await forwarderPromise;
   }, 30000);
 
   it('renders pending policy-request messages as a cardsV2 payload', async () => {
     const { env } = envRef;
-    const rawTrpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
-    const { trpc, ready } = instrumentTrpcForReadiness(rawTrpc);
+    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
     const { api, create } = makeFakeChatApi();
 
     await env.addChat('gc-policy');
@@ -162,39 +134,27 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
       env.e2eDir
     );
 
-    const forwarderPromise = startDaemonToGoogleChatForwarder(
-      trpc,
-      BASE_CONFIG,
-      { filters: {} },
-      abortController.signal,
-      { chatApi: api, startDir: env.e2eDir }
-    );
+    await runForwarder({ trpc, chatApi: api, startDir: env.e2eDir }, async () => {
+      await vi.waitFor(
+        () => {
+          expect(findCreateWithCard(create)).toBeDefined();
+        },
+        { timeout: 10000 }
+      );
 
-    await ready;
-
-    await vi.waitFor(
-      () => {
-        expect(findCreateWithCard(create)).toBeDefined();
-      },
-      { timeout: 10000 }
-    );
-
-    const cardCall = findCreateWithCard(create)!;
-    expect(cardCall.parent).toBe('spaces/policy');
-    expect(cardCall.requestBody.text).toBe('');
-    const cards = cardCall.requestBody.cardsV2 as Array<{
-      card: { sections: Array<{ widgets: unknown[] }> };
-    }>;
-    expect(cards[0]!.card.sections[0]!.widgets.length).toBeGreaterThan(0);
-
-    abortController.abort();
-    await forwarderPromise;
+      const cardCall = findCreateWithCard(create)!;
+      expect(cardCall.parent).toBe('spaces/policy');
+      expect(cardCall.requestBody.text).toBe('');
+      const cards = cardCall.requestBody.cardsV2 as Array<{
+        card: { sections: Array<{ widgets: unknown[] }> };
+      }>;
+      expect(cards[0]!.card.sections[0]!.widgets.length).toBeGreaterThan(0);
+    });
   }, 30000);
 
   it('falls back to plain text when the policy cardsV2 send fails', async () => {
     const { env } = envRef;
-    const rawTrpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
-    const { trpc, ready } = instrumentTrpcForReadiness(rawTrpc);
+    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
     const { api, create } = makeFakeChatApi();
 
     // First call (the rich cardsV2 send) throws; subsequent calls (the plain
@@ -226,36 +186,25 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
       env.e2eDir
     );
 
-    const forwarderPromise = startDaemonToGoogleChatForwarder(
-      trpc,
-      BASE_CONFIG,
-      { filters: {} },
-      abortController.signal,
-      { chatApi: api, startDir: env.e2eDir }
-    );
-
-    await ready;
-
-    await vi.waitFor(
-      () => {
-        const plain = findCreateByText(
-          create,
-          (text) => text.includes('Action Required: Policy Request') && text.includes('req-pol-fb')
-        );
-        expect(plain).toBeDefined();
-        expect(plain!.requestBody.cardsV2).toBeUndefined();
-      },
-      { timeout: 10000 }
-    );
-
-    abortController.abort();
-    await forwarderPromise;
+    await runForwarder({ trpc, chatApi: api, startDir: env.e2eDir }, async () => {
+      await vi.waitFor(
+        () => {
+          const plain = findCreateByText(
+            create,
+            (text) =>
+              text.includes('Action Required: Policy Request') && text.includes('req-pol-fb')
+          );
+          expect(plain).toBeDefined();
+          expect(plain!.requestBody.cardsV2).toBeUndefined();
+        },
+        { timeout: 10000 }
+      );
+    });
   }, 30000);
 
   it('splits daemon messages longer than 4000 chars into multiple chat API calls', async () => {
     const { env } = envRef;
-    const rawTrpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
-    const { trpc, ready } = instrumentTrpcForReadiness(rawTrpc);
+    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
     const { api, create } = makeFakeChatApi();
 
     await env.addChat('gc-chunk');
@@ -277,40 +226,31 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
       env.e2eDir
     );
 
-    const forwarderPromise = startDaemonToGoogleChatForwarder(
-      trpc,
-      BASE_CONFIG,
-      { filters: { user: true } },
-      abortController.signal,
-      { chatApi: api, startDir: env.e2eDir }
+    await runForwarder(
+      { trpc, chatApi: api, startDir: env.e2eDir, filters: { user: true } },
+      async () => {
+        await vi.waitFor(
+          () => {
+            const chunkCalls = create.mock.calls
+              .map(([params]) => params)
+              .filter((p) => p.parent === 'spaces/chunk' && (p.requestBody.text?.length ?? 0) > 0);
+            // 7000 chars at 4000 per chunk -> 2 calls.
+            expect(chunkCalls.length).toBeGreaterThanOrEqual(2);
+            const joined = chunkCalls.map((p) => p.requestBody.text ?? '').join('');
+            expect(joined).toBe(longContent);
+            for (const p of chunkCalls) {
+              expect(p.requestBody.text!.length).toBeLessThanOrEqual(4000);
+            }
+          },
+          { timeout: 15000 }
+        );
+      }
     );
-
-    await ready;
-
-    await vi.waitFor(
-      () => {
-        const chunkCalls = create.mock.calls
-          .map(([params]) => params)
-          .filter((p) => p.parent === 'spaces/chunk' && (p.requestBody.text?.length ?? 0) > 0);
-        // 7000 chars at 4000 per chunk -> 2 calls.
-        expect(chunkCalls.length).toBeGreaterThanOrEqual(2);
-        const joined = chunkCalls.map((p) => p.requestBody.text ?? '').join('');
-        expect(joined).toBe(longContent);
-        for (const p of chunkCalls) {
-          expect(p.requestBody.text!.length).toBeLessThanOrEqual(4000);
-        }
-      },
-      { timeout: 15000 }
-    );
-
-    abortController.abort();
-    await forwarderPromise;
   }, 30000);
 
   it('formats attached files with a plain-text fallback when Drive upload is disabled', async () => {
     const { env } = envRef;
-    const rawTrpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
-    const { trpc, ready } = instrumentTrpcForReadiness(rawTrpc);
+    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
     const { api, create } = makeFakeChatApi();
 
     await env.addChat('gc-files');
@@ -333,31 +273,20 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
     );
 
     // Default filters let agent messages through; no overrides needed.
-    const forwarderPromise = startDaemonToGoogleChatForwarder(
-      trpc,
-      BASE_CONFIG,
-      { filters: {} },
-      abortController.signal,
-      { chatApi: api, startDir: env.e2eDir }
-    );
-
-    await ready;
-
-    await vi.waitFor(
-      () => {
-        const fileCall = findCreateByText(
-          create,
-          (text) =>
-            text.includes('here is the report') &&
-            text.includes('(Files generated: report.pdf, diagram.png)')
-        );
-        expect(fileCall).toBeDefined();
-        expect(fileCall!.parent).toBe('spaces/files');
-      },
-      { timeout: 10000 }
-    );
-
-    abortController.abort();
-    await forwarderPromise;
+    await runForwarder({ trpc, chatApi: api, startDir: env.e2eDir }, async () => {
+      await vi.waitFor(
+        () => {
+          const fileCall = findCreateByText(
+            create,
+            (text) =>
+              text.includes('here is the report') &&
+              text.includes('(Files generated: report.pdf, diagram.png)')
+          );
+          expect(fileCall).toBeDefined();
+          expect(fileCall!.parent).toBe('spaces/files');
+        },
+        { timeout: 10000 }
+      );
+    });
   }, 30000);
 });

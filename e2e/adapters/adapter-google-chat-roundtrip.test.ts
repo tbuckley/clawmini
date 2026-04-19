@@ -3,16 +3,15 @@ import {
   getTRPCClient,
   startGoogleChatIngestion,
 } from '../../src/adapter-google-chat/client.js';
-import { startDaemonToGoogleChatForwarder } from '../../src/adapter-google-chat/forwarder.js';
 import { updateGoogleChatState } from '../../src/adapter-google-chat/state.js';
 import { getSocketPath } from '../../src/shared/workspace.js';
 import {
   BASE_CONFIG,
   findCreateByText,
-  instrumentTrpcForReadiness,
+  makeDmMessage,
   makeFakeChatApi,
   makeFakeSubscription,
-  makePubsubMessage,
+  runForwarder,
   useGoogleChatAdapterEnv,
 } from './_google-chat-fixtures.js';
 
@@ -21,8 +20,7 @@ describe('Google Chat Adapter E2E — round-trip (Pub/Sub → daemon → forward
 
   it('sends an inbound message through the daemon and back out to the chat API', async () => {
     const { env } = envRef;
-    const rawTrpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
-    const { trpc, ready } = instrumentTrpcForReadiness(rawTrpc);
+    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
     const subscription = makeFakeSubscription();
     const { api, create } = makeFakeChatApi();
 
@@ -39,37 +37,20 @@ describe('Google Chat Adapter E2E — round-trip (Pub/Sub → daemon → forward
       { subscription, chatApi: api, startDir: env.e2eDir }
     );
 
-    const abort = new AbortController();
-    const forwarderPromise = startDaemonToGoogleChatForwarder(
-      trpc,
-      BASE_CONFIG,
-      { filters: { user: true } },
-      abort.signal,
-      { chatApi: api, startDir: env.e2eDir }
+    await runForwarder(
+      { trpc, chatApi: api, startDir: env.e2eDir, filters: { user: true } },
+      async () => {
+        subscription.emitMessage(
+          makeDmMessage({ space: 'spaces/roundtrip', messageId: 'rt1', text: 'round trip' })
+        );
+
+        await vi.waitFor(
+          () => {
+            expect(findCreateByText(create, 'round trip')).toBeDefined();
+          },
+          { timeout: 10000 }
+        );
+      }
     );
-
-    await ready;
-
-    subscription.emitMessage(
-      makePubsubMessage({
-        type: 'MESSAGE',
-        space: { name: 'spaces/roundtrip', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
-        message: {
-          name: 'spaces/roundtrip/messages/rt1',
-          sender: { email: 'user@example.com', type: 'USER' },
-          text: 'round trip',
-        },
-      })
-    );
-
-    await vi.waitFor(
-      () => {
-        expect(findCreateByText(create, 'round trip')).toBeDefined();
-      },
-      { timeout: 10000 }
-    );
-
-    abort.abort();
-    await forwarderPromise;
   }, 30000);
 });

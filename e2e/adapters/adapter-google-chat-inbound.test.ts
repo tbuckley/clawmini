@@ -10,9 +10,11 @@ import {
 import { getSocketPath } from '../../src/shared/workspace.js';
 import {
   BASE_CONFIG,
+  makeDmMessage,
   makeFakeChatApi,
   makeFakeSubscription,
   makePubsubMessage,
+  makeSpaceMessage,
   useGoogleChatAdapterEnv,
 } from './_google-chat-fixtures.js';
 
@@ -36,15 +38,7 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     );
 
     subscription.emitMessage(
-      makePubsubMessage({
-        type: 'MESSAGE',
-        space: { name: 'spaces/abc', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
-        message: {
-          name: 'spaces/abc/messages/m1',
-          sender: { email: 'user@example.com', type: 'USER' },
-          text: 'hello from pubsub',
-        },
-      })
+      makeDmMessage({ space: 'spaces/abc', messageId: 'm1', text: 'hello from pubsub' })
     );
 
     const msg = await chat.waitForMessage(
@@ -69,28 +63,17 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
       { subscription, chatApi: api, startDir: env.e2eDir }
     );
 
-    const unauthorized = makePubsubMessage({
-      type: 'MESSAGE',
-      space: { name: 'spaces/abc', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
-      message: {
-        name: 'spaces/abc/messages/m-unauth',
-        sender: { email: 'stranger@example.com', type: 'USER' },
-        text: 'I should be dropped',
-      },
+    const unauthorized = makeDmMessage({
+      space: 'spaces/abc',
+      messageId: 'm-unauth',
+      sender: 'stranger@example.com',
+      text: 'I should be dropped',
     });
     subscription.emitMessage(unauthorized);
 
     // Also send an authorized message so we have something to wait on.
     subscription.emitMessage(
-      makePubsubMessage({
-        type: 'MESSAGE',
-        space: { name: 'spaces/abc', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
-        message: {
-          name: 'spaces/abc/messages/m-ok',
-          sender: { email: 'user@example.com', type: 'USER' },
-          text: 'I should get through',
-        },
-      })
+      makeDmMessage({ space: 'spaces/abc', messageId: 'm-ok', text: 'I should get through' })
     );
 
     await chat.waitForMessage((m) => m.content === 'I should get through');
@@ -123,15 +106,7 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     );
 
     subscription.emitMessage(
-      makePubsubMessage({
-        type: 'MESSAGE',
-        space: { name: 'spaces/route', type: 'SPACE' },
-        user: { email: 'user@example.com' },
-        message: {
-          name: 'spaces/route/messages/cmd',
-          text: '/chat other-chat',
-        },
-      })
+      makeSpaceMessage({ space: 'spaces/route', messageId: 'cmd', text: '/chat other-chat' })
     );
 
     await vi.waitFor(() => expect(create).toHaveBeenCalled(), { timeout: 5000 });
@@ -166,15 +141,13 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     );
 
     subscription.emitMessage(
-      makePubsubMessage({
-        type: 'MESSAGE',
-        space: { name: 'spaces/unmapped', type: 'SPACE' },
-        user: { email: 'user@example.com' },
-        message: {
-          name: 'spaces/unmapped/messages/first',
-          text: '@bot hello',
-          annotations: [{ type: 'USER_MENTION' }],
-        },
+      makeSpaceMessage({
+        space: 'spaces/unmapped',
+        messageId: 'first',
+        text: '@bot hello',
+        // First-contact path only checks for the presence of a USER_MENTION
+        // annotation, so use the simple form rather than the bot-targeted one.
+        annotations: [{ type: 'USER_MENTION' }],
       })
     );
 
@@ -244,15 +217,11 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     );
 
     subscription.emitMessage(
-      makePubsubMessage({
-        type: 'MESSAGE',
-        space: { name: 'spaces/first', type: 'SPACE' },
-        user: { email: 'user@example.com' },
-        message: {
-          name: 'spaces/first/messages/first1',
-          sender: { email: 'user@example.com', type: 'USER' },
-          text: 'first contact body',
-        },
+      makeSpaceMessage({
+        space: 'spaces/first',
+        messageId: 'first1',
+        sender: 'user@example.com',
+        text: 'first contact body',
       })
     );
 
@@ -289,30 +258,22 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     );
 
     // Non-mention message in a mapped SPACE (not a DM) — should be ack'd and dropped.
-    const unmentioned = makePubsubMessage({
-      type: 'MESSAGE',
-      space: { name: 'spaces/rm', type: 'SPACE' },
-      user: { email: 'user@example.com' },
-      message: {
-        name: 'spaces/rm/messages/nomention',
-        sender: { email: 'user@example.com', type: 'USER' },
-        text: 'plain channel chatter',
-      },
+    const unmentioned = makeSpaceMessage({
+      space: 'spaces/rm',
+      messageId: 'nomention',
+      sender: 'user@example.com',
+      text: 'plain channel chatter',
     });
     subscription.emitMessage(unmentioned);
 
     // A mention of the bot — should flow through to the daemon.
     subscription.emitMessage(
-      makePubsubMessage({
-        type: 'MESSAGE',
-        space: { name: 'spaces/rm', type: 'SPACE' },
-        user: { email: 'user@example.com' },
-        message: {
-          name: 'spaces/rm/messages/withmention',
-          sender: { email: 'user@example.com', type: 'USER' },
-          text: '@bot help me',
-          annotations: [{ type: 'USER_MENTION', userMention: { user: { type: 'BOT' } } }],
-        },
+      makeSpaceMessage({
+        space: 'spaces/rm',
+        messageId: 'withmention',
+        sender: 'user@example.com',
+        text: '@bot help me',
+        mention: true,
       })
     );
 
@@ -549,14 +510,10 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     );
 
     subscription.emitMessage(
-      makePubsubMessage({
-        type: 'MESSAGE',
-        space: { name: 'spaces/agent-route', type: 'SPACE' },
-        user: { email: 'user@example.com' },
-        message: {
-          name: 'spaces/agent-route/messages/cmd',
-          text: '/agent router-agent',
-        },
+      makeSpaceMessage({
+        space: 'spaces/agent-route',
+        messageId: 'cmd',
+        text: '/agent router-agent',
       })
     );
 
@@ -596,20 +553,13 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     );
 
     subscription.emitMessage(
-      makePubsubMessage({
-        type: 'MESSAGE',
-        space: { name: 'spaces/att', type: 'DIRECT_MESSAGE', singleUserBotDm: true },
-        message: {
-          name: 'spaces/att/messages/att1',
-          sender: { email: 'user@example.com', type: 'USER' },
-          text: 'with attachment',
-          attachment: [
-            {
-              contentName: 'note.txt',
-              attachmentDataRef: { resourceName: 'media/note' },
-            },
-          ],
-        },
+      makeDmMessage({
+        space: 'spaces/att',
+        messageId: 'att1',
+        text: 'with attachment',
+        attachment: [
+          { contentName: 'note.txt', attachmentDataRef: { resourceName: 'media/note' } },
+        ],
       })
     );
 
