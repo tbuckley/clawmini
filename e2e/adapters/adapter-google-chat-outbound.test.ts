@@ -33,6 +33,7 @@ async function seedChatForForwarderCatchup(
     role: 'user',
     content: '__seed_marker__',
     timestamp: new Date().toISOString(),
+    sessionId: undefined,
   };
   await appendMessage(chatId, marker, startDir);
   for (const msg of messages) {
@@ -118,6 +119,7 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
       role: 'policy',
       content: 'please approve rm -rf /tmp',
       timestamp: new Date().toISOString(),
+      sessionId: undefined,
       messageId: 'm-pol',
       requestId: 'req-pol',
       commandName: 'rm',
@@ -168,6 +170,7 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
       role: 'policy',
       content: 'please approve dangerous-thing',
       timestamp: new Date().toISOString(),
+      sessionId: undefined,
       messageId: 'm-pol-fb',
       requestId: 'req-pol-fb',
       commandName: 'dangerous-thing',
@@ -215,6 +218,7 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
       role: 'user',
       content: longContent,
       timestamp: new Date().toISOString(),
+      sessionId: undefined,
     };
     const markerId = await seedChatForForwarderCatchup(env.e2eDir, 'gc-chunk', [longMsg]);
 
@@ -260,6 +264,7 @@ describe('Google Chat Adapter E2E — outbound (daemon → chat API via forwarde
       role: 'agent',
       content: 'here is the report',
       timestamp: new Date().toISOString(),
+      sessionId: undefined,
       files: ['/tmp/report.pdf', '/tmp/diagram.png'],
     };
     const markerId = await seedChatForForwarderCatchup(env.e2eDir, 'gc-files', [fileMsg]);
