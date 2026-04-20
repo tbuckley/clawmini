@@ -27,7 +27,7 @@ Examples:
   )
   .action((options: { command: string }) => {
     const child = spawn('sh', ['-c', options.command], {
-      stdio: 'inherit',
+      stdio: ['ignore', 'inherit', 'inherit'],
     });
 
     child.on('close', (code) => {

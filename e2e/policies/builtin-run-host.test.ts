@@ -6,6 +6,7 @@ import {
   type ChatSubscription,
   type SystemMessage,
   policyWith,
+  commandMatching,
 } from '../_helpers/test-environment.js';
 
 const RUN_HOST_SCRIPT_REL = '.clawmini/policy-scripts/run-host.js';
@@ -120,5 +121,60 @@ describe('Built-in run-host E2E', () => {
     const { stdout, code } = await env.runLite(['request', 'run-host', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('--command');
+  }, 30000);
+
+  it('truncates large stdout to a saved-file summary', async () => {
+    await env.addChat('chat-long');
+    chat = await env.connect('chat-long');
+
+    await env.sendMessage(
+      'clawmini-lite.js request run-host -- --command "yes a | head -c 600"',
+      { chat: 'chat-long', agent: 'debug-agent' }
+    );
+
+    const policy = await chat.waitForMessage(policyWith());
+    const reqId = policy.requestId;
+
+    await env.sendMessage(`/approve ${reqId}`, { chat: 'chat-long' });
+
+    const actorNotif = await chat.waitForMessage(
+      (m): m is SystemMessage =>
+        m.role === 'system' &&
+        m.event === 'policy_approved' &&
+        m.displayRole === 'user'
+    );
+    expect(actorNotif.content).toMatch(
+      /stdout is 60\d characters, saved to \.\/tmp\/stdout-[a-zA-Z0-9-]+\.txt/
+    );
+    expect(actorNotif.content).not.toContain('a\n'.repeat(300));
+  }, 30000);
+
+  it('rejects requests when run-host is disabled in policies.json', async () => {
+    const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
+    const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
+    policies.policies['run-host'] = false;
+    fs.writeFileSync(policiesPath, JSON.stringify(policies, null, 2));
+
+    try {
+      await env.addChat('chat-disabled');
+      chat = await env.connect('chat-disabled');
+
+      await env.sendMessage(
+        'clawmini-lite.js request run-host -- --command "echo nope"',
+        { chat: 'chat-disabled', agent: 'debug-agent' }
+      );
+
+      const reply = await chat.waitForMessage(
+        commandMatching((m) => m.stderr.includes('Policy not found: run-host'))
+      );
+      expect(reply.stderr).toContain('Policy not found: run-host');
+
+      // Disabling the policy must not delete the installed script.
+      const scriptPath = path.resolve(env.e2eDir, RUN_HOST_SCRIPT_REL);
+      expect(fs.existsSync(scriptPath)).toBe(true);
+    } finally {
+      delete policies.policies['run-host'];
+      fs.writeFileSync(policiesPath, JSON.stringify(policies, null, 2));
+    }
   }, 30000);
 });
