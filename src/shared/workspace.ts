@@ -552,7 +552,7 @@ export function resolvePolicies(
   return { policies: resolved };
 }
 
-export async function readPolicies(startDir = process.cwd()): Promise<PolicyConfig | null> {
+async function readBasePolicies(startDir = process.cwd()): Promise<PolicyConfig | null> {
   const file = await readPoliciesFile(startDir);
   return resolvePolicies(file, getClawminiDir(startDir));
 }
@@ -577,12 +577,13 @@ export async function readEnvironmentPoliciesForPath(
       definition.command.startsWith('./') || definition.command.startsWith('../')
         ? path.resolve(envDir, definition.command)
         : definition.command;
-    const entry: PolicyDefinition = { command };
-    if (definition.description !== undefined) entry.description = definition.description;
-    if (definition.args !== undefined) entry.args = definition.args;
-    if (definition.allowHelp !== undefined) entry.allowHelp = definition.allowHelp;
-    if (definition.autoApprove !== undefined) entry.autoApprove = definition.autoApprove;
-    resolved[name] = entry;
+    // Spread so new PolicyDefinition fields flow through automatically. Zod's
+    // .optional() types include `undefined`, which exactOptionalPropertyTypes
+    // disallows — strip those entries before assigning.
+    const entries = Object.entries({ ...definition, command }).filter(
+      ([, value]) => value !== undefined
+    );
+    resolved[name] = Object.fromEntries(entries) as unknown as PolicyDefinition;
   }
   return resolved;
 }
@@ -591,7 +592,7 @@ export async function readPoliciesForPath(
   targetPath: string,
   startDir = process.cwd()
 ): Promise<PolicyConfig | null> {
-  const base = await readPolicies(startDir);
+  const base = await readBasePolicies(startDir);
   const envPolicies = await readEnvironmentPoliciesForPath(targetPath, startDir);
   if (Object.keys(envPolicies).length === 0) return base;
   return {

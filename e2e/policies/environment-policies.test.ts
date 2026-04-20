@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
 import fsPromises from 'node:fs/promises';
 import {
@@ -7,6 +7,23 @@ import {
   policyWith,
   commandMatching,
 } from '../_helpers/test-environment.js';
+
+const DEFAULT_ENVIRONMENTS = { './debug-agent': 'testenv' } as const;
+
+function setEnvironments(
+  env: TestEnvironment,
+  environments: Record<string, string> | undefined
+): void {
+  // updateSettings deep-merges, so we round-trip the whole settings object to
+  // fully replace (or delete) the environments map.
+  const settings = env.getSettings();
+  if (environments === undefined) {
+    delete settings.environments;
+  } else {
+    settings.environments = environments;
+  }
+  env.writeSettings(settings);
+}
 
 describe('Environment-scoped policies E2E', () => {
   let env: TestEnvironment;
@@ -65,12 +82,16 @@ describe('Environment-scoped policies E2E', () => {
         },
       })
     );
-
-    // Scope the env to the debug-agent directory so only it is "inside" the env.
-    env.updateSettings({ environments: { './debug-agent': 'testenv' } });
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
+
+  // Scope the env to the debug-agent directory (the default layout for most
+  // tests) before each test so tests that mutate environments don't leak.
+  beforeEach(() => {
+    setEnvironments(env, { ...DEFAULT_ENVIRONMENTS });
+  });
+
   afterEach(() => env.disconnectAll());
 
   it('exposes env-scoped policies to agents running inside the env', async () => {
@@ -119,53 +140,38 @@ describe('Environment-scoped policies E2E', () => {
 
   it('hides env-scoped policies from agents outside the env', async () => {
     // Re-scope the env to a sibling dir so the debug-agent is no longer inside
-    // it. updateSettings deep-merges, so write the whole object to *replace*
-    // the environments map rather than unioning with the prior mapping.
-    const settings = env.getSettings();
-    settings.environments = { './other-dir': 'testenv' };
-    env.writeSettings(settings);
+    // it. beforeEach restores the default mapping after this test.
+    setEnvironments(env, { './other-dir': 'testenv' });
 
-    try {
-      await env.addChat('chat-outside');
-      chat = await env.connect('chat-outside');
+    await env.addChat('chat-outside');
+    chat = await env.connect('chat-outside');
 
-      await env.sendMessage('clawmini-lite.js request env-only', {
-        chat: 'chat-outside',
-        agent: 'debug-agent',
-      });
+    await env.sendMessage('clawmini-lite.js request env-only', {
+      chat: 'chat-outside',
+      agent: 'debug-agent',
+    });
 
-      const reply = await chat.waitForMessage(
-        commandMatching((m) => m.stderr.includes('Policy not found: env-only'))
-      );
-      expect(reply.stderr).toContain('Policy not found: env-only');
-    } finally {
-      const restored = env.getSettings();
-      restored.environments = { './debug-agent': 'testenv' };
-      env.writeSettings(restored);
-    }
+    const reply = await chat.waitForMessage(
+      commandMatching((m) => m.stderr.includes('Policy not found: env-only'))
+    );
+    expect(reply.stderr).toContain('Policy not found: env-only');
   }, 30000);
 
   it('falls back to the global policy when the env is not active', async () => {
     // Remove all env mappings — the env's `conflicting` should no longer apply,
     // leaving the global GLOBAL-VERSION definition as the only match.
-    const settings = env.getSettings();
-    delete settings.environments;
-    env.writeSettings(settings);
+    setEnvironments(env, undefined);
 
-    try {
-      await env.addChat('chat-fallback');
-      chat = await env.connect('chat-fallback');
+    await env.addChat('chat-fallback');
+    chat = await env.connect('chat-fallback');
 
-      await env.sendMessage('clawmini-lite.js request conflicting', {
-        chat: 'chat-fallback',
-        agent: 'debug-agent',
-      });
+    await env.sendMessage('clawmini-lite.js request conflicting', {
+      chat: 'chat-fallback',
+      agent: 'debug-agent',
+    });
 
-      const policy = await chat.waitForMessage(policyWith('approved'));
-      expect(policy.content).toContain('GLOBAL-VERSION');
-      expect(policy.content).not.toContain('ENV-VERSION');
-    } finally {
-      env.updateSettings({ environments: { './debug-agent': 'testenv' } });
-    }
+    const policy = await chat.waitForMessage(policyWith('approved'));
+    expect(policy.content).toContain('GLOBAL-VERSION');
+    expect(policy.content).not.toContain('ENV-VERSION');
   }, 30000);
 });
