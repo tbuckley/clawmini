@@ -25,6 +25,12 @@ export const BUILTIN_POLICIES: Record<string, PolicyDefinition> = {
     command: `./${BUILTIN_POLICY_SCRIPTS_DIR}/propose-policy.js`,
     allowHelp: true,
   },
+  'run-host': {
+    description: 'Run an arbitrary shell command on the host via `sh -c`',
+    command: `./${BUILTIN_POLICY_SCRIPTS_DIR}/run-host.js`,
+    allowHelp: true,
+    autoApprove: false,
+  },
 };
 
 export type RequestState = 'Pending' | 'Approved' | 'Rejected';
