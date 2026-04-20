@@ -25,6 +25,8 @@ import {
   getActiveEnvironmentName,
   resolveTargetAgentSkillsDir,
   resolvePolicies,
+  readEnvironmentPoliciesForPath,
+  readPoliciesForPath,
 } from './workspace.js';
 import type { Agent, Settings, Environment } from './config.js';
 import { BUILTIN_POLICIES } from './policies.js';
@@ -446,6 +448,90 @@ describe('workspace utilities', () => {
       const before = JSON.parse(JSON.stringify(file));
       resolvePolicies(file, clawminiDir);
       expect(file).toEqual(before);
+    });
+  });
+
+  describe('environment-scoped policies', () => {
+    async function writeEnvWithPolicies(
+      envName: string,
+      policies: Record<string, unknown>
+    ): Promise<string> {
+      const envDir = path.join(clawminiDir, 'environments', envName);
+      await fsPromises.mkdir(envDir, { recursive: true });
+      await fsPromises.writeFile(
+        path.join(envDir, 'env.json'),
+        JSON.stringify({ policies }),
+        'utf-8'
+      );
+      return envDir;
+    }
+
+    it('returns empty when there is no active environment', async () => {
+      const result = await readEnvironmentPoliciesForPath('./', testDir);
+      expect(result).toEqual({});
+    });
+
+    it('returns empty when the active env has no policies field', async () => {
+      const envDir = path.join(clawminiDir, 'environments', 'bare');
+      await fsPromises.mkdir(envDir, { recursive: true });
+      await fsPromises.writeFile(path.join(envDir, 'env.json'), JSON.stringify({}), 'utf-8');
+      await writeSettings({ environments: { './': 'bare' } }, testDir);
+      const result = await readEnvironmentPoliciesForPath('./', testDir);
+      expect(result).toEqual({});
+    });
+
+    it('resolves relative commands against the env directory', async () => {
+      const envDir = await writeEnvWithPolicies('sandbox-env', {
+        'allowlist-domain': {
+          description: 'Adds a domain',
+          command: './allowlist-domain.mjs',
+          allowHelp: false,
+        },
+      });
+      await writeSettings({ environments: { './': 'sandbox-env' } }, testDir);
+
+      const result = await readEnvironmentPoliciesForPath('./', testDir);
+      expect(result['allowlist-domain']?.command).toBe(path.join(envDir, 'allowlist-domain.mjs'));
+      expect(result['allowlist-domain']?.description).toBe('Adds a domain');
+    });
+
+    it('leaves non-relative commands untouched', async () => {
+      await writeEnvWithPolicies('cmd-env', {
+        echo: { command: 'echo' },
+      });
+      await writeSettings({ environments: { './': 'cmd-env' } }, testDir);
+
+      const result = await readEnvironmentPoliciesForPath('./', testDir);
+      expect(result.echo?.command).toBe('echo');
+    });
+
+    it('hides env policies when the target is outside the env subpath', async () => {
+      await writeEnvWithPolicies('scoped-env', {
+        'only-here': { command: './cmd.js' },
+      });
+      await writeSettings({ environments: { './agents/scoped': 'scoped-env' } }, testDir);
+
+      expect(await readEnvironmentPoliciesForPath('./', testDir)).toEqual({});
+      expect(await readEnvironmentPoliciesForPath('./other', testDir)).toEqual({});
+
+      const scopedResult = await readEnvironmentPoliciesForPath('./agents/scoped', testDir);
+      expect(scopedResult['only-here']).toBeDefined();
+    });
+
+    it('merges env policies on top of global ones via readPoliciesForPath', async () => {
+      await fsPromises.mkdir(path.join(clawminiDir, 'policy-scripts'), { recursive: true });
+      await fsPromises.writeFile(
+        path.join(clawminiDir, 'policies.json'),
+        JSON.stringify({ policies: { global: { command: 'globalcmd' } } }),
+        'utf-8'
+      );
+      await writeEnvWithPolicies('merge-env', {
+        'env-only': { command: './env.js' },
+      });
+      await writeSettings({ environments: { './': 'merge-env' } }, testDir);
+
+      const result = await readPoliciesForPath('./', testDir);
+      expect(Object.keys(result?.policies || {}).sort()).toEqual(['env-only', 'global']);
     });
   });
 });

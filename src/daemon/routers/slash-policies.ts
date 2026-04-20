@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { RouterState } from './types.js';
 import { RequestStore } from '../request-store.js';
-import { readPolicies, getWorkspaceRoot } from '../../shared/workspace.js';
+import { readPoliciesForPath, getWorkspaceRoot } from '../../shared/workspace.js';
+import { resolveAgentDir } from '../api/router-utils.js';
 import { executeRequest, resolveRequestCwd, truncateLargeOutput } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
 import type { SystemMessage } from '../../shared/chats.js';
@@ -48,13 +49,14 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     if (error) return error;
     if (!req || !store) return state; // Should not happen if error is undefined
 
-    const config = await readPolicies();
+    const workspaceRoot = getWorkspaceRoot();
+    const agentDir = await resolveAgentDir(req.agentId, workspaceRoot);
+    const config = await readPoliciesForPath(agentDir, workspaceRoot);
     const policy = config?.policies?.[req.commandName];
     if (!policy) {
       return { ...state, message: '', reply: `Policy not found: ${req.commandName}` };
     }
 
-    const workspaceRoot = getWorkspaceRoot();
     const hostCwd = await resolveRequestCwd(req.cwd, state.agentId, workspaceRoot);
 
     const result = await executeRequest(req, policy, hostCwd);
