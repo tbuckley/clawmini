@@ -55,6 +55,35 @@ export function getTRPCClient(options: { socketPath?: string } = {}) {
 
 export type GoogleChatApi = ReturnType<typeof google.chat>;
 
+interface QuotedSender {
+  type?: string | null;
+  email?: string | null;
+  name?: string | null;
+  displayName?: string | null;
+}
+
+/**
+ * Map a quoted message's sender to a short attribution label. Returns "Bot"
+ * for the assistant, "You" if it's one of the configured authorized users,
+ * and otherwise the sender's email (preferred) or `users/{id}` resource name.
+ */
+export function formatQuotedSender(
+  sender: QuotedSender | undefined,
+  authorizedUsers: string[]
+): string | undefined {
+  if (!sender) return undefined;
+  if (sender.type === 'BOT') return 'Bot';
+  const email = sender.email ?? undefined;
+  const name = sender.name ?? undefined;
+  if (
+    (email && isAuthorized(email, authorizedUsers)) ||
+    (name && isAuthorized(name, authorizedUsers))
+  ) {
+    return 'You';
+  }
+  return email || name || undefined;
+}
+
 export interface MessageSourceLike {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   on(event: string, listener: (...args: any[]) => void | Promise<void>): unknown;
@@ -433,17 +462,21 @@ export function startGoogleChatIngestion(
       const quotedMetadata = eventMessage?.quotedMessageMetadata;
       if (quotedMetadata) {
         let quotedText: string | undefined = quotedMetadata.quotedMessageSnapshot?.text;
-        if (!quotedText && quotedMetadata.name) {
+        let quotedSender: QuotedSender | undefined = quotedMetadata.quotedMessageSnapshot?.sender;
+        if ((!quotedText || !quotedSender) && quotedMetadata.name) {
           try {
             const chatApi = await getChatApi();
             const quotedRes = await chatApi.spaces.messages.get({ name: quotedMetadata.name });
-            quotedText = quotedRes.data?.text || undefined;
+            quotedText = quotedText || quotedRes.data?.text || undefined;
+            quotedSender =
+              quotedSender || (quotedRes.data?.sender as QuotedSender | undefined) || undefined;
           } catch (err) {
             console.error('Failed to fetch quoted message:', err);
           }
         }
         if (quotedText) {
-          forwardedText = prependBlockquote(quotedText, text);
+          const senderLabel = formatQuotedSender(quotedSender, config.authorizedUsers);
+          forwardedText = prependBlockquote(quotedText, text, senderLabel);
         }
       }
 

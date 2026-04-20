@@ -529,7 +529,7 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     });
   });
 
-  it('forwards quote-replies to the daemon with the quoted message as a blockquote', async () => {
+  it('forwards quote-replies with an attribution line and the quoted message as a blockquote', async () => {
     const { env } = envRef;
     const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
     const subscription = makeFakeSubscription();
@@ -558,7 +558,7 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
           name: 'spaces/quoted/messages/orig-1',
           quotedMessageSnapshot: {
             text: 'Would anyone like to get dinner Sunday?\nOr maybe lunch?',
-            sender: 'Other User',
+            sender: { email: 'other@example.com', type: 'HUMAN' },
           },
         },
       })
@@ -567,14 +567,65 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     const msg = await chat.waitForMessage(
       (m) => m.role === 'user' && m.content.includes("Yes, I'm in!")
     );
-    expect(msg.content).toMatchInlineSnapshot(
-      `
-      "> Would anyone like to get dinner Sunday?
-      > Or maybe lunch?
-
-      Yes, I'm in!"
-    `
+    expect(msg.content).toBe(
+      "> **other@example.com said:**\n> Would anyone like to get dinner Sunday?\n> Or maybe lunch?\n\nYes, I'm in!"
     );
+  });
+
+  it('labels quoted bot messages as "Bot" and quoted authorized-user messages as "You"', async () => {
+    const { env } = envRef;
+    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
+    const subscription = makeFakeSubscription();
+    const { api } = makeFakeChatApi();
+
+    await updateGoogleChatState(
+      { channelChatMap: { 'spaces/quoted2': { chatId: 'gc-chat' } } },
+      env.e2eDir
+    );
+    await env.addChat('gc-chat');
+    const chat = await env.connect('gc-chat');
+
+    startGoogleChatIngestion(
+      BASE_CONFIG,
+      trpc,
+      {},
+      { subscription, chatApi: api, startDir: env.e2eDir }
+    );
+
+    subscription.emitMessage(
+      makeDmMessage({
+        space: 'spaces/quoted2',
+        messageId: 'reply-bot',
+        text: 'thanks',
+        quotedMessageMetadata: {
+          name: 'spaces/quoted2/messages/bot-1',
+          quotedMessageSnapshot: { text: 'Done.', sender: { type: 'BOT' } },
+        },
+      })
+    );
+    const botReply = await chat.waitForMessage(
+      (m) => m.role === 'user' && m.content.includes('thanks')
+    );
+    expect(botReply.content).toBe('> **Bot said:**\n> Done.\n\nthanks');
+
+    subscription.emitMessage(
+      makeDmMessage({
+        space: 'spaces/quoted2',
+        messageId: 'reply-self',
+        text: 'still relevant',
+        quotedMessageMetadata: {
+          name: 'spaces/quoted2/messages/self-1',
+          quotedMessageSnapshot: {
+            text: 'earlier note',
+            sender: { email: 'user@example.com', type: 'HUMAN' },
+          },
+        },
+      })
+    );
+    const selfReply = await chat.waitForMessage(
+      (m) => m.role === 'user' && m.content.includes('still relevant')
+    );
+    expect(selfReply.content).toBe('> **You said:**\n> earlier note\n\nstill relevant');
   });
 
   it('downloads attachments and forwards them with the message to the daemon', async () => {

@@ -13,4 +13,16 @@ describe('prependBlockquote', () => {
   it('handles multi-line replies', () => {
     expect(prependBlockquote('q', 'a\nb')).toBe('> q\n\na\nb');
   });
+
+  it('trims surrounding whitespace from quoted text and body', () => {
+    expect(prependBlockquote('  hello\nworld  \n', '\n\nreply\n')).toBe(
+      '> hello\n> world\n\nreply'
+    );
+  });
+
+  it('renders an attribution line when sender is provided', () => {
+    expect(prependBlockquote('hello\nworld', 'reply', 'Tom')).toBe(
+      '> **Tom said:**\n> hello\n> world\n\nreply'
+    );
+  });
 });
