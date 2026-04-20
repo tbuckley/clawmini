@@ -99,7 +99,9 @@ describe('Google Chat Adapter Client', () => {
     });
 
     it('returns undefined for authorized users by email', () => {
-      expect(formatQuotedSender({ email: 'user@example.com', type: 'HUMAN' }, authorized)).toBeUndefined();
+      expect(
+        formatQuotedSender({ email: 'user@example.com', type: 'HUMAN' }, authorized)
+      ).toBeUndefined();
     });
 
     it('returns undefined for authorized users by user resource name', () => {

@@ -196,7 +196,11 @@ export async function processDiscordMessage(
   let finalContent = content;
 
   if (options.referenceContent) {
-    finalContent = prependBlockquote(options.referenceContent, finalContent, options.referenceAuthor);
+    finalContent = prependBlockquote(
+      options.referenceContent,
+      finalContent,
+      options.referenceAuthor
+    );
   }
 
   console.log(`Forwarding message to daemon: ${finalContent}`);
