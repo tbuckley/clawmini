@@ -597,7 +597,7 @@ describe('Discord Adapter Entry Point', () => {
       type: 'send-message',
       client: 'cli',
       data: {
-        message: "> Would anyone like to get dinner Sunday?\n> Or maybe lunch?\nYes, I'm in!",
+        message: "> Would anyone like to get dinner Sunday?\n> Or maybe lunch?\n\nYes, I'm in!",
         chatId: 'default',
         files: undefined,
         adapter: 'discord',

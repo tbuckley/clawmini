@@ -19,6 +19,7 @@ import { formatMessage, type FilteringConfig } from '../shared/adapters/filterin
 import { google } from 'googleapis';
 import { getAuthClient } from './auth.js';
 import { handleRoutingCommand, type RoutingTrpcClient } from '../shared/adapters/routing.js';
+import { prependBlockquote } from '../shared/adapters/blockquote.js';
 
 import { handleAddedToSpace, handleRemovedFromSpace } from './subscriptions.js';
 import { handleCardClicked } from './cards.js';
@@ -428,11 +429,29 @@ export function startGoogleChatIngestion(
         }
       }
 
+      let forwardedText = text;
+      const quotedMetadata = eventMessage?.quotedMessageMetadata;
+      if (quotedMetadata) {
+        let quotedText: string | undefined = quotedMetadata.quotedMessageSnapshot?.text;
+        if (!quotedText && quotedMetadata.name) {
+          try {
+            const chatApi = await getChatApi();
+            const quotedRes = await chatApi.spaces.messages.get({ name: quotedMetadata.name });
+            quotedText = quotedRes.data?.text || undefined;
+          } catch (err) {
+            console.error('Failed to fetch quoted message:', err);
+          }
+        }
+        if (quotedText) {
+          forwardedText = prependBlockquote(quotedText, text);
+        }
+      }
+
       await trpc.sendMessage.mutate({
         type: 'send-message',
         client: 'cli',
         data: {
-          message: text,
+          message: forwardedText,
           chatId: targetChatId,
           files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
           adapter: 'google-chat',

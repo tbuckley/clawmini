@@ -41,7 +41,8 @@ export function makePubsubMessage(
 
 /**
  * Pub/Sub-shaped MESSAGE event in a DIRECT_MESSAGE (singleUserBotDm) space.
- * `sender` defaults to the authorized user. Pass `attachment` for attachment tests.
+ * `sender` defaults to the authorized user. Pass `attachment` for attachment
+ * tests, or `quotedMessageMetadata` to model a quote-reply.
  */
 export function makeDmMessage(opts: {
   space: string;
@@ -49,6 +50,7 @@ export function makeDmMessage(opts: {
   text: string;
   sender?: string;
   attachment?: unknown[];
+  quotedMessageMetadata?: unknown;
 }): FakeMessage {
   const sender = opts.sender ?? 'user@example.com';
   return makePubsubMessage({
@@ -59,6 +61,9 @@ export function makeDmMessage(opts: {
       sender: { email: sender, type: 'USER' },
       text: opts.text,
       ...(opts.attachment ? { attachment: opts.attachment } : {}),
+      ...(opts.quotedMessageMetadata
+        ? { quotedMessageMetadata: opts.quotedMessageMetadata }
+        : {}),
     },
   });
 }
