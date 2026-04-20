@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getTRPCClient, startGoogleChatIngestion } from './client.js';
+import { formatQuotedSender, getTRPCClient, startGoogleChatIngestion } from './client.js';
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import * as workspace from '../shared/workspace.js';
@@ -85,6 +85,41 @@ vi.mock('./utils.js', () => ({
 describe('Google Chat Adapter Client', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe('formatQuotedSender', () => {
+    const authorized = ['user@example.com', 'users/42'];
+
+    it('returns undefined when sender is missing', () => {
+      expect(formatQuotedSender(undefined, authorized)).toBeUndefined();
+    });
+
+    it('labels bots as "Assistant"', () => {
+      expect(formatQuotedSender({ type: 'BOT' }, authorized)).toBe('Assistant');
+    });
+
+    it('returns undefined for authorized users by email', () => {
+      expect(
+        formatQuotedSender({ email: 'user@example.com', type: 'HUMAN' }, authorized)
+      ).toBeUndefined();
+    });
+
+    it('returns undefined for authorized users by user resource name', () => {
+      expect(formatQuotedSender({ name: 'users/42', type: 'HUMAN' }, authorized)).toBeUndefined();
+    });
+
+    it('falls back to email for other people', () => {
+      expect(
+        formatQuotedSender(
+          { email: 'other@example.com', name: 'users/9', type: 'HUMAN' },
+          authorized
+        )
+      ).toBe('other@example.com');
+    });
+
+    it('falls back to user resource name when email is absent', () => {
+      expect(formatQuotedSender({ name: 'users/9', type: 'HUMAN' }, authorized)).toBe('users/9');
+    });
   });
 
   describe('getTRPCClient', () => {

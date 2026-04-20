@@ -3,6 +3,7 @@ import type { DiscordConfig } from './config.js';
 import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 import { handleRoutingCommand, type RoutingTrpcClient } from '../shared/adapters/routing.js';
+import { prependBlockquote } from '../shared/adapters/blockquote.js';
 import { getClawminiDir } from '../shared/workspace.js';
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -12,6 +13,7 @@ export type ProcessMessageOptions = {
   isReplyToBot?: boolean;
   attachments?: { name: string; size: number; url: string }[];
   referenceContent?: string;
+  referenceAuthor?: string;
   explicitChatId?: string;
 };
 
@@ -194,11 +196,11 @@ export async function processDiscordMessage(
   let finalContent = content;
 
   if (options.referenceContent) {
-    const quotedContent = options.referenceContent
-      .split('\n')
-      .map((line) => `> ${line}`)
-      .join('\n');
-    finalContent = `${quotedContent}\n${finalContent}`;
+    finalContent = prependBlockquote(
+      options.referenceContent,
+      finalContent,
+      options.referenceAuthor
+    );
   }
 
   console.log(`Forwarding message to daemon: ${finalContent}`);
