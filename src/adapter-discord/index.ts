@@ -71,12 +71,20 @@ export async function main() {
   client.on(Events.MessageCreate, async (message) => {
     let isReplyToBot = false;
     let referenceContent: string | undefined;
+    let referenceAuthor: string | undefined;
 
     if (message.reference && message.reference.messageId) {
       try {
         const referencedMessage = await message.fetchReference();
         isReplyToBot = referencedMessage?.author.id === client.user!.id;
         referenceContent = referencedMessage?.content;
+        if (referencedMessage) {
+          if (referencedMessage.author.bot) {
+            referenceAuthor = 'Assistant';
+          } else if (referencedMessage.author.id !== config.authorizedUserId) {
+            referenceAuthor = referencedMessage.author.username;
+          }
+        }
       } catch (err) {
         console.error('Failed to fetch referenced message for mention check:', err);
       }
@@ -106,6 +114,7 @@ export async function main() {
         isReplyToBot,
         attachments,
         ...(referenceContent ? { referenceContent } : {}),
+        ...(referenceAuthor ? { referenceAuthor } : {}),
       }
     );
   });
