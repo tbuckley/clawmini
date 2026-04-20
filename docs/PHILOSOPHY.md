@@ -33,4 +33,3 @@ Memory model
 - Users interact with an agent through a single ongoing chat. However, agent context is limited and quality degrades as it gets longer.
 - The agent’s personality and memory are persisted via files; it is instructed to read the personality and recent memory files at the start, and search the memory when appropriate.
 - We regularly clear the session after timeout and tell it to save anything important to memory files
-- Conversation tools to load recent history if relevant
