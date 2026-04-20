@@ -73,7 +73,70 @@ describe('propose-policy CLI', () => {
     expect(policies.policies['echo-test'].description).toBe('A simple echo command');
     expect(policies.policies['echo-test'].command).toBe('echo');
     expect(policies.policies['echo-test'].args).toEqual(['"Hello', 'World"']);
-    expect(policies.policies['echo-test'].allowHelp).toBe(true);
+    // Defaults: both dangerous opt-ins are off.
+    expect(policies.policies['echo-test'].allowHelp).toBe(false);
+    expect(policies.policies['echo-test'].autoApprove).toBe(false);
+  });
+
+  it('should set autoApprove and allowHelp when dangerous flags are passed', async () => {
+    const { stdout, stderr, code } = await env.runBin(binPath, [
+      '--name',
+      'dangerous-echo',
+      '--description',
+      'Echo with both dangerous opt-ins',
+      '--command',
+      'echo dangerous',
+      '--dangerously-auto-approve',
+      '--dangerously-allow-help',
+    ]);
+
+    if (code !== 0) console.error(stderr);
+    expect(code).toBe(0);
+    expect(stdout).toContain("Successfully proposed and registered policy 'dangerous-echo'");
+
+    const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
+    const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
+
+    expect(policies.policies['dangerous-echo'].allowHelp).toBe(true);
+    expect(policies.policies['dangerous-echo'].autoApprove).toBe(true);
+  });
+
+  it('should set only autoApprove when only --dangerously-auto-approve is passed', async () => {
+    const { code } = await env.runBin(binPath, [
+      '--name',
+      'auto-only',
+      '--description',
+      'Auto-approve only',
+      '--command',
+      'echo auto',
+      '--dangerously-auto-approve',
+    ]);
+    expect(code).toBe(0);
+
+    const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
+    const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
+
+    expect(policies.policies['auto-only'].autoApprove).toBe(true);
+    expect(policies.policies['auto-only'].allowHelp).toBe(false);
+  });
+
+  it('should set only allowHelp when only --dangerously-allow-help is passed', async () => {
+    const { code } = await env.runBin(binPath, [
+      '--name',
+      'help-only',
+      '--description',
+      'Allow help only',
+      '--command',
+      'echo help',
+      '--dangerously-allow-help',
+    ]);
+    expect(code).toBe(0);
+
+    const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
+    const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
+
+    expect(policies.policies['help-only'].allowHelp).toBe(true);
+    expect(policies.policies['help-only'].autoApprove).toBe(false);
   });
 
   it('should create a policy with a script file', async () => {
