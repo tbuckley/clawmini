@@ -14,6 +14,16 @@ proposePolicyCmd
   .requiredOption('--description <description>', 'Description of the policy')
   .option('--command <command_string>', 'The shell command to run (e.g. "npm install -g")')
   .option('--script-file <path>', 'Path to a script file (mapped securely via --file)')
+  .option(
+    '--dangerously-auto-approve',
+    'Skip user approval for every invocation of this policy. Only safe for fully sandboxed, side-effect-free commands.',
+    false
+  )
+  .option(
+    '--dangerously-allow-help',
+    'Allow the agent to run the policy with `--help` without approval. Only safe if the underlying command treats `--help` as read-only.',
+    false
+  )
   .addHelpText(
     'after',
     `
@@ -24,6 +34,9 @@ Examples:
   2. Propose a policy using a custom script file:
      # First, write your script to a file (e.g., install.sh)
      clawmini-lite request propose-policy --file script=./install.sh -- --name custom-install --description "Run custom install script" --script-file "{{script}}"
+
+  3. Propose a policy that auto-approves and allows --help discovery:
+     clawmini-lite request propose-policy -- --name list-files --description "List files" --command "ls" --dangerously-auto-approve --dangerously-allow-help
 `
   )
   .action((options) => {
@@ -31,6 +44,8 @@ Examples:
     const description = options.description;
     const commandStr = options.command;
     const scriptFile = options.scriptFile;
+    const autoApprove = !!options.dangerouslyAutoApprove;
+    const allowHelp = !!options.dangerouslyAllowHelp;
 
     if (!/^[a-z0-9-]+$/.test(name)) {
       console.error(
@@ -59,7 +74,8 @@ Examples:
 
     const policyDefinition: PolicyDefinition = {
       description,
-      allowHelp: true,
+      allowHelp,
+      autoApprove,
       command: '',
     };
 

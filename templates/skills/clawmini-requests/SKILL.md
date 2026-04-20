@@ -69,9 +69,16 @@ If you need to perform an action that isn't covered by an existing policy, you c
 
 You must provide a `--name` and `--description`, and either a shell `--command` or a `--script-file`.
 
+By default a proposed policy is **safe**: every invocation requires the user to approve it, and `--help` requests are blocked. You can opt in to looser behavior with two flags — both are prefixed `--dangerously-` because the user only sees them at proposal time:
+
+- `--dangerously-auto-approve`: future invocations of this policy run without the user reviewing each request. Only use for fully sandboxed, side-effect-free commands (e.g. read-only listings of local files). Never use for anything that mutates state, talks to the network, or spends money.
+- `--dangerously-allow-help`: lets you (the agent) run `<policy> --help` without approval. Safe only if the underlying command actually treats `--help` as read-only — many CLIs do, but custom scripts may not.
+
+If neither flag is set, both default to `false`. Prefer the safe default; only request the dangerous flags when you can justify them in the policy description.
+
 **Examples:**
 
-1. **Propose a simple command wrapper:**
+1. **Propose a simple command wrapper (safe defaults):**
 
    ```bash
    clawmini-lite.js request propose-policy -- --name npm-install --description "Run npm install globally" --command "npm install -g"
@@ -81,6 +88,12 @@ You must provide a `--name` and `--description`, and either a shell `--command` 
    First, write your complex logic to a file (e.g., `./script.sh`). **Note: The script file path MUST be inside your allowed workspace directory or use relative paths.**
    ```bash
    clawmini-lite.js request propose-policy --file script=./script.sh -- --name custom-action --description "Run a custom deployment script" --script-file "{{script}}"
+   ```
+
+3. **Propose a read-only policy that auto-approves and exposes `--help`:**
+
+   ```bash
+   clawmini-lite.js request propose-policy -- --name list-files --description "List files in the workspace (read-only)" --command "ls" --dangerously-auto-approve --dangerously-allow-help
    ```
 
 ## Creating New Skills for Policies
