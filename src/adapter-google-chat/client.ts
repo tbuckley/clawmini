@@ -72,16 +72,16 @@ export function formatQuotedSender(
   authorizedUsers: string[]
 ): string | undefined {
   if (!sender) return undefined;
-  if (sender.type === 'BOT') return 'Bot';
+  if (sender.type === 'BOT') return 'Assistant';
   const email = sender.email ?? undefined;
   const name = sender.name ?? undefined;
   if (
     (email && isAuthorized(email, authorizedUsers)) ||
     (name && isAuthorized(name, authorizedUsers))
   ) {
-    return 'You';
+    return undefined;
   }
-  return email || name || undefined;
+  return email || sender.displayName || name || undefined;
 }
 
 export interface MessageSourceLike {

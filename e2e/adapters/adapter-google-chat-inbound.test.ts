@@ -572,7 +572,7 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     );
   });
 
-  it('labels quoted bot messages as "Bot" and quoted authorized-user messages as "You"', async () => {
+  it('labels quoted bot messages as "Assistant" and leaves out attribution for authorized users', async () => {
     const { env } = envRef;
     const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
     const subscription = makeFakeSubscription();
@@ -606,7 +606,7 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     const botReply = await chat.waitForMessage(
       (m) => m.role === 'user' && m.content.includes('thanks')
     );
-    expect(botReply.content).toBe('> **Bot said:**\n> Done.\n\nthanks');
+    expect(botReply.content).toBe('> **Assistant said:**\n> Done.\n\nthanks');
 
     subscription.emitMessage(
       makeDmMessage({
@@ -625,7 +625,26 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
     const selfReply = await chat.waitForMessage(
       (m) => m.role === 'user' && m.content.includes('still relevant')
     );
-    expect(selfReply.content).toBe('> **You said:**\n> earlier note\n\nstill relevant');
+    expect(selfReply.content).toBe('> earlier note\n\nstill relevant');
+
+    subscription.emitMessage(
+      makeDmMessage({
+        space: 'spaces/quoted2',
+        messageId: 'reply-fallback',
+        text: 'wow',
+        quotedMessageMetadata: {
+          name: 'spaces/quoted2/messages/fallback-1',
+          quotedMessageSnapshot: {
+            text: 'no email here',
+            sender: { displayName: 'John Doe', name: 'users/1234', type: 'HUMAN' },
+          },
+        },
+      })
+    );
+    const fallbackReply = await chat.waitForMessage(
+      (m) => m.role === 'user' && m.content.includes('wow')
+    );
+    expect(fallbackReply.content).toBe('> **John Doe said:**\n> no email here\n\nwow');
   });
 
   it('downloads attachments and forwards them with the message to the daemon', async () => {

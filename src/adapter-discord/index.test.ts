@@ -574,7 +574,7 @@ describe('Discord Adapter Entry Point', () => {
 
     const mockReferencedMessage = {
       content: 'Would anyone like to get dinner Sunday?\nOr maybe lunch?',
-      author: { id: 'other-user' },
+      author: { id: 'other-user', username: 'other_user' },
     };
 
     if (messageHandler) {
@@ -597,7 +597,7 @@ describe('Discord Adapter Entry Point', () => {
       type: 'send-message',
       client: 'cli',
       data: {
-        message: "> Would anyone like to get dinner Sunday?\n> Or maybe lunch?\n\nYes, I'm in!",
+        message: "> **other_user said:**\n> Would anyone like to get dinner Sunday?\n> Or maybe lunch?\n\nYes, I'm in!",
         chatId: 'default',
         files: undefined,
         adapter: 'discord',

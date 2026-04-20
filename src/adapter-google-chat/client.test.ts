@@ -94,18 +94,16 @@ describe('Google Chat Adapter Client', () => {
       expect(formatQuotedSender(undefined, authorized)).toBeUndefined();
     });
 
-    it('labels bots as "Bot"', () => {
-      expect(formatQuotedSender({ type: 'BOT' }, authorized)).toBe('Bot');
+    it('labels bots as "Assistant"', () => {
+      expect(formatQuotedSender({ type: 'BOT' }, authorized)).toBe('Assistant');
     });
 
-    it('labels authorized users as "You" by email', () => {
-      expect(formatQuotedSender({ email: 'user@example.com', type: 'HUMAN' }, authorized)).toBe(
-        'You'
-      );
+    it('returns undefined for authorized users by email', () => {
+      expect(formatQuotedSender({ email: 'user@example.com', type: 'HUMAN' }, authorized)).toBeUndefined();
     });
 
-    it('labels authorized users as "You" by user resource name', () => {
-      expect(formatQuotedSender({ name: 'users/42', type: 'HUMAN' }, authorized)).toBe('You');
+    it('returns undefined for authorized users by user resource name', () => {
+      expect(formatQuotedSender({ name: 'users/42', type: 'HUMAN' }, authorized)).toBeUndefined();
     });
 
     it('falls back to email for other people', () => {

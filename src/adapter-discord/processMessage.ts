@@ -13,6 +13,7 @@ export type ProcessMessageOptions = {
   isReplyToBot?: boolean;
   attachments?: { name: string; size: number; url: string }[];
   referenceContent?: string;
+  referenceAuthor?: string;
   explicitChatId?: string;
 };
 
@@ -195,7 +196,7 @@ export async function processDiscordMessage(
   let finalContent = content;
 
   if (options.referenceContent) {
-    finalContent = prependBlockquote(options.referenceContent, finalContent);
+    finalContent = prependBlockquote(options.referenceContent, finalContent, options.referenceAuthor);
   }
 
   console.log(`Forwarding message to daemon: ${finalContent}`);
