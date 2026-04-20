@@ -55,5 +55,11 @@ export default defineConfig([
       'no-restricted-syntax': 'off',
     },
   },
+  {
+    files: ['templates/environments/**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
   eslintConfigPrettier,
 ]);

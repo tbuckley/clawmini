@@ -557,6 +557,51 @@ export async function readPolicies(startDir = process.cwd()): Promise<PolicyConf
   return resolvePolicies(file, getClawminiDir(startDir));
 }
 
+// Resolves env-scoped policies for the active environment at `targetPath`.
+// Relative `command` paths are resolved against the environment directory so
+// the policy points at a real on-disk script no matter where it runs.
+export async function readEnvironmentPoliciesForPath(
+  targetPath: string,
+  startDir = process.cwd()
+): Promise<Record<string, PolicyDefinition>> {
+  const envInfo = await getActiveEnvironmentInfo(targetPath, startDir);
+  if (!envInfo) return {};
+
+  const envConfig = await readEnvironment(envInfo.name, startDir);
+  if (!envConfig?.policies) return {};
+
+  const envDir = getEnvironmentPath(envInfo.name, startDir);
+  const resolved: Record<string, PolicyDefinition> = {};
+  for (const [name, definition] of Object.entries(envConfig.policies)) {
+    const command =
+      definition.command.startsWith('./') || definition.command.startsWith('../')
+        ? path.resolve(envDir, definition.command)
+        : definition.command;
+    const entry: PolicyDefinition = { command };
+    if (definition.description !== undefined) entry.description = definition.description;
+    if (definition.args !== undefined) entry.args = definition.args;
+    if (definition.allowHelp !== undefined) entry.allowHelp = definition.allowHelp;
+    if (definition.autoApprove !== undefined) entry.autoApprove = definition.autoApprove;
+    resolved[name] = entry;
+  }
+  return resolved;
+}
+
+export async function readPoliciesForPath(
+  targetPath: string,
+  startDir = process.cwd()
+): Promise<PolicyConfig | null> {
+  const base = await readPolicies(startDir);
+  const envPolicies = await readEnvironmentPoliciesForPath(targetPath, startDir);
+  if (Object.keys(envPolicies).length === 0) return base;
+  return {
+    policies: {
+      ...(base?.policies || {}),
+      ...envPolicies,
+    },
+  };
+}
+
 export function getEnvironmentPath(name: string, startDir = process.cwd()): string {
   return path.join(getClawminiDir(startDir), 'environments', name);
 }

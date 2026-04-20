@@ -2,7 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { slashPolicies } from './slash-policies.js';
 import { RequestStore } from '../request-store.js';
-import { readPolicies } from '../../shared/workspace.js';
+import { readPoliciesForPath, getWorkspaceRoot } from '../../shared/workspace.js';
+import { resolveAgentDir } from '../api/router-utils.js';
 import { executeRequest, truncateLargeOutput } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
 import { executeDirectMessage } from '../message.js';
@@ -10,6 +11,7 @@ import type { PolicyRequest } from '../../shared/policies.js';
 
 vi.mock('../request-store.js');
 vi.mock('../../shared/workspace.js');
+vi.mock('../api/router-utils.js');
 vi.mock('../policy-utils.js');
 vi.mock('../chats.js');
 vi.mock('../message.js');
@@ -44,7 +46,9 @@ describe('slashPolicies', () => {
     } as any);
 
     vi.mocked(appendMessage).mockResolvedValue(undefined);
-    vi.mocked(readPolicies).mockResolvedValue({
+    vi.mocked(getWorkspaceRoot).mockReturnValue('/mock/workspace');
+    vi.mocked(resolveAgentDir).mockResolvedValue('/mock/workspace/agent-1');
+    vi.mocked(readPoliciesForPath).mockResolvedValue({
       policies: {
         'test-cmd': {
           command: 'echo',
