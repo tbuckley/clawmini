@@ -552,9 +552,55 @@ export function resolvePolicies(
   return { policies: resolved };
 }
 
-export async function readPolicies(startDir = process.cwd()): Promise<PolicyConfig | null> {
+async function readBasePolicies(startDir = process.cwd()): Promise<PolicyConfig | null> {
   const file = await readPoliciesFile(startDir);
   return resolvePolicies(file, getClawminiDir(startDir));
+}
+
+// Resolves env-scoped policies for the active environment at `targetPath`.
+// Relative `command` paths are resolved against the environment directory so
+// the policy points at a real on-disk script no matter where it runs.
+export async function readEnvironmentPoliciesForPath(
+  targetPath: string,
+  startDir = process.cwd()
+): Promise<Record<string, PolicyDefinition>> {
+  const envInfo = await getActiveEnvironmentInfo(targetPath, startDir);
+  if (!envInfo) return {};
+
+  const envConfig = await readEnvironment(envInfo.name, startDir);
+  if (!envConfig?.policies) return {};
+
+  const envDir = getEnvironmentPath(envInfo.name, startDir);
+  const resolved: Record<string, PolicyDefinition> = {};
+  for (const [name, definition] of Object.entries(envConfig.policies)) {
+    const command =
+      definition.command.startsWith('./') || definition.command.startsWith('../')
+        ? path.resolve(envDir, definition.command)
+        : definition.command;
+    // Spread so new PolicyDefinition fields flow through automatically. Zod's
+    // .optional() types include `undefined`, which exactOptionalPropertyTypes
+    // disallows — strip those entries before assigning.
+    const entries = Object.entries({ ...definition, command }).filter(
+      ([, value]) => value !== undefined
+    );
+    resolved[name] = Object.fromEntries(entries) as unknown as PolicyDefinition;
+  }
+  return resolved;
+}
+
+export async function readPoliciesForPath(
+  targetPath: string,
+  startDir = process.cwd()
+): Promise<PolicyConfig | null> {
+  const base = await readBasePolicies(startDir);
+  const envPolicies = await readEnvironmentPoliciesForPath(targetPath, startDir);
+  if (Object.keys(envPolicies).length === 0) return base;
+  return {
+    policies: {
+      ...(base?.policies || {}),
+      ...envPolicies,
+    },
+  };
 }
 
 export function getEnvironmentPath(name: string, startDir = process.cwd()): string {
