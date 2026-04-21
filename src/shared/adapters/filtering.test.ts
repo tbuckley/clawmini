@@ -5,7 +5,7 @@ import type { ChatMessage } from '../chats.js';
 describe('shouldDisplayMessage / routeMessage', () => {
   const defaultConfig = {};
 
-  it('hides messages with subagentId if subagent is not explicitly true', () => {
+  it('hides subagent messages from top-level output by default (legacy shouldDisplayMessage)', () => {
     const msg: ChatMessage = {
       id: '1',
       role: 'agent',
@@ -15,7 +15,9 @@ describe('shouldDisplayMessage / routeMessage', () => {
       sessionId: undefined,
     };
     expect(shouldDisplayMessage(msg, defaultConfig)).toBe(false);
-    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'drop' });
+    // routeMessage still surfaces it inside the turn thread — that's where
+    // subagent activity now belongs.
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
   });
 
   it('drops standard user messages without subagentId', () => {
@@ -157,6 +159,57 @@ describe('shouldDisplayMessage / routeMessage', () => {
       sessionId: undefined,
     };
     expect(routeMessage(msg, { filters: { user: true } })).toEqual({ kind: 'top-level' });
+  });
+
+  it('routes subagent tool messages to thread-log even without the subagent filter', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'tool',
+      content: 'ls',
+      messageId: 'mid',
+      name: 'Read',
+      payload: {},
+      subagentId: 'sub-1',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
+  });
+
+  it('routes subagent final replies into the turn thread, not top-level', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'agent',
+      content: 'done',
+      subagentId: 'sub-1',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
+  });
+
+  it('routes subagent prompts (user role with subagentId) into the turn thread', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'user',
+      content: 'research auth flow',
+      subagentId: 'sub-1',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
+  });
+
+  it('surfaces subagent final replies at top-level when subagent filter is true', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'agent',
+      content: 'done',
+      subagentId: 'sub-1',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, { filters: { subagent: true } })).toEqual({ kind: 'top-level' });
   });
 });
 

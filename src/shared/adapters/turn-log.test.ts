@@ -27,7 +27,7 @@ function makeTool(overrides: Partial<ToolMessage> = {}): ToolMessage {
 }
 
 describe('formatTurnLogEntry', () => {
-  it('returns null for UserMessage / AgentReplyMessage', () => {
+  it('returns null for top-level UserMessage / AgentReplyMessage', () => {
     const user: UserMessage = {
       id: '1',
       role: 'user',
@@ -44,6 +44,40 @@ describe('formatTurnLogEntry', () => {
     };
     expect(formatTurnLogEntry(user)).toBeNull();
     expect(formatTurnLogEntry(reply)).toBeNull();
+  });
+
+  it('renders a subagent prompt (user role with subagentId) as a subagent entry', () => {
+    const msg: UserMessage = {
+      id: '1',
+      role: 'user',
+      content: 'research auth flow',
+      timestamp: FIXED_TS,
+      sessionId: 's',
+      subagentId: 'sub-1',
+    };
+    const entry = formatTurnLogEntry(msg);
+    expect(entry).not.toBeNull();
+    expect(entry!.kind).toBe('subagent');
+    expect(entry!.summary).toContain('sub-1');
+    expect(entry!.summary).toContain('research auth flow');
+    expect(entry!.summary).toContain('→');
+  });
+
+  it('renders a subagent reply (agent role with subagentId) as a subagent entry', () => {
+    const msg: AgentReplyMessage = {
+      id: '2',
+      role: 'agent',
+      content: 'found 3 callers',
+      timestamp: FIXED_TS,
+      sessionId: 's',
+      subagentId: 'sub-1',
+    };
+    const entry = formatTurnLogEntry(msg);
+    expect(entry).not.toBeNull();
+    expect(entry!.kind).toBe('subagent');
+    expect(entry!.summary).toContain('sub-1');
+    expect(entry!.summary).toContain('found 3 callers');
+    expect(entry!.summary).toContain('←');
   });
 
   it('formats a ToolMessage', () => {

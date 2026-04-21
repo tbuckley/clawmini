@@ -93,10 +93,13 @@ export function routeMessage(message: ChatMessage, config: FilteringConfig): Des
     if (overrides['subagent'] === true) {
       return defaultDest.kind === 'drop' ? { kind: 'top-level' } : defaultDest;
     }
-    if (defaultDest.kind === 'thread-log' || defaultDest.kind === 'thread-message') {
-      return defaultDest;
-    }
-    return { kind: 'drop' };
+    // Everything produced inside a subagent — tool calls, command logs,
+    // status updates, the prompt handed to it, and its final reply — belongs
+    // in the parent turn's activity log. Thread-message (policy cards) is
+    // preserved. Everything else folds into thread-log so the reader can see
+    // what the subagent did.
+    if (defaultDest.kind === 'thread-message') return defaultDest;
+    return { kind: 'thread-log' };
   }
 
   const isStandardAgent =

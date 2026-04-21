@@ -62,6 +62,14 @@ const DEFAULT_THREAD_LOG_OPTS: ThreadLogOptions = {
   condenseStrategy: 'rollover',
 };
 
+/**
+ * Upper bound on the number of `TurnContext` entries held in memory. Async
+ * subagents can outlive their parent turn by minutes, so we keep turn
+ * contexts around past `turnEnded` — late activity still needs somewhere to
+ * land. The LRU cap bounds memory for long-running daemons.
+ */
+const MAX_TURN_CONTEXTS = 64;
+
 function resolveThreadLogOpts(config: GoogleChatConfig): ThreadLogOptions {
   const v = config.visibility?.threadLog;
   return {
@@ -397,6 +405,16 @@ export async function startDaemonToGoogleChatForwarder(
     }
   };
 
+  const evictOldestTurnContextIfFull = () => {
+    while (turnContexts.size >= MAX_TURN_CONTEXTS) {
+      const oldest = turnContexts.keys().next().value;
+      if (!oldest) return;
+      const ctx = turnContexts.get(oldest);
+      if (ctx?.editTimer) clearTimeout(ctx.editTimer);
+      turnContexts.delete(oldest);
+    }
+  };
+
   const handleTurnStarted = async (
     chatId: string,
     turnId: string,
@@ -418,6 +436,8 @@ export async function startDaemonToGoogleChatForwarder(
       ? await resolveInboundByGchatMessageName(space.spaceName, externalRef, startDir)
       : null;
 
+    evictOldestTurnContextIfFull();
+
     const ctx: TurnContext = {
       turnId,
       chatId,
@@ -437,8 +457,11 @@ export async function startDaemonToGoogleChatForwarder(
   const handleTurnEnded = async (turnId: string) => {
     const ctx = turnContexts.get(turnId);
     if (!ctx) return;
+    // Keep the context in the map: async subagents can emit thread-log
+    // events long after the parent's turn ends, and they need to land in
+    // the same log message. Just flush any debounced edits so the on-screen
+    // state matches what's buffered. LRU eviction bounds memory.
     await flushTurnLog(ctx).catch((err) => console.error('Final flush error:', err));
-    turnContexts.delete(turnId);
   };
 
   const startSubscriptionForChat = async (chatId: string) => {

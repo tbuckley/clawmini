@@ -61,7 +61,22 @@ export function formatTurnLogEntry(
   const timestamp = formatTimestamp(message.timestamp);
 
   if (message.role === 'user' || message.role === 'agent') {
-    return null;
+    if (!message.subagentId) return null;
+    // Subagent prompts and final replies are part of the parent turn's
+    // activity: the prompt shows what the subagent was told to do, the reply
+    // shows what it produced. Render them in the log so the reader can follow
+    // the orchestration without switching context.
+    const direction = message.role === 'user' ? '→' : '←';
+    const content = sanitize(message.content);
+    const summary = `${direction} ${message.subagentId}: ${truncate(content, maxToolPreview)}`;
+    return {
+      timestamp,
+      kind: 'subagent',
+      summary,
+      rawLength: content.length,
+      messageRole: message.role,
+      subagentId: message.subagentId,
+    };
   }
 
   if (message.role === 'tool') {
