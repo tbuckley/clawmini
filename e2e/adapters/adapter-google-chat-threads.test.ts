@@ -465,9 +465,9 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
         })
       );
 
-      // `hello-sub completed` is the last status entry that lands in the
-      // activity log, so waiting for it in an `update` payload guarantees
-      // the final debounced flush has fired.
+      // `✅ hello-sub` is the last status entry that lands in the activity
+      // log, so waiting for it in an `update` payload guarantees the final
+      // debounced flush has fired.
       await vi.waitFor(
         () => {
           const last = [...update.mock.calls]
@@ -475,7 +475,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
             .find(([p]) => p.name === 'spaces/snap/messages/log-1');
           expect(last).toBeDefined();
           const text = (last![0].requestBody as { text?: string }).text ?? '';
-          expect(text).toMatch(/hello-sub completed/);
+          expect(text).toMatch(/✅ hello-sub/);
         },
         { timeout: 45000, interval: 500 }
       );
@@ -485,15 +485,16 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
       .reverse()
       .find(([p]) => p.name === 'spaces/snap/messages/log-1')!;
     const rawText = (lastUpdate[0].requestBody as { text?: string }).text ?? '';
-    // Timestamps are wall-clock; subagent state path contains random hex.
+    // Relative timestamps depend on wall-clock scheduling (sleep 5 + flush
+    // debounce drift); normalize to a placeholder for snapshot stability.
     const normalized = rawText
-      .replace(/\b\d{2}:\d{2}:\d{2}\b/g, 'HH:MM:SS')
+      .replace(/^• (?:\d+m)?\d+[ms]/gm, '• Δs')
       .replace(/\/clawmini-e2e-google-chat-threads-[^/\s"]+/g, '/CLAWMINI_DIR');
 
     expect(normalized).toMatchInlineSnapshot(`
-      "• HH:MM:SS  subagent: → hello-sub: sleep 5 && echo hello
-      • HH:MM:SS  subagent: ← hello-sub: [DEBUG] sleep 5 && echo hello: \`\`\` hello \`\`\`
-      • HH:MM:SS  subagent: hello-sub completed"
+      "• Δs  👉 hello-sub: sleep 5 && echo hello
+      • Δs  👈 hello-sub: [DEBUG] sleep 5 && echo hello: \`\`\` hello \`\`\`
+      • Δs  ✅ hello-sub"
     `);
   }, 120000);
 });

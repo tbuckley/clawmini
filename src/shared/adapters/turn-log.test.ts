@@ -21,7 +21,7 @@ function makeTool(overrides: Partial<ToolMessage> = {}): ToolMessage {
     sessionId: 's',
     messageId: 'mid',
     name: 'Read',
-    payload: {},
+    payload: { file_path: 'src/app.ts' },
     ...overrides,
   };
 }
@@ -60,7 +60,7 @@ describe('formatTurnLogEntry', () => {
     expect(entry!.kind).toBe('subagent');
     expect(entry!.summary).toContain('sub-1');
     expect(entry!.summary).toContain('research auth flow');
-    expect(entry!.summary).toContain('→');
+    expect(entry!.summary).toContain('👉');
   });
 
   it('renders a subagent reply (agent role with subagentId) as a subagent entry', () => {
@@ -77,19 +77,44 @@ describe('formatTurnLogEntry', () => {
     expect(entry!.kind).toBe('subagent');
     expect(entry!.summary).toContain('sub-1');
     expect(entry!.summary).toContain('found 3 callers');
-    expect(entry!.summary).toContain('←');
+    expect(entry!.summary).toContain('👈');
   });
 
-  it('formats a ToolMessage', () => {
-    const msg = makeTool({ name: 'Read', content: 'src/app.ts' });
+  it('formats a ToolMessage with a known extractor (emoji replaces verb)', () => {
+    const msg = makeTool({ name: 'Read', payload: { file_path: 'src/app.ts' } });
     const entry = formatTurnLogEntry(msg);
     expect(entry).not.toBeNull();
     expect(entry!.kind).toBe('tool');
-    expect(entry!.summary).toContain('Read');
-    expect(entry!.summary).toContain('src/app.ts');
+    expect(entry!.summary).toBe('📖 src/app.ts');
   });
 
-  it('formats a SubagentStatusMessage', () => {
+  it('falls back to <name>: <json> for unknown tools (no emoji)', () => {
+    const msg = makeTool({ name: 'mystery_tool', payload: { foo: 1, bar: 'two' } });
+    const entry = formatTurnLogEntry(msg)!;
+    expect(entry.summary).toContain('mystery_tool');
+    expect(entry.summary).toContain('"foo"');
+    expect(entry.summary).toContain('"bar"');
+  });
+
+  it('uses a verb-specific emoji for common tools', () => {
+    expect(
+      formatTurnLogEntry(makeTool({ name: 'run_shell_command', payload: { command: 'ls -la' } }))!
+        .summary
+    ).toBe('🧑‍💻 ls -la');
+    expect(
+      formatTurnLogEntry(
+        makeTool({ name: 'activate_skill', payload: { name: 'clawmini-subagents' } })
+      )!.summary
+    ).toBe('📚 clawmini-subagents');
+    expect(
+      formatTurnLogEntry(makeTool({ name: 'Bash', payload: { command: 'echo hi' } }))!.summary
+    ).toBe('🧑‍💻 echo hi');
+    expect(
+      formatTurnLogEntry(makeTool({ name: 'Grep', payload: { pattern: 'TODO' } }))!.summary
+    ).toBe('🔎 TODO');
+  });
+
+  it('formats a SubagentStatusMessage with a sigil', () => {
     const msg: SubagentStatusMessage = {
       id: '1',
       role: 'subagent_status',
@@ -99,14 +124,30 @@ describe('formatTurnLogEntry', () => {
       subagentId: 'sub-1',
       status: 'completed',
     };
-    const entry = formatTurnLogEntry(msg);
-    expect(entry).not.toBeNull();
-    expect(entry!.kind).toBe('subagent');
-    expect(entry!.summary).toContain('sub-1');
-    expect(entry!.summary).toContain('completed');
+    expect(formatTurnLogEntry(msg)!.summary).toBe('✅ sub-1');
+
+    const failed = { ...msg, status: 'failed' as const };
+    expect(formatTurnLogEntry(failed)!.summary).toBe('❌ sub-1');
   });
 
-  it('formats a PolicyRequestMessage', () => {
+  it('shortens UUID subagent ids but leaves human ids alone', () => {
+    const uuid = '5ea7b9ba-5103-40ee-95b6-c90808bbc431';
+    const status: SubagentStatusMessage = {
+      id: '1',
+      role: 'subagent_status',
+      content: '',
+      timestamp: FIXED_TS,
+      sessionId: 's',
+      subagentId: uuid,
+      status: 'completed',
+    };
+    expect(formatTurnLogEntry(status)!.summary).toBe('✅ 5ea7b9ba');
+
+    const human = { ...status, subagentId: 'hello-sub' };
+    expect(formatTurnLogEntry(human)!.summary).toBe('✅ hello-sub');
+  });
+
+  it('formats a PolicyRequestMessage with a status verb', () => {
     const msg: PolicyRequestMessage = {
       id: '1',
       role: 'policy',
@@ -119,10 +160,64 @@ describe('formatTurnLogEntry', () => {
       args: ['-rf', '/tmp/cache'],
       status: 'approved',
     };
-    const entry = formatTurnLogEntry(msg);
-    expect(entry!.kind).toBe('policy');
-    expect(entry!.summary).toContain('approved');
-    expect(entry!.summary).toContain('rm');
+    const entry = formatTurnLogEntry(msg)!;
+    expect(entry.kind).toBe('policy');
+    expect(entry.summary).toBe('policy approved: rm -rf /tmp/cache');
+  });
+
+  it('prefixes subagent-produced tool calls with the subagent marker', () => {
+    // A tool call emitted *inside* a subagent turn. The formatter flags it via
+    // `subagentId`; the renderer then prefixes the entry with 🤖 so the reader
+    // knows the work happened in a delegated turn, not the parent agent's.
+    const parent = formatTurnLogEntry(makeTool({ name: 'Bash', payload: { command: 'ls' } }))!;
+    const child = formatTurnLogEntry(
+      makeTool({
+        name: 'Bash',
+        payload: { command: 'sleep 20' },
+        subagentId: 'sub-1',
+      })
+    )!;
+    // Run both through condenseTurnLog to observe the rendered form.
+    const rendered = condenseTurnLog([parent, child], { maxChars: 500 });
+    expect(rendered.kind).toBe('fits');
+    if (rendered.kind !== 'fits') return;
+    const [parentLine, childLine] = rendered.text.split('\n');
+    expect(parentLine).not.toContain('🤖');
+    expect(parentLine).toContain('🧑‍💻 ls');
+    expect(childLine).toContain('🤖 🧑‍💻 sleep 20');
+  });
+
+  it('does not mark subagent boundary events (prompt/reply/status)', () => {
+    // These kinds already name the subagent via 👉/👈/✅; a second marker is noise.
+    const prompt: UserMessage = {
+      id: 'p',
+      role: 'user',
+      content: 'do it',
+      timestamp: FIXED_TS,
+      sessionId: 's',
+      subagentId: 'sub-1',
+    };
+    const reply: AgentReplyMessage = {
+      id: 'r',
+      role: 'agent',
+      content: 'done',
+      timestamp: FIXED_TS,
+      sessionId: 's',
+      subagentId: 'sub-1',
+    };
+    const status: SubagentStatusMessage = {
+      id: 'st',
+      role: 'subagent_status',
+      content: '',
+      timestamp: FIXED_TS,
+      sessionId: 's',
+      subagentId: 'sub-1',
+      status: 'completed',
+    };
+    const entries = [prompt, reply, status].map((m) => formatTurnLogEntry(m)!);
+    const rendered = condenseTurnLog(entries, { maxChars: 500 });
+    if (rendered.kind !== 'fits') throw new Error('expected fits');
+    expect(rendered.text).not.toContain('🤖');
   });
 
   it('drops CommandLogMessage from the turn log', () => {
@@ -153,24 +248,46 @@ describe('formatTurnLogEntry', () => {
     };
     const entry = formatTurnLogEntry(msg);
     expect(entry!.kind).toBe('system');
-    expect(entry!.summary).toContain('subagent_update');
+    expect(entry!.summary).toBe('subagent_update: stuff');
   });
 
-  it('truncates tool content longer than maxToolPreview', () => {
-    const msg = makeTool({ content: 'x'.repeat(500) });
+  it('truncates tool principal-arg longer than maxToolPreview', () => {
+    const msg = makeTool({ name: 'Bash', payload: { command: 'x'.repeat(500) } });
     const entry = formatTurnLogEntry(msg, { maxToolPreview: 100 })!;
     expect(entry.summary).toContain('[truncated]');
-    // The tool name + parens + content preview should not massively exceed cap.
     expect(entry.summary.length).toBeLessThanOrEqual(200);
     expect(entry.rawLength).toBe(500);
   });
 
-  it('replaces newlines in tool content with spaces', () => {
-    const msg = makeTool({ content: 'line1\nline2\nline3' });
+  it('replaces newlines in tool principal-arg with spaces', () => {
+    const msg = makeTool({ name: 'Bash', payload: { command: 'line1\nline2\nline3' } });
     const entry = formatTurnLogEntry(msg)!;
     expect(entry.summary).not.toContain('\n');
     expect(entry.summary).toContain('line1');
     expect(entry.summary).toContain('line3');
+  });
+
+  it('renders relative timestamps when turnStartedAt is supplied', () => {
+    const start = '2026-04-20T12:04:02.000Z';
+    const make = (offsetMs: number): SubagentStatusMessage => ({
+      id: '1',
+      role: 'subagent_status',
+      content: '',
+      timestamp: new Date(new Date(start).getTime() + offsetMs).toISOString(),
+      sessionId: 's',
+      subagentId: 'sub-1',
+      status: 'completed',
+    });
+    expect(formatTurnLogEntry(make(0), { turnStartedAt: start })!.timestamp).toBe('0s');
+    expect(formatTurnLogEntry(make(5_000), { turnStartedAt: start })!.timestamp).toBe('5s');
+    expect(formatTurnLogEntry(make(60_000), { turnStartedAt: start })!.timestamp).toBe('1m');
+    expect(formatTurnLogEntry(make(125_000), { turnStartedAt: start })!.timestamp).toBe('2m5s');
+  });
+
+  it('falls back to wall-clock timestamps when turnStartedAt is omitted', () => {
+    const msg = makeTool({ payload: { file_path: 'x.md' } });
+    const entry = formatTurnLogEntry(msg)!;
+    expect(entry.timestamp).toMatch(/^\d{2}:\d{2}:\d{2}$/);
   });
 });
 

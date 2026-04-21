@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import type { ChatMessage } from '../chats.js';
 
 export interface TurnLogEntry {
@@ -11,6 +12,11 @@ export interface TurnLogEntry {
 
 export interface FormatOpts {
   maxToolPreview?: number;
+  /**
+   * Reference time for rendering relative timestamps (e.g. `0s`, `1m5s`).
+   * When omitted, timestamps fall back to wall-clock `HH:MM:SS`.
+   */
+  turnStartedAt?: string;
 }
 
 export type CondenseStrategy = 'rollover' | 'drop-earliest' | 'aggressive-truncate' | 'hybrid';
@@ -33,10 +39,122 @@ function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
 
-function formatTimestamp(iso: string): string {
+function formatRelative(deltaMs: number): string {
+  const sec = Math.max(0, Math.floor(deltaMs / 1000));
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s === 0 ? `${m}m` : `${m}m${s}s`;
+}
+
+function formatTimestamp(iso: string, turnStartedAt?: string): string {
+  if (turnStartedAt) {
+    const start = new Date(turnStartedAt).getTime();
+    const now = iso ? new Date(iso).getTime() : Date.now();
+    if (!Number.isNaN(start) && !Number.isNaN(now)) {
+      return formatRelative(now - start);
+    }
+  }
   const d = iso ? new Date(iso) : new Date();
   const valid = !Number.isNaN(d.getTime()) ? d : new Date();
   return `${pad2(valid.getHours())}:${pad2(valid.getMinutes())}:${pad2(valid.getSeconds())}`;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function shortSubagentId(id: string): string {
+  // UUIDs are visual noise; the first hex segment is enough to disambiguate.
+  // User-supplied ids (e.g. `hello-sub`) are typically short already.
+  return UUID_RE.test(id) ? id.slice(0, 8) : id;
+}
+
+interface ToolPrincipal {
+  verb: string;
+  arg: string;
+}
+
+/**
+ * Extract a (verb, principal-arg) pair from a tool message so the turn log
+ * can render `read: foo.md` instead of `read_file({ "file_path": "foo.md" })`.
+ * Unknown tool names fall back to `<name>: <stringified-payload>` so we don't
+ * silently lose information.
+ */
+function extractToolPrincipal(name: string, payload: unknown): ToolPrincipal {
+  const p = (payload ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (v == null ? '' : String(v));
+
+  switch (name) {
+    case 'read_file':
+    case 'Read':
+      return { verb: 'read', arg: str(p.file_path ?? p.path) };
+    case 'write_file':
+    case 'create_file':
+    case 'Write':
+      return { verb: 'write', arg: str(p.file_path ?? p.path) };
+    case 'edit_file':
+    case 'Edit':
+      return { verb: 'edit', arg: str(p.file_path ?? p.path) };
+    case 'run_shell_command':
+    case 'shell':
+    case 'Bash':
+      return { verb: 'shell', arg: str(p.command) };
+    case 'activate_skill':
+    case 'Skill':
+      return { verb: 'skill', arg: str(p.name ?? p.skill) };
+    case 'glob':
+    case 'Glob':
+      return { verb: 'glob', arg: str(p.pattern) };
+    case 'grep':
+    case 'Grep':
+      return { verb: 'grep', arg: str(p.pattern) };
+    case 'web_fetch':
+    case 'WebFetch':
+      return { verb: 'fetch', arg: str(p.url) };
+  }
+
+  const arg = payload === undefined || payload === null ? '' : JSON.stringify(payload);
+  return { verb: name, arg };
+}
+
+function statusSigil(status: 'completed' | 'failed'): string {
+  return status === 'completed' ? '✅' : '❌';
+}
+
+/** Emoji for messages crossing the subagent boundary. */
+const SUBAGENT_TO = '👉';
+const SUBAGENT_FROM = '👈';
+
+/**
+ * Emoji that stands in for a known tool verb. When present, it replaces the
+ * verb word entirely (`🐚 sleep 20` instead of `shell: sleep 20`). Unknown
+ * tools fall through to the `<name>: <arg>` form, preserving accessibility.
+ */
+const VERB_EMOJI: Record<string, string> = {
+  read: '📖',
+  write: '✍️',
+  edit: '✏️',
+  shell: '🧑‍💻',
+  skill: '📚',
+  glob: '📁',
+  grep: '🔎',
+  fetch: '🌐',
+};
+
+const SUBAGENT_MARKER = '🤖';
+
+/**
+ * Entries produced *inside* a subagent (a tool call, policy, system event
+ * with `subagentId` set) need a marker so the reader knows the activity
+ * happened inside the delegated turn. Boundary events (prompt, reply, status)
+ * already name the subagent via 👉/👈/✅, so they're excluded.
+ */
+function needsSubagentMarker(entry: TurnLogEntry): boolean {
+  if (!entry.subagentId) return false;
+  return (
+    entry.messageRole !== 'user' &&
+    entry.messageRole !== 'agent' &&
+    entry.messageRole !== 'subagent_status'
+  );
 }
 
 function truncate(s: string, max: number): string {
@@ -49,8 +167,9 @@ function sanitize(s: string): string {
   return s.replace(/\s*\r?\n\s*/g, ' ').trim();
 }
 
-function renderKind(entry: TurnLogEntry): string {
-  return `• ${entry.timestamp}  ${entry.kind}: ${entry.summary}`;
+function renderEntry(entry: TurnLogEntry): string {
+  const prefix = needsSubagentMarker(entry) ? `${SUBAGENT_MARKER} ` : '';
+  return `• ${entry.timestamp}  ${prefix}${entry.summary}`;
 }
 
 export function formatTurnLogEntry(
@@ -58,7 +177,7 @@ export function formatTurnLogEntry(
   opts: FormatOpts = {}
 ): TurnLogEntry | null {
   const maxToolPreview = opts.maxToolPreview ?? DEFAULT_MAX_TOOL_PREVIEW;
-  const timestamp = formatTimestamp(message.timestamp);
+  const timestamp = formatTimestamp(message.timestamp, opts.turnStartedAt);
 
   if (message.role === 'user' || message.role === 'agent') {
     if (!message.subagentId) return null;
@@ -66,9 +185,10 @@ export function formatTurnLogEntry(
     // activity: the prompt shows what the subagent was told to do, the reply
     // shows what it produced. Render them in the log so the reader can follow
     // the orchestration without switching context.
-    const direction = message.role === 'user' ? '→' : '←';
+    const direction = message.role === 'user' ? SUBAGENT_TO : SUBAGENT_FROM;
     const content = sanitize(message.content);
-    const summary = `${direction} ${message.subagentId}: ${truncate(content, maxToolPreview)}`;
+    const id = shortSubagentId(message.subagentId);
+    const summary = `${direction} ${id}: ${truncate(content, maxToolPreview)}`;
     return {
       timestamp,
       kind: 'subagent',
@@ -80,15 +200,21 @@ export function formatTurnLogEntry(
   }
 
   if (message.role === 'tool') {
-    const nameSuffix = sanitize(message.content);
-    const rawLength = nameSuffix.length;
-    const preview = truncate(nameSuffix, maxToolPreview);
-    const summary = preview ? `${message.name}(${preview})` : message.name;
+    const { verb, arg } = extractToolPrincipal(message.name, message.payload);
+    const cleanArg = sanitize(arg);
+    const emoji = VERB_EMOJI[verb];
+    const argPreview = cleanArg ? truncate(cleanArg, maxToolPreview) : '';
+    let summary: string;
+    if (emoji) {
+      summary = argPreview ? `${emoji} ${argPreview}` : emoji;
+    } else {
+      summary = argPreview ? `${verb}: ${argPreview}` : verb;
+    }
     const entry: TurnLogEntry = {
       timestamp,
       kind: 'tool',
       summary,
-      rawLength,
+      rawLength: cleanArg.length,
       messageRole: message.role,
     };
     if (message.subagentId) entry.subagentId = message.subagentId;
@@ -96,7 +222,8 @@ export function formatTurnLogEntry(
   }
 
   if (message.role === 'subagent_status') {
-    const summary = `${message.subagentId} ${message.status}`;
+    const id = shortSubagentId(message.subagentId);
+    const summary = `${statusSigil(message.status)} ${id}`;
     const entry: TurnLogEntry = {
       timestamp,
       kind: 'subagent',
@@ -109,7 +236,8 @@ export function formatTurnLogEntry(
   }
 
   if (message.role === 'policy') {
-    const summary = `${message.status} ${message.commandName} ${message.args.join(' ')}`.trim();
+    const body = `${message.commandName} ${message.args.join(' ')}`.trim();
+    const summary = `policy ${message.status}: ${body}`;
     const entry: TurnLogEntry = {
       timestamp,
       kind: 'policy',
@@ -122,8 +250,8 @@ export function formatTurnLogEntry(
   }
 
   if (message.role === 'system') {
-    const content = sanitize(message.content || message.event || '');
-    const summary = `${message.event}${content ? ': ' + content : ''}`;
+    const content = sanitize(message.content || '');
+    const summary = content ? `${message.event}: ${content}` : message.event;
     const entry: TurnLogEntry = {
       timestamp,
       kind: 'system',
@@ -144,10 +272,11 @@ export function formatTurnLogEntry(
 
   if (message.role === 'legacy_log') {
     const content = sanitize(message.content);
+    const summary = content ? `log: ${content}` : 'log';
     const entry: TurnLogEntry = {
       timestamp,
       kind: 'system',
-      summary: truncate(content, maxToolPreview),
+      summary: truncate(summary, maxToolPreview),
       rawLength: content.length,
       messageRole: message.role,
     };
@@ -159,7 +288,7 @@ export function formatTurnLogEntry(
 }
 
 function joinLines(entries: TurnLogEntry[]): string {
-  return entries.map(renderKind).join('\n');
+  return entries.map(renderEntry).join('\n');
 }
 
 function reTruncateSummary(entry: TurnLogEntry, cap: number): TurnLogEntry {
@@ -177,7 +306,7 @@ function fitRollover(entries: TurnLogEntry[], maxChars: number): CondenseResult 
   const kept: TurnLogEntry[] = [];
   let runningLength = 0;
   for (let i = 0; i < entries.length; i++) {
-    const line = renderKind(entries[i]!);
+    const line = renderEntry(entries[i]!);
     const next = runningLength === 0 ? line.length : runningLength + 1 + line.length;
     if (next > budget) {
       const carryEntries = entries.slice(i);
@@ -209,7 +338,7 @@ function fitDropEarliest(entries: TurnLogEntry[], maxChars: number): CondenseRes
   let runningLength = 0;
 
   for (let i = entries.length - 1; i >= 0; i--) {
-    const line = renderKind(entries[i]!);
+    const line = renderEntry(entries[i]!);
     const marker = DROPPED_MARKER(dropped + i);
     const reserve = i > 0 ? marker.length + 1 : 0;
     const next =

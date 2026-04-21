@@ -53,6 +53,11 @@ interface TurnContext {
   editTimer: NodeJS.Timeout | undefined;
   degraded: boolean;
   threadsDisabled: boolean;
+  /**
+   * Wall-clock timestamp of the turnStarted event; used to render relative
+   * timestamps in the activity log (`0s`, `5s`, `1m5s`).
+   */
+  startedAt: string;
 }
 
 const DEFAULT_THREAD_LOG_OPTS: ThreadLogOptions = {
@@ -359,6 +364,7 @@ export async function startDaemonToGoogleChatForwarder(
       }
       const entry = formatTurnLogEntry(message, {
         maxToolPreview: threadLogOpts.maxToolPreview,
+        turnStartedAt: ctx.startedAt,
       });
       if (!entry) return;
       ctx.entries.push(entry);
@@ -450,6 +456,7 @@ export async function startDaemonToGoogleChatForwarder(
       editTimer: undefined,
       degraded: false,
       threadsDisabled: space.threadsDisabled,
+      startedAt: new Date().toISOString(),
     };
     turnContexts.set(turnId, ctx);
   };
