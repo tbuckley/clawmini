@@ -125,6 +125,15 @@ export function routeMessage(message: ChatMessage, config: FilteringConfig): Des
 }
 
 export function formatMessage(message: ChatMessage): string {
+  // System-role messages that aren't explicitly re-displayed as user/agent
+  // (e.g. cron-triggered prompts, policy system notes) are posted verbatim
+  // today, which makes them look like either the user or the bot talking.
+  // Tag them so readers can distinguish automated system output from real
+  // conversation. Router auto-replies opt out via displayRole: 'agent'.
+  if (message.role === 'system' && !message.displayRole && !message.subagentId) {
+    return `[SYSTEM] ${message.content}`;
+  }
+
   if (!message.subagentId) {
     return message.content;
   }

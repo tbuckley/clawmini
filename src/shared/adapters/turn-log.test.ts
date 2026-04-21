@@ -335,6 +335,23 @@ describe('condenseTurnLog', () => {
     }
   });
 
+  it('drop-earliest respects maxChars across marker digit-count boundaries', () => {
+    // Regression: the budget used to reserve space for DROPPED_MARKER(i) but
+    // emit DROPPED_MARKER(i+1). With ≥10 dropped entries the marker width
+    // grows one digit, which could push the final string over maxChars.
+    // Uniformly-sized entries force many drops at various digit boundaries.
+    const entries = Array.from({ length: 120 }, (_, i) =>
+      mkEntry(`line-${String(i).padStart(3, '0')}`)
+    );
+    for (const maxChars of [80, 120, 200, 500, 1000]) {
+      const result = condenseTurnLog(entries, { maxChars, strategy: 'drop-earliest' });
+      expect(result.kind).toBe('fits');
+      if (result.kind === 'fits') {
+        expect(result.text.length).toBeLessThanOrEqual(maxChars);
+      }
+    }
+  });
+
   it('aggressive-truncate strategy: shortens per-entry summaries to fit', () => {
     const entries = Array.from({ length: 5 }, (_, i) =>
       mkEntry('Y'.repeat(300) + ` #${i}`, { rawLength: 305 })

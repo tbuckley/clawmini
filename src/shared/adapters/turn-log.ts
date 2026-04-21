@@ -309,15 +309,19 @@ function fitRollover(entries: TurnLogEntry[], maxChars: number): CondenseResult 
     const line = renderEntry(entries[i]!);
     const next = runningLength === 0 ? line.length : runningLength + 1 + line.length;
     if (next > budget) {
-      const carryEntries = entries.slice(i);
       if (kept.length === 0) {
-        // Single entry too large for one message — emit just the marker and carry all.
+        // Single entry's line is larger than the per-message budget: hard-
+        // truncate its rendered form so we don't get stuck in a "same carry"
+        // rollover loop. The continuation marker is baked into the truncated
+        // text rather than appended, so the reader still sees the `…` signal.
+        const truncatedLine = truncate(line, maxChars);
         return {
           kind: 'rollover',
-          finalText: ROLLOVER_MARKER,
-          carryEntries,
+          finalText: truncatedLine,
+          carryEntries: entries.slice(i + 1),
         };
       }
+      const carryEntries = entries.slice(i);
       const finalText = `${joinLines(kept)}\n${ROLLOVER_MARKER}`;
       return { kind: 'rollover', finalText, carryEntries };
     }
@@ -333,14 +337,20 @@ function fitDropEarliest(entries: TurnLogEntry[], maxChars: number): CondenseRes
   const fullText = joinLines(entries);
   if (fullText.length <= maxChars) return { kind: 'fits', text: fullText };
 
+  // Reserve enough space for the largest possible marker up-front. The marker's
+  // digit count monotonically grows with the number of dropped entries, so
+  // `DROPPED_MARKER(entries.length)` is the worst case we'd ever emit. Reserving
+  // this fixed amount (whenever there are earlier entries left to drop) removes
+  // the off-by-one between the reserved-for and actually-emitted marker widths.
+  const maxMarkerLen = DROPPED_MARKER(entries.length).length + 1;
+
   const kept: TurnLogEntry[] = [];
   let dropped = 0;
   let runningLength = 0;
 
   for (let i = entries.length - 1; i >= 0; i--) {
     const line = renderEntry(entries[i]!);
-    const marker = DROPPED_MARKER(dropped + i);
-    const reserve = i > 0 ? marker.length + 1 : 0;
+    const reserve = i > 0 ? maxMarkerLen : 0;
     const next =
       runningLength === 0 ? line.length + reserve : runningLength + 1 + line.length + reserve;
     if (next > maxChars) {

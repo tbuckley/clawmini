@@ -248,4 +248,49 @@ describe('formatMessage', () => {
     };
     expect(formatMessage(msg)).toBe('[From:sub1]\ndone');
   });
+
+  it('prepends [SYSTEM] for system-role messages with no displayRole', () => {
+    // Cron-triggered prompts and similar auto-generated system output go out
+    // top-level today; without the tag they look like either the user or the
+    // bot talking.
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'system',
+      content: 'This chat session has ended.',
+      event: 'cron',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(formatMessage(msg)).toBe('[SYSTEM] This chat session has ended.');
+  });
+
+  it('does not prefix [SYSTEM] when displayRole is set (e.g. router auto-reply)', () => {
+    // Router auto-replies opt into being rendered as agent output. Tagging
+    // them [SYSTEM] would mislabel them.
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'system',
+      content: 'Starting a fresh session...',
+      event: 'router',
+      displayRole: 'agent',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(formatMessage(msg)).toBe('Starting a fresh session...');
+  });
+
+  it('does not prefix [SYSTEM] for system messages from subagents', () => {
+    // Subagent output already gets [From:<id>]; a [SYSTEM] on top would be
+    // noisy and incorrect (the subagent is the speaker, not the system).
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'system',
+      content: 'internal note',
+      event: 'subagent_update',
+      subagentId: 'sub1',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(formatMessage(msg)).toBe('[From:sub1]\ninternal note');
+  });
 });

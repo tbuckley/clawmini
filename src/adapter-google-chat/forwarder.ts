@@ -51,6 +51,13 @@ interface TurnContext {
   activityLogMessageName: string | undefined;
   entries: TurnLogEntry[];
   editTimer: NodeJS.Timeout | undefined;
+  /**
+   * True while a `flushTurnLog` call for this ctx is awaiting the GChat API.
+   * Concurrent callers set `flushRequested` instead of starting a second
+   * flush; the active flush re-runs when it sees the flag.
+   */
+  flushing: boolean;
+  flushRequested: boolean;
   degraded: boolean;
   threadsDisabled: boolean;
   /**
@@ -122,6 +129,23 @@ export async function startDaemonToGoogleChatForwarder(
     { unsubscribe: () => void; turnSub?: { unsubscribe: () => void } }
   >();
   const turnContexts = new Map<string, TurnContext>();
+  /**
+   * When a turn has no inbound-user anchor (cron, subagent completion, any
+   * proactive turn), its first top-level post implicitly creates a GChat
+   * thread. Record `daemonMessageId -> gchatThreadName` here so a late
+   * `turnStarted` event can still resolve the anchor. LRU-bounded to keep
+   * memory predictable on long-running daemons.
+   */
+  const proactiveAnchors = new Map<string, string>();
+  const MAX_PROACTIVE_ANCHORS = 64;
+  const recordProactiveAnchor = (daemonMessageId: string, threadName: string) => {
+    while (proactiveAnchors.size >= MAX_PROACTIVE_ANCHORS) {
+      const oldest = proactiveAnchors.keys().next().value;
+      if (!oldest) break;
+      proactiveAnchors.delete(oldest);
+    }
+    proactiveAnchors.set(daemonMessageId, threadName);
+  };
   let currentLastSyncedMessageIds =
     (await readGoogleChatState(startDir)).lastSyncedMessageIds || {};
 
@@ -138,33 +162,49 @@ export async function startDaemonToGoogleChatForwarder(
     );
   };
 
+  /**
+   * Post a top-level message (no `thread` field; GChat auto-creates a fresh
+   * thread). Returns the newly-created thread's `name` so callers can anchor
+   * subsequent threaded replies on it — used to thread activity under
+   * proactive turns (cron, subagent_update) that have no inbound user
+   * message to anchor on.
+   */
   const postTopLevel = async (
     spaceName: string,
     text: string,
     cardsV2?: ReturnType<typeof buildPolicyCard>
-  ): Promise<void> => {
+  ): Promise<{ threadName: string | undefined }> => {
     const chatApi = await getChatApi();
+    const extractThread = (res: unknown): string | undefined => {
+      const data =
+        (res as { data?: { thread?: { name?: string } } }).data ??
+        (res as { thread?: { name?: string } });
+      return data?.thread?.name ?? undefined;
+    };
     if (cardsV2 && cardsV2.length > 0) {
-      await chatApi.spaces.messages.create({
+      const res = await chatApi.spaces.messages.create({
         parent: spaceName,
         requestBody: { text: text || '', cardsV2 },
       });
-      return;
+      return { threadName: extractThread(res) };
     }
     if (text.length > 4000) {
       const chunks = chunkString(text, 4000);
+      let firstThread: string | undefined;
       for (const chunk of chunks) {
-        await chatApi.spaces.messages.create({
+        const res = await chatApi.spaces.messages.create({
           parent: spaceName,
           requestBody: { text: chunk },
         });
+        firstThread ??= extractThread(res);
       }
-      return;
+      return { threadName: firstThread };
     }
-    await chatApi.spaces.messages.create({
+    const res = await chatApi.spaces.messages.create({
       parent: spaceName,
       requestBody: { text },
     });
+    return { threadName: extractThread(res) };
   };
 
   const postThreaded = async (
@@ -230,82 +270,125 @@ export async function startDaemonToGoogleChatForwarder(
       clearTimeout(ctx.editTimer);
       ctx.editTimer = undefined;
     }
-    if (ctx.entries.length === 0) return;
-    if (!ctx.spaceName || !ctx.gchatThreadName) return;
-    if (ctx.degraded) return;
 
-    let result = condenseTurnLog(ctx.entries, {
-      maxChars: threadLogOpts.maxLogMessageChars,
-      strategy: threadLogOpts.condenseStrategy,
-    });
+    // Serialize flushes per-ctx: if a flush is already in flight, request a
+    // follow-up run and bail. The active flush will loop and pick up any
+    // entries that arrived while it was awaiting the GChat API.
+    if (ctx.flushing) {
+      ctx.flushRequested = true;
+      return;
+    }
 
-    const send = async (): Promise<void> => {
-      if (!ctx.activityLogMessageName) {
-        const text = result.kind === 'fits' ? result.text : result.finalText;
-        try {
-          const name = await postThreaded(ctx.spaceName, ctx.gchatThreadName!, text);
-          if (name) ctx.activityLogMessageName = name;
-        } catch (err) {
-          console.error('Failed to open thread-log message, falling back to top-level:', err);
-          ctx.degraded = true;
-          try {
-            await postTopLevel(ctx.spaceName, text);
-          } catch (innerErr) {
-            console.error('Top-level fallback also failed:', innerErr);
-          }
+    ctx.flushing = true;
+    try {
+      do {
+        ctx.flushRequested = false;
+        if (ctx.entries.length === 0) return;
+        if (!ctx.spaceName || !ctx.gchatThreadName) return;
+        // Degraded contexts route at dispatch time (handleMessageForChat), so
+        // we never accumulate entries here; any left over are stale.
+        if (ctx.degraded) {
           ctx.entries = [];
           return;
         }
-      } else {
-        const text = result.kind === 'fits' ? result.text : result.finalText;
-        try {
-          await editThreaded(ctx.activityLogMessageName, text);
-        } catch (err) {
-          const status = (err as { code?: number; status?: number })?.code ?? 0;
-          if (status === 404) {
-            console.warn('Log message 404 on edit — opening a fresh log message.');
-            ctx.activityLogMessageName = undefined;
-            try {
-              const name = await postThreaded(ctx.spaceName, ctx.gchatThreadName!, text);
-              if (name) ctx.activityLogMessageName = name;
-            } catch (innerErr) {
-              console.error('Failed to re-open log message after 404:', innerErr);
-              ctx.activityLogMessageName = undefined;
-            }
-          } else {
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            try {
-              await editThreaded(ctx.activityLogMessageName, text);
-            } catch (retryErr) {
-              console.warn('Edit failed twice — finalizing log message.', retryErr);
-              ctx.activityLogMessageName = undefined;
-            }
-          }
-        }
-      }
-    };
 
-    await send();
-
-    // On rollover, the finalized message is sealed; the carry-over entries
-    // seed a brand-new activity-log message. Otherwise keep `entries` intact
-    // so the next debounced edit re-renders the full history plus new events,
-    // rather than overwriting the message with only the latest entry.
-    if (result.kind === 'rollover') {
-      ctx.entries = result.carryEntries.slice();
-      ctx.activityLogMessageName = undefined;
-      if (ctx.entries.length > 0) {
-        result = condenseTurnLog(ctx.entries, {
+        let result = condenseTurnLog(ctx.entries, {
           maxChars: threadLogOpts.maxLogMessageChars,
           strategy: threadLogOpts.condenseStrategy,
         });
+
+        const send = async (): Promise<void> => {
+          const text = result.kind === 'fits' ? result.text : result.finalText;
+          if (!ctx.activityLogMessageName) {
+            try {
+              const name = await postThreaded(ctx.spaceName, ctx.gchatThreadName!, text);
+              if (name) ctx.activityLogMessageName = name;
+            } catch (err) {
+              console.error('Failed to open thread-log message, falling back to top-level:', err);
+              ctx.degraded = true;
+              // Flush the buffered entries as a single top-level post so the
+              // user sees the activity that triggered thread creation.
+              try {
+                await postTopLevel(ctx.spaceName, text);
+              } catch (innerErr) {
+                console.error('Top-level fallback also failed:', innerErr);
+              }
+              ctx.entries = [];
+              return;
+            }
+          } else {
+            try {
+              await editThreaded(ctx.activityLogMessageName, text);
+            } catch (err) {
+              const status = (err as { code?: number; status?: number })?.code ?? 0;
+              if (status === 404) {
+                console.warn('Log message 404 on edit — opening a fresh log message.');
+                ctx.activityLogMessageName = undefined;
+                try {
+                  const name = await postThreaded(ctx.spaceName, ctx.gchatThreadName!, text);
+                  if (name) ctx.activityLogMessageName = name;
+                } catch (innerErr) {
+                  console.error('Failed to re-open log message after 404:', innerErr);
+                  ctx.activityLogMessageName = undefined;
+                }
+              } else {
+                await new Promise((resolve) => setTimeout(resolve, 500));
+                try {
+                  await editThreaded(ctx.activityLogMessageName, text);
+                } catch (retryErr) {
+                  console.warn('Edit failed twice — finalizing log message.', retryErr);
+                  ctx.activityLogMessageName = undefined;
+                }
+              }
+            }
+          }
+        };
+
         await send();
-      }
+
+        // On rollover, the finalized message is sealed; the carry-over entries
+        // seed a brand-new activity-log message. A single turn can rollover
+        // multiple times in one flush (e.g. 3 entries against a tight budget
+        // where each pair overflows), so loop until the carry fits or is
+        // empty. Otherwise keep `entries` intact so the next debounced edit
+        // re-renders the full history plus new events, rather than
+        // overwriting the message with only the latest entry.
+        while (result.kind === 'rollover') {
+          const prevLen = ctx.entries.length;
+          ctx.entries = result.carryEntries.slice();
+          ctx.activityLogMessageName = undefined;
+          if (ctx.entries.length === 0) break;
+          // Degenerate case: a single entry's rendered line is itself larger
+          // than the per-message budget. The condenser already emitted the
+          // rollover marker; drop the stuck head so we can make progress on
+          // the rest rather than spin the flush loop forever.
+          if (ctx.entries.length >= prevLen) {
+            console.warn(
+              `Turn-log entry larger than maxLogMessageChars — dropping head for turn ${ctx.turnId}`
+            );
+            ctx.entries = ctx.entries.slice(1);
+            if (ctx.entries.length === 0) break;
+          }
+          result = condenseTurnLog(ctx.entries, {
+            maxChars: threadLogOpts.maxLogMessageChars,
+            strategy: threadLogOpts.condenseStrategy,
+          });
+          await send();
+        }
+      } while (ctx.flushRequested && ctx.entries.length > 0 && !ctx.degraded);
+    } finally {
+      ctx.flushing = false;
     }
   };
 
   const scheduleFlush = (ctx: TurnContext) => {
     if (ctx.editTimer) return;
+    // A flush is already in flight: it will loop and re-read `entries`. Just
+    // set the request flag; no timer needed.
+    if (ctx.flushing) {
+      ctx.flushRequested = true;
+      return;
+    }
     ctx.editTimer = setTimeout(() => {
       ctx.editTimer = undefined;
       flushTurnLog(ctx).catch((err) => console.error('Flush error:', err));
@@ -353,6 +436,25 @@ export async function startDaemonToGoogleChatForwarder(
     }
 
     if (effective.kind === 'thread-log') {
+      // Degraded: thread-log create failed earlier in this turn. Keep
+      // activity visible by rendering each entry as its own top-level
+      // message instead of silently buffering it into a thread that was
+      // never opened.
+      if (ctx?.degraded) {
+        const entry = formatTurnLogEntry(message, {
+          maxToolPreview: threadLogOpts.maxToolPreview,
+          turnStartedAt: ctx.startedAt,
+        });
+        if (!entry) return;
+        const rendered = condenseTurnLog([entry], { maxChars: 4000 });
+        if (rendered.kind !== 'fits' || !rendered.text) return;
+        try {
+          await postTopLevel(space.spaceName, rendered.text);
+        } catch (err) {
+          console.error('Degraded thread-log top-level post failed:', err);
+        }
+        return;
+      }
       if (!ctx?.gchatThreadName) {
         // No turn context (turn events may have been missed, adapter restart,
         // or subagent-sourced message without propagated turnId). Drop silently
@@ -405,7 +507,22 @@ export async function startDaemonToGoogleChatForwarder(
         }
       }
 
-      await postTopLevel(space.spaceName, text);
+      const { threadName: createdThread } = await postTopLevel(space.spaceName, text);
+
+      // If this post belongs to a turn that currently has no anchor, treat it
+      // as the implicit root: subsequent thread-log events for the same turn
+      // will be posted into the GChat thread that this top-level message just
+      // created. Covers cron-triggered and other proactive turns that have no
+      // inbound user message to anchor on.
+      if (createdThread && message.turnId) {
+        if (ctx && !ctx.gchatThreadName) {
+          ctx.gchatThreadName = createdThread;
+        } else if (!ctx) {
+          // turnStarted hasn't arrived yet — cache the mapping so it picks
+          // up the anchor when it does.
+          recordProactiveAnchor(message.id, createdThread);
+        }
+      }
     } catch (err) {
       console.error('Failed to send message to Google Chat:', err);
     }
@@ -436,11 +553,14 @@ export async function startDaemonToGoogleChatForwarder(
     // The adapter sent `externalRef` as the GChat message.name of the inbound
     // that triggered this turn, so we look up the thread anchor directly
     // rather than guessing via FIFO pairing. Turns with no externalRef
-    // (proactive crons, CLI messages) get no thread anchor and thread-log
-    // events are dropped.
+    // (proactive crons, CLI messages) fall back to the thread created by
+    // their first top-level post — recorded in `proactiveAnchors` — so
+    // subsequent activity can still anchor into the right thread.
     const entry = externalRef
       ? await resolveInboundByGchatMessageName(space.spaceName, externalRef, startDir)
       : null;
+    const proactiveThread = entry ? undefined : proactiveAnchors.get(rootMessageId);
+    if (proactiveThread) proactiveAnchors.delete(rootMessageId);
 
     evictOldestTurnContextIfFull();
 
@@ -450,10 +570,12 @@ export async function startDaemonToGoogleChatForwarder(
       spaceName: space.spaceName,
       rootDaemonMessageId: rootMessageId,
       rootGchatMessageName: entry?.gchatMessageName,
-      gchatThreadName: entry?.gchatThreadName,
+      gchatThreadName: entry?.gchatThreadName ?? proactiveThread,
       activityLogMessageName: undefined,
       entries: [],
       editTimer: undefined,
+      flushing: false,
+      flushRequested: false,
       degraded: false,
       threadsDisabled: space.threadsDisabled,
       startedAt: new Date().toISOString(),
