@@ -5,6 +5,7 @@ import { TRPCError } from '@trpc/server';
 import { pathIsInsideDir } from '../../shared/utils/fs.js';
 import { on } from 'node:events';
 import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, DAEMON_EVENT_TYPING } from '../events.js';
+import { waitForTurns } from './turns-router.js';
 import {
   getSettingsPath,
   readChatSettings,
@@ -39,6 +40,7 @@ export const sendMessage = apiProcedure
         noWait: z.boolean().optional(),
         files: z.array(z.string()).optional(),
         adapter: z.string().optional(),
+        externalRef: z.string().optional(),
       }),
     })
   )
@@ -99,7 +101,16 @@ export const sendMessage = apiProcedure
       message = message ? `${message}\n\n${fileList}` : fileList;
     }
 
-    await handleUserMessage(chatId, message, settings, undefined, noWait, sessionId, agentId);
+    await handleUserMessage(
+      chatId,
+      message,
+      settings,
+      undefined,
+      noWait,
+      sessionId,
+      agentId,
+      input.data.externalRef
+    );
 
     return { success: true };
   });
@@ -225,6 +236,7 @@ export const userRouter = router({
   getMessages,
   waitForMessages,
   waitForTyping,
+  waitForTurns,
   ping,
   shutdown,
   listCronJobs: userListCronJobs,

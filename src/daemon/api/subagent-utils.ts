@@ -24,9 +24,15 @@ export async function executeSubagent(
   sessionId: string,
   prompt: string,
   isAsync: boolean | undefined,
-  parentTokenPayload: { agentId?: string; subagentId?: string; sessionId?: string },
+  parentTokenPayload: {
+    agentId?: string;
+    subagentId?: string;
+    sessionId?: string;
+    turnId?: string;
+  },
   workspaceRoot: string
 ) {
+  const parentTurnId = parentTokenPayload?.turnId;
   try {
     const settings = (await readChatSettings(chatId)) || {};
     const routers = settings.routers ?? [];
@@ -60,7 +66,10 @@ export async function executeSubagent(
       workspaceRoot,
       false, // noWait
       undefined, // userMessageContent
-      subagentId // subagentId
+      subagentId, // subagentId
+      undefined, // systemEvent
+      undefined, // displayRole
+      parentTurnId // parentTurnId — inherit from parent agent's turn
     );
 
     if (taskScheduler.hasTasks(sessionId)) {
@@ -75,7 +84,7 @@ export async function executeSubagent(
       return finalSettings;
     });
 
-    const logger = createChatLogger(chatId, subagentId, sessionId);
+    const logger = createChatLogger(chatId, subagentId, sessionId, parentTurnId);
 
     // Emit debug message to wake up waiters
     await logger.logSubagentStatus({ subagentId, status: 'completed' });
@@ -115,6 +124,7 @@ export async function executeSubagent(
         undefined,
         parentTokenPayload?.subagentId,
         'subagent_update'
+        // no parentTurnId — this starts a fresh turn for the parent
       );
     }
   } catch {
@@ -125,7 +135,7 @@ export async function executeSubagent(
       }
       return errSettings;
     });
-    const logger = createChatLogger(chatId, subagentId, sessionId);
+    const logger = createChatLogger(chatId, subagentId, sessionId, parentTurnId);
     await logger.logSubagentStatus({ subagentId, status: 'failed' });
   }
 }

@@ -15,6 +15,7 @@ export interface BaseMessage {
   timestamp: string;
   subagentId?: string;
   sessionId: string | undefined;
+  turnId?: string;
 }
 
 export interface UserMessage extends BaseMessage {
@@ -71,6 +72,7 @@ export interface SubagentStatusMessage extends BaseMessage {
   role: 'subagent_status';
   subagentId: string;
   status: 'completed' | 'failed';
+  turnId?: string;
 }
 
 export interface LegacyLogMessage extends BaseMessage {

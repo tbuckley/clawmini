@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { executeRouterPipeline, resolveRouters } from './routers.js';
 import type { RouterState } from './routers/types.js';
 import { type ChatSettings, type Settings } from '../shared/config.js';
@@ -7,6 +8,7 @@ import type { Message } from './agent/types.js';
 import { createAgentSession } from './agent/agent-session.js';
 import { createChatLogger } from './agent/chat-logger.js';
 import { taskScheduler } from './agent/task-scheduler.js';
+import { emitTurnStarted, emitTurnEnded } from './events.js';
 
 export { calculateDelay } from './agent/agent-runner.js';
 
@@ -25,9 +27,12 @@ export async function executeDirectMessage(
     | 'subagent_update'
     | 'router'
     | 'other',
-  displayRole?: 'user' | 'agent'
+  displayRole?: 'user' | 'agent',
+  parentTurnId?: string
 ) {
-  const logger = createChatLogger(chatId, subagentId, state.sessionId);
+  const turnId = parentTurnId ?? randomUUID();
+  const emitLifecycle = !parentTurnId;
+  const logger = createChatLogger(chatId, subagentId, state.sessionId, turnId);
 
   let msgId: string;
   if (systemEvent) {
@@ -60,11 +65,13 @@ export async function executeDirectMessage(
     cwd,
     settings,
     logger,
+    turnId,
   });
   let finalMessage: Message = {
     id: state.messageId,
     content: state.message,
     env: state.env ?? {},
+    turnId,
   };
 
   // Process actions
@@ -79,20 +86,35 @@ export async function executeDirectMessage(
     finalMessage = agentSession.interrupt(finalMessage);
   }
 
+  if (emitLifecycle) {
+    emitTurnStarted({
+      chatId,
+      turnId,
+      rootMessageId: msgId,
+      ...(state.externalRef ? { externalRef: state.externalRef } : {}),
+    });
+  }
+
   // Process message
   const taskPromise = agentSession.handleMessage(finalMessage);
 
-  if (!noWait) {
+  const settleTurn = async () => {
     try {
       await taskPromise;
+      if (emitLifecycle) emitTurnEnded({ chatId, turnId, outcome: 'ok' });
     } catch (err) {
+      if (emitLifecycle) emitTurnEnded({ chatId, turnId, outcome: 'error' });
       if (!(err instanceof Error && err.name === 'AbortError')) {
         throw err;
       }
     }
+  };
+
+  if (!noWait) {
+    await settleTurn();
   } else {
-    taskPromise.catch((err) => {
-      if (err.name !== 'AbortError') {
+    settleTurn().catch((err) => {
+      if (err?.name !== 'AbortError') {
         console.error('Task execution error:', err);
       }
     });
@@ -104,7 +126,8 @@ export async function getInitialRouterState(
   message: string,
   chatSettings: Partial<ChatSettings>,
   overrideAgentId?: string,
-  overrideSessionId?: string
+  overrideSessionId?: string,
+  externalRef?: string
 ): Promise<RouterState> {
   const agentId = overrideAgentId ?? chatSettings.defaultAgent ?? 'default';
   const sessionId = overrideSessionId ?? chatSettings.sessions?.[agentId] ?? 'default';
@@ -117,6 +140,7 @@ export async function getInitialRouterState(
     agentId,
     sessionId,
     env: {},
+    ...(externalRef ? { externalRef } : {}),
   };
 }
 
@@ -127,7 +151,8 @@ export async function handleUserMessage(
   cwd: string = process.cwd(),
   noWait: boolean = false,
   sessionId?: string,
-  overrideAgentId?: string
+  overrideAgentId?: string,
+  externalRef?: string
 ): Promise<void> {
   const chatSettings = (await readChatSettings(chatId, cwd)) ?? {};
 
@@ -141,7 +166,8 @@ export async function handleUserMessage(
     message,
     chatSettings,
     overrideAgentId,
-    sessionId
+    sessionId,
+    externalRef
   );
 
   const routers = chatSettings.routers ?? settings?.routers ?? [];

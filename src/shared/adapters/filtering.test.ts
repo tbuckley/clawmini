@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { shouldDisplayMessage, formatMessage } from './filtering.js';
+import { shouldDisplayMessage, routeMessage, formatMessage } from './filtering.js';
 import type { ChatMessage } from '../chats.js';
 
-describe('shouldDisplayMessage', () => {
+describe('shouldDisplayMessage / routeMessage', () => {
   const defaultConfig = {};
 
   it('hides messages with subagentId if subagent is not explicitly true', () => {
@@ -15,9 +15,10 @@ describe('shouldDisplayMessage', () => {
       sessionId: undefined,
     };
     expect(shouldDisplayMessage(msg, defaultConfig)).toBe(false);
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'drop' });
   });
 
-  it('hides standard user messages without subagentId', () => {
+  it('drops standard user messages without subagentId', () => {
     const msg: ChatMessage = {
       id: '1',
       role: 'user',
@@ -26,9 +27,10 @@ describe('shouldDisplayMessage', () => {
       sessionId: undefined,
     };
     expect(shouldDisplayMessage(msg, defaultConfig)).toBe(false);
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'drop' });
   });
 
-  it('displays standard agent messages without subagentId', () => {
+  it('routes standard agent messages to top-level', () => {
     const msg: ChatMessage = {
       id: '1',
       role: 'agent',
@@ -36,10 +38,10 @@ describe('shouldDisplayMessage', () => {
       timestamp: '',
       sessionId: undefined,
     };
-    expect(shouldDisplayMessage(msg, defaultConfig)).toBe(true);
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'top-level' });
   });
 
-  it('hides non-standard messages by default', () => {
+  it('routes command messages to thread-log by default', () => {
     const msg: ChatMessage = {
       id: '1',
       role: 'command',
@@ -53,7 +55,39 @@ describe('shouldDisplayMessage', () => {
       timestamp: '',
       sessionId: undefined,
     };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
+    // Legacy boolean retains old "drop by default" semantics for Discord.
     expect(shouldDisplayMessage(msg, defaultConfig)).toBe(false);
+  });
+
+  it('routes tool messages to thread-log by default', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'tool',
+      content: '',
+      messageId: '123',
+      name: 'Read',
+      payload: {},
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
+  });
+
+  it('routes pending policy messages to thread-message', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'policy',
+      content: '',
+      messageId: '123',
+      requestId: 'req',
+      commandName: 'rm',
+      args: [],
+      status: 'pending',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-message' });
   });
 
   it('displays subagent messages if subagent: true', () => {
@@ -95,6 +129,34 @@ describe('shouldDisplayMessage', () => {
       sessionId: undefined,
     };
     expect(shouldDisplayMessage(msg, { filters: { command: true } })).toBe(true);
+  });
+
+  it('hides a role when filter is explicitly false', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'command',
+      content: 'ls',
+      messageId: '123',
+      command: 'ls',
+      cwd: '.',
+      stdout: '',
+      stderr: '',
+      exitCode: 0,
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(shouldDisplayMessage(msg, { filters: { command: false } })).toBe(false);
+  });
+
+  it('promotes a user-role message to top-level when filter is true', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'user',
+      content: 'hello',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, { filters: { user: true } })).toEqual({ kind: 'top-level' });
   });
 });
 

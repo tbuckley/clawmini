@@ -119,6 +119,7 @@ export const createPolicyRequest = apiProcedure
         timestamp: new Date().toISOString(),
         sessionId: ctx.tokenPayload.sessionId,
         ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
+        ...(ctx.tokenPayload.turnId ? { turnId: ctx.tokenPayload.turnId } : {}),
       };
 
       await appendMessage(chatId, logMsg);
@@ -140,6 +141,7 @@ export const createPolicyRequest = apiProcedure
       timestamp: new Date().toISOString(),
       displayRole: 'agent',
       sessionId: ctx.tokenPayload.sessionId,
+      ...(ctx.tokenPayload.turnId ? { turnId: ctx.tokenPayload.turnId } : {}),
     };
 
     await appendMessage(chatId, logMsg);

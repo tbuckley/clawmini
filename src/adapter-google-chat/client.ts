@@ -12,7 +12,7 @@ import { createUnixSocketFetch } from '../shared/fetch.js';
 import { createUnixSocketEventSource } from '../shared/event-source.js';
 import type { GoogleChatConfig } from './config.js';
 import { isAuthorized, updateGoogleChatConfig } from './config.js';
-import { readGoogleChatState, updateGoogleChatState } from './state.js';
+import { readGoogleChatState, updateGoogleChatState, recordInboundMessage } from './state.js';
 import { downloadAttachment as defaultDownloadAttachment } from './utils.js';
 import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
@@ -480,6 +480,20 @@ export function startGoogleChatIngestion(
         }
       }
 
+      const gchatThreadName: string | undefined =
+        eventMessage?.thread?.name ?? eventMessage?.threadName ?? undefined;
+      if (messageId && gchatThreadName) {
+        try {
+          await recordInboundMessage(
+            spaceName as string,
+            { gchatMessageName: messageId, gchatThreadName },
+            startDir
+          );
+        } catch (err) {
+          console.error('Failed to record inbound message for thread anchoring:', err);
+        }
+      }
+
       await trpc.sendMessage.mutate({
         type: 'send-message',
         client: 'cli',
@@ -489,6 +503,7 @@ export function startGoogleChatIngestion(
           files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
           adapter: 'google-chat',
           noWait: true,
+          ...(messageId ? { externalRef: messageId } : {}),
         },
       });
 

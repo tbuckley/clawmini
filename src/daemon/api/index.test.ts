@@ -171,6 +171,7 @@ describe('Daemon TRPC Router', () => {
         undefined,
         false,
         undefined,
+        undefined,
         undefined
       );
       expect((fs as any).default.mkdir).not.toHaveBeenCalled();

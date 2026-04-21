@@ -56,6 +56,7 @@ export interface Message {
   id: string;
   content: string;
   env: Record<string, string>;
+  turnId?: string;
 }
 
 export interface ExecutionResponse {

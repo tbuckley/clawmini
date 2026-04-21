@@ -4,6 +4,21 @@ import { z } from 'zod';
 import { getClawminiDir } from '../shared/workspace.js';
 import fs from 'node:fs';
 
+export const ThreadVisibilitySchema = z.object({
+  threads: z.boolean().default(true).optional(),
+  threadLog: z
+    .object({
+      maxToolPreview: z.number().default(400).optional(),
+      maxLogMessageChars: z.number().default(3500).optional(),
+      editDebounceMs: z.number().default(1000).optional(),
+      condenseStrategy: z
+        .enum(['rollover', 'drop-earliest', 'aggressive-truncate', 'hybrid'])
+        .default('rollover')
+        .optional(),
+    })
+    .optional(),
+});
+
 export const GoogleChatConfigSchema = z.looseObject({
   projectId: z.string().min(1, 'GCP Project ID is required.'),
   subscriptionName: z.string().min(1, 'Pub/Sub Subscription Name is required.'),
@@ -16,6 +31,7 @@ export const GoogleChatConfigSchema = z.looseObject({
   requireMention: z.boolean().default(false),
   oauthClientId: z.string().optional(),
   oauthClientSecret: z.string().optional(),
+  visibility: ThreadVisibilitySchema.optional(),
 });
 
 export type GoogleChatConfig = z.infer<typeof GoogleChatConfigSchema>;

@@ -3,6 +3,13 @@ import path from 'node:path';
 import { z } from 'zod';
 import { getClawminiDir } from '../shared/workspace.js';
 
+export const RecentInboundEntrySchema = z.object({
+  gchatMessageName: z.string(),
+  gchatThreadName: z.string(),
+  receivedAt: z.string().optional(),
+  daemonMessageId: z.string().optional(),
+});
+
 export const GoogleChatStateSchema = z.object({
   lastSyncedMessageIds: z.record(z.string(), z.string()).optional(),
   channelChatMap: z
@@ -13,6 +20,8 @@ export const GoogleChatStateSchema = z.object({
         subscriptionId: z.string().optional(),
         expirationDate: z.string().optional(),
         requireMention: z.boolean().optional(),
+        threadsDisabled: z.boolean().optional(),
+        recentMessages: z.array(RecentInboundEntrySchema).optional(),
       })
     )
     .optional(),
@@ -21,6 +30,52 @@ export const GoogleChatStateSchema = z.object({
 });
 
 export type GoogleChatState = z.infer<typeof GoogleChatStateSchema>;
+export type RecentInboundEntry = z.infer<typeof RecentInboundEntrySchema>;
+
+export const RECENT_INBOUND_RING_LIMIT = 50;
+
+/**
+ * Append an inbound GChat message to the per-space ring buffer so the
+ * forwarder can later look up the thread anchor for a turn.
+ */
+export async function recordInboundMessage(
+  spaceName: string,
+  entry: { gchatMessageName: string; gchatThreadName: string },
+  startDir = process.cwd()
+): Promise<void> {
+  const now = new Date().toISOString();
+  await updateGoogleChatState((state) => {
+    const map = { ...(state.channelChatMap || {}) };
+    const existing = map[spaceName] || {};
+    const prior = existing.recentMessages ?? [];
+    const next = [
+      ...prior,
+      {
+        gchatMessageName: entry.gchatMessageName,
+        gchatThreadName: entry.gchatThreadName,
+        receivedAt: now,
+      },
+    ].slice(-RECENT_INBOUND_RING_LIMIT);
+    map[spaceName] = { ...existing, recentMessages: next };
+    return { channelChatMap: map };
+  }, startDir);
+}
+
+/**
+ * Look up a ring-buffer entry for `spaceName` by its GChat `message.name`
+ * (which the adapter also passes to the daemon as `externalRef`). Returns
+ * null if no matching entry exists — the turn proceeds without a thread
+ * anchor, and thread-log events for it are dropped with a warning.
+ */
+export async function resolveInboundByGchatMessageName(
+  spaceName: string,
+  gchatMessageName: string,
+  startDir = process.cwd()
+): Promise<RecentInboundEntry | null> {
+  const state = await readGoogleChatState(startDir);
+  const entry = state.channelChatMap?.[spaceName];
+  return entry?.recentMessages?.find((e) => e.gchatMessageName === gchatMessageName) ?? null;
+}
 
 export function getGoogleChatStatePath(startDir = process.cwd()): string {
   return path.join(getClawminiDir(startDir), 'adapters', 'google-chat', 'state.json');

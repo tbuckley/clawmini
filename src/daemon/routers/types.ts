@@ -11,6 +11,7 @@ export interface RouterState {
   env?: Record<string, string>;
   reply?: string;
   action?: 'stop' | 'interrupt' | 'continue';
+  externalRef?: string;
   jobs?: {
     add?: CronJob[];
     remove?: string[];
