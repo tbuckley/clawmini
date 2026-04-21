@@ -43,7 +43,7 @@ describe('shouldDisplayMessage / routeMessage', () => {
     expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'top-level' });
   });
 
-  it('routes command messages to thread-log by default', () => {
+  it('drops command messages by default', () => {
     const msg: ChatMessage = {
       id: '1',
       role: 'command',
@@ -57,8 +57,8 @@ describe('shouldDisplayMessage / routeMessage', () => {
       timestamp: '',
       sessionId: undefined,
     };
-    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
-    // Legacy boolean retains old "drop by default" semantics for Discord.
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'drop' });
+    // Legacy boolean retains the same "drop by default" semantics for Discord.
     expect(shouldDisplayMessage(msg, defaultConfig)).toBe(false);
   });
 

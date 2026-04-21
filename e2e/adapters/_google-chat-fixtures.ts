@@ -292,20 +292,32 @@ export async function runForwarder(
  * Boilerplate for a Google Chat adapter e2e suite: spins up a dedicated
  * TestEnvironment for the suite and resets adapter state between tests.
  *
+ * Pass `{ subagents: true }` to install the `debug-agent` + exported
+ * `clawmini-lite.js` on PATH, so tests can drive thread-log events by spawning
+ * subagents (the echo agent init() installs only produces command + agent_reply
+ * messages, and command messages are dropped from the turn log).
+ *
  * The reset is queued through `updateGoogleChatState` so it runs after any
  * pending writes (e.g. a late `saveLastMessageId` from the prior test's
  * forwarder) — otherwise those writes could resurrect `channelChatMap`
  * entries after the reset.
  */
-export function useGoogleChatAdapterEnv(suiteName: string) {
+export function useGoogleChatAdapterEnv(
+  suiteName: string,
+  options: { subagents?: boolean } = {}
+) {
   const ref: { env: TestEnvironment } = { env: null as unknown as TestEnvironment };
 
   beforeAll(async () => {
     ref.env = new TestEnvironment(suiteName);
     await ref.env.setup();
-    await ref.env.init();
-    await ref.env.up();
-  }, 30000);
+    if (options.subagents) {
+      await ref.env.setupSubagentEnv();
+    } else {
+      await ref.env.init();
+      await ref.env.up();
+    }
+  }, 60000);
 
   afterAll(async () => {
     await ref.env.teardown();

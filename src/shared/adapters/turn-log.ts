@@ -2,7 +2,7 @@ import type { ChatMessage } from '../chats.js';
 
 export interface TurnLogEntry {
   timestamp: string;
-  kind: 'tool' | 'subagent' | 'policy' | 'system' | 'command';
+  kind: 'tool' | 'subagent' | 'policy' | 'system';
   summary: string;
   rawLength: number;
   subagentId?: string;
@@ -136,16 +136,10 @@ export function formatTurnLogEntry(
   }
 
   if (message.role === 'command') {
-    const cmd = sanitize(message.command || message.content || '');
-    const entry: TurnLogEntry = {
-      timestamp,
-      kind: 'command',
-      summary: truncate(cmd, maxToolPreview),
-      rawLength: cmd.length,
-      messageRole: message.role,
-    };
-    if (message.subagentId) entry.subagentId = message.subagentId;
-    return entry;
+    // The raw shell command (usually the agent template wrapping
+    // $CLAW_CLI_MESSAGE) isn't informative to a reader skimming the log;
+    // tool calls and subagent events already describe what the agent did.
+    return null;
   }
 
   if (message.role === 'legacy_log') {

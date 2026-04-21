@@ -54,7 +54,7 @@ function defaultDestinationForRole(message: ChatMessage): Destination {
   if (message.role === 'legacy_log') return { kind: 'top-level' };
   if (message.role === 'tool') return { kind: 'thread-log' };
   if (message.role === 'subagent_status') return { kind: 'thread-log' };
-  if (message.role === 'command') return { kind: 'thread-log' };
+  if (message.role === 'command') return { kind: 'drop' };
   if (message.role === 'policy') {
     return message.status === 'pending' ? { kind: 'thread-message' } : { kind: 'thread-log' };
   }

@@ -20,30 +20,34 @@ import {
  * (pubsub → client → daemon → forwarder) so the GChat `message.name` gets
  * correlated to the daemon turn via `externalRef`, just like in production.
  *
- * The default agent echoes `CLAW_CLI_MESSAGE` into a CommandLogMessage (which
- * routes to `thread-log`) and an AgentReplyMessage (which routes to
- * `top-level`), giving each turn one thread-log entry and one top-level post.
+ * `command` messages are dropped from the turn log, so a plain-echo agent
+ * wouldn't produce any thread-log content. These tests drive the `debug-agent`
+ * with a `clawmini-lite.js subagents spawn` inbound — the emitted
+ * `subagent_status` events route to `thread-log` and give each turn a real
+ * entry to anchor on.
  */
-describe('Google Chat Adapter E2E — threaded activity log', () => {
-  const envRef = useGoogleChatAdapterEnv('e2e-google-chat-threads');
+const SPAWN_COMMAND = (id: string) =>
+  `clawmini-lite.js subagents spawn --id ${id} --async "echo x"`;
+function makeThreadedMessage(opts: {
+  space: string;
+  messageId: string;
+  threadName: string;
+  text: string;
+}) {
+  return makePubsubMessage({
+    type: 'MESSAGE',
+    space: { name: opts.space, type: 'SPACE' },
+    user: { email: 'user@example.com' },
+    message: {
+      name: `${opts.space}/messages/${opts.messageId}`,
+      thread: { name: opts.threadName },
+      text: opts.text,
+    },
+  });
+}
 
-  function makeThreadedMessage(opts: {
-    space: string;
-    messageId: string;
-    threadName: string;
-    text: string;
-  }) {
-    return makePubsubMessage({
-      type: 'MESSAGE',
-      space: { name: opts.space, type: 'SPACE' },
-      user: { email: 'user@example.com' },
-      message: {
-        name: `${opts.space}/messages/${opts.messageId}`,
-        thread: { name: opts.threadName },
-        text: opts.text,
-      },
-    });
-  }
+describe('Google Chat Adapter E2E — threaded activity log', () => {
+  const envRef = useGoogleChatAdapterEnv('e2e-google-chat-threads', { subagents: true });
 
   it('opens a thread anchored on the user thread and edits the log on subsequent events', async () => {
     const { env } = envRef;
@@ -59,7 +63,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
       { channelChatMap: { 'spaces/thr': { chatId: 'gc-threads' } } },
       env.e2eDir
     );
-    await env.addChat('gc-threads');
+    await env.addChat('gc-threads', 'debug-agent');
 
     startGoogleChatIngestion(
       BASE_CONFIG,
@@ -76,14 +80,19 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
           space: 'spaces/thr',
           messageId: 'u1',
           threadName: 'spaces/thr/threads/t1',
-          text: 'hello threads',
+          text: SPAWN_COMMAND('t1-sub'),
         })
       );
 
+      // Main agent's reply lands at top-level; the subagent's status events
+      // land in the thread-log anchored on t1.
       await vi.waitFor(
         () => {
           const reply = create.mock.calls.find(
-            ([p]) => p.requestBody.text === 'hello threads' && !('thread' in p.requestBody)
+            ([p]) =>
+              typeof p.requestBody.text === 'string' &&
+              p.requestBody.text.includes('Subagent spawned successfully with ID: t1-sub') &&
+              !('thread' in p.requestBody)
           );
           expect(reply).toBeDefined();
         },
@@ -112,7 +121,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
         (threaded as unknown as { messageReplyOption?: string }).messageReplyOption
       ).toBe('REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD');
     });
-  }, 45000);
+  }, 60000);
 
   it('routes the final agent reply to top-level, not the thread', async () => {
     const { env } = envRef;
@@ -180,8 +189,13 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
 
     // Register /new as a router so that a bare `/new` message does not spawn
     // an agent turn — mirrors real deployments where /new resets the session
-    // and returns an automatic reply with no agent work.
-    env.writeChatSettings('gc-newcmd', { routers: ['@clawmini/slash-new'] });
+    // and returns an automatic reply with no agent work. The chat's agent is
+    // `debug-agent` so the real turn can spawn a subagent (producing the
+    // subagent_status events that actually anchor the thread log).
+    env.writeChatSettings('gc-newcmd', {
+      routers: ['@clawmini/slash-new'],
+      defaultAgent: 'debug-agent',
+    });
 
     startGoogleChatIngestion(
       BASE_CONFIG,
@@ -210,7 +224,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
           space: 'spaces/newcmd',
           messageId: 'real',
           threadName: 'spaces/newcmd/threads/real-thread',
-          text: 'do work',
+          text: SPAWN_COMMAND('newcmd-sub'),
         })
       );
 
@@ -234,7 +248,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
       );
       expect(anchoredOnSlash).toBeUndefined();
     });
-  }, 45000);
+  }, 60000);
 
   it('falls back to top-level when threadsDisabled is set on the space', async () => {
     const { env } = envRef;
@@ -306,7 +320,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
       { channelChatMap: { 'spaces/dmsp': { chatId: 'gc-dm' } } },
       env.e2eDir
     );
-    await env.addChat('gc-dm');
+    await env.addChat('gc-dm', 'debug-agent');
 
     startGoogleChatIngestion(
       BASE_CONFIG,
@@ -323,7 +337,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
       const dm = makeDmMessage({
         space: 'spaces/dmsp',
         messageId: 'u1',
-        text: 'dm mode',
+        text: SPAWN_COMMAND('dm-sub'),
       });
       // Inject a thread on the DM payload since makeDmMessage doesn't set one.
       const parsed = JSON.parse(dm.data.toString('utf8'));
@@ -335,7 +349,10 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
         () => {
           expect(
             create.mock.calls.find(
-              ([p]) => p.requestBody.text === 'dm mode' && !('thread' in p.requestBody)
+              ([p]) =>
+                typeof p.requestBody.text === 'string' &&
+                p.requestBody.text.includes('Subagent spawned successfully with ID: dm-sub') &&
+                !('thread' in p.requestBody)
             )
           ).toBeDefined();
         },
@@ -354,7 +371,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
         { timeout: 15000 }
       );
     });
-  }, 45000);
+  }, 60000);
 
   it('falls back to top-level when visibility.threads is disabled globally', async () => {
     const { env } = envRef;
@@ -409,4 +426,74 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
       expect(threaded).toHaveLength(0);
     });
   }, 45000);
+
+  it('renders the turn log for a debug-agent subagent spawn', async () => {
+    const { env } = envRef;
+    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
+    const subscription = makeFakeSubscription();
+    const { api, create, update } = makeFakeChatApi();
+
+    // One activity-log message per turn; the forwarder opens it with `create`
+    // and then appends via `update` calls. Returning a stable name keeps the
+    // snapshot deterministic across runs.
+    create.mockImplementation(
+      async () => ({ data: { name: 'spaces/snap/messages/log-1' } }) as unknown as object
+    );
+
+    await updateGoogleChatState(
+      { channelChatMap: { 'spaces/snap': { chatId: 'gc-snap' } } },
+      env.e2eDir
+    );
+    await env.addChat('gc-snap', 'debug-agent');
+
+    startGoogleChatIngestion(
+      BASE_CONFIG,
+      trpc,
+      {},
+      { subscription, chatApi: api, startDir: env.e2eDir }
+    );
+
+    const config = { ...BASE_CONFIG, chatId: 'gc-snap' };
+
+    await runForwarder({ trpc, chatApi: api, startDir: env.e2eDir, config }, async () => {
+      subscription.emitMessage(
+        makeThreadedMessage({
+          space: 'spaces/snap',
+          messageId: 'u1',
+          threadName: 'spaces/snap/threads/t1',
+          text: 'clawmini-lite.js subagents spawn --id hello-sub --async "sleep 5 && echo hello"',
+        })
+      );
+
+      // `hello-sub completed` is the last status entry that lands in the
+      // activity log, so waiting for it in an `update` payload guarantees
+      // the final debounced flush has fired.
+      await vi.waitFor(
+        () => {
+          const last = [...update.mock.calls]
+            .reverse()
+            .find(([p]) => p.name === 'spaces/snap/messages/log-1');
+          expect(last).toBeDefined();
+          const text = (last![0].requestBody as { text?: string }).text ?? '';
+          expect(text).toMatch(/hello-sub completed/);
+        },
+        { timeout: 45000, interval: 500 }
+      );
+    });
+
+    const lastUpdate = [...update.mock.calls]
+      .reverse()
+      .find(([p]) => p.name === 'spaces/snap/messages/log-1')!;
+    const rawText = (lastUpdate[0].requestBody as { text?: string }).text ?? '';
+    // Timestamps are wall-clock; subagent state path contains random hex.
+    const normalized = rawText
+      .replace(/\b\d{2}:\d{2}:\d{2}\b/g, 'HH:MM:SS')
+      .replace(/\/clawmini-e2e-google-chat-threads-[^/\s"]+/g, '/CLAWMINI_DIR');
+
+    expect(normalized).toMatchInlineSnapshot(`
+      "• HH:MM:SS  subagent: → hello-sub: sleep 5 && echo hello
+      • HH:MM:SS  subagent: ← hello-sub: [DEBUG] sleep 5 && echo hello: \`\`\` hello \`\`\`
+      • HH:MM:SS  subagent: hello-sub completed"
+    `);
+  }, 120000);
 });

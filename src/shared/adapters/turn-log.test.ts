@@ -125,7 +125,7 @@ describe('formatTurnLogEntry', () => {
     expect(entry!.summary).toContain('rm');
   });
 
-  it('formats a CommandLogMessage', () => {
+  it('drops CommandLogMessage from the turn log', () => {
     const msg: CommandLogMessage = {
       id: '1',
       role: 'command',
@@ -139,7 +139,7 @@ describe('formatTurnLogEntry', () => {
       stderr: '',
       exitCode: 0,
     };
-    expect(formatTurnLogEntry(msg)!.kind).toBe('command');
+    expect(formatTurnLogEntry(msg)).toBeNull();
   });
 
   it('formats a SystemMessage', () => {
