@@ -82,9 +82,6 @@ vi.mock('./state.js', () => ({
     return Promise.resolve(result);
   },
   getGoogleChatStatePath: vi.fn().mockReturnValue('./.tmp-mock-google/state.json'),
-  resolveInboundByGchatMessageName: vi.fn().mockResolvedValue(null),
-  recordInboundMessage: vi.fn().mockResolvedValue(undefined),
-  RECENT_INBOUND_RING_LIMIT: 50,
 }));
 
 const mockReadState = mockStateDeps.mockReadState;

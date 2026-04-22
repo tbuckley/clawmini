@@ -6,12 +6,8 @@ import type { ChatMessage } from '../shared/chats.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { GoogleChatConfig } from './config.js';
-import {
-  readGoogleChatState,
-  updateGoogleChatState,
-  getGoogleChatStatePath,
-  resolveInboundByGchatMessageName,
-} from './state.js';
+import { readGoogleChatState, updateGoogleChatState, getGoogleChatStatePath } from './state.js';
+import { resolveInbound } from './inbound-cache.js';
 import {
   routeMessage,
   formatMessage,
@@ -75,12 +71,14 @@ const DEFAULT_THREAD_LOG_OPTS: ThreadLogOptions = {
 };
 
 /**
- * Upper bound on the number of `TurnContext` entries held in memory. Async
- * subagents can outlive their parent turn by minutes, so we keep turn
- * contexts around past `turnEnded` — late activity still needs somewhere to
- * land. The LRU cap bounds memory for long-running daemons.
+ * Belt-and-suspenders sweep for `TurnContext` entries that never see their
+ * `turnEnded`. Normally the daemon's registry force-ends stuck turns at
+ * ~30min and we delete on `turnEnded`, but if that event is lost in transit
+ * (adapter restart, subscription reconnect, etc.) we don't want contexts to
+ * accumulate indefinitely on a long-running daemon.
  */
-const MAX_TURN_CONTEXTS = 64;
+const TURN_CONTEXT_TTL_MS = 30 * 60 * 1000;
+const TURN_CONTEXT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 function resolveThreadLogOpts(config: GoogleChatConfig): ThreadLogOptions {
   const v = config.visibility?.threadLog;
@@ -528,16 +526,6 @@ export async function startDaemonToGoogleChatForwarder(
     }
   };
 
-  const evictOldestTurnContextIfFull = () => {
-    while (turnContexts.size >= MAX_TURN_CONTEXTS) {
-      const oldest = turnContexts.keys().next().value;
-      if (!oldest) return;
-      const ctx = turnContexts.get(oldest);
-      if (ctx?.editTimer) clearTimeout(ctx.editTimer);
-      turnContexts.delete(oldest);
-    }
-  };
-
   const handleTurnStarted = async (
     chatId: string,
     turnId: string,
@@ -556,13 +544,9 @@ export async function startDaemonToGoogleChatForwarder(
     // (proactive crons, CLI messages) fall back to the thread created by
     // their first top-level post — recorded in `proactiveAnchors` — so
     // subsequent activity can still anchor into the right thread.
-    const entry = externalRef
-      ? await resolveInboundByGchatMessageName(space.spaceName, externalRef, startDir)
-      : null;
+    const entry = externalRef ? resolveInbound(externalRef) : null;
     const proactiveThread = entry ? undefined : proactiveAnchors.get(rootMessageId);
     if (proactiveThread) proactiveAnchors.delete(rootMessageId);
-
-    evictOldestTurnContextIfFull();
 
     const ctx: TurnContext = {
       turnId,
@@ -586,11 +570,27 @@ export async function startDaemonToGoogleChatForwarder(
   const handleTurnEnded = async (turnId: string) => {
     const ctx = turnContexts.get(turnId);
     if (!ctx) return;
-    // Keep the context in the map: async subagents can emit thread-log
-    // events long after the parent's turn ends, and they need to land in
-    // the same log message. Just flush any debounced edits so the on-screen
-    // state matches what's buffered. LRU eviction bounds memory.
+    // With the daemon deferring `turnEnded` until all subagents settle,
+    // arrival of this event means no more activity is coming on `turnId`.
+    // Flush anything pending, then drop the context.
     await flushTurnLog(ctx).catch((err) => console.error('Final flush error:', err));
+    if (ctx.editTimer) clearTimeout(ctx.editTimer);
+    turnContexts.delete(turnId);
+  };
+
+  const sweepStaleTurnContexts = () => {
+    const now = Date.now();
+    for (const [turnId, ctx] of turnContexts) {
+      const age = now - Date.parse(ctx.startedAt);
+      if (Number.isFinite(age) && age > TURN_CONTEXT_TTL_MS) {
+        console.warn(
+          `Dropping stale turn context ${turnId} after ${Math.round(age / 1000)}s ` +
+            `without turnEnded — daemon registry's force-end likely did not reach the adapter.`
+        );
+        if (ctx.editTimer) clearTimeout(ctx.editTimer);
+        turnContexts.delete(turnId);
+      }
+    }
   };
 
   const startSubscriptionForChat = async (chatId: string) => {
@@ -774,8 +774,12 @@ export async function startDaemonToGoogleChatForwarder(
       }
     });
 
+    const sweepInterval = setInterval(sweepStaleTurnContexts, TURN_CONTEXT_SWEEP_INTERVAL_MS);
+    sweepInterval.unref();
+
     signal?.addEventListener('abort', () => {
       if (debounceTimer) clearTimeout(debounceTimer);
+      clearInterval(sweepInterval);
       watcher.close();
       for (const sub of activeSubscriptions.values()) sub.unsubscribe();
       for (const ctx of turnContexts.values()) {
