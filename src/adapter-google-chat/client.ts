@@ -164,7 +164,11 @@ export function startGoogleChatIngestion(
       const messageId = eventMessage?.name || '';
       const text = (eventMessage?.text || '').trim();
 
-      if (senderType === 'BOT') return void message.ack();
+      // CARD_CLICKED events carry the bot's original card message as
+      // `parsedData.message`, so `sender.type` is BOT even though the
+      // interaction was initiated by a real user (`parsedData.user`).
+      // Only drop BOT-authored MESSAGE events here.
+      if (senderType === 'BOT' && eventType !== 'CARD_CLICKED') return void message.ack();
 
       if (messageId) {
         if (seenMessageIds.has(messageId)) return void message.ack();

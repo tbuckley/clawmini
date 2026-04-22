@@ -440,7 +440,7 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
         user: { email: 'user@example.com' },
         message: {
           name: 'spaces/cc/messages/card-1',
-          sender: { email: 'user@example.com', type: 'USER' },
+          sender: { type: 'BOT' },
           cardsV2: [
             {
               cardId: 'c1',
