@@ -14,13 +14,7 @@ import {
   type Destination,
   type FilteringConfig,
 } from '../shared/adapters/filtering.js';
-import {
-  formatTurnLogEntry,
-  condenseTurnLog,
-  buildTurnStartEntry,
-  type TurnLogEntry,
-  type CondenseStrategy,
-} from '../shared/adapters/turn-log.js';
+import { createTurnLogBuffer, type TurnLogBuffer } from './turn-log-buffer.js';
 import { buildPolicyCard, chunkString } from './utils.js';
 import { uploadFilesToDrive } from './upload.js';
 
@@ -35,51 +29,13 @@ interface ThreadLogOptions {
   maxToolPreview: number;
   maxLogMessageChars: number;
   editDebounceMs: number;
-  condenseStrategy: CondenseStrategy;
-}
-
-interface TurnContext {
-  turnId: string;
-  chatId: string;
-  spaceName: string;
-  rootDaemonMessageId: string;
-  rootGchatMessageName: string | undefined;
-  gchatThreadName: string | undefined;
-  activityLogMessageName: string | undefined;
-  entries: TurnLogEntry[];
-  editTimer: NodeJS.Timeout | undefined;
-  /**
-   * True while a `flushTurnLog` call for this ctx is awaiting the GChat API.
-   * Concurrent callers set `flushRequested` instead of starting a second
-   * flush; the active flush re-runs when it sees the flag.
-   */
-  flushing: boolean;
-  flushRequested: boolean;
-  degraded: boolean;
-  threadsDisabled: boolean;
-  /**
-   * Wall-clock timestamp of the turnStarted event; used to render relative
-   * timestamps in the activity log (`0s`, `5s`, `1m5s`).
-   */
-  startedAt: string;
 }
 
 const DEFAULT_THREAD_LOG_OPTS: ThreadLogOptions = {
   maxToolPreview: 400,
   maxLogMessageChars: 3500,
   editDebounceMs: 1000,
-  condenseStrategy: 'rollover',
 };
-
-/**
- * Belt-and-suspenders sweep for `TurnContext` entries that never see their
- * `turnEnded`. Normally the daemon's registry force-ends stuck turns at
- * ~30min and we delete on `turnEnded`, but if that event is lost in transit
- * (adapter restart, subscription reconnect, etc.) we don't want contexts to
- * accumulate indefinitely on a long-running daemon.
- */
-const TURN_CONTEXT_TTL_MS = 30 * 60 * 1000;
-const TURN_CONTEXT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 function resolveThreadLogOpts(config: GoogleChatConfig): ThreadLogOptions {
   const v = config.visibility?.threadLog;
@@ -87,7 +43,6 @@ function resolveThreadLogOpts(config: GoogleChatConfig): ThreadLogOptions {
     maxToolPreview: v?.maxToolPreview ?? DEFAULT_THREAD_LOG_OPTS.maxToolPreview,
     maxLogMessageChars: v?.maxLogMessageChars ?? DEFAULT_THREAD_LOG_OPTS.maxLogMessageChars,
     editDebounceMs: v?.editDebounceMs ?? DEFAULT_THREAD_LOG_OPTS.editDebounceMs,
-    condenseStrategy: v?.condenseStrategy ?? DEFAULT_THREAD_LOG_OPTS.condenseStrategy,
   };
 }
 
@@ -124,7 +79,6 @@ export async function startDaemonToGoogleChatForwarder(
   };
 
   const activeSubscriptions = new Map<string, { unsubscribe: () => void }>();
-  const turnContexts = new Map<string, TurnContext>();
   /**
    * When a turn has no inbound-user anchor (cron, subagent completion, any
    * proactive turn), its first top-level post implicitly creates a GChat
@@ -206,8 +160,7 @@ export async function startDaemonToGoogleChatForwarder(
   const postThreaded = async (
     spaceName: string,
     threadName: string,
-    text: string,
-    cardsV2?: ReturnType<typeof buildPolicyCard>
+    text: string
   ): Promise<string | undefined> => {
     const chatApi = await getChatApi();
     const res = await chatApi.spaces.messages.create({
@@ -215,7 +168,6 @@ export async function startDaemonToGoogleChatForwarder(
       requestBody: {
         text: text || '',
         thread: { name: threadName },
-        ...(cardsV2 && cardsV2.length > 0 ? { cardsV2 } : {}),
       },
       messageReplyOption: 'REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD',
     });
@@ -231,6 +183,13 @@ export async function startDaemonToGoogleChatForwarder(
       requestBody: { text },
     });
   };
+
+  const turnLog: TurnLogBuffer = createTurnLogBuffer({
+    postThreaded,
+    editThreaded,
+    options: threadLogOpts,
+    threadsEnabled: threadsGloballyEnabled,
+  });
 
   const handlePolicyCard = async (
     message: Extract<ChatMessage, { role: 'policy' }>,
@@ -252,151 +211,17 @@ export async function startDaemonToGoogleChatForwarder(
     }
   };
 
-  const flushTurnLog = async (ctx: TurnContext): Promise<void> => {
-    if (ctx.editTimer) {
-      clearTimeout(ctx.editTimer);
-      ctx.editTimer = undefined;
-    }
-
-    // Serialize flushes per-ctx: if a flush is already in flight, request a
-    // follow-up run and bail. The active flush will loop and pick up any
-    // entries that arrived while it was awaiting the GChat API.
-    if (ctx.flushing) {
-      ctx.flushRequested = true;
-      return;
-    }
-
-    ctx.flushing = true;
-    try {
-      do {
-        ctx.flushRequested = false;
-        if (ctx.entries.length === 0) return;
-        if (!ctx.spaceName || !ctx.gchatThreadName) return;
-        // Degraded contexts route at dispatch time (handleMessageForChat), so
-        // we never accumulate entries here; any left over are stale.
-        if (ctx.degraded) {
-          ctx.entries = [];
-          return;
-        }
-
-        let result = condenseTurnLog(ctx.entries, {
-          maxChars: threadLogOpts.maxLogMessageChars,
-          strategy: threadLogOpts.condenseStrategy,
-        });
-
-        const send = async (): Promise<void> => {
-          const text = result.kind === 'fits' ? result.text : result.finalText;
-          if (!ctx.activityLogMessageName) {
-            try {
-              const name = await postThreaded(ctx.spaceName, ctx.gchatThreadName!, text);
-              if (name) ctx.activityLogMessageName = name;
-            } catch (err) {
-              console.error('Failed to open thread-log message, falling back to top-level:', err);
-              ctx.degraded = true;
-              // Flush the buffered entries as a single top-level post so the
-              // user sees the activity that triggered thread creation.
-              try {
-                await postTopLevel(ctx.spaceName, text);
-              } catch (innerErr) {
-                console.error('Top-level fallback also failed:', innerErr);
-              }
-              ctx.entries = [];
-              return;
-            }
-          } else {
-            try {
-              await editThreaded(ctx.activityLogMessageName, text);
-            } catch (err) {
-              const status = (err as { code?: number; status?: number })?.code ?? 0;
-              if (status === 404) {
-                console.warn('Log message 404 on edit — opening a fresh log message.');
-                ctx.activityLogMessageName = undefined;
-                try {
-                  const name = await postThreaded(ctx.spaceName, ctx.gchatThreadName!, text);
-                  if (name) ctx.activityLogMessageName = name;
-                } catch (innerErr) {
-                  console.error('Failed to re-open log message after 404:', innerErr);
-                  ctx.activityLogMessageName = undefined;
-                }
-              } else {
-                await new Promise((resolve) => setTimeout(resolve, 500));
-                try {
-                  await editThreaded(ctx.activityLogMessageName, text);
-                } catch (retryErr) {
-                  console.warn('Edit failed twice — finalizing log message.', retryErr);
-                  ctx.activityLogMessageName = undefined;
-                }
-              }
-            }
-          }
-        };
-
-        await send();
-
-        // On rollover, the finalized message is sealed; the carry-over entries
-        // seed a brand-new activity-log message. A single turn can rollover
-        // multiple times in one flush (e.g. 3 entries against a tight budget
-        // where each pair overflows), so loop until the carry fits or is
-        // empty. Otherwise keep `entries` intact so the next debounced edit
-        // re-renders the full history plus new events, rather than
-        // overwriting the message with only the latest entry.
-        while (result.kind === 'rollover') {
-          const prevLen = ctx.entries.length;
-          ctx.entries = result.carryEntries.slice();
-          ctx.activityLogMessageName = undefined;
-          if (ctx.entries.length === 0) break;
-          // Degenerate case: a single entry's rendered line is itself larger
-          // than the per-message budget. The condenser already emitted the
-          // rollover marker; drop the stuck head so we can make progress on
-          // the rest rather than spin the flush loop forever.
-          if (ctx.entries.length >= prevLen) {
-            console.warn(
-              `Turn-log entry larger than maxLogMessageChars — dropping head for turn ${ctx.turnId}`
-            );
-            ctx.entries = ctx.entries.slice(1);
-            if (ctx.entries.length === 0) break;
-          }
-          result = condenseTurnLog(ctx.entries, {
-            maxChars: threadLogOpts.maxLogMessageChars,
-            strategy: threadLogOpts.condenseStrategy,
-          });
-          await send();
-        }
-      } while (ctx.flushRequested && ctx.entries.length > 0 && !ctx.degraded);
-    } finally {
-      ctx.flushing = false;
-    }
-  };
-
-  const scheduleFlush = (ctx: TurnContext) => {
-    if (ctx.editTimer) return;
-    // A flush is already in flight: it will loop and re-read `entries`. Just
-    // set the request flag; no timer needed.
-    if (ctx.flushing) {
-      ctx.flushRequested = true;
-      return;
-    }
-    ctx.editTimer = setTimeout(() => {
-      ctx.editTimer = undefined;
-      flushTurnLog(ctx).catch((err) => console.error('Flush error:', err));
-    }, threadLogOpts.editDebounceMs);
-  };
-
-  const collapseDestination = (dest: Destination, ctx?: TurnContext | null): Destination => {
-    if (!threadsGloballyEnabled) {
-      if (dest.kind === 'thread-log') return { kind: 'drop' };
-    }
-    if (ctx?.threadsDisabled) {
-      if (dest.kind === 'thread-log') return { kind: 'top-level' };
+  const collapseDestination = (dest: Destination, turnId?: string): Destination => {
+    if (!threadsGloballyEnabled && dest.kind === 'thread-log') return { kind: 'drop' };
+    if (turnId && turnLog.threadsDisabledFor(turnId) && dest.kind === 'thread-log') {
+      return { kind: 'top-level' };
     }
     return dest;
   };
 
   const handleMessageForChat = async (chatId: string, message: ChatMessage) => {
     const routed = routeMessage(message, filteringConfig);
-    const ctx = message.turnId ? turnContexts.get(message.turnId) : null;
-
-    const effective = collapseDestination(routed, ctx);
+    const effective = collapseDestination(routed, message.turnId);
 
     if (effective.kind === 'drop') return;
 
@@ -414,45 +239,18 @@ export async function startDaemonToGoogleChatForwarder(
     const hasFiles = files.length > 0;
 
     if (effective.kind === 'thread-log') {
-      // Degraded: thread-log create failed earlier in this turn. Keep
-      // activity visible by rendering each entry as its own top-level
-      // message instead of silently buffering it into a thread that was
-      // never opened.
-      if (ctx?.degraded) {
-        const entry = formatTurnLogEntry(message, {
-          maxToolPreview: threadLogOpts.maxToolPreview,
-          turnStartedAt: ctx.startedAt,
-        });
-        if (!entry) return;
-        const rendered = condenseTurnLog([entry], { maxChars: 4000 });
-        if (rendered.kind !== 'fits' || !rendered.text) return;
-        try {
-          await postTopLevel(space.spaceName, rendered.text);
-        } catch (err) {
-          console.error('Degraded thread-log top-level post failed:', err);
-        }
+      if (!message.turnId) {
+        console.warn(`thread-log event for ${message.role} has no turnId — dropping.`);
         return;
       }
-      if (!ctx?.gchatThreadName) {
-        // No turn context (turn events may have been missed, adapter restart,
-        // or subagent-sourced message without propagated turnId). Drop silently
-        // rather than flooding the space with orphan top-level messages.
-        if (!message.turnId) {
-          console.warn(`thread-log event for ${message.role} has no turnId — dropping.`);
-        }
-        return;
-      }
-      const entry = formatTurnLogEntry(message, {
-        maxToolPreview: threadLogOpts.maxToolPreview,
-        turnStartedAt: ctx.startedAt,
-      });
-      if (!entry) return;
-      ctx.entries.push(entry);
-      scheduleFlush(ctx);
+      // No turn context: turnStarted may have been missed (adapter restart,
+      // subscription reconnect). Drop silently rather than flooding the space.
+      if (!turnLog.has(message.turnId)) return;
+      turnLog.append(message.turnId, message);
       return;
     }
 
-    // Top-level: existing behavior.
+    // Top-level.
     if (!hasContent && !hasFiles && message.role !== 'policy') return;
 
     try {
@@ -493,15 +291,11 @@ export async function startDaemonToGoogleChatForwarder(
       // created. Covers cron-triggered and other proactive turns that have no
       // inbound user message to anchor on.
       if (createdThread && message.turnId) {
-        if (ctx && !ctx.gchatThreadName) {
-          ctx.gchatThreadName = createdThread;
-          // The turn's opening entry was buffered waiting for this anchor;
-          // flush now so the activity thread opens right under the post that
-          // just created it.
-          if (ctx.entries.length > 0 && !ctx.threadsDisabled && threadsGloballyEnabled) {
-            flushTurnLog(ctx).catch((err) => console.error('Flush-on-anchor error:', err));
+        if (turnLog.has(message.turnId)) {
+          if (!turnLog.isAnchored(message.turnId)) {
+            turnLog.assignAnchor(message.turnId, createdThread);
           }
-        } else if (!ctx) {
+        } else {
           // turnStarted hasn't arrived yet — cache the mapping so it picks
           // up the anchor when it does.
           recordProactiveAnchor(message.id, createdThread);
@@ -534,61 +328,16 @@ export async function startDaemonToGoogleChatForwarder(
     const proactiveThread = entry ? undefined : proactiveAnchors.get(rootMessageId);
     if (proactiveThread) proactiveAnchors.delete(rootMessageId);
 
-    const ctx: TurnContext = {
+    turnLog.start({
       turnId,
-      chatId,
       spaceName: space.spaceName,
-      rootDaemonMessageId: rootMessageId,
-      rootGchatMessageName: entry?.gchatMessageName,
-      gchatThreadName: entry?.gchatThreadName ?? proactiveThread,
-      activityLogMessageName: undefined,
-      // Seed the turn's activity log with an opening entry so the thread
-      // appears as soon as the turn starts, rather than only after the first
-      // tool call / subagent event. Skipped when threads are disabled.
-      entries: space.threadsDisabled || !threadsGloballyEnabled ? [] : [buildTurnStartEntry()],
-      editTimer: undefined,
-      flushing: false,
-      flushRequested: false,
-      degraded: false,
       threadsDisabled: space.threadsDisabled,
-      startedAt: new Date().toISOString(),
-    };
-    turnContexts.set(turnId, ctx);
-
-    // If the thread anchor is available now (inbound-user turn, or proactive
-    // turn whose top-level post already landed), flush immediately so the
-    // "Started processing…" message appears without waiting for the debounce
-    // window. Otherwise the first top-level post in `handleMessageForChat`
-    // will assign `gchatThreadName` and trigger the flush there.
-    if (ctx.gchatThreadName && !ctx.threadsDisabled && threadsGloballyEnabled) {
-      flushTurnLog(ctx).catch((err) => console.error('Initial flush error:', err));
-    }
+      anchorThread: entry?.gchatThreadName ?? proactiveThread,
+    });
   };
 
   const handleTurnEnded = async (turnId: string) => {
-    const ctx = turnContexts.get(turnId);
-    if (!ctx) return;
-    // With the daemon deferring `turnEnded` until all subagents settle,
-    // arrival of this event means no more activity is coming on `turnId`.
-    // Flush anything pending, then drop the context.
-    await flushTurnLog(ctx).catch((err) => console.error('Final flush error:', err));
-    if (ctx.editTimer) clearTimeout(ctx.editTimer);
-    turnContexts.delete(turnId);
-  };
-
-  const sweepStaleTurnContexts = () => {
-    const now = Date.now();
-    for (const [turnId, ctx] of turnContexts) {
-      const age = now - Date.parse(ctx.startedAt);
-      if (Number.isFinite(age) && age > TURN_CONTEXT_TTL_MS) {
-        console.warn(
-          `Dropping stale turn context ${turnId} after ${Math.round(age / 1000)}s ` +
-            `without turnEnded — daemon registry's force-end likely did not reach the adapter.`
-        );
-        if (ctx.editTimer) clearTimeout(ctx.editTimer);
-        turnContexts.delete(turnId);
-      }
-    }
+    await turnLog.end(turnId);
   };
 
   const startSubscriptionForChat = async (chatId: string) => {
@@ -758,18 +507,11 @@ export async function startDaemonToGoogleChatForwarder(
       }
     });
 
-    const sweepInterval = setInterval(sweepStaleTurnContexts, TURN_CONTEXT_SWEEP_INTERVAL_MS);
-    sweepInterval.unref();
-
     signal?.addEventListener('abort', () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      clearInterval(sweepInterval);
       watcher.close();
       for (const sub of activeSubscriptions.values()) sub.unsubscribe();
-      for (const ctx of turnContexts.values()) {
-        if (ctx.editTimer) clearTimeout(ctx.editTimer);
-      }
-      turnContexts.clear();
+      turnLog.shutdown();
       resolve();
     });
   });

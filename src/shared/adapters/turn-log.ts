@@ -1,4 +1,3 @@
-/* eslint-disable max-lines */
 import type { ChatMessage } from '../chats.js';
 
 export interface TurnLogEntry {
@@ -19,11 +18,8 @@ export interface FormatOpts {
   turnStartedAt?: string;
 }
 
-export type CondenseStrategy = 'rollover' | 'drop-earliest' | 'aggressive-truncate' | 'hybrid';
-
 export interface CondenseOpts {
   maxChars: number;
-  strategy?: CondenseStrategy;
 }
 
 export type CondenseResult =
@@ -33,7 +29,6 @@ export type CondenseResult =
 const DEFAULT_MAX_TOOL_PREVIEW = 400;
 const TRUNCATED_SUFFIX = '…[truncated]';
 const ROLLOVER_MARKER = '• …log continues';
-const DROPPED_MARKER = (n: number) => `• …${n} earlier entries dropped`;
 
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
@@ -318,22 +313,23 @@ function joinLines(entries: TurnLogEntry[]): string {
   return entries.map(renderEntry).join('\n');
 }
 
-function reTruncateSummary(entry: TurnLogEntry, cap: number): TurnLogEntry {
-  if (entry.summary.length <= cap) return entry;
-  return { ...entry, summary: truncate(entry.summary, cap) };
-}
+export function condenseTurnLog(
+  entries: readonly TurnLogEntry[],
+  opts: CondenseOpts
+): CondenseResult {
+  const snapshot = entries.slice();
+  if (snapshot.length === 0) return { kind: 'fits', text: '' };
 
-function fitRollover(entries: TurnLogEntry[], maxChars: number): CondenseResult {
-  const fullText = joinLines(entries);
-  if (fullText.length <= maxChars) return { kind: 'fits', text: fullText };
+  const fullText = joinLines(snapshot);
+  if (fullText.length <= opts.maxChars) return { kind: 'fits', text: fullText };
 
   const markerReserve = ROLLOVER_MARKER.length + 1;
-  const budget = Math.max(0, maxChars - markerReserve);
+  const budget = Math.max(0, opts.maxChars - markerReserve);
 
   const kept: TurnLogEntry[] = [];
   let runningLength = 0;
-  for (let i = 0; i < entries.length; i++) {
-    const line = renderEntry(entries[i]!);
+  for (let i = 0; i < snapshot.length; i++) {
+    const line = renderEntry(snapshot[i]!);
     const next = runningLength === 0 ? line.length : runningLength + 1 + line.length;
     if (next > budget) {
       if (kept.length === 0) {
@@ -341,110 +337,21 @@ function fitRollover(entries: TurnLogEntry[], maxChars: number): CondenseResult 
         // truncate its rendered form so we don't get stuck in a "same carry"
         // rollover loop. The continuation marker is baked into the truncated
         // text rather than appended, so the reader still sees the `…` signal.
-        const truncatedLine = truncate(line, maxChars);
+        const truncatedLine = truncate(line, opts.maxChars);
         return {
           kind: 'rollover',
           finalText: truncatedLine,
-          carryEntries: entries.slice(i + 1),
+          carryEntries: snapshot.slice(i + 1),
         };
       }
-      const carryEntries = entries.slice(i);
+      const carryEntries = snapshot.slice(i);
       const finalText = `${joinLines(kept)}\n${ROLLOVER_MARKER}`;
       return { kind: 'rollover', finalText, carryEntries };
     }
     runningLength = next;
-    kept.push(entries[i]!);
+    kept.push(snapshot[i]!);
   }
 
   // Should not reach here; fallback.
   return { kind: 'fits', text: fullText };
-}
-
-function fitDropEarliest(entries: TurnLogEntry[], maxChars: number): CondenseResult {
-  const fullText = joinLines(entries);
-  if (fullText.length <= maxChars) return { kind: 'fits', text: fullText };
-
-  // Reserve enough space for the largest possible marker up-front. The marker's
-  // digit count monotonically grows with the number of dropped entries, so
-  // `DROPPED_MARKER(entries.length)` is the worst case we'd ever emit. Reserving
-  // this fixed amount (whenever there are earlier entries left to drop) removes
-  // the off-by-one between the reserved-for and actually-emitted marker widths.
-  const maxMarkerLen = DROPPED_MARKER(entries.length).length + 1;
-
-  const kept: TurnLogEntry[] = [];
-  let dropped = 0;
-  let runningLength = 0;
-
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const line = renderEntry(entries[i]!);
-    const reserve = i > 0 ? maxMarkerLen : 0;
-    const next =
-      runningLength === 0 ? line.length + reserve : runningLength + 1 + line.length + reserve;
-    if (next > maxChars) {
-      dropped = i + 1;
-      break;
-    }
-    kept.unshift(entries[i]!);
-    runningLength = runningLength === 0 ? line.length : runningLength + 1 + line.length;
-  }
-
-  if (dropped === 0) return { kind: 'fits', text: joinLines(kept) };
-
-  const marker = DROPPED_MARKER(dropped);
-  const text = `${marker}\n${joinLines(kept)}`;
-  if (text.length <= maxChars) return { kind: 'fits', text };
-
-  // Keep shrinking from the top until it fits.
-  while (kept.length > 0) {
-    kept.shift();
-    dropped++;
-    const candidate = `${DROPPED_MARKER(dropped)}\n${joinLines(kept)}`;
-    if (candidate.length <= maxChars) return { kind: 'fits', text: candidate };
-  }
-  return { kind: 'fits', text: DROPPED_MARKER(dropped) };
-}
-
-function fitAggressiveTruncate(entries: TurnLogEntry[], maxChars: number): CondenseResult {
-  const caps = [400, 200, 100, 50, 20];
-  let current = entries;
-  for (const cap of caps) {
-    current = current.map((e) => reTruncateSummary(e, cap));
-    const text = joinLines(current);
-    if (text.length <= maxChars) return { kind: 'fits', text };
-  }
-  const finalText = joinLines(current);
-  // Couldn't fit — truncate hard.
-  if (finalText.length <= maxChars) return { kind: 'fits', text: finalText };
-  return { kind: 'fits', text: truncate(finalText, maxChars) };
-}
-
-function fitHybrid(entries: TurnLogEntry[], maxChars: number): CondenseResult {
-  const caps = [400, 200, 100, 50, 20];
-  let current = entries;
-  for (const cap of caps) {
-    current = current.map((e) => reTruncateSummary(e, cap));
-    const text = joinLines(current);
-    if (text.length <= maxChars) return { kind: 'fits', text };
-  }
-  return fitDropEarliest(current, maxChars);
-}
-
-export function condenseTurnLog(
-  entries: readonly TurnLogEntry[],
-  opts: CondenseOpts
-): CondenseResult {
-  const strategy: CondenseStrategy = opts.strategy ?? 'rollover';
-  const snapshot = entries.slice();
-  if (snapshot.length === 0) return { kind: 'fits', text: '' };
-
-  switch (strategy) {
-    case 'rollover':
-      return fitRollover(snapshot, opts.maxChars);
-    case 'drop-earliest':
-      return fitDropEarliest(snapshot, opts.maxChars);
-    case 'aggressive-truncate':
-      return fitAggressiveTruncate(snapshot, opts.maxChars);
-    case 'hybrid':
-      return fitHybrid(snapshot, opts.maxChars);
-  }
 }

@@ -11,10 +11,6 @@ export const ThreadVisibilitySchema = z.object({
       maxToolPreview: z.number().default(400).optional(),
       maxLogMessageChars: z.number().default(3500).optional(),
       editDebounceMs: z.number().default(1000).optional(),
-      condenseStrategy: z
-        .enum(['rollover', 'drop-earliest', 'aggressive-truncate', 'hybrid'])
-        .default('rollover')
-        .optional(),
     })
     .optional(),
 });

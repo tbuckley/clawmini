@@ -357,9 +357,9 @@ function mkEntry(summary: string, overrides: Partial<TurnLogEntry> = {}): TurnLo
 }
 
 describe('condenseTurnLog', () => {
-  it('rollover strategy: fits when under budget', () => {
+  it('fits when under budget', () => {
     const entries = [mkEntry('Read(small)'), mkEntry('Grep(small)')];
-    const result = condenseTurnLog(entries, { maxChars: 500, strategy: 'rollover' });
+    const result = condenseTurnLog(entries, { maxChars: 500 });
     expect(result.kind).toBe('fits');
     if (result.kind === 'fits') {
       expect(result.text).toContain('Read');
@@ -367,9 +367,9 @@ describe('condenseTurnLog', () => {
     }
   });
 
-  it('rollover strategy: rolls over when exceeded', () => {
+  it('rolls over when exceeded', () => {
     const entries = Array.from({ length: 20 }, (_, i) => mkEntry('X'.repeat(40) + ` #${i}`));
-    const result = condenseTurnLog(entries, { maxChars: 200, strategy: 'rollover' });
+    const result = condenseTurnLog(entries, { maxChars: 200 });
     expect(result.kind).toBe('rollover');
     if (result.kind === 'rollover') {
       expect(result.finalText).toContain('…log continues');
@@ -378,64 +378,11 @@ describe('condenseTurnLog', () => {
     }
   });
 
-  it('drop-earliest strategy: drops oldest entries and prepends a count marker', () => {
-    const entries = Array.from({ length: 10 }, (_, i) => mkEntry(`entry-${i}`));
-    const result = condenseTurnLog(entries, { maxChars: 100, strategy: 'drop-earliest' });
-    expect(result.kind).toBe('fits');
-    if (result.kind === 'fits') {
-      expect(result.text).toMatch(/• …\d+ earlier entries dropped/);
-      expect(result.text).toContain(`entry-${entries.length - 1}`);
-      expect(result.text).not.toContain('entry-0');
-    }
-  });
-
-  it('drop-earliest respects maxChars across marker digit-count boundaries', () => {
-    // Regression: the budget used to reserve space for DROPPED_MARKER(i) but
-    // emit DROPPED_MARKER(i+1). With ≥10 dropped entries the marker width
-    // grows one digit, which could push the final string over maxChars.
-    // Uniformly-sized entries force many drops at various digit boundaries.
-    const entries = Array.from({ length: 120 }, (_, i) =>
-      mkEntry(`line-${String(i).padStart(3, '0')}`)
-    );
-    for (const maxChars of [80, 120, 200, 500, 1000]) {
-      const result = condenseTurnLog(entries, { maxChars, strategy: 'drop-earliest' });
-      expect(result.kind).toBe('fits');
-      if (result.kind === 'fits') {
-        expect(result.text.length).toBeLessThanOrEqual(maxChars);
-      }
-    }
-  });
-
-  it('aggressive-truncate strategy: shortens per-entry summaries to fit', () => {
-    const entries = Array.from({ length: 5 }, (_, i) =>
-      mkEntry('Y'.repeat(300) + ` #${i}`, { rawLength: 305 })
-    );
-    const result = condenseTurnLog(entries, { maxChars: 300, strategy: 'aggressive-truncate' });
-    expect(result.kind).toBe('fits');
-    if (result.kind === 'fits') {
-      const lines = result.text.split('\n').filter(Boolean);
-      expect(lines.length).toBe(5);
-      expect(result.text.length).toBeLessThanOrEqual(300);
-    }
-  });
-
-  it('hybrid strategy: truncates first, then drops earliest if still over budget', () => {
-    const entries = Array.from({ length: 30 }, (_, i) =>
-      mkEntry('Z'.repeat(100) + ` #${i}`, { rawLength: 105 })
-    );
-    const result = condenseTurnLog(entries, { maxChars: 150, strategy: 'hybrid' });
-    expect(result.kind).toBe('fits');
-    if (result.kind === 'fits') {
-      expect(result.text).toContain('entries dropped');
-      expect(result.text.length).toBeLessThanOrEqual(150);
-    }
-  });
-
   it('is pure — does not mutate input', () => {
     const entries = [mkEntry('one'), mkEntry('two')];
     const copy = entries.map((e) => ({ ...e }));
-    const r1 = condenseTurnLog(entries, { maxChars: 500, strategy: 'rollover' });
-    const r2 = condenseTurnLog(entries, { maxChars: 500, strategy: 'rollover' });
+    const r1 = condenseTurnLog(entries, { maxChars: 500 });
+    const r2 = condenseTurnLog(entries, { maxChars: 500 });
     expect(r1).toEqual(r2);
     expect(entries).toEqual(copy);
   });

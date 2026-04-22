@@ -649,19 +649,17 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
     expect(allText).toContain('✅ roll-sub');
   }, 120000);
 
-  it('falls back to top-level posts when thread creation fails (degraded mode)', async () => {
+  it('drops thread-log events for the rest of the turn when thread creation fails', async () => {
     const { env } = envRef;
     const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
     const subscription = makeFakeSubscription();
     const { api, create, update } = makeFakeChatApi();
 
-    // The first attempt to open a thread-log message fails; every other
-    // create (agent reply, fallback top-level posts) succeeds.
+    // First threaded create fails; any later create (e.g. the agent's final
+    // top-level reply) succeeds.
     let firstThreadedAttempt = true;
     create.mockImplementation(async (params) => {
-      const threaded = Boolean(
-        (params.requestBody as { thread?: { name?: string } }).thread
-      );
+      const threaded = Boolean((params.requestBody as { thread?: { name?: string } }).thread);
       if (threaded && firstThreadedAttempt) {
         firstThreadedAttempt = false;
         throw new Error('GChat 503 — thread open failed');
@@ -694,23 +692,21 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
         })
       );
 
-      // Wait until the subagent's `✅` status lands as a top-level post —
-      // that's the last event of the turn and proves degraded mode kept
-      // routing thread-log entries top-level after the initial thread-open
-      // failure.
+      // The agent's final reply is a top-level post and still lands even
+      // after the thread-log was abandoned. Wait for any non-threaded
+      // create to observe the turn progressing past the failure.
       await vi.waitFor(
         () => {
-          const topLevelTexts = create.mock.calls
-            .filter(([p]) => !('thread' in (p.requestBody as { thread?: unknown })))
-            .map(([p]) => (p.requestBody.text ?? '') as string);
-          expect(topLevelTexts.some((t) => t.includes('✅ deg-sub'))).toBe(true);
+          const topLevelCalls = create.mock.calls.filter(
+            ([p]) => !('thread' in (p.requestBody as { thread?: unknown }))
+          );
+          expect(topLevelCalls.length).toBeGreaterThan(0);
         },
         { timeout: 45000, interval: 500 }
       );
     });
 
-    // There must be exactly one failed thread-open attempt (the rest of
-    // activity goes top-level, no retry on thread creation).
+    // Exactly one failed thread-open attempt; no retries.
     const threadedCreates = create.mock.calls.filter(([p]) =>
       Boolean((p.requestBody as { thread?: { name?: string } }).thread)
     );
@@ -719,13 +715,14 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
     // No updates — the log message was never successfully opened.
     expect(update.mock.calls).toHaveLength(0);
 
-    // Every subagent stage eventually appears at top-level.
+    // Thread-log activity (subagent markers) must NOT leak into top-level
+    // posts: once thread-open fails we drop the rest of the turn's log.
     const topLevelText = create.mock.calls
       .filter(([p]) => !('thread' in (p.requestBody as { thread?: unknown })))
       .map(([p]) => (p.requestBody.text ?? '') as string)
       .join('\n');
-    expect(topLevelText).toContain('👉 deg-sub');
-    expect(topLevelText).toContain('✅ deg-sub');
+    expect(topLevelText).not.toContain('👉 deg-sub');
+    expect(topLevelText).not.toContain('✅ deg-sub');
   }, 120000);
 
   it('coalesces a multi-subagent turn into a single threaded log message', async () => {
@@ -807,81 +804,6 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
       • Δs  👈 multi-b: [DEBUG] echo B: \`\`\` B \`\`\`
       • Δs  ✅ multi-b"
     `);
-  }, 120000);
-
-  it('drop-earliest strategy keeps one log message with a dropped-entries marker', async () => {
-    const { env } = envRef;
-    const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
-    const subscription = makeFakeSubscription();
-    const { api, create, update } = makeFakeChatApi();
-
-    create.mockImplementation(
-      async () => ({ data: { name: 'spaces/drop/messages/log-1' } }) as unknown as object
-    );
-
-    await updateGoogleChatState(
-      { channelChatMap: { 'spaces/drop': { chatId: 'gc-drop' } } },
-      env.e2eDir
-    );
-    await env.addChat('gc-drop', 'debug-agent');
-
-    startGoogleChatIngestion(
-      BASE_CONFIG,
-      trpc,
-      {},
-      { subscription, chatApi: api, startDir: env.e2eDir }
-    );
-
-    // Tight budget + drop-earliest: under this strategy the condenser never
-    // rolls over; it shrinks the posted list and prepends a `…N earlier
-    // entries dropped` marker, keeping the entire turn in one message.
-    const config = {
-      ...BASE_CONFIG,
-      chatId: 'gc-drop',
-      visibility: {
-        threads: true,
-        threadLog: {
-          maxLogMessageChars: 80,
-          condenseStrategy: 'drop-earliest' as const,
-          editDebounceMs: 100,
-        },
-      },
-    };
-
-    await runForwarder({ trpc, chatApi: api, startDir: env.e2eDir, config }, async () => {
-      subscription.emitMessage(
-        makeThreadedMessage({
-          space: 'spaces/drop',
-          messageId: 'u1',
-          threadName: 'spaces/drop/threads/t1',
-          text: 'clawmini-lite.js subagents spawn --id drop-sub --async "echo hello"',
-        })
-      );
-      await waitForSubagentComplete(update, create, 'drop-sub');
-    });
-
-    // Exactly one threaded create — drop-earliest never rolls over.
-    const threadedCreates = create.mock.calls.filter(([p]) =>
-      Boolean((p.requestBody as { thread?: { name?: string } }).thread)
-    );
-    expect(threadedCreates).toHaveLength(1);
-
-    // The thread-log message's final rendered text (the most recent write
-    // that targets it — create or update) has the dropped-entries marker
-    // and fits in budget.
-    const logName = 'spaces/drop/messages/log-1';
-    const logWrites = [
-      ...threadedCreates.map((c) => (c[0].requestBody.text ?? '') as string),
-      ...update.mock.calls
-        .filter(([p]) => p.name === logName)
-        .map((c) => (c[0].requestBody.text ?? '') as string),
-    ];
-    const latest = logWrites[logWrites.length - 1]!;
-    expect(latest).toMatch(/…\d+ earlier entries dropped/);
-    expect(latest).toContain('✅ drop-sub');
-    // The latest status entry is the one kept; the earliest (👉 prompt) is
-    // the one most likely to be dropped.
-    expect(latest.length).toBeLessThanOrEqual(80);
   }, 120000);
 
   it('snapshots the interleaved create/update transcript for a successful turn', async () => {
