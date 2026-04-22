@@ -171,10 +171,10 @@ describe('formatTurnLogEntry', () => {
     expect(entry.summary).toBe('policy approved: rm -rf /tmp/cache');
   });
 
-  it('prefixes subagent-produced tool calls with the subagent marker', () => {
+  it('prefixes subagent-produced tool calls with the subagent marker and id', () => {
     // A tool call emitted *inside* a subagent turn. The formatter flags it via
-    // `subagentId`; the renderer then prefixes the entry with 🤖 so the reader
-    // knows the work happened in a delegated turn, not the parent agent's.
+    // `subagentId`; the renderer then prefixes the entry with 🤖 <short-id> so
+    // the reader knows which delegated turn produced the activity.
     const parent = formatTurnLogEntry(makeTool({ name: 'Bash', payload: { command: 'ls' } }))!;
     const child = formatTurnLogEntry(
       makeTool({
@@ -190,7 +190,22 @@ describe('formatTurnLogEntry', () => {
     const [parentLine, childLine] = rendered.text.split('\n');
     expect(parentLine).not.toContain('🤖');
     expect(parentLine).toContain('🧑‍💻 ls');
-    expect(childLine).toContain('🤖 🧑‍💻 sleep 20');
+    expect(childLine).toContain('🤖 sub-1 🧑‍💻 sleep 20');
+  });
+
+  it('shortens UUID subagent ids in the marker prefix', () => {
+    const uuid = '5ea7b9ba-5103-40ee-95b6-c90808bbc431';
+    const entry = formatTurnLogEntry(
+      makeTool({
+        name: 'Bash',
+        payload: { command: 'ls' },
+        subagentId: uuid,
+      })
+    )!;
+    const rendered = condenseTurnLog([entry], { maxChars: 500 });
+    if (rendered.kind !== 'fits') throw new Error('expected fits');
+    expect(rendered.text).toContain('🤖 5ea7b9ba 🧑‍💻 ls');
+    expect(rendered.text).not.toContain(uuid);
   });
 
   it('does not mark subagent boundary events (prompt/reply/status)', () => {

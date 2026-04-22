@@ -171,7 +171,9 @@ function sanitize(s: string): string {
 }
 
 function renderEntry(entry: TurnLogEntry): string {
-  const prefix = needsSubagentMarker(entry) ? `${SUBAGENT_MARKER} ` : '';
+  const prefix = needsSubagentMarker(entry)
+    ? `${SUBAGENT_MARKER} ${shortSubagentId(entry.subagentId!)} `
+    : '';
   return `• ${entry.timestamp}  ${prefix}${entry.summary}`;
 }
 
