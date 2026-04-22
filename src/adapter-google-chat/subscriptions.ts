@@ -33,17 +33,8 @@ async function pollOperation(operationName: string, token: string): Promise<Oper
   throw new Error(`Operation ${operationName} did not complete within timeout`);
 }
 
-export async function createSpaceSubscription(
-  spaceName: string,
-  config: GoogleChatConfig,
-  startDir: string = process.cwd()
-): Promise<CreatedSubscription> {
-  const userAuthClient = await getUserAuthClient(config, startDir);
-  const tokenResponse = await userAuthClient.getAccessToken();
-  const token = tokenResponse.token;
-  if (!token) throw new Error('No user OAuth access token available');
-
-  const res = await fetch('https://workspaceevents.googleapis.com/v1/subscriptions', {
+function postCreateSubscription(token: string, spaceName: string, config: GoogleChatConfig) {
+  return fetch('https://workspaceevents.googleapis.com/v1/subscriptions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -59,6 +50,68 @@ export async function createSpaceSubscription(
       },
     }),
   });
+}
+
+function extractConflictingSubscription(errorBody: string): string | undefined {
+  try {
+    const parsed = JSON.parse(errorBody) as {
+      error?: {
+        details?: Array<{ reason?: string; metadata?: { current_subscription?: string } }>;
+      };
+    };
+    return parsed.error?.details?.find((d) => d.reason === 'SUBSCRIPTION_ALREADY_EXISTS')?.metadata
+      ?.current_subscription;
+  } catch {
+    return undefined;
+  }
+}
+
+async function getBotToken(): Promise<string> {
+  const auth = await getAuthClient();
+  const tokenResponse = await auth.getAccessToken();
+  const token =
+    typeof tokenResponse === 'string' ? tokenResponse : (tokenResponse?.token ?? undefined);
+  if (!token) throw new Error('Failed to obtain bot service-account access token');
+  return token;
+}
+
+export async function createSpaceSubscription(
+  spaceName: string,
+  config: GoogleChatConfig,
+  startDir: string = process.cwd()
+): Promise<CreatedSubscription> {
+  const userAuthClient = await getUserAuthClient(config, startDir);
+  const tokenResponse = await userAuthClient.getAccessToken();
+  const token = tokenResponse.token;
+  if (!token) throw new Error('No user OAuth access token available');
+
+  let res = await postCreateSubscription(token, spaceName, config);
+
+  if (res.status === 409) {
+    // A subscription already exists for this (target, topic, event) tuple.
+    // Common case: a stale legacy app-authority sub created before we set
+    // `authority: 'users/me'`. The user OAuth can't see/delete app-authority
+    // subs, so use the bot's service-account ADC for the cleanup.
+    const errBody = await res.text();
+    const conflictingName = extractConflictingSubscription(errBody);
+    if (!conflictingName) {
+      throw new Error(`Subscription create returned 409 without a conflict name: ${errBody}`);
+    }
+    console.warn(
+      `Conflicting subscription ${conflictingName} exists for ${spaceName}; deleting via bot ADC and retrying`
+    );
+    const botToken = await getBotToken();
+    const delRes = await fetch(`https://workspaceevents.googleapis.com/v1/${conflictingName}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${botToken}` },
+    });
+    if (!delRes.ok) {
+      throw new Error(
+        `Failed to delete conflicting subscription ${conflictingName}: HTTP ${delRes.status} ${await delRes.text()}`
+      );
+    }
+    res = await postCreateSubscription(token, spaceName, config);
+  }
 
   if (!res.ok) {
     throw new Error(
