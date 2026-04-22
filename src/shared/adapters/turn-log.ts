@@ -250,6 +250,12 @@ export function formatTurnLogEntry(
   }
 
   if (message.role === 'system') {
+    // subagent_update is the wake-up signal that re-enters the parent agent
+    // after an async subagent completes. Its content is a `<notification>`
+    // envelope — internal orchestration the reader doesn't need. The ✅ from
+    // subagent_status already conveys completion, and the parent's follow-up
+    // reply shows the response.
+    if (message.event === 'subagent_update') return null;
     const content = sanitize(message.content || '');
     const summary = content ? `${message.event}: ${content}` : message.event;
     const entry: TurnLogEntry = {

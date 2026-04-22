@@ -244,11 +244,23 @@ describe('formatTurnLogEntry', () => {
       content: 'stuff',
       timestamp: FIXED_TS,
       sessionId: 's',
-      event: 'subagent_update',
+      event: 'cron',
     };
     const entry = formatTurnLogEntry(msg);
     expect(entry!.kind).toBe('system');
-    expect(entry!.summary).toBe('subagent_update: stuff');
+    expect(entry!.summary).toBe('cron: stuff');
+  });
+
+  it('drops subagent_update system messages (orchestration plumbing)', () => {
+    const msg: SystemMessage = {
+      id: '1',
+      role: 'system',
+      content: '<notification>Subagent x completed.</notification>',
+      timestamp: FIXED_TS,
+      sessionId: 's',
+      event: 'subagent_update',
+    };
+    expect(formatTurnLogEntry(msg)).toBeNull();
   });
 
   it('truncates tool principal-arg longer than maxToolPreview', () => {

@@ -123,8 +123,9 @@ export async function executeSubagent(
         true,
         undefined,
         parentTokenPayload?.subagentId,
-        'subagent_update'
-        // no parentTurnId — this starts a fresh turn for the parent
+        'subagent_update',
+        undefined,
+        parentTurnId
       );
     }
   } catch {
