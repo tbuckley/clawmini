@@ -533,21 +533,30 @@ export async function readPoliciesFile(startDir = process.cwd()): Promise<Policy
 // Merge built-ins, drop any user entries explicitly set to `false`. Pure: never
 // mutates the input. A built-in is only injected when its installed script
 // exists on disk, so the resolved config never advertises a command we know is
-// missing.
+// missing. Relative `command` paths are resolved against the workspace root so
+// the policy points at a real on-disk script regardless of the caller's cwd.
 export function resolvePolicies(
   file: PolicyConfigFile | null,
   clawminiDir: string
 ): PolicyConfig | null {
   if (!file) return null;
+  const workspaceRoot = path.dirname(clawminiDir);
+  const resolveCommand = (definition: PolicyDefinition): PolicyDefinition => {
+    if (!definition.command.startsWith('./') && !definition.command.startsWith('../')) {
+      return definition;
+    }
+    return { ...definition, command: path.resolve(workspaceRoot, definition.command) };
+  };
+
   const resolved: Record<string, PolicyDefinition> = {};
   for (const [name, value] of Object.entries(file.policies)) {
-    if (value !== false) resolved[name] = value;
+    if (value !== false) resolved[name] = resolveCommand(value);
   }
   for (const [name, definition] of Object.entries(BUILTIN_POLICIES)) {
     if (name in file.policies) continue;
     const scriptPath = path.join(clawminiDir, 'policy-scripts', `${name}.js`);
     if (!fs.existsSync(scriptPath)) continue;
-    resolved[name] = definition;
+    resolved[name] = resolveCommand(definition);
   }
   return { policies: resolved };
 }
