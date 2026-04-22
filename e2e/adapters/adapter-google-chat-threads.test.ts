@@ -783,13 +783,16 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
     // Coalescing: the number of `update` calls is far below the number of
     // logged entries (we never post one edit per entry). Both subagents
     // produce 3 entries each = 6; we expect the update count to be small
-    // (<=6) but that the final text names both subagents end-to-end.
+    // (<=6). With a debounce of ~1s and two fast echoes, all entries often
+    // arrive before the first flush fires — the content ends up in the
+    // create payload with zero updates. Either way the final text should
+    // name both subagents end-to-end.
     expect(update.mock.calls.length).toBeLessThanOrEqual(8);
 
-    const lastUpdate = [...update.mock.calls]
-      .reverse()
-      .find(([p]) => p.name === 'spaces/multi/messages/log-1')!;
-    const rawText = (lastUpdate[0].requestBody.text ?? '') as string;
+    const lastLogWrite =
+      [...update.mock.calls].reverse().find(([p]) => p.name === 'spaces/multi/messages/log-1') ??
+      threadedCreates[0]!;
+    const rawText = (lastLogWrite[0].requestBody.text ?? '') as string;
     const normalized = rawText
       .replace(/• (?:\d+m)?\d+[ms]/g, '• Δs')
       .replace(/\/clawmini-e2e-google-chat-threads-[^/\s"]+/g, '/CLAWMINI_DIR');
@@ -861,12 +864,17 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
     );
     expect(threadedCreates).toHaveLength(1);
 
-    // Final rendered text has the dropped-entries marker and fits in budget.
-    const allText = [
-      ...create.mock.calls.map((c) => (c[0].requestBody.text ?? '') as string),
-      ...update.mock.calls.map((c) => (c[0].requestBody.text ?? '') as string),
+    // The thread-log message's final rendered text (the most recent write
+    // that targets it — create or update) has the dropped-entries marker
+    // and fits in budget.
+    const logName = 'spaces/drop/messages/log-1';
+    const logWrites = [
+      ...threadedCreates.map((c) => (c[0].requestBody.text ?? '') as string),
+      ...update.mock.calls
+        .filter(([p]) => p.name === logName)
+        .map((c) => (c[0].requestBody.text ?? '') as string),
     ];
-    const latest = allText[allText.length - 1]!;
+    const latest = logWrites[logWrites.length - 1]!;
     expect(latest).toMatch(/…\d+ earlier entries dropped/);
     expect(latest).toContain('✅ drop-sub');
     // The latest status entry is the one kept; the earliest (👉 prompt) is

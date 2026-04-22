@@ -8,7 +8,8 @@ import type { Message } from './agent/types.js';
 import { createAgentSession } from './agent/agent-session.js';
 import { createChatLogger } from './agent/chat-logger.js';
 import { taskScheduler } from './agent/task-scheduler.js';
-import { emitTurnStarted, emitTurnEnded } from './events.js';
+import { emitTurnStarted } from './events.js';
+import { registerTurn, markParentExited } from './agent/turn-registry.js';
 
 export { calculateDelay } from './agent/agent-runner.js';
 
@@ -87,6 +88,7 @@ export async function executeDirectMessage(
   }
 
   if (emitLifecycle) {
+    registerTurn(chatId, turnId);
     emitTurnStarted({
       chatId,
       turnId,
@@ -101,9 +103,9 @@ export async function executeDirectMessage(
   const settleTurn = async () => {
     try {
       await taskPromise;
-      if (emitLifecycle) emitTurnEnded({ chatId, turnId, outcome: 'ok' });
+      if (emitLifecycle) markParentExited(turnId, 'ok');
     } catch (err) {
-      if (emitLifecycle) emitTurnEnded({ chatId, turnId, outcome: 'error' });
+      if (emitLifecycle) markParentExited(turnId, 'error');
       if (!(err instanceof Error && err.name === 'AbortError')) {
         throw err;
       }
