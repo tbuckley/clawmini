@@ -407,7 +407,33 @@ describe('workspace utilities', () => {
     it('injects propose-policy when its script is installed', () => {
       installProposePolicyScript();
       const resolved = resolvePolicies({ policies: {} }, clawminiDir);
-      expect(resolved?.policies['propose-policy']).toEqual(BUILTIN_POLICIES['propose-policy']);
+      expect(resolved?.policies['propose-policy']).toEqual({
+        ...BUILTIN_POLICIES['propose-policy'],
+        command: proposeScript,
+      });
+    });
+
+    it('resolves relative command paths against the workspace root', () => {
+      const resolved = resolvePolicies(
+        {
+          policies: {
+            local: { command: './scripts/tool.sh' },
+            parent: { command: '../outside/tool.sh' },
+            absolute: { command: '/usr/bin/env' },
+            bare: { command: 'echo' },
+          },
+        },
+        clawminiDir
+      );
+      const workspaceRoot = path.dirname(clawminiDir);
+      expect(resolved?.policies.local?.command).toBe(
+        path.resolve(workspaceRoot, 'scripts/tool.sh')
+      );
+      expect(resolved?.policies.parent?.command).toBe(
+        path.resolve(workspaceRoot, '../outside/tool.sh')
+      );
+      expect(resolved?.policies.absolute?.command).toBe('/usr/bin/env');
+      expect(resolved?.policies.bare?.command).toBe('echo');
     });
 
     it('omits propose-policy when its script is missing', () => {
