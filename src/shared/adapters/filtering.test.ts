@@ -76,7 +76,7 @@ describe('shouldDisplayMessage / routeMessage', () => {
     expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
   });
 
-  it('routes pending policy messages to thread-message', () => {
+  it('routes pending policy messages to top-level', () => {
     const msg: ChatMessage = {
       id: '1',
       role: 'policy',
@@ -89,7 +89,7 @@ describe('shouldDisplayMessage / routeMessage', () => {
       timestamp: '',
       sessionId: undefined,
     };
-    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-message' });
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'top-level' });
   });
 
   it('displays subagent messages if subagent: true', () => {

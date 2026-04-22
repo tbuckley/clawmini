@@ -233,16 +233,11 @@ export async function startDaemonToGoogleChatForwarder(
 
   const handlePolicyCard = async (
     message: Extract<ChatMessage, { role: 'policy' }>,
-    spaceName: string,
-    threadName?: string
+    spaceName: string
   ) => {
     const cards = buildPolicyCard(message);
     try {
-      if (threadName) {
-        await postThreaded(spaceName, threadName, '', cards);
-      } else {
-        await postTopLevel(spaceName, '', cards);
-      }
+      await postTopLevel(spaceName, '', cards);
     } catch (richError) {
       console.warn(
         'Failed to send rich policy request to Google Chat, falling back to plain text:',
@@ -252,11 +247,7 @@ export async function startDaemonToGoogleChatForwarder(
       const text = `Action Required: Policy Request\n\n${
         message.content || 'A pending policy request requires your attention.'
       }\n\nApprove: \`/approve ${policyId}\`\nReject: \`/reject ${policyId} <optional_rationale>\``;
-      if (threadName) {
-        await postThreaded(spaceName, threadName, text);
-      } else {
-        await postTopLevel(spaceName, text);
-      }
+      await postTopLevel(spaceName, text);
     }
   };
 
@@ -393,11 +384,9 @@ export async function startDaemonToGoogleChatForwarder(
   const collapseDestination = (dest: Destination, ctx?: TurnContext | null): Destination => {
     if (!threadsGloballyEnabled) {
       if (dest.kind === 'thread-log') return { kind: 'drop' };
-      if (dest.kind === 'thread-message') return { kind: 'top-level' };
     }
     if (ctx?.threadsDisabled) {
       if (dest.kind === 'thread-log') return { kind: 'top-level' };
-      if (dest.kind === 'thread-message') return { kind: 'top-level' };
     }
     return dest;
   };
@@ -422,13 +411,6 @@ export async function startDaemonToGoogleChatForwarder(
     const hasContent = !!message.content?.trim();
     const files = 'files' in message ? ((message as { files?: string[] }).files ?? []) : [];
     const hasFiles = files.length > 0;
-
-    if (effective.kind === 'thread-message') {
-      if (message.role === 'policy' && message.status === 'pending') {
-        await handlePolicyCard(message, space.spaceName, ctx?.gchatThreadName);
-      }
-      return;
-    }
 
     if (effective.kind === 'thread-log') {
       // Degraded: thread-log create failed earlier in this turn. Keep

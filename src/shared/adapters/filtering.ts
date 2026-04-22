@@ -4,11 +4,7 @@ export interface FilteringConfig {
   filters?: Record<string, boolean> | undefined;
 }
 
-export type Destination =
-  | { kind: 'drop' }
-  | { kind: 'top-level' }
-  | { kind: 'thread-log' }
-  | { kind: 'thread-message' };
+export type Destination = { kind: 'drop' } | { kind: 'top-level' } | { kind: 'thread-log' };
 
 /**
  * Legacy boolean. Returns true if the message role is permitted to be
@@ -56,7 +52,7 @@ function defaultDestinationForRole(message: ChatMessage): Destination {
   if (message.role === 'subagent_status') return { kind: 'thread-log' };
   if (message.role === 'command') return { kind: 'drop' };
   if (message.role === 'policy') {
-    return message.status === 'pending' ? { kind: 'thread-message' } : { kind: 'thread-log' };
+    return message.status === 'pending' ? { kind: 'top-level' } : { kind: 'thread-log' };
   }
   if (message.role === 'system') {
     if (message.event === 'cron') return { kind: 'top-level' };
@@ -73,7 +69,7 @@ function defaultDestinationForRole(message: ChatMessage): Destination {
  * Return the destination for a chat message given the adapter's filtering
  * config. Adapters that support threaded activity logs (Google Chat) use this
  * to decide whether each message becomes a top-level post, a thread-log entry,
- * a thread-message card, or is dropped entirely.
+ * or is dropped entirely.
  *
  * A filter override of `true` on a role whose default destination is `drop`
  * promotes it to `top-level` (matching the legacy "opted in → show" behavior).
@@ -94,11 +90,9 @@ export function routeMessage(message: ChatMessage, config: FilteringConfig): Des
       return defaultDest.kind === 'drop' ? { kind: 'top-level' } : defaultDest;
     }
     // Everything produced inside a subagent — tool calls, command logs,
-    // status updates, the prompt handed to it, and its final reply — belongs
-    // in the parent turn's activity log. Thread-message (policy cards) is
-    // preserved. Everything else folds into thread-log so the reader can see
-    // what the subagent did.
-    if (defaultDest.kind === 'thread-message') return defaultDest;
+    // status updates, the prompt handed to it, and its final reply — folds
+    // into the parent turn's activity log so the reader can see what the
+    // subagent did.
     return { kind: 'thread-log' };
   }
 
