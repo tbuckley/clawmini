@@ -5,7 +5,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// eslint-disable-next-line no-undef
 const envDir = process.env.ENV_DIR || __dirname;
 const allowlistPath = path.join(envDir, 'allowlist.txt');
 

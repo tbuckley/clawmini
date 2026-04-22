@@ -1,5 +1,13 @@
 import { z } from 'zod';
 
+const PolicyDefinitionSchema = z.looseObject({
+  description: z.string().optional(),
+  command: z.string(),
+  args: z.array(z.string()).optional(),
+  allowHelp: z.boolean().optional(),
+  autoApprove: z.boolean().optional(),
+});
+
 export const FallbackSchema = z.looseObject({
   commands: z
     .looseObject({
@@ -124,6 +132,7 @@ export const EnvironmentSchema = z.looseObject({
   exportLiteTo: z.string().optional(),
   baseDir: z.string().optional(),
   env: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
+  policies: z.record(z.string(), PolicyDefinitionSchema).optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
