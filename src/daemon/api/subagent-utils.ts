@@ -6,7 +6,7 @@ import type { RouterState } from '../routers/types.js';
 import { createChatLogger } from '../agent/chat-logger.js';
 import type { ChatSettings } from '../../shared/config.js';
 import { taskScheduler } from '../agent/task-scheduler.js';
-import { incrementSubagent, decrementSubagent } from '../agent/turn-registry.js';
+import { decrementSubagent } from '../agent/turn-registry.js';
 
 export function getSubagentDepth(settings: ChatSettings, parentId: string | undefined): number {
   let depth = 0;
@@ -18,6 +18,13 @@ export function getSubagentDepth(settings: ChatSettings, parentId: string | unde
   return depth;
 }
 
+/**
+ * Executes a subagent. Callers MUST have already called `incrementSubagent`
+ * for the parent's turn synchronously before any `await` — this function's
+ * `finally` block decrements, and we need the caller to increment earlier
+ * so that a sibling's completing task cannot decrement the parent's counter
+ * to zero (firing `turnEnded`) before this call's task is enqueued.
+ */
 export async function executeSubagent(
   chatId: string,
   subagentId: string,
@@ -34,7 +41,6 @@ export async function executeSubagent(
   workspaceRoot: string
 ) {
   const parentTurnId = parentTokenPayload?.turnId;
-  incrementSubagent(parentTurnId);
   try {
     try {
       const settings = (await readChatSettings(chatId)) || {};
