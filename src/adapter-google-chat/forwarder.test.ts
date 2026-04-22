@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { startDaemonToGoogleChatForwarder } from './forwarder.js';
 
+// `waitForMessages` yields `ChatStreamItem` envelopes (discriminated by
+// `kind`). Tests send raw message shapes; wrap them here.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const asEnvelopes = (messages: any[]) => messages.map((message) => ({ kind: 'message', message }));
+
 const mockConfig = {
   projectId: 'test',
   subscriptionName: 'test',
@@ -128,9 +133,6 @@ describe('Daemon to Google Chat Forwarder', () => {
           return { unsubscribe: vi.fn() };
         }),
       },
-      waitForTurns: {
-        subscribe: vi.fn().mockReturnValue({ unsubscribe: vi.fn() }),
-      },
     };
 
     mockReadState.mockResolvedValue({
@@ -161,14 +163,16 @@ describe('Daemon to Google Chat Forwarder', () => {
       expect.any(Object)
     );
 
-    subscribeCallbacks.onData([
-      {
-        id: 'msg-2',
-        role: 'agent',
-        content: 'Agent response',
-        timestamp: '',
-      },
-    ]);
+    subscribeCallbacks.onData(
+      asEnvelopes([
+        {
+          id: 'msg-2',
+          role: 'agent',
+          content: 'Agent response',
+          timestamp: '',
+        },
+      ])
+    );
 
     await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalled());
 
@@ -193,14 +197,16 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
 
-    subscribeCallbacks.onData([
-      {
-        id: 'msg-2',
-        role: 'agent',
-        content: 'Here are the files',
-        files: ['/tmp/file1.png', '/tmp/file2.txt'],
-      },
-    ]);
+    subscribeCallbacks.onData(
+      asEnvelopes([
+        {
+          id: 'msg-2',
+          role: 'agent',
+          content: 'Here are the files',
+          files: ['/tmp/file1.png', '/tmp/file2.txt'],
+        },
+      ])
+    );
 
     await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalled());
 
@@ -235,14 +241,16 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
 
-    subscribeCallbacks.onData([
-      {
-        id: 'msg-3',
-        role: 'agent',
-        content: 'Here are the files',
-        files: ['/tmp/file1.png', '/tmp/file2.txt'],
-      },
-    ]);
+    subscribeCallbacks.onData(
+      asEnvelopes([
+        {
+          id: 'msg-3',
+          role: 'agent',
+          content: 'Here are the files',
+          files: ['/tmp/file1.png', '/tmp/file2.txt'],
+        },
+      ])
+    );
 
     await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalled());
 
@@ -273,14 +281,16 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     mockDriveFilesCreate.mockRejectedValueOnce(new Error('Drive Auth Failed'));
 
-    subscribeCallbacks.onData([
-      {
-        id: 'msg-drive-fail',
-        role: 'agent',
-        content: 'Here are the files',
-        files: ['/tmp/file1.png'],
-      },
-    ]);
+    subscribeCallbacks.onData(
+      asEnvelopes([
+        {
+          id: 'msg-drive-fail',
+          role: 'agent',
+          content: 'Here are the files',
+          files: ['/tmp/file1.png'],
+        },
+      ])
+    );
 
     await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalled());
 
@@ -316,10 +326,12 @@ describe('Daemon to Google Chat Forwarder', () => {
       return Promise.resolve();
     });
 
-    subscribeCallbacks.onData([
-      { id: 'msg-err-1', role: 'agent', content: 'Agent response 1' },
-      { id: 'msg-err-2', role: 'agent', content: 'Agent response 2' },
-    ]);
+    subscribeCallbacks.onData(
+      asEnvelopes([
+        { id: 'msg-err-1', role: 'agent', content: 'Agent response 1' },
+        { id: 'msg-err-2', role: 'agent', content: 'Agent response 2' },
+      ])
+    );
 
     // Wait for the second message to be processed, meaning the first one didn't break the loop
     await vi.waitFor(() => expect(callCount).toBe(2));
@@ -351,14 +363,16 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
 
-    subscribeCallbacks.onData([
-      {
-        id: 'msg-2',
-        role: 'policy',
-        status: 'pending',
-        content: 'Please approve this action',
-      },
-    ]);
+    subscribeCallbacks.onData(
+      asEnvelopes([
+        {
+          id: 'msg-2',
+          role: 'policy',
+          status: 'pending',
+          content: 'Please approve this action',
+        },
+      ])
+    );
 
     await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalled());
 
@@ -437,14 +451,16 @@ describe('Daemon to Google Chat Forwarder', () => {
       .mockRejectedValueOnce(new Error('Cannot send cardsV2'))
       .mockResolvedValueOnce({});
 
-    subscribeCallbacks.onData([
-      {
-        id: 'msg-2',
-        role: 'policy',
-        status: 'pending',
-        content: 'Please approve this action',
-      },
-    ]);
+    subscribeCallbacks.onData(
+      asEnvelopes([
+        {
+          id: 'msg-2',
+          role: 'policy',
+          status: 'pending',
+          content: 'Please approve this action',
+        },
+      ])
+    );
 
     await vi.waitFor(() => expect(mockMessagesCreate).toHaveBeenCalledTimes(2));
 
@@ -476,7 +492,9 @@ describe('Daemon to Google Chat Forwarder', () => {
     await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy(), { timeout: 1000 });
 
     // Send a message, this updates the local memory cache to msg-local
-    subscribeCallbacks.onData([{ id: 'msg-local', role: 'agent', content: 'Agent response' }]);
+    subscribeCallbacks.onData(
+      asEnvelopes([{ id: 'msg-local', role: 'agent', content: 'Agent response' }])
+    );
 
     await vi.waitFor(
       () =>
@@ -503,7 +521,9 @@ describe('Daemon to Google Chat Forwarder', () => {
     await vi.runAllTicks();
 
     // Send another message to verify what the local cache holds
-    subscribeCallbacks.onData([{ id: 'msg-latest', role: 'agent', content: 'Agent response 2' }]);
+    subscribeCallbacks.onData(
+      asEnvelopes([{ id: 'msg-latest', role: 'agent', content: 'Agent response 2' }])
+    );
 
     // If local memory wins, the new write state will only contain msg-latest and not msg-stale
     // If disk won, it would have reverted to msg-stale and then updated to msg-latest?
@@ -518,7 +538,9 @@ describe('Daemon to Google Chat Forwarder', () => {
 
     await vi.advanceTimersByTimeAsync(6000);
 
-    subscribeCallbacks.onData([{ id: 'msg-latest', role: 'agent', content: 'Agent response 2' }]);
+    subscribeCallbacks.onData(
+      asEnvelopes([{ id: 'msg-latest', role: 'agent', content: 'Agent response 2' }])
+    );
 
     await vi.waitFor(
       () =>

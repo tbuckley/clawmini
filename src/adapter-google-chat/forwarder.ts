@@ -122,10 +122,7 @@ export async function startDaemonToGoogleChatForwarder(
     return google.chat({ version: 'v1', auth: authClient });
   };
 
-  const activeSubscriptions = new Map<
-    string,
-    { unsubscribe: () => void; turnSub?: { unsubscribe: () => void } }
-  >();
+  const activeSubscriptions = new Map<string, { unsubscribe: () => void }>();
   const turnContexts = new Map<string, TurnContext>();
   /**
    * When a turn has no inbound-user anchor (cron, subagent completion, any
@@ -623,8 +620,16 @@ export async function startDaemonToGoogleChatForwarder(
     const maxRetryDelay = 30000;
 
     let subscription: { unsubscribe: () => void } | null = null;
-    let turnSubscription: { unsubscribe: () => void } | null = null;
-    let messageQueue = Promise.resolve();
+    let pending = Promise.resolve();
+
+    type StreamItem =
+      | { kind: 'message'; message: ChatMessage }
+      | {
+          kind: 'turn';
+          event:
+            | { type: 'started'; turnId: string; rootMessageId: string; externalRef?: string }
+            | { type: 'ended'; turnId: string; outcome: 'ok' | 'error' };
+        };
 
     const connect = () => {
       if (signal?.aborted || !activeSubscriptions.has(chatId)) return;
@@ -632,22 +637,33 @@ export async function startDaemonToGoogleChatForwarder(
       subscription = trpc.waitForMessages.subscribe(
         { chatId, lastMessageId },
         {
-          onData: (messages) => {
+          onData: (items) => {
             retryDelay = 1000;
-            if (!Array.isArray(messages) || messages.length === 0) return;
+            if (!Array.isArray(items) || items.length === 0) return;
 
-            messageQueue = messageQueue
+            pending = pending
               .then(async () => {
-                for (const rawMessage of messages) {
+                for (const raw of items) {
                   if (signal?.aborted || !activeSubscriptions.has(chatId)) break;
-                  const message = rawMessage as ChatMessage;
-                  await handleMessageForChat(chatId, message);
-                  await saveLastMessageId(chatId, message.id).catch(console.error);
-                  lastMessageId = message.id;
+                  const item = raw as StreamItem;
+                  if (item.kind === 'message') {
+                    await handleMessageForChat(chatId, item.message);
+                    await saveLastMessageId(chatId, item.message.id).catch(console.error);
+                    lastMessageId = item.message.id;
+                  } else if (item.event.type === 'started') {
+                    await handleTurnStarted(
+                      chatId,
+                      item.event.turnId,
+                      item.event.rootMessageId,
+                      item.event.externalRef
+                    );
+                  } else {
+                    await handleTurnEnded(item.event.turnId);
+                  }
                 }
               })
               .catch((error) => {
-                console.error('Message queue failed, forcing reconnect...', error);
+                console.error('Stream queue failed, forcing reconnect...', error);
                 subscription?.unsubscribe();
                 subscription = null;
                 if (signal?.aborted || !activeSubscriptions.has(chatId)) return;
@@ -678,44 +694,11 @@ export async function startDaemonToGoogleChatForwarder(
           },
         }
       );
-
-      turnSubscription = trpc.waitForTurns.subscribe(
-        { chatId },
-        {
-          onData: (event: unknown) => {
-            const e = event as
-              | {
-                  type: 'started';
-                  turnId: string;
-                  rootMessageId: string;
-                  externalRef?: string;
-                }
-              | { type: 'ended'; turnId: string; outcome: 'ok' | 'error' };
-            if (!e) return;
-            messageQueue = messageQueue
-              .then(async () => {
-                if (e.type === 'started') {
-                  await handleTurnStarted(chatId, e.turnId, e.rootMessageId, e.externalRef);
-                } else {
-                  await handleTurnEnded(e.turnId);
-                }
-              })
-              .catch((err) => console.error('Turn handler failed:', err));
-          },
-          onError: (err) => {
-            console.error(`waitForTurns subscription error for ${chatId}:`, err);
-          },
-          onComplete: () => {
-            turnSubscription = null;
-          },
-        }
-      );
     };
 
     activeSubscriptions.set(chatId, {
       unsubscribe: () => {
         subscription?.unsubscribe();
-        turnSubscription?.unsubscribe();
       },
     });
 

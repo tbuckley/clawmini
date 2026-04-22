@@ -33,7 +33,10 @@ describe('Discord Adapter Client E2E', () => {
         { chatId: 'discord-chat' },
         {
           onData: (data) => {
-            messages.push(...(data as Record<string, unknown>[]));
+            const items = data as Array<{ kind: string; message?: Record<string, unknown> }>;
+            for (const item of items) {
+              if (item.kind === 'message' && item.message) messages.push(item.message);
+            }
             if (messages.some((m) => m.content === 'hello from adapter e2e test')) {
               resolve();
             }

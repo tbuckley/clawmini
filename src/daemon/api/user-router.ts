@@ -4,8 +4,13 @@ import path from 'node:path';
 import { TRPCError } from '@trpc/server';
 import { pathIsInsideDir } from '../../shared/utils/fs.js';
 import { on } from 'node:events';
-import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, DAEMON_EVENT_TYPING } from '../events.js';
-import { waitForTurns } from './turns-router.js';
+import {
+  daemonEvents,
+  DAEMON_EVENT_CHAT_STREAM,
+  DAEMON_EVENT_TYPING,
+  type ChatStreamEnvelope,
+  type ChatStreamItem,
+} from '../events.js';
 import {
   getSettingsPath,
   readChatSettings,
@@ -122,6 +127,11 @@ export const getMessages = apiProcedure
     return fetchMessages(chatId, input.limit);
   });
 
+/**
+ * Interleaved chat stream: `ChatMessage` appends and turn lifecycle events
+ * arrive on a single subscription in emission order. Consumers that only
+ * care about messages can ignore items with `kind: 'turn'`.
+ */
 export const waitForMessages = apiProcedure
   .input(
     z.object({
@@ -132,20 +142,25 @@ export const waitForMessages = apiProcedure
   .subscription(async function* ({ input, signal }) {
     const chatId = input.chatId ?? (await getDefaultChatId());
 
-    // 1. Check if there are already new messages
+    // 1. Catch up on any messages missed since `lastMessageId`. Turn events
+    //    have no persisted backlog — they're live-only, like today.
     if (input.lastMessageId) {
       const messages = await fetchMessages(chatId);
       const lastIndex = messages.findIndex((m) => m.id === input.lastMessageId);
       if (lastIndex !== -1 && lastIndex < messages.length - 1) {
-        yield messages.slice(lastIndex + 1);
+        const items: ChatStreamItem[] = messages
+          .slice(lastIndex + 1)
+          .map((message) => ({ kind: 'message', message }));
+        yield items;
       }
     }
 
-    // 2. Listen for new messages
+    // 2. Live: messages and turn events on the same channel, in emission order.
     try {
-      for await (const [event] of on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, { signal })) {
-        if (event.chatId === chatId) {
-          yield [event.message];
+      for await (const [envelope] of on(daemonEvents, DAEMON_EVENT_CHAT_STREAM, { signal })) {
+        const e = envelope as ChatStreamEnvelope;
+        if (e.chatId === chatId) {
+          yield [e.item];
         }
       }
     } catch (err) {
@@ -236,7 +251,6 @@ export const userRouter = router({
   getMessages,
   waitForMessages,
   waitForTyping,
-  waitForTurns,
   ping,
   shutdown,
   listCronJobs: userListCronJobs,
