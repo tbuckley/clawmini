@@ -142,6 +142,9 @@ const VERB_EMOJI: Record<string, string> = {
 
 const SUBAGENT_MARKER = '🤖';
 
+/** Emoji rendered on the turn's opening entry (posted when the turn starts). */
+export const TURN_START_EMOJI = '▶️';
+
 /**
  * Entries produced *inside* a subagent (a tool call, policy, system event
  * with `subagentId` set) need a marker so the reader knows the activity
@@ -170,6 +173,22 @@ function sanitize(s: string): string {
 function renderEntry(entry: TurnLogEntry): string {
   const prefix = needsSubagentMarker(entry) ? `${SUBAGENT_MARKER} ` : '';
   return `• ${entry.timestamp}  ${prefix}${entry.summary}`;
+}
+
+/**
+ * Build the first entry posted into a turn's activity log so the thread
+ * appears as soon as `turnStarted` fires, rather than waiting for the first
+ * real event.
+ */
+export function buildTurnStartEntry(): TurnLogEntry {
+  const summary = `${TURN_START_EMOJI} Started processing…`;
+  return {
+    timestamp: '0s',
+    kind: 'system',
+    summary,
+    rawLength: summary.length,
+    messageRole: 'turn_start',
+  };
 }
 
 export function formatTurnLogEntry(

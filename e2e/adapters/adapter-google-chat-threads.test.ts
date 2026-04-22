@@ -494,7 +494,8 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
       .replace(/\/clawmini-e2e-google-chat-threads-[^/\s"]+/g, '/CLAWMINI_DIR');
 
     expect(normalized).toMatchInlineSnapshot(`
-      "• Δs  👉 hello-sub: sleep 5 && echo hello
+      "• Δs  ▶️ Started processing…
+      • Δs  👉 hello-sub: sleep 5 && echo hello
       • Δs  👈 hello-sub: [DEBUG] sleep 5 && echo hello: \`\`\` hello \`\`\`
       • Δs  ✅ hello-sub"
     `);
@@ -798,7 +799,8 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
       .replace(/\/clawmini-e2e-google-chat-threads-[^/\s"]+/g, '/CLAWMINI_DIR');
 
     expect(normalized).toMatchInlineSnapshot(`
-      "• Δs  👉 multi-a: echo A
+      "• Δs  ▶️ Started processing…
+      • Δs  👉 multi-a: echo A
       • Δs  👈 multi-a: [DEBUG] echo A: \`\`\` A \`\`\`
       • Δs  ✅ multi-a
       • Δs  👉 multi-b: echo B
@@ -957,7 +959,8 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
         .replace(/• (?:\d+m)?\d+[ms]/g, '• Δs')
         .replace(/\/clawmini-e2e-google-chat-threads-[^/\s"]+/g, '/CLAWMINI_DIR');
     expect(finalLog).toMatchInlineSnapshot(`
-      "• Δs  👉 txn-sub: echo done
+      "• Δs  ▶️ Started processing…
+      • Δs  👉 txn-sub: echo done
       • Δs  👈 txn-sub: [DEBUG] echo done: \`\`\` done \`\`\`
       • Δs  ✅ txn-sub"
     `);
@@ -1075,17 +1078,21 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
     expect(cronPostText).toContain('[SYSTEM] ');
     expect(cronPostText).toContain('clawmini-lite.js subagents spawn --id cron-sub');
 
-    // Subsequent threaded creates all anchor on the auto-thread GChat created
-    // for the cron top-level post.
+    // Subsequent threaded creates for the cron turn all anchor on the
+    // auto-thread GChat created for the cron top-level post. The earlier user
+    // turn ("hello") also opens its own activity thread anchored on
+    // `spaces/cron/threads/kick` (the "Started processing…" opener); that's
+    // its own turn and is not what this test is verifying, so filter it out.
     const threadedCreates = create.mock.calls.filter(([p]) =>
       Boolean((p.requestBody as { thread?: { name?: string } }).thread)
     );
-    expect(threadedCreates.length).toBeGreaterThanOrEqual(1);
-    // All threaded posts must share the same (auto-generated) thread name —
-    // the one returned for the cron post, not, say, `spaces/cron/threads/kick`
-    // from the earlier inbound.
+    const cronThreadedCreates = threadedCreates.filter(([p]) => {
+      const thread = (p.requestBody as { thread?: { name?: string } }).thread!.name!;
+      return thread !== 'spaces/cron/threads/kick';
+    });
+    expect(cronThreadedCreates.length).toBeGreaterThanOrEqual(1);
     const anchoredThreads = new Set(
-      threadedCreates.map(
+      cronThreadedCreates.map(
         ([p]) => (p.requestBody as { thread?: { name?: string } }).thread!.name!
       )
     );

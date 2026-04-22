@@ -17,6 +17,7 @@ import {
 import {
   formatTurnLogEntry,
   condenseTurnLog,
+  buildTurnStartEntry,
   type TurnLogEntry,
   type CondenseStrategy,
 } from '../shared/adapters/turn-log.js';
@@ -494,6 +495,12 @@ export async function startDaemonToGoogleChatForwarder(
       if (createdThread && message.turnId) {
         if (ctx && !ctx.gchatThreadName) {
           ctx.gchatThreadName = createdThread;
+          // The turn's opening entry was buffered waiting for this anchor;
+          // flush now so the activity thread opens right under the post that
+          // just created it.
+          if (ctx.entries.length > 0 && !ctx.threadsDisabled && threadsGloballyEnabled) {
+            flushTurnLog(ctx).catch((err) => console.error('Flush-on-anchor error:', err));
+          }
         } else if (!ctx) {
           // turnStarted hasn't arrived yet — cache the mapping so it picks
           // up the anchor when it does.
@@ -535,7 +542,10 @@ export async function startDaemonToGoogleChatForwarder(
       rootGchatMessageName: entry?.gchatMessageName,
       gchatThreadName: entry?.gchatThreadName ?? proactiveThread,
       activityLogMessageName: undefined,
-      entries: [],
+      // Seed the turn's activity log with an opening entry so the thread
+      // appears as soon as the turn starts, rather than only after the first
+      // tool call / subagent event. Skipped when threads are disabled.
+      entries: space.threadsDisabled || !threadsGloballyEnabled ? [] : [buildTurnStartEntry()],
       editTimer: undefined,
       flushing: false,
       flushRequested: false,
@@ -544,6 +554,15 @@ export async function startDaemonToGoogleChatForwarder(
       startedAt: new Date().toISOString(),
     };
     turnContexts.set(turnId, ctx);
+
+    // If the thread anchor is available now (inbound-user turn, or proactive
+    // turn whose top-level post already landed), flush immediately so the
+    // "Started processing…" message appears without waiting for the debounce
+    // window. Otherwise the first top-level post in `handleMessageForChat`
+    // will assign `gchatThreadName` and trigger the flush there.
+    if (ctx.gchatThreadName && !ctx.threadsDisabled && threadsGloballyEnabled) {
+      flushTurnLog(ctx).catch((err) => console.error('Initial flush error:', err));
+    }
   };
 
   const handleTurnEnded = async (turnId: string) => {

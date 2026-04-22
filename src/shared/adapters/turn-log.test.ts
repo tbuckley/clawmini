@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { formatTurnLogEntry, condenseTurnLog, type TurnLogEntry } from './turn-log.js';
+import {
+  formatTurnLogEntry,
+  condenseTurnLog,
+  buildTurnStartEntry,
+  TURN_START_EMOJI,
+  type TurnLogEntry,
+} from './turn-log.js';
 import type {
   AgentReplyMessage,
   CommandLogMessage,
@@ -300,6 +306,27 @@ describe('formatTurnLogEntry', () => {
     const msg = makeTool({ payload: { file_path: 'x.md' } });
     const entry = formatTurnLogEntry(msg)!;
     expect(entry.timestamp).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+  });
+});
+
+describe('buildTurnStartEntry', () => {
+  it('renders the opening line with a 0s timestamp and start emoji', () => {
+    const entry = buildTurnStartEntry();
+    expect(entry.timestamp).toBe('0s');
+    expect(entry.kind).toBe('system');
+    expect(entry.summary).toContain(TURN_START_EMOJI);
+    expect(entry.summary).toContain('Started processing');
+    expect(entry.subagentId).toBeUndefined();
+  });
+
+  it('renders cleanly through condenseTurnLog (no subagent marker)', () => {
+    const entry = buildTurnStartEntry();
+    const rendered = condenseTurnLog([entry], { maxChars: 500 });
+    expect(rendered.kind).toBe('fits');
+    if (rendered.kind !== 'fits') return;
+    expect(rendered.text).not.toContain('🤖');
+    expect(rendered.text).toContain('0s');
+    expect(rendered.text).toContain('Started processing');
   });
 });
 
