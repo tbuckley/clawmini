@@ -6,6 +6,7 @@ import {
   type PolicyConfigFile,
   type PolicyDefinition,
 } from './policies.js';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
@@ -147,7 +148,12 @@ async function readJsonFile(filePath: string): Promise<Record<string, unknown> |
 async function writeJsonFile(filePath: string, data: Record<string, unknown>): Promise<void> {
   const dir = path.dirname(filePath);
   await fsPromises.mkdir(dir, { recursive: true });
-  await fsPromises.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+  // Atomic write: a plain writeFile truncates then writes, so a concurrent
+  // reader can observe an empty file and throw `JSON.parse("")`. rename(2)
+  // on the same filesystem is atomic, so readers always see old or new.
+  const tmpPath = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  await fsPromises.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+  await fsPromises.rename(tmpPath, filePath);
 }
 
 export async function readChatSettings(
