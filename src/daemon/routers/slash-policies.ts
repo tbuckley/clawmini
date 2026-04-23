@@ -1,12 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import type { RouterState } from './types.js';
 import { RequestStore } from '../request-store.js';
-import { readPoliciesForPath, getWorkspaceRoot } from '../../shared/workspace.js';
+import { readChatSettings, readPoliciesForPath, getWorkspaceRoot } from '../../shared/workspace.js';
 import { resolveAgentDir } from '../api/router-utils.js';
 import { executeRequest, resolveRequestCwd, truncateLargeOutput } from '../policy-utils.js';
 import { appendMessage } from '../chats.js';
 import type { SystemMessage } from '../../shared/chats.js';
+import type { PolicyRequest } from '../../shared/policies.js';
 import { executeDirectMessage } from '../message.js';
+
+// Resolve which session the approval/rejection should be replayed on. The
+// request may have been created in an earlier session (session-timeout, /new),
+// so we always consult the chat's *current* session for that agent/subagent.
+async function resolveTargetSessionId(chatId: string, req: PolicyRequest): Promise<string> {
+  const chatSettings = await readChatSettings(chatId);
+  if (req.subagentId) {
+    return chatSettings?.subagents?.[req.subagentId]?.sessionId ?? 'default';
+  }
+  return chatSettings?.sessions?.[req.agentId] ?? 'default';
+}
 
 async function loadAndValidateRequest(id: string, state: RouterState) {
   const store = new RequestStore(getWorkspaceRoot());
@@ -72,6 +84,8 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
 
     const agentMessage = `Request ${id} approved.\n\n${wrapInHtml('stdout', stdout)}\n\n${wrapInHtml('stderr', stderr)}\n\nExit Code: ${exitCode}`;
 
+    const targetSessionId = await resolveTargetSessionId(state.chatId, req);
+
     const userNotificationMsg: SystemMessage = {
       id: randomUUID(),
       messageId: state.messageId,
@@ -92,7 +106,8 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
         messageId: randomUUID(),
         message: agentMessage,
         chatId: state.chatId,
-        agentId: state.agentId || 'default',
+        agentId: req.agentId,
+        sessionId: targetSessionId,
         ...(req.subagentId ? { subagentId: req.subagentId } : {}),
         env: state.env || {},
       },
@@ -124,6 +139,8 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
 
     const agentMessage = `Request ${id} rejected. Reason: ${reason}`;
 
+    const targetSessionId = await resolveTargetSessionId(state.chatId, req);
+
     const userNotificationMsg: SystemMessage = {
       id: randomUUID(),
       messageId: state.messageId,
@@ -144,7 +161,8 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
         messageId: randomUUID(),
         message: agentMessage,
         chatId: state.chatId,
-        agentId: state.agentId || 'default',
+        agentId: req.agentId,
+        sessionId: targetSessionId,
         ...(req.subagentId ? { subagentId: req.subagentId } : {}),
         env: state.env || {},
       },
