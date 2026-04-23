@@ -55,7 +55,11 @@ function defaultDestinationForRole(message: ChatMessage): Destination {
     return message.status === 'pending' ? { kind: 'top-level' } : { kind: 'thread-log' };
   }
   if (message.role === 'system') {
-    if (message.event === 'cron') return { kind: 'top-level' };
+    // Cron turns are invisible by default: the activity log anchors on the
+    // agent's eventual top-level reply (if any). Adapters that want a
+    // visible header post (gchat `visibility.jobs: 'header'`) promote this
+    // back to top-level at the forwarder layer.
+    if (message.event === 'cron') return { kind: 'drop' };
     if (message.event === 'policy_approved' || message.event === 'policy_rejected') {
       return { kind: 'thread-log' };
     }

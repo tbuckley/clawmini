@@ -76,6 +76,35 @@ describe('shouldDisplayMessage / routeMessage', () => {
     expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
   });
 
+  it('drops cron system messages by default (proactive turns are invisible)', () => {
+    // Cron prompts are agent-facing orchestration, not user-facing content.
+    // Adapters that want scheduled work visible opt into their own synthetic
+    // heartbeat (e.g. gchat `visibility.jobs: 'header'`).
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'system',
+      content: 'run my daily report',
+      event: 'cron',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'drop' });
+  });
+
+  it('promotes cron system messages back to top-level when filters.system is true', () => {
+    // Escape hatch for debugging: `filters.system: true` forces cron activity
+    // back into the main log.
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'system',
+      content: 'run my daily report',
+      event: 'cron',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, { filters: { system: true } })).toEqual({ kind: 'top-level' });
+  });
+
   it('routes pending policy messages to top-level', () => {
     const msg: ChatMessage = {
       id: '1',
@@ -250,9 +279,9 @@ describe('formatMessage', () => {
   });
 
   it('prepends [SYSTEM] for system-role messages with no displayRole', () => {
-    // Cron-triggered prompts and similar auto-generated system output go out
-    // top-level today; without the tag they look like either the user or the
-    // bot talking.
+    // System messages only reach `formatMessage` when they route to top-level
+    // (either a non-cron event, or cron opted back in via `filters.system`).
+    // Without the tag they look like either the user or the bot talking.
     const msg: ChatMessage = {
       id: '1',
       role: 'system',

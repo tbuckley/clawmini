@@ -894,29 +894,31 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
     expect(transcript).toContain('✅ txn-sub');
   }, 120000);
 
-  it('threads cron-triggered activity under a [SYSTEM]-tagged top-level post', async () => {
-    // A proactive turn (session-timeout cron) has no inbound GChat message
-    // to anchor on. The forwarder should:
-    //   (1) post the cron prompt top-level with a `[SYSTEM] ` prefix, and
-    //   (2) use the GChat thread that post just created as the anchor for
-    //       any subsequent thread-log activity the agent produces.
+  /**
+   * Stand up a session-timeout cron that spawns a subagent. Returns the
+   * `create`/`update` mocks and the threaded-creates helper. Shared between
+   * the silent-mode and header-mode tests, which differ only in the
+   * `visibility.jobs` config they install.
+   */
+  async function runCronScenario(opts: {
+    chatId: string;
+    space: string;
+    jobsMode?: 'silent' | 'header';
+  }) {
     const { env } = envRef;
     const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
     const subscription = makeFakeSubscription();
     const { api, create, update } = makeFakeChatApi();
 
-    // Give each `create` a distinct thread.name so we can verify the cron
-    // post's thread becomes the anchor for subsequent threaded posts.
     let threadCounter = 0;
     let msgCounter = 0;
     create.mockImplementation(async (params) => {
       msgCounter++;
-      const msgName = `spaces/cron/messages/msg-${msgCounter}`;
+      const msgName = `${opts.space}/messages/msg-${msgCounter}`;
       const isThreaded = Boolean(
         (params.requestBody as { thread?: { name?: string } }).thread
       );
       if (isThreaded) {
-        // Threaded posts reuse the caller-supplied thread.
         return {
           data: {
             name: msgName,
@@ -924,27 +926,24 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
           },
         };
       }
-      // Top-level posts: auto-create a fresh thread, mirroring real GChat.
       threadCounter++;
       return {
         data: {
           name: msgName,
-          thread: { name: `spaces/cron/threads/auto-${threadCounter}` },
+          thread: { name: `${opts.space}/threads/auto-${threadCounter}` },
         },
       };
     });
 
     await updateGoogleChatState(
-      { channelChatMap: { 'spaces/cron': { chatId: 'gc-cron' } } },
+      { channelChatMap: { [opts.space]: { chatId: opts.chatId } } },
       env.e2eDir
     );
-    await env.addChat('gc-cron', 'debug-agent');
+    await env.addChat(opts.chatId, 'debug-agent');
 
-    // Install session-timeout with a tight interval and a prompt that makes
-    // the debug-agent spawn a subagent (producing thread-log events).
     const cronPrompt =
       'clawmini-lite.js subagents spawn --id cron-sub --async "echo session-ended"';
-    env.writeChatSettings('gc-cron', {
+    env.writeChatSettings(opts.chatId, {
       defaultAgent: 'debug-agent',
       routers: [{ use: '@clawmini/session-timeout', with: { timeout: '3s', prompt: cronPrompt } }],
     });
@@ -956,71 +955,110 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
       { subscription, chatApi: api, startDir: env.e2eDir }
     );
 
-    const config = { ...BASE_CONFIG, chatId: 'gc-cron' };
+    const config: typeof BASE_CONFIG = {
+      ...BASE_CONFIG,
+      chatId: opts.chatId,
+      ...(opts.jobsMode ? { visibility: { jobs: opts.jobsMode } } : {}),
+    };
 
     await runForwarder({ trpc, chatApi: api, startDir: env.e2eDir, config }, async () => {
-      // Send an inbound to trigger session-timeout scheduling.
       subscription.emitMessage(
         makeThreadedMessage({
-          space: 'spaces/cron',
+          space: opts.space,
           messageId: 'kick',
-          threadName: 'spaces/cron/threads/kick',
+          threadName: `${opts.space}/threads/kick`,
           text: 'hello',
         })
       );
-
-      // Wait for the cron-triggered prompt to land as a top-level post.
-      await vi.waitFor(
-        () => {
-          const sys = create.mock.calls.find(
-            ([p]) =>
-              typeof p.requestBody.text === 'string' &&
-              (p.requestBody.text as string).startsWith('[SYSTEM] ') &&
-              !('thread' in (p.requestBody as { thread?: unknown }))
-          );
-          expect(sys).toBeDefined();
-        },
-        { timeout: 30000, interval: 500 }
-      );
-
-      // Then wait for the subagent's ✅ status — proves the thread-log
-      // activity anchored on the cron post's auto-thread successfully.
       await waitForSubagentComplete(update, create, 'cron-sub');
     });
 
-    // Extract the thread the cron post created.
-    const cronPost = create.mock.calls.find(
+    const kickThread = `${opts.space}/threads/kick`;
+    const cronThreadedCreates = create.mock.calls
+      .filter(([p]) => Boolean((p.requestBody as { thread?: { name?: string } }).thread))
+      .filter(([p]) => {
+        const thread = (p.requestBody as { thread?: { name?: string } }).thread!.name!;
+        return thread !== kickThread;
+      });
+
+    return { create, update, cronThreadedCreates };
+  }
+
+  it('silent mode (default): cron prompt stays hidden; activity anchors on the agent reply', async () => {
+    // Default `visibility.jobs: 'silent'` drops the cron SystemMessage. The
+    // agent's auto-reply ("Starting a fresh session…") becomes the first
+    // top-level post and therefore the thread anchor for the cron turn's
+    // subagent activity.
+    const { create, cronThreadedCreates } = await runCronScenario({
+      chatId: 'gc-cron-silent',
+      space: 'spaces/cron-silent',
+    });
+
+    // No `[SYSTEM]`-prefixed post: the cron prompt is never surfaced.
+    const sysPosts = create.mock.calls.filter(
       ([p]) =>
         typeof p.requestBody.text === 'string' &&
-        (p.requestBody.text as string).startsWith('[SYSTEM] ') &&
-        !('thread' in (p.requestBody as { thread?: unknown }))
-    )!;
-    expect(cronPost).toBeDefined();
-    const cronPostText = cronPost[0].requestBody.text as string;
-    expect(cronPostText).toContain('[SYSTEM] ');
-    expect(cronPostText).toContain('clawmini-lite.js subagents spawn --id cron-sub');
-
-    // Subsequent threaded creates for the cron turn all anchor on the
-    // auto-thread GChat created for the cron top-level post. The earlier user
-    // turn ("hello") also opens its own activity thread anchored on
-    // `spaces/cron/threads/kick` (the "Started processing…" opener); that's
-    // its own turn and is not what this test is verifying, so filter it out.
-    const threadedCreates = create.mock.calls.filter(([p]) =>
-      Boolean((p.requestBody as { thread?: { name?: string } }).thread)
+        (p.requestBody.text as string).startsWith('[SYSTEM] ')
     );
-    const cronThreadedCreates = threadedCreates.filter(([p]) => {
-      const thread = (p.requestBody as { thread?: { name?: string } }).thread!.name!;
-      return thread !== 'spaces/cron/threads/kick';
-    });
+    expect(sysPosts).toHaveLength(0);
+
+    // The auto-reply lands top-level and seeds the cron turn's thread.
+    const replyPost = create.mock.calls.find(
+      ([p]) =>
+        typeof p.requestBody.text === 'string' &&
+        (p.requestBody.text as string).includes('Starting a fresh session') &&
+        !('thread' in (p.requestBody as { thread?: unknown }))
+    );
+    expect(replyPost).toBeDefined();
+
+    // All thread-log activity for the cron turn anchors on exactly one thread
+    // (the one auto-created by the reply post), not on the prior user turn.
     expect(cronThreadedCreates.length).toBeGreaterThanOrEqual(1);
-    const anchoredThreads = new Set(
+    const anchored = new Set(
       cronThreadedCreates.map(
         ([p]) => (p.requestBody as { thread?: { name?: string } }).thread!.name!
       )
     );
-    expect(anchoredThreads.size).toBe(1);
-    const [anchorThread] = [...anchoredThreads];
-    expect(anchorThread).toMatch(/^spaces\/cron\/threads\/auto-/);
-    expect(anchorThread).not.toBe('spaces/cron/threads/kick');
+    expect(anchored.size).toBe(1);
+    expect([...anchored][0]).toMatch(/\/threads\/auto-/);
+  }, 60000);
+
+  it('header mode: posts 🕒 <jobId> as the anchor for cron activity', async () => {
+    const { create, cronThreadedCreates } = await runCronScenario({
+      chatId: 'gc-cron-header',
+      space: 'spaces/cron-header',
+      jobsMode: 'header',
+    });
+
+    // The cron heartbeat posts top-level with a 🕒 prefix and carries the
+    // job id, not the (potentially sensitive) prompt text.
+    const headerPost = create.mock.calls.find(
+      ([p]) =>
+        typeof p.requestBody.text === 'string' &&
+        (p.requestBody.text as string).startsWith('🕒 ') &&
+        !('thread' in (p.requestBody as { thread?: unknown }))
+    );
+    expect(headerPost).toBeDefined();
+    const headerText = headerPost![0].requestBody.text as string;
+    expect(headerText).toContain('__session_timeout__');
+    expect(headerText).not.toContain('clawmini-lite.js');
+
+    // And no `[SYSTEM] `-prefixed top-level post was generated.
+    const sysPosts = create.mock.calls.filter(
+      ([p]) =>
+        typeof p.requestBody.text === 'string' &&
+        (p.requestBody.text as string).startsWith('[SYSTEM] ')
+    );
+    expect(sysPosts).toHaveLength(0);
+
+    // Subagent activity threads under the header's auto-created thread.
+    expect(cronThreadedCreates.length).toBeGreaterThanOrEqual(1);
+    const anchored = new Set(
+      cronThreadedCreates.map(
+        ([p]) => (p.requestBody as { thread?: { name?: string } }).thread!.name!
+      )
+    );
+    expect(anchored.size).toBe(1);
+    expect([...anchored][0]).toMatch(/\/threads\/auto-/);
   }, 60000);
 });

@@ -13,6 +13,13 @@ export const ThreadVisibilitySchema = z.object({
       editDebounceMs: z.number().default(1000).optional(),
     })
     .optional(),
+  // Proactive (cron) turns have no inbound user message. `silent` (default)
+  // drops the cron system message and anchors any thread-log activity on the
+  // agent's eventual top-level reply; if the agent never replies, nothing
+  // posts. `header` posts a terse `🕒 <jobId>` header top-level to serve as
+  // the anchor, making scheduled work visible even when the agent stays
+  // silent.
+  jobs: z.enum(['silent', 'header']).default('silent').optional(),
 });
 
 export const GoogleChatConfigSchema = z.looseObject({

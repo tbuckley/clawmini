@@ -42,6 +42,7 @@ export async function executeDirectMessage(
       event: systemEvent,
       messageId: state.messageId,
       ...(displayRole ? { displayRole } : {}),
+      ...(state.jobId ? { jobId: state.jobId } : {}),
     });
     msgId = sysMsg.id;
   } else {

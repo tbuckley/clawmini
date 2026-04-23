@@ -71,6 +71,7 @@ export async function startDaemonToGoogleChatForwarder(
   const startDir = deps.startDir ?? process.cwd();
   const threadLogOpts = resolveThreadLogOpts(config);
   const threadsGloballyEnabled = config.visibility?.threads !== false;
+  const jobsMode: 'silent' | 'header' = config.visibility?.jobs ?? 'silent';
 
   const getChatApi = async (): Promise<GoogleChatApi> => {
     if (deps.chatApi) return deps.chatApi;
@@ -221,9 +222,17 @@ export async function startDaemonToGoogleChatForwarder(
 
   const handleMessageForChat = async (chatId: string, message: ChatMessage) => {
     const routed = routeMessage(message, filteringConfig);
+
+    // Cron SystemMessages route to `drop` by default (silent mode: the
+    // activity log anchors on the agent's reply; nothing posts if it stays
+    // silent). In `header` mode, promote back to top-level and swap the
+    // prompt text for a terse `🕒 <jobId>` heartbeat.
+    const isCronHeader =
+      jobsMode === 'header' && message.role === 'system' && message.event === 'cron';
+
     const effective = collapseDestination(routed, message.turnId);
 
-    if (effective.kind === 'drop') return;
+    if (!isCronHeader && effective.kind === 'drop') return;
 
     const space = await resolveSpaceForChat(chatId, startDir);
     if (!space) {
@@ -238,7 +247,7 @@ export async function startDaemonToGoogleChatForwarder(
     const files = 'files' in message ? ((message as { files?: string[] }).files ?? []) : [];
     const hasFiles = files.length > 0;
 
-    if (effective.kind === 'thread-log') {
+    if (!isCronHeader && effective.kind === 'thread-log') {
       if (!message.turnId) {
         console.warn(`thread-log event for ${message.role} has no turnId — dropping.`);
         return;
@@ -251,7 +260,7 @@ export async function startDaemonToGoogleChatForwarder(
     }
 
     // Top-level.
-    if (!hasContent && !hasFiles && message.role !== 'policy') return;
+    if (!isCronHeader && !hasContent && !hasFiles && message.role !== 'policy') return;
 
     try {
       if (message.role === 'policy' && message.status === 'pending') {
@@ -259,7 +268,14 @@ export async function startDaemonToGoogleChatForwarder(
         return;
       }
 
-      let text = formatMessage(message) || '';
+      let text: string;
+      if (isCronHeader) {
+        const cron = message as Extract<ChatMessage, { role: 'system' }>;
+        const label = cron.jobId ?? 'scheduled';
+        text = `🕒 ${label}`;
+      } else {
+        text = formatMessage(message) || '';
+      }
 
       if (hasFiles) {
         const fileNames = files.map((f: string) => path.basename(f)).join(', ');

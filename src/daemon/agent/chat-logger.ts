@@ -120,7 +120,7 @@ export function createChatLogger(
         exitCode: 0,
       } satisfies CommandLogMessage),
 
-    logSystemMessage: async ({ content, event, messageId, displayRole }) => {
+    logSystemMessage: async ({ content, event, messageId, displayRole, jobId }) => {
       const msg: SystemMessage = {
         id: crypto.randomUUID(),
         role: 'system',
@@ -134,6 +134,9 @@ export function createChatLogger(
       }
       if (displayRole !== undefined) {
         msg.displayRole = displayRole;
+      }
+      if (jobId !== undefined) {
+        msg.jobId = jobId;
       }
       return append<SystemMessage>(msg);
     },
