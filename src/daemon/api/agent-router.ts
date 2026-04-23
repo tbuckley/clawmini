@@ -59,6 +59,7 @@ export const logMessage = apiProcedure
       exitCode: 0,
       sessionId: ctx.tokenPayload.sessionId,
       ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
+      ...(ctx.tokenPayload.turnId ? { turnId: ctx.tokenPayload.turnId } : {}),
       ...(filePaths.length > 0 ? { files: filePaths } : {}),
     };
 
@@ -97,6 +98,7 @@ export const logReplyMessage = apiProcedure
       timestamp,
       sessionId: ctx.tokenPayload.sessionId,
       ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
+      ...(ctx.tokenPayload.turnId ? { turnId: ctx.tokenPayload.turnId } : {}),
       ...(filePaths.length > 0 ? { files: filePaths } : {}),
     };
 
@@ -140,6 +142,7 @@ export const logToolMessage = apiProcedure
       timestamp,
       sessionId: ctx.tokenPayload.sessionId,
       ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
+      ...(ctx.tokenPayload.turnId ? { turnId: ctx.tokenPayload.turnId } : {}),
     };
 
     await appendMessage(chatId, logMsg);

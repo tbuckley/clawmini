@@ -30,6 +30,7 @@ export interface Logger {
     event: SystemMessage['event'];
     messageId?: string;
     displayRole?: 'user' | 'agent';
+    jobId?: string;
   }): Promise<SystemMessage>;
   logSubagentStatus(options: {
     subagentId: string;
@@ -56,6 +57,7 @@ export interface Message {
   id: string;
   content: string;
   env: Record<string, string>;
+  turnId?: string;
 }
 
 export interface ExecutionResponse {

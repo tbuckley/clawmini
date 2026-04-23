@@ -15,6 +15,7 @@ export interface BaseMessage {
   timestamp: string;
   subagentId?: string;
   sessionId: string | undefined;
+  turnId?: string;
 }
 
 export interface UserMessage extends BaseMessage {
@@ -49,6 +50,12 @@ export interface SystemMessage extends BaseMessage {
   role: 'system';
   event: 'cron' | 'policy_approved' | 'policy_rejected' | 'subagent_update' | 'router' | 'other';
   messageId?: string;
+  /**
+   * Populated on `event === 'cron'` with the CronJob id that fired. Used by
+   * adapters (gchat `visibility.jobs: 'header'`) to render a terse header
+   * instead of the agent-facing prompt.
+   */
+  jobId?: string;
 }
 
 export interface ToolMessage extends BaseMessage {
@@ -71,6 +78,7 @@ export interface SubagentStatusMessage extends BaseMessage {
   role: 'subagent_status';
   subagentId: string;
   status: 'completed' | 'failed';
+  turnId?: string;
 }
 
 export interface LegacyLogMessage extends BaseMessage {

@@ -169,6 +169,7 @@ export class CronManager {
         routerState.nextSessionId = job.nextSessionId;
       if (job.action !== undefined) routerState.action = job.action;
       if (job.jobs !== undefined) routerState.jobs = job.jobs;
+      routerState.jobId = job.id;
 
       const routers = chatSettings.routers ?? globalSettings?.routers ?? [];
       const resolvedRouters = resolveRouters(routers, false);

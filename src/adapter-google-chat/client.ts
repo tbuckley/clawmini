@@ -13,6 +13,7 @@ import { createUnixSocketEventSource } from '../shared/event-source.js';
 import type { GoogleChatConfig } from './config.js';
 import { isAuthorized, updateGoogleChatConfig } from './config.js';
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
+import { recordInbound } from './inbound-cache.js';
 import { downloadAttachment as defaultDownloadAttachment } from './utils.js';
 import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
@@ -163,7 +164,11 @@ export function startGoogleChatIngestion(
       const messageId = eventMessage?.name || '';
       const text = (eventMessage?.text || '').trim();
 
-      if (senderType === 'BOT') return void message.ack();
+      // CARD_CLICKED events carry the bot's original card message as
+      // `parsedData.message`, so `sender.type` is BOT even though the
+      // interaction was initiated by a real user (`parsedData.user`).
+      // Only drop BOT-authored MESSAGE events here.
+      if (senderType === 'BOT' && eventType !== 'CARD_CLICKED') return void message.ack();
 
       if (messageId) {
         if (seenMessageIds.has(messageId)) return void message.ack();
@@ -480,6 +485,12 @@ export function startGoogleChatIngestion(
         }
       }
 
+      const gchatThreadName: string | undefined =
+        eventMessage?.thread?.name ?? eventMessage?.threadName ?? undefined;
+      if (messageId && gchatThreadName) {
+        recordInbound({ gchatMessageName: messageId, gchatThreadName });
+      }
+
       await trpc.sendMessage.mutate({
         type: 'send-message',
         client: 'cli',
@@ -489,6 +500,7 @@ export function startGoogleChatIngestion(
           files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
           adapter: 'google-chat',
           noWait: true,
+          ...(messageId ? { externalRef: messageId } : {}),
         },
       });
 

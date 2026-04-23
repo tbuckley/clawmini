@@ -161,8 +161,11 @@ export class TestEnvironment {
     const sub = this.trpcClient!.waitForMessages.subscribe(
       { chatId },
       {
-        onData: (messages) => {
-          for (const msg of messages) {
+        onData: (items) => {
+          for (const item of items) {
+            // Skip turn lifecycle envelopes; tests observe messages only.
+            if (item.kind !== 'message') continue;
+            const msg = item.message as ChatMessage;
             messageBuffer.push(msg);
             for (let i = waiters.length - 1; i >= 0; i--) {
               const waiter = waiters[i]!;

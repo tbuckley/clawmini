@@ -13,10 +13,16 @@ import {
 } from '../chats.js';
 import type { Logger } from './types.js';
 
-export function createChatLogger(chatId: string, subagentId?: string, sessionId?: string): Logger {
+export function createChatLogger(
+  chatId: string,
+  subagentId?: string,
+  sessionId?: string,
+  turnId?: string
+): Logger {
   async function append<T extends ChatMessage>(msg: T): Promise<T> {
     let finalMsg: T = msg;
     if (subagentId) finalMsg = { ...finalMsg, subagentId };
+    if (turnId) finalMsg = { ...finalMsg, turnId };
     await appendMessage(chatId, finalMsg);
     return finalMsg;
   }
@@ -114,7 +120,7 @@ export function createChatLogger(chatId: string, subagentId?: string, sessionId?
         exitCode: 0,
       } satisfies CommandLogMessage),
 
-    logSystemMessage: async ({ content, event, messageId, displayRole }) => {
+    logSystemMessage: async ({ content, event, messageId, displayRole, jobId }) => {
       const msg: SystemMessage = {
         id: crypto.randomUUID(),
         role: 'system',
@@ -128,6 +134,9 @@ export function createChatLogger(chatId: string, subagentId?: string, sessionId?
       }
       if (displayRole !== undefined) {
         msg.displayRole = displayRole;
+      }
+      if (jobId !== undefined) {
+        msg.jobId = jobId;
       }
       return append<SystemMessage>(msg);
     },

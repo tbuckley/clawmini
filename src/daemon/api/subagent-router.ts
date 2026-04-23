@@ -8,6 +8,7 @@ import { on } from 'node:events';
 import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
 import { createAgentSession } from '../agent/agent-session.js';
 import { executeSubagent, getSubagentDepth } from './subagent-utils.js';
+import { incrementSubagent, decrementSubagent } from '../agent/turn-registry.js';
 import type { ChatSettings, SubagentTracker } from '../../shared/config.js';
 
 const MAX_SUBAGENT_DEPTH = 2;
@@ -39,54 +40,65 @@ export const subagentSpawn = apiProcedure
     const chatId = ctx.tokenPayload.chatId;
     const parentAgentId = ctx.tokenPayload.agentId;
     const parentId = ctx.tokenPayload.subagentId;
+    const parentTurnId = ctx.tokenPayload.turnId;
 
     const id = input.subagentId || randomUUID();
     const sessionId = randomUUID();
     const agentId = input.targetAgentId || parentAgentId;
     let depth = 0;
 
-    await updateChatSettings(chatId, (settings) => {
-      settings.subagents = settings.subagents || {};
+    // Increment synchronously before any await so a sibling subagent's
+    // completion cannot decrement the parent's counter to zero (firing
+    // turnEnded) during the window before executeSubagent is called.
+    incrementSubagent(parentTurnId);
+    let handedOff = false;
+    try {
+      await updateChatSettings(chatId, (settings) => {
+        settings.subagents = settings.subagents || {};
 
-      depth = getSubagentDepth(settings, parentId);
-      if (depth >= MAX_SUBAGENT_DEPTH) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Max subagent depth reached' });
-      }
+        depth = getSubagentDepth(settings, parentId);
+        if (depth >= MAX_SUBAGENT_DEPTH) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Max subagent depth reached' });
+        }
 
-      // Make sure the id does not already exist
-      if (settings.subagents[id]) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Subagent ID already exists' });
-      }
+        // Make sure the id does not already exist
+        if (settings.subagents[id]) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Subagent ID already exists' });
+        }
 
-      settings.subagents[id] = {
+        settings.subagents[id] = {
+          id,
+          agentId,
+          sessionId,
+          createdAt: new Date().toISOString(),
+          status: 'active',
+          parentId,
+        };
+
+        return settings;
+      });
+
+      const workspaceRoot = getWorkspaceRoot(process.cwd());
+
+      const isAsync = input.async ?? depth === 0;
+
+      // Execute asynchronously — executeSubagent's finally decrements.
+      handedOff = true;
+      executeSubagent(
+        chatId,
         id,
         agentId,
         sessionId,
-        createdAt: new Date().toISOString(),
-        status: 'active',
-        parentId,
-      };
+        input.prompt,
+        isAsync,
+        ctx.tokenPayload,
+        workspaceRoot
+      );
 
-      return settings;
-    });
-
-    const workspaceRoot = getWorkspaceRoot(process.cwd());
-
-    const isAsync = input.async ?? depth === 0;
-
-    // Execute asynchronously
-    executeSubagent(
-      chatId,
-      id,
-      agentId,
-      sessionId,
-      input.prompt,
-      isAsync,
-      ctx.tokenPayload,
-      workspaceRoot
-    );
-
-    return { id, depth, isAsync };
+      return { id, depth, isAsync };
+    } finally {
+      if (!handedOff) decrementSubagent(parentTurnId);
+    }
   });
 
 export const subagentSend = apiProcedure
@@ -100,30 +112,37 @@ export const subagentSend = apiProcedure
   .mutation(async ({ input, ctx }) => {
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
+    const parentTurnId = ctx.tokenPayload.turnId;
 
     let sub: SubagentTracker | undefined;
 
-    await updateChatSettings(chatId, (settings) => {
-      sub = assertSubagentAccess(settings, input.subagentId, ctx.tokenPayload!.subagentId);
-      sub.status = 'active';
-      return settings;
-    });
+    incrementSubagent(parentTurnId);
+    let handedOff = false;
+    try {
+      await updateChatSettings(chatId, (settings) => {
+        sub = assertSubagentAccess(settings, input.subagentId, ctx.tokenPayload!.subagentId);
+        sub.status = 'active';
+        return settings;
+      });
 
-    const workspaceRoot = getWorkspaceRoot(process.cwd());
+      const workspaceRoot = getWorkspaceRoot(process.cwd());
 
-    // Execute asynchronously
-    executeSubagent(
-      chatId,
-      sub!.id,
-      sub!.agentId || 'default',
-      sub!.sessionId || 'default',
-      input.prompt,
-      input.async,
-      ctx.tokenPayload,
-      workspaceRoot
-    );
+      handedOff = true;
+      executeSubagent(
+        chatId,
+        sub!.id,
+        sub!.agentId || 'default',
+        sub!.sessionId || 'default',
+        input.prompt,
+        input.async,
+        ctx.tokenPayload,
+        workspaceRoot
+      );
 
-    return { success: true };
+      return { success: true };
+    } finally {
+      if (!handedOff) decrementSubagent(parentTurnId);
+    }
   });
 
 async function checkSubagentStatus(
