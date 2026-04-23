@@ -1,0 +1,8 @@
+{
+  "commands": {
+    "new": "codex exec --yolo --json \"$CLAW_CLI_MESSAGE\" < /dev/null",
+    "append": "codex exec --yolo --json resume $SESSION_ID \"$CLAW_CLI_MESSAGE\" < /dev/null",
+    "getSessionId": "jq -r 'select(.type == \"thread.started\") | .thread_id'",
+    "getMessageContent": "jq -r 'select(.type == \"item.completed\" and .item.type == \"agent_message\") | .item.text'"
+  }
+}
