@@ -252,7 +252,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
     });
   }, 60000);
 
-  it('falls back to top-level when threadsDisabled is set on the space', async () => {
+  it('drops thread-log activity entirely when threadsDisabled is set on the space', async () => {
     const { env } = envRef;
     const trpc = getTRPCClient({ socketPath: getSocketPath(env.e2eDir) });
     const subscription = makeFakeSubscription();

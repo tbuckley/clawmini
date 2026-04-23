@@ -153,3 +153,74 @@ By default, the adapter connects to a single chat (the one specified as `chatId`
 4. Alternatively, use `/chat [chat-id]` in that space to map it to an existing Clawmini chat.
 
 _Note: Each Space/DM can only be mapped to one Clawmini chat, and each Clawmini chat can only be mapped to one channel/space across all adapters._
+
+## Advanced Configuration
+
+Once the adapter is running, you can tune how it surfaces agent activity.
+None of this is required for basic use.
+
+### Visibility Settings (`config.json`)
+
+The adapter can publish agent activity — tool calls, subagent updates, policy
+decisions — into a per-turn GChat **thread** anchored on the triggering user
+message, edited in place as events arrive. The final agent reply still lands
+top-level. All settings are optional; defaults are shown.
+
+```json
+{
+  "visibility": {
+    "threads": true,
+    "threadLog": {
+      "maxToolPreview": 400,
+      "maxLogMessageChars": 3500,
+      "editDebounceMs": 1000
+    },
+    "jobs": "silent"
+  }
+}
+```
+
+- `threads` — global kill switch. Set to `false` to drop thread-log
+  activity (tool calls, subagent updates, policy decisions) entirely. The
+  final agent reply still posts top-level; debug-style firehose output is
+  only available via `filters` (e.g. `/show`).
+- `threadLog.maxToolPreview` — per-entry character cap on tool arguments
+  before `…[truncated]`.
+- `threadLog.maxLogMessageChars` — size budget for a single log message;
+  exceeding it rolls over to a fresh message in the same thread.
+- `threadLog.editDebounceMs` — coalescing window for burst activity. Higher
+  values reduce edit calls; lower values feel more live.
+- `jobs` — how cron-triggered (proactive) turns surface:
+  - `'silent'` (default) — the cron prompt is never posted. If the agent
+    replies, that reply becomes the thread anchor; if it stays silent,
+    nothing posts.
+  - `'header'` — a terse `🕒 <jobId>` heartbeat posts top-level and anchors
+    the activity log, making scheduled work visible even when the agent
+    doesn't reply.
+
+### Per-Space Overrides (`state.json`)
+
+The adapter's runtime state lives at
+`.clawmini/adapters/google-chat/state.json`. The `channelChatMap` entry for
+each space supports per-space overrides that take precedence over
+`config.json`:
+
+```json
+{
+  "channelChatMap": {
+    "spaces/AAA": {
+      "chatId": "my-chat",
+      "requireMention": true,
+      "threadsDisabled": true
+    }
+  }
+}
+```
+
+- `requireMention` — per-space mention gate (overrides the global `requireMention`).
+- `threadsDisabled` — when `true`, thread-log activity for this space is
+  dropped (same semantics as the global `visibility.threads: false`, scoped
+  to one space). The final agent reply still posts top-level.
+
+Most entries under `channelChatMap` are written automatically by the adapter
+as users run `/agent` or `/chat` (see [Routing and Creating Chats](#routing-and-creating-chats)); edit the file only to set these overrides.

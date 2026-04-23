@@ -213,10 +213,13 @@ export async function startDaemonToGoogleChatForwarder(
   };
 
   const collapseDestination = (dest: Destination, turnId?: string): Destination => {
-    if (!threadsGloballyEnabled && dest.kind === 'thread-log') return { kind: 'drop' };
-    if (turnId && turnLog.threadsDisabledFor(turnId) && dest.kind === 'thread-log') {
-      return { kind: 'top-level' };
-    }
+    // Both the global `visibility.threads: false` kill switch and the
+    // per-space `threadsDisabled` flag mean "quiet bot": drop thread-log
+    // activity rather than promoting it top-level. Top-level spam is only
+    // opt-in via `filters` (e.g. `/show`), matching pre-threaded behavior.
+    if (dest.kind !== 'thread-log') return dest;
+    if (!threadsGloballyEnabled) return { kind: 'drop' };
+    if (turnId && turnLog.threadsDisabledFor(turnId)) return { kind: 'drop' };
     return dest;
   };
 
