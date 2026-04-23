@@ -186,11 +186,15 @@ describe('Google Chat Adapter Client', () => {
         (c: unknown[]) => c[0] === 'message'
       )![1] as (msg: unknown) => Promise<void>;
 
+      // Workspace Events create returns an LRO, which we now poll. Mock a
+      // done=true operation whose `response` carries the real subscription.
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
-        json: vi
-          .fn()
-          .mockResolvedValue({ name: 'subscriptions/123', expireTime: '2026-01-01T00:00:00Z' }),
+        json: vi.fn().mockResolvedValue({
+          name: 'operations/abc',
+          done: true,
+          response: { name: 'subscriptions/123', expireTime: '2026-01-01T00:00:00Z' },
+        }),
       });
       globalThis.fetch = mockFetch;
 

@@ -1,6 +1,8 @@
 import { readGoogleChatState, updateGoogleChatState } from './state.js';
-import { getUserAuthClient } from './auth.js';
 import type { GoogleChatConfig } from './config.js';
+import { createSpaceSubscription } from './subscriptions.js';
+
+const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
 export function startSubscriptionRenewalCron(config: GoogleChatConfig): NodeJS.Timeout {
   // Run every hour
@@ -16,66 +18,46 @@ export function startSubscriptionRenewalCron(config: GoogleChatConfig): NodeJS.T
   );
 }
 
+async function recreateSubscription(
+  externalContextId: string,
+  config: GoogleChatConfig
+): Promise<void> {
+  try {
+    const sub = await createSpaceSubscription(externalContextId, config);
+    await updateGoogleChatState((latestState) => {
+      const currentMap = latestState.channelChatMap || {};
+      return {
+        channelChatMap: {
+          ...currentMap,
+          [externalContextId]: {
+            ...(currentMap[externalContextId] || {}),
+            subscriptionId: sub.name,
+            expirationDate: sub.expireTime,
+          },
+        },
+      };
+    });
+    console.log(`Renewed subscription ${sub.name} for space ${externalContextId}`);
+  } catch (err) {
+    console.error(`Failed to renew subscription for space ${externalContextId}:`, err);
+  }
+}
+
 export async function renewExpiringSubscriptions(config: GoogleChatConfig): Promise<void> {
   const state = await readGoogleChatState();
   if (!state.channelChatMap) return;
 
   const now = Date.now();
-  const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
   for (const [externalContextId, entry] of Object.entries(state.channelChatMap)) {
-    if (entry.subscriptionId && entry.expirationDate) {
-      const expirationTime = new Date(entry.expirationDate).getTime();
-      const timeUntilExpiration = expirationTime - now;
+    if (!entry.subscriptionId || !entry.expirationDate) continue;
 
-      if (timeUntilExpiration < FORTY_EIGHT_HOURS_MS) {
-        console.log(
-          `Renewing expiring subscription ${entry.subscriptionId} for space ${externalContextId}`
-        );
-        try {
-          const userAuthClient = await getUserAuthClient(config);
-          const tokenResponse = await userAuthClient.getAccessToken();
-          const token = tokenResponse.token;
+    const timeUntilExpiration = new Date(entry.expirationDate).getTime() - now;
+    if (timeUntilExpiration >= FORTY_EIGHT_HOURS_MS) continue;
 
-          if (token) {
-            const res = await fetch(
-              `https://workspaceevents.googleapis.com/v1/${entry.subscriptionId}?updateMask=ttl`,
-              {
-                method: 'PATCH',
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  ttl: '604800s', // 7 days
-                }),
-              }
-            );
-
-            if (res.ok) {
-              const subData = (await res.json()) as { expireTime: string };
-              await updateGoogleChatState((latestState) => {
-                const currentMap = latestState.channelChatMap || {};
-                return {
-                  channelChatMap: {
-                    ...currentMap,
-                    [externalContextId]: {
-                      ...(currentMap[externalContextId] || {}),
-                      expirationDate: subData.expireTime,
-                    },
-                  },
-                };
-              });
-              console.log(`Successfully renewed subscription ${entry.subscriptionId}`);
-            } else {
-              const errText = await res.text();
-              console.error(`Failed to renew subscription ${entry.subscriptionId}:`, errText);
-            }
-          }
-        } catch (err) {
-          console.error(`Error renewing subscription ${entry.subscriptionId}:`, err);
-        }
-      }
-    }
+    // PATCH renewal isn't usable for chat-space user-authority subs (Google
+    // caps their lifetime well below 7 days, so any TTL we ask for fails
+    // with "exceeds maximum allowed"). Just recreate when within the window.
+    await recreateSubscription(externalContextId, config);
   }
 }
