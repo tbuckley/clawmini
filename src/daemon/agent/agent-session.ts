@@ -23,6 +23,7 @@ export class AgentSession {
   public readonly sessionId: string;
   public readonly chatId: string;
   public readonly subagentId: string | undefined;
+  public readonly turnId: string | undefined;
   public readonly settings: Agent;
   public readonly workspaceRoot: string;
   public readonly globalSettings: Settings | undefined;
@@ -33,6 +34,7 @@ export class AgentSession {
     sessionId: string;
     chatId: string;
     subagentId?: string;
+    turnId?: string;
     settings: Agent;
     workspaceRoot: string;
     globalSettings: Settings | undefined;
@@ -42,11 +44,13 @@ export class AgentSession {
     this.sessionId = config.sessionId;
     this.chatId = config.chatId;
     this.subagentId = config.subagentId;
+    this.turnId = config.turnId;
     this.settings = config.settings;
     this.workspaceRoot = config.workspaceRoot;
     this.globalSettings = config.globalSettings;
 
-    this.logger = config.logger ?? createChatLogger(this.chatId, this.subagentId, this.sessionId);
+    this.logger =
+      config.logger ?? createChatLogger(this.chatId, this.subagentId, this.sessionId, this.turnId);
   }
 
   async buildExecutionContext(
@@ -110,6 +114,7 @@ export class AgentSession {
         agentId: this.agentId,
         sessionId: this.sessionId,
         ...(this.subagentId ? { subagentId: this.subagentId } : {}),
+        ...(this.turnId ? { turnId: this.turnId } : {}),
         timestamp: Date.now(),
       });
 
@@ -215,6 +220,7 @@ export async function createAgentSession(options: {
   agentId: string;
   sessionId: string;
   subagentId?: string;
+  turnId?: string;
   cwd: string;
   settings?: Settings | undefined;
   logger?: Logger;
@@ -229,6 +235,7 @@ export async function createAgentSession(options: {
     sessionId: options.sessionId,
     chatId: options.chatId,
     ...(options.subagentId ? { subagentId: options.subagentId } : {}),
+    ...(options.turnId ? { turnId: options.turnId } : {}),
     settings: mergedAgent,
     workspaceRoot,
     globalSettings: settings,

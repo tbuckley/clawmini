@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
@@ -13,6 +14,7 @@ export const GoogleChatStateSchema = z.object({
         subscriptionId: z.string().optional(),
         expirationDate: z.string().optional(),
         requireMention: z.boolean().optional(),
+        threadsDisabled: z.boolean().optional(),
       })
     )
     .optional(),
@@ -74,7 +76,13 @@ export function updateGoogleChatState(
         const statePath = getGoogleChatStatePath(startDir);
         const dir = path.dirname(statePath);
         await fsPromises.mkdir(dir, { recursive: true });
-        await fsPromises.writeFile(statePath, JSON.stringify(newState, null, 2), 'utf-8');
+        // Atomic write: a plain writeFile truncates then writes, so a
+        // concurrent reader (resolveSpaceForChat runs on every inbound) can
+        // observe an empty file and throw `JSON.parse("")`. rename(2) on the
+        // same filesystem is atomic, so readers always see old or new.
+        const tmpPath = `${statePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+        await fsPromises.writeFile(tmpPath, JSON.stringify(newState, null, 2), 'utf-8');
+        await fsPromises.rename(tmpPath, statePath);
         resolve(newState);
       } catch (err) {
         console.error(`Failed to write Google Chat state:`, err);

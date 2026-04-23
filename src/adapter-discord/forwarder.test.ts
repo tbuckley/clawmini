@@ -69,7 +69,18 @@ describe('Daemon to Discord Forwarder', () => {
       },
       waitForMessages: {
         subscribe: vi.fn().mockImplementation((input, options) => {
-          subscribeCallbacks = options;
+          // The subscription now yields `ChatStreamItem` envelopes. Tests
+          // continue to hand us raw message arrays; wrap them here so each
+          // individual test site stays readable.
+          subscribeCallbacks = {
+            onData: (raw: unknown) => {
+              if (!Array.isArray(raw)) return options.onData(raw);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              options.onData(raw.map((message: any) => ({ kind: 'message', message })));
+            },
+            onError: options.onError,
+            onComplete: options.onComplete,
+          };
           return { unsubscribe: vi.fn() };
         }),
       },

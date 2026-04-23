@@ -3,7 +3,7 @@ import { TRPCError } from '@trpc/server';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { apiProcedure } from './trpc.js';
-import { getWorkspaceRoot, readPolicies, getClawminiDir } from '../../shared/workspace.js';
+import { getWorkspaceRoot, readPoliciesForPath, getClawminiDir } from '../../shared/workspace.js';
 import { resolveAgentDir } from './router-utils.js';
 import { PolicyRequestService } from '../policy-request-service.js';
 import { RequestStore } from '../request-store.js';
@@ -16,15 +16,19 @@ import {
 } from '../policy-utils.js';
 import { appendMessage, type PolicyRequestMessage } from '../chats.js';
 
-export const listPolicies = apiProcedure.query(async () => {
-  const config = await readPolicies();
+export const listPolicies = apiProcedure.query(async ({ ctx }) => {
+  const workspaceRoot = getWorkspaceRoot();
+  const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
+  const config = await readPoliciesForPath(agentDir, workspaceRoot);
   return { policies: config?.policies || {} };
 });
 
 export const executePolicyHelp = apiProcedure
   .input(z.object({ commandName: z.string() }))
-  .query(async ({ input }) => {
-    const config = await readPolicies();
+  .query(async ({ input, ctx }) => {
+    const workspaceRoot = getWorkspaceRoot();
+    const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
+    const config = await readPoliciesForPath(agentDir, workspaceRoot);
     const policy = config?.policies?.[input.commandName];
 
     if (!policy) {
@@ -69,7 +73,7 @@ export const createPolicyRequest = apiProcedure
     const chatId = ctx.tokenPayload.chatId;
     const agentId = ctx.tokenPayload.agentId;
 
-    const config = await readPolicies();
+    const config = await readPoliciesForPath(agentDir, workspaceRoot);
     const policy = config?.policies?.[input.commandName];
 
     if (!policy) {
@@ -119,6 +123,7 @@ export const createPolicyRequest = apiProcedure
         timestamp: new Date().toISOString(),
         sessionId: ctx.tokenPayload.sessionId,
         ...(ctx.tokenPayload.subagentId ? { subagentId: ctx.tokenPayload.subagentId } : {}),
+        ...(ctx.tokenPayload.turnId ? { turnId: ctx.tokenPayload.turnId } : {}),
       };
 
       await appendMessage(chatId, logMsg);
@@ -140,6 +145,7 @@ export const createPolicyRequest = apiProcedure
       timestamp: new Date().toISOString(),
       displayRole: 'agent',
       sessionId: ctx.tokenPayload.sessionId,
+      ...(ctx.tokenPayload.turnId ? { turnId: ctx.tokenPayload.turnId } : {}),
     };
 
     await appendMessage(chatId, logMsg);

@@ -10,6 +10,7 @@ export interface TokenPayload {
   agentId: string;
   sessionId: string;
   subagentId?: string;
+  turnId?: string;
   timestamp: number;
 }
 

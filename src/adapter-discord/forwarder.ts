@@ -124,19 +124,23 @@ export async function startDaemonToDiscordForwarder(
       subscription = trpc.waitForMessages.subscribe(
         { chatId, lastMessageId },
         {
-          onData: (messages) => {
+          onData: (items) => {
             retryDelay = 1000; // Reset retry delay on successful data
 
-            if (!Array.isArray(messages) || messages.length === 0) {
+            if (!Array.isArray(items) || items.length === 0) {
               return;
             }
 
             // Queue processing to ensure sequential execution
             messageQueue = messageQueue.then(async () => {
-              for (const rawMessage of messages) {
+              for (const raw of items) {
                 if (signal?.aborted || !activeSubscriptions.has(chatId)) break;
 
-                const message = rawMessage as ChatMessage;
+                // waitForMessages yields ChatStreamItem envelopes. Discord
+                // doesn't consume turn lifecycle events today; skip them.
+                const envelope = raw as { kind: 'message' | 'turn'; message?: ChatMessage };
+                if (envelope.kind !== 'message' || !envelope.message) continue;
+                const message = envelope.message;
 
                 const isDisplayed = shouldDisplayMessage(message, config);
 

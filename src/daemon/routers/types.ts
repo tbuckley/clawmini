@@ -11,8 +11,15 @@ export interface RouterState {
   env?: Record<string, string>;
   reply?: string;
   action?: 'stop' | 'interrupt' | 'continue';
+  externalRef?: string;
   jobs?: {
     add?: CronJob[];
     remove?: string[];
   };
+  /**
+   * CronJob id that fired this turn, when the router state was seeded by
+   * `cron.executeJob`. Threaded through to the `SystemMessage` so adapters
+   * can render a terse header instead of the prompt text.
+   */
+  jobId?: string;
 }

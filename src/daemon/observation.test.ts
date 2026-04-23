@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { userRouter as appRouter } from './api/index.js';
-import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from './events.js';
+import { daemonEvents, emitMessageAppended } from './events.js';
 import * as daemonChats from './chats.js';
 
 vi.mock('./chats.js', async (importOriginal) => {
@@ -49,8 +49,8 @@ describe('Daemon Message Observation', () => {
     const result = (await iterator.next()).value;
 
     expect(result).toHaveLength(2);
-    expect(result![0]!.id).toBe('2');
-    expect(result![1]!.id).toBe('3');
+    expect(result![0]).toMatchObject({ kind: 'message', message: { id: '2' } });
+    expect(result![1]).toMatchObject({ kind: 'message', message: { id: '3' } });
   });
 
   it('waitForMessages should wait for a new message if none are available after lastMessageId', async () => {
@@ -67,16 +67,20 @@ describe('Daemon Message Observation', () => {
 
     const waitPromise = iterator.next();
 
-    const newMessage = { id: '2', role: 'log', content: 'hi', timestamp: '...' };
+    const newMessage = {
+      id: '2',
+      role: 'log' as const,
+      content: 'hi',
+      timestamp: '...',
+    } as unknown as import('./chats.js').ChatMessage;
 
-    // Simulate message arrival
-    setTimeout(() => {
-      daemonEvents.emit(DAEMON_EVENT_MESSAGE_APPENDED, { chatId: 'chat-1', message: newMessage });
-    }, 10);
+    // Simulate message arrival via the shared emit helper so the merged
+    // chat-stream channel receives it alongside the legacy one.
+    setTimeout(() => emitMessageAppended('chat-1', newMessage), 10);
 
     const result = await waitPromise;
     expect(result.value).toHaveLength(1);
-    expect(result.value![0]!.id).toBe('2');
+    expect(result.value![0]).toMatchObject({ kind: 'message', message: { id: '2' } });
   });
 
   it('waitForMessages should ignore messages for other chats while waiting', async () => {
@@ -95,10 +99,12 @@ describe('Daemon Message Observation', () => {
     iterator.next().then((res: any) => (yieldedValue = res.value));
 
     // Simulate message for another chat
-    daemonEvents.emit(DAEMON_EVENT_MESSAGE_APPENDED, {
-      chatId: 'other-chat',
-      message: { id: 'x', role: 'user', content: 'wrong', timestamp: '...' },
-    });
+    emitMessageAppended('other-chat', {
+      id: 'x',
+      role: 'user',
+      content: 'wrong',
+      timestamp: '...',
+    } as unknown as import('./chats.js').ChatMessage);
 
     // Wait a tick
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -106,13 +112,15 @@ describe('Daemon Message Observation', () => {
     expect(yieldedValue).toBeNull(); // Should still be waiting
 
     // Now simulate the correct chat
-    daemonEvents.emit(DAEMON_EVENT_MESSAGE_APPENDED, {
-      chatId: 'chat-1',
-      message: { id: 'y', role: 'user', content: 'right', timestamp: '...' },
-    });
+    emitMessageAppended('chat-1', {
+      id: 'y',
+      role: 'user',
+      content: 'right',
+      timestamp: '...',
+    } as unknown as import('./chats.js').ChatMessage);
 
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(yieldedValue).toHaveLength(1);
-    expect(yieldedValue![0]!.id).toBe('y');
+    expect(yieldedValue![0]).toMatchObject({ kind: 'message', message: { id: 'y' } });
   });
 });

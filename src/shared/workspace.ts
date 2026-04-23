@@ -6,6 +6,7 @@ import {
   type PolicyConfigFile,
   type PolicyDefinition,
 } from './policies.js';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
@@ -147,7 +148,12 @@ async function readJsonFile(filePath: string): Promise<Record<string, unknown> |
 async function writeJsonFile(filePath: string, data: Record<string, unknown>): Promise<void> {
   const dir = path.dirname(filePath);
   await fsPromises.mkdir(dir, { recursive: true });
-  await fsPromises.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+  // Atomic write: a plain writeFile truncates then writes, so a concurrent
+  // reader can observe an empty file and throw `JSON.parse("")`. rename(2)
+  // on the same filesystem is atomic, so readers always see old or new.
+  const tmpPath = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  await fsPromises.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+  await fsPromises.rename(tmpPath, filePath);
 }
 
 export async function readChatSettings(
@@ -533,28 +539,83 @@ export async function readPoliciesFile(startDir = process.cwd()): Promise<Policy
 // Merge built-ins, drop any user entries explicitly set to `false`. Pure: never
 // mutates the input. A built-in is only injected when its installed script
 // exists on disk, so the resolved config never advertises a command we know is
-// missing.
+// missing. Relative `command` paths are resolved against the workspace root so
+// the policy points at a real on-disk script regardless of the caller's cwd.
 export function resolvePolicies(
   file: PolicyConfigFile | null,
   clawminiDir: string
 ): PolicyConfig | null {
   if (!file) return null;
+  const workspaceRoot = path.dirname(clawminiDir);
+  const resolveCommand = (definition: PolicyDefinition): PolicyDefinition => {
+    if (!definition.command.startsWith('./') && !definition.command.startsWith('../')) {
+      return definition;
+    }
+    return { ...definition, command: path.resolve(workspaceRoot, definition.command) };
+  };
+
   const resolved: Record<string, PolicyDefinition> = {};
   for (const [name, value] of Object.entries(file.policies)) {
-    if (value !== false) resolved[name] = value;
+    if (value !== false) resolved[name] = resolveCommand(value);
   }
   for (const [name, definition] of Object.entries(BUILTIN_POLICIES)) {
     if (name in file.policies) continue;
     const scriptPath = path.join(clawminiDir, 'policy-scripts', `${name}.js`);
     if (!fs.existsSync(scriptPath)) continue;
-    resolved[name] = definition;
+    resolved[name] = resolveCommand(definition);
   }
   return { policies: resolved };
 }
 
-export async function readPolicies(startDir = process.cwd()): Promise<PolicyConfig | null> {
+async function readBasePolicies(startDir = process.cwd()): Promise<PolicyConfig | null> {
   const file = await readPoliciesFile(startDir);
   return resolvePolicies(file, getClawminiDir(startDir));
+}
+
+// Resolves env-scoped policies for the active environment at `targetPath`.
+// Relative `command` paths are resolved against the environment directory so
+// the policy points at a real on-disk script no matter where it runs.
+export async function readEnvironmentPoliciesForPath(
+  targetPath: string,
+  startDir = process.cwd()
+): Promise<Record<string, PolicyDefinition>> {
+  const envInfo = await getActiveEnvironmentInfo(targetPath, startDir);
+  if (!envInfo) return {};
+
+  const envConfig = await readEnvironment(envInfo.name, startDir);
+  if (!envConfig?.policies) return {};
+
+  const envDir = getEnvironmentPath(envInfo.name, startDir);
+  const resolved: Record<string, PolicyDefinition> = {};
+  for (const [name, definition] of Object.entries(envConfig.policies)) {
+    const command =
+      definition.command.startsWith('./') || definition.command.startsWith('../')
+        ? path.resolve(envDir, definition.command)
+        : definition.command;
+    // Spread so new PolicyDefinition fields flow through automatically. Zod's
+    // .optional() types include `undefined`, which exactOptionalPropertyTypes
+    // disallows — strip those entries before assigning.
+    const entries = Object.entries({ ...definition, command }).filter(
+      ([, value]) => value !== undefined
+    );
+    resolved[name] = Object.fromEntries(entries) as unknown as PolicyDefinition;
+  }
+  return resolved;
+}
+
+export async function readPoliciesForPath(
+  targetPath: string,
+  startDir = process.cwd()
+): Promise<PolicyConfig | null> {
+  const base = await readBasePolicies(startDir);
+  const envPolicies = await readEnvironmentPoliciesForPath(targetPath, startDir);
+  if (Object.keys(envPolicies).length === 0) return base;
+  return {
+    policies: {
+      ...(base?.policies || {}),
+      ...envPolicies,
+    },
+  };
 }
 
 export function getEnvironmentPath(name: string, startDir = process.cwd()): string {

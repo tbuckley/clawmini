@@ -61,5 +61,11 @@ export default defineConfig([
       globals: globals.node,
     },
   },
+  {
+    files: ['templates/environments/**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
   eslintConfigPrettier,
 ]);

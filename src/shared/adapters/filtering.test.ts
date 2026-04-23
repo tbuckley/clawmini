@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { shouldDisplayMessage, formatMessage } from './filtering.js';
+import { shouldDisplayMessage, routeMessage, formatMessage } from './filtering.js';
 import type { ChatMessage } from '../chats.js';
 
-describe('shouldDisplayMessage', () => {
+describe('shouldDisplayMessage / routeMessage', () => {
   const defaultConfig = {};
 
-  it('hides messages with subagentId if subagent is not explicitly true', () => {
+  it('hides subagent messages from top-level output by default (legacy shouldDisplayMessage)', () => {
     const msg: ChatMessage = {
       id: '1',
       role: 'agent',
@@ -15,9 +15,12 @@ describe('shouldDisplayMessage', () => {
       sessionId: undefined,
     };
     expect(shouldDisplayMessage(msg, defaultConfig)).toBe(false);
+    // routeMessage still surfaces it inside the turn thread — that's where
+    // subagent activity now belongs.
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
   });
 
-  it('hides standard user messages without subagentId', () => {
+  it('drops standard user messages without subagentId', () => {
     const msg: ChatMessage = {
       id: '1',
       role: 'user',
@@ -26,9 +29,10 @@ describe('shouldDisplayMessage', () => {
       sessionId: undefined,
     };
     expect(shouldDisplayMessage(msg, defaultConfig)).toBe(false);
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'drop' });
   });
 
-  it('displays standard agent messages without subagentId', () => {
+  it('routes standard agent messages to top-level', () => {
     const msg: ChatMessage = {
       id: '1',
       role: 'agent',
@@ -36,10 +40,10 @@ describe('shouldDisplayMessage', () => {
       timestamp: '',
       sessionId: undefined,
     };
-    expect(shouldDisplayMessage(msg, defaultConfig)).toBe(true);
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'top-level' });
   });
 
-  it('hides non-standard messages by default', () => {
+  it('drops command messages by default', () => {
     const msg: ChatMessage = {
       id: '1',
       role: 'command',
@@ -53,7 +57,68 @@ describe('shouldDisplayMessage', () => {
       timestamp: '',
       sessionId: undefined,
     };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'drop' });
+    // Legacy boolean retains the same "drop by default" semantics for Discord.
     expect(shouldDisplayMessage(msg, defaultConfig)).toBe(false);
+  });
+
+  it('routes tool messages to thread-log by default', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'tool',
+      content: '',
+      messageId: '123',
+      name: 'Read',
+      payload: {},
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
+  });
+
+  it('drops cron system messages by default (proactive turns are invisible)', () => {
+    // Cron prompts are agent-facing orchestration, not user-facing content.
+    // Adapters that want scheduled work visible opt into their own synthetic
+    // heartbeat (e.g. gchat `visibility.jobs: 'header'`).
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'system',
+      content: 'run my daily report',
+      event: 'cron',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'drop' });
+  });
+
+  it('promotes cron system messages back to top-level when filters.system is true', () => {
+    // Escape hatch for debugging: `filters.system: true` forces cron activity
+    // back into the main log.
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'system',
+      content: 'run my daily report',
+      event: 'cron',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, { filters: { system: true } })).toEqual({ kind: 'top-level' });
+  });
+
+  it('routes pending policy messages to top-level', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'policy',
+      content: '',
+      messageId: '123',
+      requestId: 'req',
+      commandName: 'rm',
+      args: [],
+      status: 'pending',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'top-level' });
   });
 
   it('displays subagent messages if subagent: true', () => {
@@ -96,6 +161,85 @@ describe('shouldDisplayMessage', () => {
     };
     expect(shouldDisplayMessage(msg, { filters: { command: true } })).toBe(true);
   });
+
+  it('hides a role when filter is explicitly false', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'command',
+      content: 'ls',
+      messageId: '123',
+      command: 'ls',
+      cwd: '.',
+      stdout: '',
+      stderr: '',
+      exitCode: 0,
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(shouldDisplayMessage(msg, { filters: { command: false } })).toBe(false);
+  });
+
+  it('promotes a user-role message to top-level when filter is true', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'user',
+      content: 'hello',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, { filters: { user: true } })).toEqual({ kind: 'top-level' });
+  });
+
+  it('routes subagent tool messages to thread-log even without the subagent filter', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'tool',
+      content: 'ls',
+      messageId: 'mid',
+      name: 'Read',
+      payload: {},
+      subagentId: 'sub-1',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
+  });
+
+  it('routes subagent final replies into the turn thread, not top-level', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'agent',
+      content: 'done',
+      subagentId: 'sub-1',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
+  });
+
+  it('routes subagent prompts (user role with subagentId) into the turn thread', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'user',
+      content: 'research auth flow',
+      subagentId: 'sub-1',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, defaultConfig)).toEqual({ kind: 'thread-log' });
+  });
+
+  it('surfaces subagent final replies at top-level when subagent filter is true', () => {
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'agent',
+      content: 'done',
+      subagentId: 'sub-1',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(routeMessage(msg, { filters: { subagent: true } })).toEqual({ kind: 'top-level' });
+  });
 });
 
 describe('formatMessage', () => {
@@ -132,5 +276,50 @@ describe('formatMessage', () => {
       sessionId: undefined,
     };
     expect(formatMessage(msg)).toBe('[From:sub1]\ndone');
+  });
+
+  it('prepends [SYSTEM] for system-role messages with no displayRole', () => {
+    // System messages only reach `formatMessage` when they route to top-level
+    // (either a non-cron event, or cron opted back in via `filters.system`).
+    // Without the tag they look like either the user or the bot talking.
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'system',
+      content: 'This chat session has ended.',
+      event: 'cron',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(formatMessage(msg)).toBe('[SYSTEM] This chat session has ended.');
+  });
+
+  it('does not prefix [SYSTEM] when displayRole is set (e.g. router auto-reply)', () => {
+    // Router auto-replies opt into being rendered as agent output. Tagging
+    // them [SYSTEM] would mislabel them.
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'system',
+      content: 'Starting a fresh session...',
+      event: 'router',
+      displayRole: 'agent',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(formatMessage(msg)).toBe('Starting a fresh session...');
+  });
+
+  it('does not prefix [SYSTEM] for system messages from subagents', () => {
+    // Subagent output already gets [From:<id>]; a [SYSTEM] on top would be
+    // noisy and incorrect (the subagent is the speaker, not the system).
+    const msg: ChatMessage = {
+      id: '1',
+      role: 'system',
+      content: 'internal note',
+      event: 'subagent_update',
+      subagentId: 'sub1',
+      timestamp: '',
+      sessionId: undefined,
+    };
+    expect(formatMessage(msg)).toBe('[From:sub1]\ninternal note');
   });
 });
