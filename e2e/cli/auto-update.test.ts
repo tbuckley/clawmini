@@ -412,6 +412,17 @@ describe('E2E Auto-update: agent refresh on `up`', () => {
     expect(fs.existsSync(gemini)).toBe(true);
   });
 
+  it('up does not re-create a seed-once file that was deleted', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const bootstrap = path.join(env.e2eDir, 'bob', 'BOOTSTRAP.md');
+    expect(fs.existsSync(bootstrap)).toBe(true);
+    fs.unlinkSync(bootstrap);
+
+    const { code } = await env.up();
+    expect(code).toBe(0);
+    expect(fs.existsSync(bootstrap)).toBe(false);
+  });
+
   it('agents refresh --accept overwrites diverged files', async () => {
     await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
     const gemini = path.join(env.e2eDir, 'bob', 'GEMINI.md');

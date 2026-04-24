@@ -147,11 +147,13 @@ export async function planRefresh(
 
     if (mode === 'seed-once') {
       const diskHash = await fileSha(targetPath);
-      if (diskHash === null) {
-        // Seed-once files that went missing are benign to re-seed.
+      const recorded = installed?.files?.[rel]?.sha;
+      if (diskHash === null && !recorded) {
+        // Never seeded before — safe to drop the initial copy.
         actions.push({ action: 'write', relPath: rel, reason: 'new' });
         nextFiles[rel] = { sha: templateHash };
       } else {
+        // Either present, or previously seeded and then deleted by the user.
         actions.push({ action: 'skip-seed-once', relPath: rel });
       }
       continue;

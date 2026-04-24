@@ -1,6 +1,6 @@
 {
   "files": {
-    "GEMINI.md": "track",
+    "GEMINI.md": "seed-once",
     ".gemini/": "track",
     "SOUL.md": "seed-once",
     "USER.md": "seed-once",
