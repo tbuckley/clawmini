@@ -8,9 +8,15 @@ environmentsCmd
   .command('enable <name>')
   .description('Enable an environment for a path in the workspace')
   .option('-p, --path <subpath>', 'Path to apply the environment to', './')
-  .action(async (name: string, options: { path: string }) => {
+  .option('--fork', 'Clone the built-in template directory instead of writing a thin overlay')
+  .action(async (name: string, options: { path: string; fork?: boolean }) => {
     try {
-      await enableEnvironment(name, options.path);
+      await enableEnvironment(
+        name,
+        options.path,
+        process.cwd(),
+        options.fork ? { fork: true } : {}
+      );
     } catch (err) {
       handleError('enable environment', err);
     }

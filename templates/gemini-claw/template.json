@@ -1,0 +1,13 @@
+{
+  "files": {
+    "GEMINI.md": "seed-once",
+    ".gemini/": "track",
+    "SOUL.md": "seed-once",
+    "USER.md": "seed-once",
+    "MEMORY.md": "seed-once",
+    "memory/": "seed-once",
+    "BOOTSTRAP.md": "seed-once",
+    "TOOLS.md": "seed-once",
+    "HEARTBEAT.md": "seed-once"
+  }
+}

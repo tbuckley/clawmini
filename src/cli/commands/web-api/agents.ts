@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   listAgents,
   getAgent,
+  getAgentOverlay,
   writeAgentSettings,
   deleteAgent,
   isValidAgentId,
@@ -44,7 +45,7 @@ export async function handleApiAgents(
 
       const body = await parseJsonBody(req, schema);
 
-      const existing = await getAgent(body.id);
+      const existing = await getAgentOverlay(body.id);
       if (existing) {
         sendJsonResponse(res, 409, { error: 'Agent already exists' });
         return true;
@@ -106,7 +107,7 @@ export async function handleApiAgents(
 
         const body = await parseJsonBody(req, schema);
 
-        const agent = (await getAgent(agentId)) || {};
+        const agent = (await getAgentOverlay(agentId)) || {};
         if (body.directory !== undefined) agent.directory = body.directory;
         if (body.env !== undefined) agent.env = body.env;
         if (body.commands !== undefined) agent.commands = body.commands;

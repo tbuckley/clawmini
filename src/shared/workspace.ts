@@ -24,6 +24,19 @@ import {
   SettingsSchema,
 } from './config.js';
 import { pathIsInsideDir } from './utils/fs.js';
+import {
+  readTemplateManifest,
+  planRefresh,
+  applyPlan,
+  walkTemplateFiles,
+  writeInstalledFiles,
+  readInstalledFiles,
+  sliceInstalledUnder,
+  prefixPlanKeys,
+  type InstalledFiles,
+  type RefreshPlan,
+  type FileMode,
+} from './template-manifest.js';
 
 export function getWorkspaceRoot(startDir = process.cwd()): string {
   let curr = startDir;
@@ -59,11 +72,15 @@ export function resolveAgentWorkDir(
   return dirPath;
 }
 
+// Returns null when the agent has explicitly opted out of skills via
+// `"skillsDir": null` in its settings. Callers must handle null by
+// skipping any skill-related install/refresh work.
 export function resolveAgentSkillsDir(
   agentId: string,
   agentData: Agent,
   startDir = process.cwd()
-): string {
+): string | null {
+  if (agentData.skillsDir === null) return null;
   const workDir = resolveAgentWorkDir(agentId, agentData.directory, startDir);
   return path.resolve(workDir, agentData.skillsDir || '.agents/skills');
 }
@@ -116,6 +133,10 @@ export function getAgentDir(agentId: string, startDir = process.cwd()): string {
 
 export function getAgentSettingsPath(agentId: string, startDir = process.cwd()): string {
   return path.join(getAgentDir(agentId, startDir), 'settings.json');
+}
+
+export function getInstalledFilesPath(agentId: string, startDir = process.cwd()): string {
+  return path.join(getAgentDir(agentId, startDir), 'installed-files.json');
 }
 
 export function getAgentSessionSettingsPath(
@@ -225,7 +246,13 @@ export async function writeAgentSessionSettings(
   );
 }
 
-export async function getAgent(agentId: string, startDir = process.cwd()): Promise<Agent | null> {
+// Reads only the on-disk overlay (local settings.json). Used when editing the
+// overlay — callers that want the fully-resolved agent (template fields
+// merged in) use `getAgent` instead.
+export async function getAgentOverlay(
+  agentId: string,
+  startDir = process.cwd()
+): Promise<Agent | null> {
   const filePath = getAgentSettingsPath(agentId, startDir);
   let dataStr: string;
   try {
@@ -248,6 +275,50 @@ export async function getAgent(agentId: string, startDir = process.cwd()): Promi
     throw new Error(`Invalid schema in ${filePath}: ${parsed.error.message}`);
   }
   return parsed.data;
+}
+
+async function readAgentTemplateSettings(
+  templateName: string,
+  startDir: string
+): Promise<Agent | null> {
+  let templatePath: string;
+  try {
+    templatePath = await resolveTemplatePath(templateName, startDir);
+  } catch {
+    return null;
+  }
+  const settingsPath = path.join(templatePath, 'settings.json');
+  const data = await readJsonFile(settingsPath);
+  if (!data) return null;
+  const parsed = AgentSchema.safeParse(data);
+  if (!parsed.success) return null;
+  // `directory` in a template is never used — the overlay declares the work
+  // directory instead. Strip it so it doesn't pollute the merge.
+  const result = { ...parsed.data };
+  delete result.directory;
+  return result;
+}
+
+// Returns the fully-resolved agent: reads the local overlay, resolves any
+// `extends` template, then shallow-merges the overlay over the template
+// field-by-field. `env` and `subagentEnv` are deep-merged one level so the
+// overlay can add one entry without dropping the template's defaults.
+export async function getAgent(agentId: string, startDir = process.cwd()): Promise<Agent | null> {
+  const overlay = await getAgentOverlay(agentId, startDir);
+  if (!overlay) return null;
+  if (!overlay.extends) return overlay;
+
+  const template = await readAgentTemplateSettings(overlay.extends, startDir);
+  if (!template) return overlay;
+
+  const { env: overlayEnv, subagentEnv: overlaySub, ...overlayRest } = overlay;
+  const { env: templateEnv, subagentEnv: templateSub, ...templateRest } = template;
+  const merged: Agent = { ...templateRest, ...overlayRest };
+  const mergedEnv = mergeOneLevel(templateEnv, overlayEnv);
+  if (mergedEnv) merged.env = mergedEnv;
+  const mergedSub = mergeOneLevel(templateSub, overlaySub);
+  if (mergedSub) merged.subagentEnv = mergedSub;
+  return merged;
 }
 
 export async function writeAgentSettings(
@@ -382,23 +453,30 @@ export async function copyTemplateBase(
     }
   }
 
-  // Recursively copy
-  await fsPromises.cp(templatePath, targetDir, { recursive: true, force: true });
+  // Recursively copy. The template.json manifest is never copied — it's
+  // metadata about how to handle the other files.
+  const rootTemplateJson = path.resolve(templatePath, 'template.json');
+  await fsPromises.cp(templatePath, targetDir, {
+    recursive: true,
+    force: true,
+    filter: (src) => path.resolve(src) !== rootTemplateJson,
+  });
 }
 
 export async function copyTemplate(
   templateName: string,
   targetDir: string,
-  startDir = process.cwd()
+  startDir = process.cwd(),
+  opts: { force?: boolean } = {}
 ): Promise<void> {
   const templatePath = await resolveTemplatePath(templateName, startDir);
-  await copyTemplateBase(templatePath, targetDir, false);
+  await copyTemplateBase(templatePath, targetDir, false, opts.force ?? false);
 }
 
 export async function resolveTargetAgentSkillsDir(
   agentId: string,
   startDir = process.cwd()
-): Promise<string> {
+): Promise<string | null> {
   const agentDir = getAgentDir(agentId, startDir);
   try {
     const stat = await fsPromises.stat(agentDir);
@@ -442,6 +520,9 @@ export async function copyAgentSkills(
   overwrite = false
 ): Promise<void> {
   const targetDir = await resolveTargetAgentSkillsDir(agentId, startDir);
+  if (targetDir === null) {
+    throw new Error(`Agent '${agentId}' has skills disabled (skillsDir is null).`);
+  }
   const templatePath = await resolveSkillsTemplatePath(startDir);
   await copyTemplateBase(templatePath, targetDir, true, overwrite);
 }
@@ -453,6 +534,9 @@ export async function copyAgentSkill(
   overwrite = false
 ): Promise<void> {
   const targetDir = await resolveTargetAgentSkillsDir(agentId, startDir);
+  if (targetDir === null) {
+    throw new Error(`Agent '${agentId}' has skills disabled (skillsDir is null).`);
+  }
   const templatePath = await resolveSkillsTemplatePath(startDir);
   const specificSkillPath = path.join(templatePath, skillName);
 
@@ -472,49 +556,235 @@ export async function copyAgentSkill(
   await copyTemplateBase(specificSkillPath, skillTargetDir, true, overwrite);
 }
 
+// Return the subset of template files that already exist in the target
+// directory. Used to refuse a silent overwrite on first install.
+async function collectTemplateCollisions(
+  templateDir: string,
+  targetDir: string
+): Promise<string[]> {
+  const templateFiles = await walkTemplateFiles(templateDir);
+  const collisions: string[] = [];
+  for (const rel of templateFiles) {
+    try {
+      await fsPromises.access(path.join(targetDir, rel));
+      collisions.push(rel);
+    } catch {
+      // not present — no collision
+    }
+  }
+  return collisions;
+}
+
+function formatCollisionError(collisions: string[]): string {
+  const preview = collisions
+    .slice(0, 5)
+    .map((p) => `  ${p}`)
+    .join('\n');
+  const suffix = collisions.length > 5 ? `\n  ... and ${collisions.length - 5} more` : '';
+  return `Target directory has existing files that the template would overwrite:\n${preview}${suffix}\nRe-run with --force to overwrite.`;
+}
+
 export async function applyTemplateToAgent(
   agentId: string,
   templateName: string,
   overrides: Agent,
-  startDir = process.cwd()
+  startDir = process.cwd(),
+  opts: { fork?: boolean; force?: boolean } = {}
 ): Promise<void> {
   const agentWorkDir = resolveAgentWorkDir(agentId, overrides.directory, startDir);
-  await copyTemplate(templateName, agentWorkDir, startDir);
 
-  const settingsPath = path.join(agentWorkDir, 'settings.json');
-  try {
-    const rawSettings = await fsPromises.readFile(settingsPath, 'utf-8');
-    const parsedSettings = JSON.parse(rawSettings);
-    const validation = AgentSchema.safeParse(parsedSettings);
+  if (opts.fork) {
+    // Legacy path: copy everything, merge template settings into the local
+    // file, then strip the template metadata files from the workdir.
+    await copyTemplate(templateName, agentWorkDir, startDir, { force: opts.force ?? false });
 
-    if (validation.success) {
-      const templateData = validation.data;
-      if (templateData.directory) {
-        console.warn(
-          `Warning: Ignoring 'directory' field from template settings.json. Using default or provided directory.`
-        );
-        delete templateData.directory;
-      }
+    const settingsPath = path.join(agentWorkDir, 'settings.json');
+    const manifestPath = path.join(agentWorkDir, 'template.json');
 
-      // Merge: overrides take precedence over templateData
-      const mergedEnv = { ...(templateData.env || {}), ...(overrides.env || {}) };
-      const mergedData: Agent = { ...templateData, ...overrides };
-      if (Object.keys(mergedEnv).length > 0) {
-        mergedData.env = mergedEnv;
-      }
-
-      await writeAgentSettings(agentId, mergedData, startDir);
-    }
-  } catch {
-    // Ignore parsing or file not found errors
-  } finally {
     try {
-      await fsPromises.rm(settingsPath);
+      const rawSettings = await fsPromises.readFile(settingsPath, 'utf-8');
+      const parsedSettings = JSON.parse(rawSettings);
+      const validation = AgentSchema.safeParse(parsedSettings);
+
+      if (validation.success) {
+        const templateData = validation.data;
+        if (templateData.directory) {
+          console.warn(
+            `Warning: Ignoring 'directory' field from template settings.json. Using default or provided directory.`
+          );
+          delete templateData.directory;
+        }
+
+        const mergedEnv = { ...(templateData.env || {}), ...(overrides.env || {}) };
+        const mergedData: Agent = { ...templateData, ...overrides };
+        delete mergedData.extends;
+        if (Object.keys(mergedEnv).length > 0) mergedData.env = mergedEnv;
+
+        await writeAgentSettings(agentId, mergedData, startDir);
+      }
     } catch {
-      // Ignore if it doesn't exist
+      // Ignore parsing or file not found errors
+    }
+
+    for (const tmp of [settingsPath, manifestPath]) {
+      try {
+        await fsPromises.rm(tmp);
+      } catch {
+        // Ignore if it doesn't exist
+      }
+    }
+    return;
+  }
+
+  // Overlay mode: install files via the manifest, record SHAs, and write the
+  // overlay pointing at the template. settings.json and template.json in the
+  // template are metadata — neither gets copied.
+  const templateDir = await resolveTemplatePath(templateName, startDir);
+  const manifest = await readTemplateManifest(templateDir);
+  await fsPromises.mkdir(agentWorkDir, { recursive: true });
+
+  if (!opts.force) {
+    const collisions = await collectTemplateCollisions(templateDir, agentWorkDir);
+    if (collisions.length > 0) {
+      throw new Error(formatCollisionError(collisions));
     }
   }
+
+  const plan = await planRefresh(templateDir, agentWorkDir, manifest, null, {
+    defaultMode: 'seed-once',
+    firstInstall: true,
+  });
+  await applyPlan(templateDir, agentWorkDir, plan);
+  await writeInstalledFiles(getInstalledFilesPath(agentId, startDir), plan.nextInstalled);
+
+  const overlay: Agent = { extends: templateName, ...overrides };
+  await writeAgentSettings(agentId, overlay, startDir);
 }
+
+// Refresh all `track` files in the agent's working directory against the
+// template content. Diverged files are skipped unless `accept` is true.
+// Returns the full plan so callers can report / dry-run as needed.
+export async function refreshAgentTemplate(
+  agentId: string,
+  agent: Agent,
+  startDir = process.cwd(),
+  opts: { accept?: boolean; dryRun?: boolean } = {}
+): Promise<RefreshPlan | null> {
+  if (!agent.extends) return null;
+  const templateDir = await resolveTemplatePath(agent.extends, startDir);
+  const agentWorkDir = resolveAgentWorkDir(agentId, agent.directory, startDir);
+  const manifest = await readTemplateManifest(templateDir);
+  const installedPath = getInstalledFilesPath(agentId, startDir);
+  const installed = await readInstalledFiles(installedPath);
+
+  const plan = await planRefresh(templateDir, agentWorkDir, manifest, installed, {
+    defaultMode: 'seed-once',
+    ...(opts.accept === undefined ? {} : { accept: opts.accept }),
+  });
+
+  if (opts.dryRun) return plan;
+
+  await applyPlan(templateDir, agentWorkDir, plan);
+  await writeInstalledFiles(installedPath, plan.nextInstalled);
+  return plan;
+}
+
+// Refresh the agent's template skills. Skills default to `track` for files
+// unlisted in their manifest — the opposite of agent workdir files — because
+// the authoring model differs: clawmini ships skill content, agents edit it.
+// SHAs share the agent's installed-files.json keyed by the path relative to
+// the agent's working directory (e.g. `.gemini/skills/skill-creator/SKILL.md`).
+export async function refreshAgentSkills(
+  agentId: string,
+  agent: Agent,
+  startDir = process.cwd(),
+  opts: { accept?: boolean; dryRun?: boolean; firstInstall?: boolean } = {}
+): Promise<RefreshPlan | null> {
+  const skillsTargetDir = resolveAgentSkillsDir(agentId, agent, startDir);
+  if (skillsTargetDir === null) return null;
+
+  let skillsTemplateRoot: string;
+  try {
+    skillsTemplateRoot = await resolveSkillsTemplatePath(startDir);
+  } catch {
+    return null;
+  }
+
+  const agentWorkDir = resolveAgentWorkDir(agentId, agent.directory, startDir);
+  const prefixRel = path.relative(agentWorkDir, skillsTargetDir).split(path.sep).join('/');
+
+  let skillDirs: fs.Dirent[];
+  try {
+    skillDirs = await fsPromises.readdir(skillsTemplateRoot, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+
+  const installedPath = getInstalledFilesPath(agentId, startDir);
+  let installed = await readInstalledFiles(installedPath);
+  const allActions: RefreshPlan['actions'] = [];
+
+  for (const entry of skillDirs) {
+    if (!entry.isDirectory()) continue;
+    const skillName = entry.name;
+    const skillTemplateDir = path.join(skillsTemplateRoot, skillName);
+    const skillTargetDir = path.join(skillsTargetDir, skillName);
+    const keyPrefix = `${prefixRel}/${skillName}`;
+
+    const manifest = await readTemplateManifest(skillTemplateDir);
+    const slice = sliceInstalledUnder(installed, keyPrefix);
+
+    const plan = await planRefresh(skillTemplateDir, skillTargetDir, manifest, slice, {
+      defaultMode: 'track',
+      ...(opts.firstInstall ? { firstInstall: true } : {}),
+      ...(opts.accept === undefined ? {} : { accept: opts.accept }),
+    });
+
+    const prefixed = prefixPlanKeys(plan, keyPrefix);
+    allActions.push(...prefixed.actions);
+
+    if (!opts.dryRun) {
+      await applyPlan(skillTemplateDir, skillTargetDir, plan);
+      installed = {
+        files: {
+          ...(installed?.files ?? {}),
+          ...(prefixed.nextInstalled.files ?? {}),
+        },
+      };
+    }
+  }
+
+  if (!opts.dryRun && installed) {
+    await writeInstalledFiles(installedPath, installed);
+  }
+
+  return { actions: allActions, nextInstalled: installed ?? { files: {} } };
+}
+
+// Human-readable per-action lines for logging / dry-run. Prefixed with the
+// agent id for readability when invoked over multiple agents at once.
+export function formatPlanActions(
+  plan: RefreshPlan,
+  opts: { agentId?: string; prefix?: string } = {}
+): string[] {
+  const prefix = opts.prefix ?? (opts.agentId ? `[${opts.agentId}] ` : '');
+  return plan.actions.map((action) => {
+    switch (action.action) {
+      case 'write':
+        return `${prefix}${action.reason === 'new' ? 'install' : 'refresh'}  ${action.relPath}`;
+      case 'skip-unchanged':
+        return `${prefix}unchanged ${action.relPath}`;
+      case 'skip-seed-once':
+        return `${prefix}seed-once ${action.relPath}`;
+      case 'skip-diverged':
+        return `${prefix}diverged ${action.relPath} (${action.reason})`;
+      case 'skip-absent-from-template':
+        return `${prefix}absent   ${action.relPath}`;
+    }
+  });
+}
+
+export type { InstalledFiles, RefreshPlan, FileMode };
 
 export async function readSettings(startDir = process.cwd()): Promise<Settings | null> {
   const data = await readJsonFile(getSettingsPath(startDir));
@@ -573,8 +843,9 @@ async function readBasePolicies(startDir = process.cwd()): Promise<PolicyConfig 
 }
 
 // Resolves env-scoped policies for the active environment at `targetPath`.
-// Relative `command` paths are resolved against the environment directory so
-// the policy points at a real on-disk script no matter where it runs.
+// Relative `command` paths are resolved against the layered env search dirs
+// (overlay first, then built-in template), so overlays can point at a
+// built-in script without copying it.
 export async function readEnvironmentPoliciesForPath(
   targetPath: string,
   startDir = process.cwd()
@@ -585,16 +856,13 @@ export async function readEnvironmentPoliciesForPath(
   const envConfig = await readEnvironment(envInfo.name, startDir);
   if (!envConfig?.policies) return {};
 
-  const envDir = getEnvironmentPath(envInfo.name, startDir);
+  const searchDirs = await getEnvironmentSearchDirs(envInfo.name, startDir);
   const resolved: Record<string, PolicyDefinition> = {};
   for (const [name, definition] of Object.entries(envConfig.policies)) {
     const command =
       definition.command.startsWith('./') || definition.command.startsWith('../')
-        ? path.resolve(envDir, definition.command)
+        ? resolveLayeredRelativePath(definition.command, searchDirs)
         : definition.command;
-    // Spread so new PolicyDefinition fields flow through automatically. Zod's
-    // .optional() types include `undefined`, which exactOptionalPropertyTypes
-    // disallows — strip those entries before assigning.
     const entries = Object.entries({ ...definition, command }).filter(
       ([, value]) => value !== undefined
     );
@@ -622,14 +890,167 @@ export function getEnvironmentPath(name: string, startDir = process.cwd()): stri
   return path.join(getClawminiDir(startDir), 'environments', name);
 }
 
+// Deep-merge one level of the nested value (used for env/policies). Local wins
+// on conflict, missing keys flow through from the base.
+function mergeOneLevel<T>(
+  base: Record<string, T> | undefined,
+  overlay: Record<string, T> | undefined
+): Record<string, T> | undefined {
+  if (!base && !overlay) return undefined;
+  return { ...(base || {}), ...(overlay || {}) };
+}
+
+async function readEnvironmentRaw(name: string, startDir: string): Promise<Environment | null> {
+  const localPath = path.join(getEnvironmentPath(name, startDir), 'env.json');
+  const local = await readJsonFile(localPath);
+  if (local) {
+    const parsed = EnvironmentSchema.safeParse(local);
+    if (parsed.success) return parsed.data;
+  }
+
+  // Parent references in `extends` resolve against built-in templates.
+  try {
+    const builtinDir = await resolveEnvironmentTemplatePath(name, startDir);
+    const builtinData = await readJsonFile(path.join(builtinDir, 'env.json'));
+    if (builtinData) {
+      const parsed = EnvironmentSchema.safeParse(builtinData);
+      if (parsed.success) return parsed.data;
+    }
+  } catch {
+    // No built-in template with this name
+  }
+
+  return null;
+}
+
+async function readBuiltinEnvironment(name: string, startDir: string): Promise<Environment | null> {
+  let builtinDir: string;
+  try {
+    builtinDir = await resolveEnvironmentTemplatePath(name, startDir);
+  } catch {
+    return null;
+  }
+  const data = await readJsonFile(path.join(builtinDir, 'env.json'));
+  if (!data) return null;
+  const parsed = EnvironmentSchema.safeParse(data);
+  return parsed.success ? parsed.data : null;
+}
+
+async function resolveEnvironmentWithSeen(
+  name: string,
+  startDir: string,
+  seen: Set<string>
+): Promise<Environment | null> {
+  if (seen.has(name)) {
+    throw new Error(`Environment extends cycle detected at '${name}'`);
+  }
+  seen.add(name);
+
+  const local = await readEnvironmentRaw(name, startDir);
+  if (!local || !local.extends) return local;
+
+  // Self-extends (`.clawmini/environments/macos` with `extends: "macos"`)
+  // pivots from the overlay layer down to the built-in template of the same
+  // name. Without this branch, the recursion would hit `seen` and throw.
+  const parent =
+    local.extends === name
+      ? await readBuiltinEnvironment(name, startDir)
+      : await resolveEnvironmentWithSeen(local.extends, startDir, seen);
+  if (!parent) return local;
+
+  const { env: localEnv, policies: localPolicies, ...localRestRaw } = local;
+  delete (localRestRaw as { extends?: string }).extends;
+  const { env: parentEnv, policies: parentPolicies, ...parentRest } = parent;
+  const merged: Environment = { ...parentRest, ...localRestRaw };
+  const mergedEnv = mergeOneLevel(parentEnv, localEnv);
+  if (mergedEnv) merged.env = mergedEnv;
+  const mergedPolicies = mergeOneLevel(parentPolicies, localPolicies);
+  if (mergedPolicies) merged.policies = mergedPolicies;
+  return merged;
+}
+
 export async function readEnvironment(
   name: string,
   startDir = process.cwd()
 ): Promise<Environment | null> {
-  const data = await readJsonFile(path.join(getEnvironmentPath(name, startDir), 'env.json'));
-  if (!data) return null;
-  const parsed = EnvironmentSchema.safeParse(data);
-  return parsed.success ? parsed.data : null;
+  return resolveEnvironmentWithSeen(name, startDir, new Set());
+}
+
+// The ordered list of directories an {ENV_DIR}-relative path should resolve
+// against. The local overlay always comes first. If the overlay extends
+// another environment, the parent's local overlay (if any) and the parent's
+// built-in template dir are appended, walking up the chain. Consumers pick
+// the first dir that actually contains the referenced file.
+export async function getEnvironmentSearchDirs(
+  name: string,
+  startDir = process.cwd()
+): Promise<string[]> {
+  const dirs: string[] = [];
+  const seen = new Set<string>();
+
+  let currentName: string | undefined = name;
+  while (currentName && !seen.has(currentName)) {
+    seen.add(currentName);
+    const overlayDir = getEnvironmentPath(currentName, startDir);
+    if (fs.existsSync(overlayDir) && !dirs.includes(overlayDir)) dirs.push(overlayDir);
+
+    let builtinDir: string | null = null;
+    try {
+      builtinDir = await resolveEnvironmentTemplatePath(currentName, startDir);
+    } catch {
+      // No built-in — overlay is self-contained
+    }
+    if (builtinDir && !dirs.includes(builtinDir)) dirs.push(builtinDir);
+
+    const overlayEnvPath = path.join(overlayDir, 'env.json');
+    const overlayData = await readJsonFile(overlayEnvPath);
+    const overlayParsed = overlayData ? EnvironmentSchema.safeParse(overlayData) : null;
+    if (overlayParsed?.success && overlayParsed.data.extends) {
+      currentName = overlayParsed.data.extends;
+      continue;
+    }
+
+    if (builtinDir) {
+      const builtinEnvPath = path.join(builtinDir, 'env.json');
+      const builtinData = await readJsonFile(builtinEnvPath);
+      const builtinParsed = builtinData ? EnvironmentSchema.safeParse(builtinData) : null;
+      if (builtinParsed?.success && builtinParsed.data.extends) {
+        currentName = builtinParsed.data.extends;
+        continue;
+      }
+    }
+
+    currentName = undefined;
+  }
+
+  return dirs;
+}
+
+// Replace {ENV_DIR}[/subpath] occurrences with the first search dir that
+// actually contains the subpath on disk. If no dir has it, the first search
+// dir is used (so errors at exec time name a consistent location).
+export function substituteLayeredEnvDir(input: string, searchDirs: string[]): string {
+  if (searchDirs.length === 0) return input;
+  return input.replace(/\{ENV_DIR\}(?:\/([^\s'"}]+))?/g, (_match, sub?: string) => {
+    if (!sub) return searchDirs[0]!;
+    for (const dir of searchDirs) {
+      const candidate = path.resolve(dir, sub);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return path.resolve(searchDirs[0]!, sub);
+  });
+}
+
+// Resolve a relative (`./foo` or `../foo`) policy/command path against the
+// layered search dirs, preferring overlay first. Returns the first match; if
+// none exists, returns the overlay-dir resolution for a stable error path.
+export function resolveLayeredRelativePath(relPath: string, searchDirs: string[]): string {
+  if (searchDirs.length === 0) return relPath;
+  for (const dir of searchDirs) {
+    const candidate = path.resolve(dir, relPath);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return path.resolve(searchDirs[0]!, relPath);
 }
 
 export async function getActiveEnvironmentInfo(
@@ -671,16 +1092,30 @@ export async function getActiveEnvironmentName(
 export async function enableEnvironment(
   name: string,
   targetPath: string = './',
-  startDir = process.cwd()
+  startDir = process.cwd(),
+  opts: { fork?: boolean } = {}
 ): Promise<void> {
   const targetDir = getEnvironmentPath(name, startDir);
 
-  // Copy template to targetDir if it does not already exist
+  // Default: write a minimal overlay (`{extends: name}`) pointing at the
+  // built-in. Fork: clone the whole built-in template directory (legacy).
   if (!fs.existsSync(targetDir)) {
-    await copyEnvironmentTemplate(name, targetDir, startDir);
-    console.log(`Copied environment template '${name}'.`);
+    if (opts.fork) {
+      await copyEnvironmentTemplate(name, targetDir, startDir);
+      console.log(`Forked environment template '${name}'.`);
+    } else {
+      // Require the built-in to exist so we don't write a dangling overlay.
+      await resolveEnvironmentTemplatePath(name, startDir);
+      await fsPromises.mkdir(targetDir, { recursive: true });
+      await fsPromises.writeFile(
+        path.join(targetDir, 'env.json'),
+        JSON.stringify({ extends: name }, null, 2),
+        'utf-8'
+      );
+      console.log(`Enabled environment overlay '${name}' (extends built-in).`);
+    }
   } else {
-    console.log(`Environment template '${name}' already exists in workspace.`);
+    console.log(`Environment '${name}' already exists in workspace.`);
   }
 
   const settings = (await readSettings(startDir)) || { chats: { defaultId: '' } };

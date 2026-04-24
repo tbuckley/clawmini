@@ -1,8 +1,9 @@
 import { type FallbackSchema } from '../../shared/config.js';
 import {
   getActiveEnvironmentInfo,
-  getEnvironmentPath,
+  getEnvironmentSearchDirs,
   readEnvironment,
+  substituteLayeredEnvDir,
 } from '../../shared/workspace.js';
 import { z } from 'zod';
 
@@ -10,19 +11,21 @@ export type Fallback = z.infer<typeof FallbackSchema>;
 
 function formatEnvironmentPrefix(
   prefix: string,
-  replacements: { targetPath: string; executionCwd: string; envDir: string; envArgs: string }
+  searchDirs: string[],
+  replacements: { targetPath: string; executionCwd: string; envArgs: string }
 ): string {
+  let out = substituteLayeredEnvDir(prefix, searchDirs);
   const map: Record<string, string> = {
     '{WORKSPACE_DIR}': replacements.targetPath,
     '{AGENT_DIR}': replacements.executionCwd,
-    '{ENV_DIR}': replacements.envDir,
     '{HOME_DIR}': process.env.HOME || '',
     '{ENV_ARGS}': replacements.envArgs,
   };
-  return prefix.replace(
-    /{(WORKSPACE_DIR|AGENT_DIR|ENV_DIR|HOME_DIR|ENV_ARGS)}/g,
+  out = out.replace(
+    /{(WORKSPACE_DIR|AGENT_DIR|HOME_DIR|ENV_ARGS)}/g,
     (match) => map[match] || match
   );
+  return out;
 }
 
 export async function sandboxExecutionContext(
@@ -38,6 +41,7 @@ export async function sandboxExecutionContext(
 
   const activeEnvName = activeEnvInfo.name;
   const activeEnv = await readEnvironment(activeEnvName, cwd);
+  const searchDirs = await getEnvironmentSearchDirs(activeEnvName, cwd);
 
   if (activeEnv?.env) {
     for (const [key, value] of Object.entries(activeEnv.env)) {
@@ -47,10 +51,7 @@ export async function sandboxExecutionContext(
       } else {
         let interpolatedValue = String(value);
         interpolatedValue = interpolatedValue.replace(/\{PATH\}/g, process.env.PATH || '');
-        interpolatedValue = interpolatedValue.replace(
-          /\{ENV_DIR\}/g,
-          getEnvironmentPath(activeEnvName, cwd)
-        );
+        interpolatedValue = substituteLayeredEnvDir(interpolatedValue, searchDirs);
         interpolatedValue = interpolatedValue.replace(
           /\{WORKSPACE_DIR\}/g,
           activeEnvInfo.targetPath
@@ -71,10 +72,9 @@ export async function sandboxExecutionContext(
       })
       .join(' ');
 
-    const prefixReplaced = formatEnvironmentPrefix(activeEnv.prefix, {
+    const prefixReplaced = formatEnvironmentPrefix(activeEnv.prefix, searchDirs, {
       targetPath: activeEnvInfo.targetPath,
       executionCwd: executionCwd,
-      envDir: getEnvironmentPath(activeEnvName, cwd),
       envArgs,
     });
 

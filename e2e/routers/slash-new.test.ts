@@ -14,6 +14,7 @@ describe('/new Command E2E', () => {
       commands: {
         new: 'echo "[DEBUG NEW $SESSION_ID] $CLAW_CLI_MESSAGE"',
         append: 'echo "[DEBUG APPEND $SESSION_ID] $CLAW_CLI_MESSAGE"',
+        getSessionId: "node -e 'console.log(Math.random().toString(36).slice(2, 10))'",
       },
     });
 
