@@ -124,6 +124,7 @@ export const AgentSessionSettingsSchema = z.looseObject({
 export type AgentSessionSettings = z.infer<typeof AgentSessionSettingsSchema>;
 
 export const EnvironmentSchema = z.looseObject({
+  extends: z.string().optional(),
   init: z.string().optional(),
   up: z.string().optional(),
   down: z.string().optional(),

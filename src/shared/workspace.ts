@@ -573,8 +573,9 @@ async function readBasePolicies(startDir = process.cwd()): Promise<PolicyConfig 
 }
 
 // Resolves env-scoped policies for the active environment at `targetPath`.
-// Relative `command` paths are resolved against the environment directory so
-// the policy points at a real on-disk script no matter where it runs.
+// Relative `command` paths are resolved against the layered env search dirs
+// (overlay first, then built-in template), so overlays can point at a
+// built-in script without copying it.
 export async function readEnvironmentPoliciesForPath(
   targetPath: string,
   startDir = process.cwd()
@@ -585,16 +586,13 @@ export async function readEnvironmentPoliciesForPath(
   const envConfig = await readEnvironment(envInfo.name, startDir);
   if (!envConfig?.policies) return {};
 
-  const envDir = getEnvironmentPath(envInfo.name, startDir);
+  const searchDirs = await getEnvironmentSearchDirs(envInfo.name, startDir);
   const resolved: Record<string, PolicyDefinition> = {};
   for (const [name, definition] of Object.entries(envConfig.policies)) {
     const command =
       definition.command.startsWith('./') || definition.command.startsWith('../')
-        ? path.resolve(envDir, definition.command)
+        ? resolveLayeredRelativePath(definition.command, searchDirs)
         : definition.command;
-    // Spread so new PolicyDefinition fields flow through automatically. Zod's
-    // .optional() types include `undefined`, which exactOptionalPropertyTypes
-    // disallows — strip those entries before assigning.
     const entries = Object.entries({ ...definition, command }).filter(
       ([, value]) => value !== undefined
     );
@@ -622,14 +620,148 @@ export function getEnvironmentPath(name: string, startDir = process.cwd()): stri
   return path.join(getClawminiDir(startDir), 'environments', name);
 }
 
+// Deep-merge one level of the nested value (used for env/policies). Local wins
+// on conflict, missing keys flow through from the base.
+function mergeOneLevel<T>(
+  base: Record<string, T> | undefined,
+  overlay: Record<string, T> | undefined
+): Record<string, T> | undefined {
+  if (!base && !overlay) return undefined;
+  return { ...(base || {}), ...(overlay || {}) };
+}
+
+async function readEnvironmentRaw(name: string, startDir: string): Promise<Environment | null> {
+  const localPath = path.join(getEnvironmentPath(name, startDir), 'env.json');
+  const local = await readJsonFile(localPath);
+  if (local) {
+    const parsed = EnvironmentSchema.safeParse(local);
+    if (parsed.success) return parsed.data;
+  }
+
+  // Parent references in `extends` resolve against built-in templates.
+  try {
+    const builtinDir = await resolveEnvironmentTemplatePath(name, startDir);
+    const builtinData = await readJsonFile(path.join(builtinDir, 'env.json'));
+    if (builtinData) {
+      const parsed = EnvironmentSchema.safeParse(builtinData);
+      if (parsed.success) return parsed.data;
+    }
+  } catch {
+    // No built-in template with this name
+  }
+
+  return null;
+}
+
+async function resolveEnvironmentWithSeen(
+  name: string,
+  startDir: string,
+  seen: Set<string>
+): Promise<Environment | null> {
+  if (seen.has(name)) {
+    throw new Error(`Environment extends cycle detected at '${name}'`);
+  }
+  seen.add(name);
+
+  const local = await readEnvironmentRaw(name, startDir);
+  if (!local || !local.extends) return local;
+
+  const parent = await resolveEnvironmentWithSeen(local.extends, startDir, seen);
+  if (!parent) return local;
+
+  const { env: localEnv, policies: localPolicies, ...localRestRaw } = local;
+  delete (localRestRaw as { extends?: string }).extends;
+  const { env: parentEnv, policies: parentPolicies, ...parentRest } = parent;
+  const merged: Environment = { ...parentRest, ...localRestRaw };
+  const mergedEnv = mergeOneLevel(parentEnv, localEnv);
+  if (mergedEnv) merged.env = mergedEnv;
+  const mergedPolicies = mergeOneLevel(parentPolicies, localPolicies);
+  if (mergedPolicies) merged.policies = mergedPolicies;
+  return merged;
+}
+
 export async function readEnvironment(
   name: string,
   startDir = process.cwd()
 ): Promise<Environment | null> {
-  const data = await readJsonFile(path.join(getEnvironmentPath(name, startDir), 'env.json'));
-  if (!data) return null;
-  const parsed = EnvironmentSchema.safeParse(data);
-  return parsed.success ? parsed.data : null;
+  return resolveEnvironmentWithSeen(name, startDir, new Set());
+}
+
+// The ordered list of directories an {ENV_DIR}-relative path should resolve
+// against. The local overlay always comes first. If the overlay extends
+// another environment, the parent's local overlay (if any) and the parent's
+// built-in template dir are appended, walking up the chain. Consumers pick
+// the first dir that actually contains the referenced file.
+export async function getEnvironmentSearchDirs(
+  name: string,
+  startDir = process.cwd()
+): Promise<string[]> {
+  const dirs: string[] = [];
+  const seen = new Set<string>();
+
+  let currentName: string | undefined = name;
+  while (currentName && !seen.has(currentName)) {
+    seen.add(currentName);
+    const overlayDir = getEnvironmentPath(currentName, startDir);
+    if (fs.existsSync(overlayDir) && !dirs.includes(overlayDir)) dirs.push(overlayDir);
+
+    let builtinDir: string | null = null;
+    try {
+      builtinDir = await resolveEnvironmentTemplatePath(currentName, startDir);
+    } catch {
+      // No built-in — overlay is self-contained
+    }
+    if (builtinDir && !dirs.includes(builtinDir)) dirs.push(builtinDir);
+
+    const overlayEnvPath = path.join(overlayDir, 'env.json');
+    const overlayData = await readJsonFile(overlayEnvPath);
+    const overlayParsed = overlayData ? EnvironmentSchema.safeParse(overlayData) : null;
+    if (overlayParsed?.success && overlayParsed.data.extends) {
+      currentName = overlayParsed.data.extends;
+      continue;
+    }
+
+    if (builtinDir) {
+      const builtinEnvPath = path.join(builtinDir, 'env.json');
+      const builtinData = await readJsonFile(builtinEnvPath);
+      const builtinParsed = builtinData ? EnvironmentSchema.safeParse(builtinData) : null;
+      if (builtinParsed?.success && builtinParsed.data.extends) {
+        currentName = builtinParsed.data.extends;
+        continue;
+      }
+    }
+
+    currentName = undefined;
+  }
+
+  return dirs;
+}
+
+// Replace {ENV_DIR}[/subpath] occurrences with the first search dir that
+// actually contains the subpath on disk. If no dir has it, the first search
+// dir is used (so errors at exec time name a consistent location).
+export function substituteLayeredEnvDir(input: string, searchDirs: string[]): string {
+  if (searchDirs.length === 0) return input;
+  return input.replace(/\{ENV_DIR\}(?:\/([^\s'"}]+))?/g, (_match, sub?: string) => {
+    if (!sub) return searchDirs[0]!;
+    for (const dir of searchDirs) {
+      const candidate = path.resolve(dir, sub);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return path.resolve(searchDirs[0]!, sub);
+  });
+}
+
+// Resolve a relative (`./foo` or `../foo`) policy/command path against the
+// layered search dirs, preferring overlay first. Returns the first match; if
+// none exists, returns the overlay-dir resolution for a stable error path.
+export function resolveLayeredRelativePath(relPath: string, searchDirs: string[]): string {
+  if (searchDirs.length === 0) return relPath;
+  for (const dir of searchDirs) {
+    const candidate = path.resolve(dir, relPath);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return path.resolve(searchDirs[0]!, relPath);
 }
 
 export async function getActiveEnvironmentInfo(
