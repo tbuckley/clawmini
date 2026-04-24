@@ -311,13 +311,25 @@ export async function getAgent(agentId: string, startDir = process.cwd()): Promi
   const template = await readAgentTemplateSettings(overlay.extends, startDir);
   if (!template) return overlay;
 
-  const { env: overlayEnv, subagentEnv: overlaySub, ...overlayRest } = overlay;
-  const { env: templateEnv, subagentEnv: templateSub, ...templateRest } = template;
+  const {
+    env: overlayEnv,
+    subagentEnv: overlaySub,
+    modelShorthands: overlayShorthands,
+    ...overlayRest
+  } = overlay;
+  const {
+    env: templateEnv,
+    subagentEnv: templateSub,
+    modelShorthands: templateShorthands,
+    ...templateRest
+  } = template;
   const merged: Agent = { ...templateRest, ...overlayRest };
   const mergedEnv = mergeOneLevel(templateEnv, overlayEnv);
   if (mergedEnv) merged.env = mergedEnv;
   const mergedSub = mergeOneLevel(templateSub, overlaySub);
   if (mergedSub) merged.subagentEnv = mergedSub;
+  const mergedShorthands = mergeOneLevel(templateShorthands, overlayShorthands);
+  if (mergedShorthands) merged.modelShorthands = mergedShorthands;
   return merged;
 }
 
