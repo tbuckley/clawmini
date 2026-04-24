@@ -11,8 +11,8 @@ This document provides comprehensive instructions on how to create, structure, a
 
 You can create skills in two locations depending on their intended scope:
 
-- **Project-Specific:** Create skills in `.gemini/skills/<skill-name>/` at the root of your project. These will only be available when working within this project.
-- **Global:** Create skills in `~/.gemini/skills/<skill-name>/` in your home directory. These will be available to agents across all projects on your machine.
+- **Project-Specific:** Create skills in `.agents/skills/<skill-name>/` at the root of your project. These will only be available when working within this project.
+- **Global:** Create skills in `~/.agents/skills/<skill-name>/` in your home directory. These will be available to agents across all projects on your machine.
 
 ## 1. Specification & Directory Structure
 
@@ -21,7 +21,7 @@ A skill is defined by a directory containing a mandatory `SKILL.md` file. The di
 **Example Structure:**
 
 ```text
-.gemini/skills/my-awesome-skill/
+.agents/skills/my-awesome-skill/
 ├── SKILL.md         # Mandatory: Contains metadata and instructions
 ├── scripts/         # Optional: Executable code or helper scripts
 ├── references/      # Optional: Documentation or long-form context
@@ -47,6 +47,7 @@ The `SKILL.md` file must begin with YAML frontmatter containing metadata, follow
   - **Checklists:** Help the agent track progress in multi-step workflows.
   - **Validation Loops:** Instruct the agent to "Plan-Validate-Execute" (especially for destructive actions) to ensure correctness before execution.
 - **Calibrate Control:** Be highly prescriptive for fragile tasks, but allow flexibility for creative tasks. Provide clear defaults rather than a menu of options.
+- **Skill Validation:** Once you have generated a skill, you must always validate its folder structure and frontmatter by running `.agents/skills/skill-creator/scripts/validate.sh <path_to_skill_directory>`.
 
 ## 3. Optimizing Skill Descriptions
 
