@@ -873,6 +873,19 @@ async function readEnvironmentRaw(name: string, startDir: string): Promise<Envir
   return null;
 }
 
+async function readBuiltinEnvironment(name: string, startDir: string): Promise<Environment | null> {
+  let builtinDir: string;
+  try {
+    builtinDir = await resolveEnvironmentTemplatePath(name, startDir);
+  } catch {
+    return null;
+  }
+  const data = await readJsonFile(path.join(builtinDir, 'env.json'));
+  if (!data) return null;
+  const parsed = EnvironmentSchema.safeParse(data);
+  return parsed.success ? parsed.data : null;
+}
+
 async function resolveEnvironmentWithSeen(
   name: string,
   startDir: string,
@@ -886,7 +899,13 @@ async function resolveEnvironmentWithSeen(
   const local = await readEnvironmentRaw(name, startDir);
   if (!local || !local.extends) return local;
 
-  const parent = await resolveEnvironmentWithSeen(local.extends, startDir, seen);
+  // Self-extends (`.clawmini/environments/macos` with `extends: "macos"`)
+  // pivots from the overlay layer down to the built-in template of the same
+  // name. Without this branch, the recursion would hit `seen` and throw.
+  const parent =
+    local.extends === name
+      ? await readBuiltinEnvironment(name, startDir)
+      : await resolveEnvironmentWithSeen(local.extends, startDir, seen);
   if (!parent) return local;
 
   const { env: localEnv, policies: localPolicies, ...localRestRaw } = local;
@@ -1023,16 +1042,30 @@ export async function getActiveEnvironmentName(
 export async function enableEnvironment(
   name: string,
   targetPath: string = './',
-  startDir = process.cwd()
+  startDir = process.cwd(),
+  opts: { fork?: boolean } = {}
 ): Promise<void> {
   const targetDir = getEnvironmentPath(name, startDir);
 
-  // Copy template to targetDir if it does not already exist
+  // Default: write a minimal overlay (`{extends: name}`) pointing at the
+  // built-in. Fork: clone the whole built-in template directory (legacy).
   if (!fs.existsSync(targetDir)) {
-    await copyEnvironmentTemplate(name, targetDir, startDir);
-    console.log(`Copied environment template '${name}'.`);
+    if (opts.fork) {
+      await copyEnvironmentTemplate(name, targetDir, startDir);
+      console.log(`Forked environment template '${name}'.`);
+    } else {
+      // Require the built-in to exist so we don't write a dangling overlay.
+      await resolveEnvironmentTemplatePath(name, startDir);
+      await fsPromises.mkdir(targetDir, { recursive: true });
+      await fsPromises.writeFile(
+        path.join(targetDir, 'env.json'),
+        JSON.stringify({ extends: name }, null, 2),
+        'utf-8'
+      );
+      console.log(`Enabled environment overlay '${name}' (extends built-in).`);
+    }
   } else {
-    console.log(`Environment template '${name}' already exists in workspace.`);
+    console.log(`Environment '${name}' already exists in workspace.`);
   }
 
   const settings = (await readSettings(startDir)) || { chats: { defaultId: '' } };

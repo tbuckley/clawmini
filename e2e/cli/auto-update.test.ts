@@ -69,15 +69,34 @@ describe('E2E Auto-update: lite refresh on `up`', () => {
     expect(stderr).toContain('Refusing to overwrite');
   });
 
-  it('environments enable still copies by default (no extends added)', async () => {
+  it('environments enable writes a thin overlay by default', async () => {
     const { code } = await env.runCli(['environments', 'enable', 'macos']);
     expect(code).toBe(0);
-    const envJson = JSON.parse(
-      fs.readFileSync(env.getClawminiPath('environments', 'macos', 'env.json'), 'utf8')
-    );
+    const envDir = env.getClawminiPath('environments', 'macos');
+    const envJson = JSON.parse(fs.readFileSync(path.join(envDir, 'env.json'), 'utf8'));
+    expect(envJson).toEqual({ extends: 'macos' });
+    // Built-in files are not cloned into the overlay dir.
+    expect(fs.existsSync(path.join(envDir, 'sandbox.sb'))).toBe(false);
+  });
+
+  it('environments enable --fork clones the built-in template directory', async () => {
+    const { code } = await env.runCli(['environments', 'enable', 'macos', '--fork']);
+    expect(code).toBe(0);
+    const envDir = env.getClawminiPath('environments', 'macos');
+    const envJson = JSON.parse(fs.readFileSync(path.join(envDir, 'env.json'), 'utf8'));
     expect(envJson.extends).toBeUndefined();
     expect(envJson.prefix).toContain('sandbox-exec');
-    expect(fs.existsSync(env.getClawminiPath('environments', 'macos', 'sandbox.sb'))).toBe(true);
+    expect(fs.existsSync(path.join(envDir, 'sandbox.sb'))).toBe(true);
+  });
+
+  it('overlay with self-extends resolves through the built-in', async () => {
+    const { code } = await env.runCli(['environments', 'enable', 'macos']);
+    expect(code).toBe(0);
+    const resolved = await readEnvironment('macos', env.e2eDir);
+    expect(resolved).toBeTruthy();
+    expect(resolved!.prefix).toContain('sandbox-exec');
+    expect(resolved!.exportLiteTo).toBe('.local/bin/clawmini-lite.js');
+    expect(typeof resolved!.env?.PATH).toBe('string');
   });
 
   it('up does not place a default lite shim when no environment is active', async () => {
