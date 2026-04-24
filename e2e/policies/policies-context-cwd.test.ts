@@ -83,6 +83,58 @@ describe('Context-Aware Execution E2E', () => {
       expect(result.executionResult!.stdout).toContain(path.join('debug-agent', 'foo'));
     }, 15000);
 
+    it('should translate sandbox cwd when the env targets a parent of the agent dir', async () => {
+      // Simulates a cladding-like setup: the environment is enabled at the
+      // workspace root, and the agent lives in a subdirectory inside it. The
+      // agent (running in the VM) reports its cwd relative to the sandbox
+      // baseDir (`/vm-workspace/debug-agent/nested`), so the server must
+      // strip baseDir and resolve the remainder against the env target path
+      // (the workspace root) — not the agent dir, which would double-nest.
+      const envConfigDir = path.resolve(env.e2eDir, '.clawmini/environments/cladding-like');
+      await fsPromises.mkdir(envConfigDir, { recursive: true });
+      await fsPromises.writeFile(
+        path.join(envConfigDir, 'env.json'),
+        JSON.stringify({ baseDir: '/vm-workspace' })
+      );
+
+      const settings = env.getSettings();
+      settings.environments = { './': 'cladding-like' };
+      env.writeSettings(settings);
+
+      await fsPromises.mkdir(path.join(env.e2eDir, 'debug-agent', 'nested'), { recursive: true });
+
+      const result = await agentClient.createPolicyRequest.mutate({
+        commandName: 'print-cwd',
+        args: [],
+        fileMappings: {},
+        cwd: '/vm-workspace/debug-agent/nested',
+      });
+
+      expect(result.executionResult).toBeDefined();
+      expect(result.executionResult!.exitCode).toBe(0);
+      expect(result.executionResult!.stdout.trim()).toBe(
+        path.join(env.e2eDir, 'debug-agent', 'nested')
+      );
+    }, 15000);
+
+    it('should reject a cwd that escapes the env target dir', async () => {
+      // With the cladding-like env from the previous test still active, a
+      // sandbox cwd that resolves above the env target must be rejected.
+      await expect(
+        agentClient.createPolicyRequest.mutate({
+          commandName: 'print-cwd',
+          args: [],
+          fileMappings: {},
+          cwd: '/vm-workspace/../etc/passwd',
+        })
+      ).rejects.toSatisfy((err: unknown) => {
+        return (
+          err instanceof TRPCClientError &&
+          /Security Error: Path resolves outside/.test(err.message)
+        );
+      });
+    }, 15000);
+
     it('should reject a cwd that escapes the agent directory', async () => {
       // Remove the environment setup from the previous test so the baseDir
       // branch does not apply here.

@@ -16,26 +16,52 @@ export const MAX_SNAPSHOT_SIZE = 5 * 1024 * 1024;
 export const MAX_INLINE_OUTPUT_LENGTH = 500;
 
 /**
- * Translates a sandbox-relative cwd into an absolute host path scoped to agentDir.
+ * Strips the sandbox `baseDir` from `sandboxCwd` and resolves the remainder
+ * against `hostTargetDir` (the host dir that mirrors baseDir inside the
+ * sandbox). Pure translation — no security validation; callers must validate
+ * the result with `assertPathInsideDir`.
+ */
+export function translateSandboxPath(
+  sandboxCwd: string,
+  baseDir: string,
+  hostTargetDir: string
+): string {
+  let relativePath = sandboxCwd;
+  if (sandboxCwd.startsWith(baseDir)) {
+    relativePath = sandboxCwd.slice(baseDir.length);
+  }
+  if (relativePath.startsWith('/') || relativePath.startsWith('\\')) {
+    relativePath = relativePath.slice(1);
+  }
+  return path.resolve(hostTargetDir, relativePath);
+}
+
+/**
+ * Throws if `cwd` (after symlink resolution) is not inside `boundaryDir`.
  *
  * Security note (TOCTOU): There is an inherent race between validating the
  * resolved path here and the moment `spawn` uses it as cwd. A symlink created
  * on the host filesystem in that window could redirect execution outside
- * agentDir. We accept this because the sandboxed agent cannot modify the host
- * filesystem — only a local user or process with host-level access could
+ * boundaryDir. We accept this because the sandboxed agent cannot modify the
+ * host filesystem — only a local user or process with host-level access could
  * exploit the gap, and that is outside our threat model.
  */
-export function translateSandboxPath(
-  sandboxCwd: string,
-  baseDir: string | undefined,
-  agentDir: string
-): string {
-  let relativePath = sandboxCwd;
+export function assertPathInsideDir(cwd: string, boundaryDir: string): void {
+  const realCwd = tryRealpath(cwd);
+  const realBoundary = tryRealpath(boundaryDir);
+  if (!pathIsInsideDir(realCwd, realBoundary, { allowSameDir: true })) {
+    throw new Error(`Security Error: Path resolves outside the allowed directory: ${cwd}`);
+  }
+}
 
-  let realSandboxCwd = sandboxCwd;
-  let realAgentDir = agentDir;
+// Realpath that tolerates missing leaves. Walks up to the nearest existing
+// ancestor, realpaths that, and re-appends the missing tail. Needed so that
+// symlinks in the existing prefix still resolve (e.g. macOS /var → /private/var)
+// when the full path is not yet on disk.
+function tryRealpath(p: string): string {
+  const resolved = path.resolve(p);
   try {
-    realSandboxCwd = fsSync.realpathSync(sandboxCwd);
+    return fsSync.realpathSync(resolved);
   } catch (err: unknown) {
     if (
       !(err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT')
@@ -43,41 +69,9 @@ export function translateSandboxPath(
       throw err;
     }
   }
-  try {
-    realAgentDir = fsSync.realpathSync(agentDir);
-  } catch (err: unknown) {
-    if (
-      !(err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT')
-    ) {
-      throw err;
-    }
-  }
-
-  if (baseDir && sandboxCwd.startsWith(baseDir)) {
-    relativePath = sandboxCwd.slice(baseDir.length);
-  } else if (
-    !baseDir &&
-    path.isAbsolute(realSandboxCwd) &&
-    pathIsInsideDir(realSandboxCwd, realAgentDir, { allowSameDir: true })
-  ) {
-    return realSandboxCwd;
-  }
-
-  // Remove leading slash to make it correctly relative when resolving against agentDir
-  if (relativePath.startsWith('/') || relativePath.startsWith('\\')) {
-    relativePath = relativePath.slice(1);
-  }
-
-  const resolvedPath = path.resolve(agentDir, relativePath);
-
-  // Security validation to prevent path traversal
-  if (!pathIsInsideDir(resolvedPath, agentDir, { allowSameDir: true })) {
-    throw new Error(
-      `Security Error: Path resolves outside the allowed agent directory: ${resolvedPath}`
-    );
-  }
-
-  return resolvedPath;
+  const parent = path.dirname(resolved);
+  if (parent === resolved) return resolved;
+  return path.join(tryRealpath(parent), path.basename(resolved));
 }
 
 export async function resolveRequestCwd(
@@ -85,14 +79,26 @@ export async function resolveRequestCwd(
   agentId: string | undefined,
   workspaceRoot: string
 ): Promise<string> {
+  if (!requestCwd) {
+    // TODO throw error instead?
+    return workspaceRoot;
+  }
+
   const agentDir = await resolveAgentDir(agentId, workspaceRoot);
   const envInfo = await getActiveEnvironmentInfo(agentDir, workspaceRoot);
-  let baseDir: string | undefined;
-  if (envInfo) {
-    const envConfig = await readEnvironment(envInfo.name, workspaceRoot);
-    baseDir = envConfig?.baseDir;
-  }
-  return requestCwd ? translateSandboxPath(requestCwd, baseDir, agentDir) : workspaceRoot;
+  const envConfig = envInfo ? await readEnvironment(envInfo.name, workspaceRoot) : null;
+
+  // Translate sandbox → host only when the env declares a baseDir (VM-style
+  // sandbox). Otherwise requestCwd is already a host path; resolve relative
+  // paths against agentDir and keep absolute paths as-is.
+  const hostCwd =
+    envInfo && envConfig?.baseDir
+      ? translateSandboxPath(requestCwd, envConfig.baseDir, envInfo.targetPath)
+      : path.resolve(agentDir, requestCwd);
+
+  // Boundary: the agent dir
+  assertPathInsideDir(hostCwd, agentDir);
+  return hostCwd;
 }
 
 export async function createSnapshot(
