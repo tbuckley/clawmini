@@ -24,6 +24,16 @@ import {
   SettingsSchema,
 } from './config.js';
 import { pathIsInsideDir } from './utils/fs.js';
+import {
+  readTemplateManifest,
+  planRefresh,
+  applyPlan,
+  writeInstalledFiles,
+  readInstalledFiles,
+  type InstalledFiles,
+  type RefreshPlan,
+  type FileMode,
+} from './template-manifest.js';
 
 export function getWorkspaceRoot(startDir = process.cwd()): string {
   let curr = startDir;
@@ -116,6 +126,10 @@ export function getAgentDir(agentId: string, startDir = process.cwd()): string {
 
 export function getAgentSettingsPath(agentId: string, startDir = process.cwd()): string {
   return path.join(getAgentDir(agentId, startDir), 'settings.json');
+}
+
+export function getInstalledFilesPath(agentId: string, startDir = process.cwd()): string {
+  return path.join(getAgentDir(agentId, startDir), 'installed-files.json');
 }
 
 export function getAgentSessionSettingsPath(
@@ -432,8 +446,14 @@ export async function copyTemplateBase(
     }
   }
 
-  // Recursively copy
-  await fsPromises.cp(templatePath, targetDir, { recursive: true, force: true });
+  // Recursively copy. The template.json manifest is never copied — it's
+  // metadata about how to handle the other files.
+  const rootTemplateJson = path.resolve(templatePath, 'template.json');
+  await fsPromises.cp(templatePath, targetDir, {
+    recursive: true,
+    force: true,
+    filter: (src) => path.resolve(src) !== rootTemplateJson,
+  });
 }
 
 export async function copyTemplate(
@@ -530,13 +550,15 @@ export async function applyTemplateToAgent(
   opts: { fork?: boolean } = {}
 ): Promise<void> {
   const agentWorkDir = resolveAgentWorkDir(agentId, overrides.directory, startDir);
-  await copyTemplate(templateName, agentWorkDir, startDir);
-
-  const settingsPath = path.join(agentWorkDir, 'settings.json');
-  const manifestPath = path.join(agentWorkDir, 'template.json');
 
   if (opts.fork) {
-    // Legacy path: merge template settings into the local file, drop extends.
+    // Legacy path: copy everything, merge template settings into the local
+    // file, then strip the template metadata files from the workdir.
+    await copyTemplate(templateName, agentWorkDir, startDir);
+
+    const settingsPath = path.join(agentWorkDir, 'settings.json');
+    const manifestPath = path.join(agentWorkDir, 'template.json');
+
     try {
       const rawSettings = await fsPromises.readFile(settingsPath, 'utf-8');
       const parsedSettings = JSON.parse(rawSettings);
@@ -561,21 +583,86 @@ export async function applyTemplateToAgent(
     } catch {
       // Ignore parsing or file not found errors
     }
-  } else {
-    // Overlay mode: write the overlay pointing at the template. Field lookups
-    // resolve the template at read time via `getAgent`.
-    const overlay: Agent = { extends: templateName, ...overrides };
-    await writeAgentSettings(agentId, overlay, startDir);
+
+    for (const tmp of [settingsPath, manifestPath]) {
+      try {
+        await fsPromises.rm(tmp);
+      } catch {
+        // Ignore if it doesn't exist
+      }
+    }
+    return;
   }
 
-  for (const tmp of [settingsPath, manifestPath]) {
-    try {
-      await fsPromises.rm(tmp);
-    } catch {
-      // Ignore if it doesn't exist
-    }
-  }
+  // Overlay mode: install files via the manifest, record SHAs, and write the
+  // overlay pointing at the template. settings.json and template.json in the
+  // template are metadata — neither gets copied.
+  const templateDir = await resolveTemplatePath(templateName, startDir);
+  const manifest = await readTemplateManifest(templateDir);
+  await fsPromises.mkdir(agentWorkDir, { recursive: true });
+  const plan = await planRefresh(templateDir, agentWorkDir, manifest, null, {
+    defaultMode: 'seed-once',
+    firstInstall: true,
+  });
+  await applyPlan(templateDir, agentWorkDir, plan);
+  await writeInstalledFiles(getInstalledFilesPath(agentId, startDir), plan.nextInstalled);
+
+  const overlay: Agent = { extends: templateName, ...overrides };
+  await writeAgentSettings(agentId, overlay, startDir);
 }
+
+// Refresh all `track` files in the agent's working directory against the
+// template content. Diverged files are skipped unless `accept` is true.
+// Returns the full plan so callers can report / dry-run as needed.
+export async function refreshAgentTemplate(
+  agentId: string,
+  agent: Agent,
+  startDir = process.cwd(),
+  opts: { accept?: boolean; dryRun?: boolean } = {}
+): Promise<RefreshPlan | null> {
+  if (!agent.extends) return null;
+  const templateDir = await resolveTemplatePath(agent.extends, startDir);
+  const agentWorkDir = resolveAgentWorkDir(agentId, agent.directory, startDir);
+  const manifest = await readTemplateManifest(templateDir);
+  const installedPath = getInstalledFilesPath(agentId, startDir);
+  const installed = await readInstalledFiles(installedPath);
+
+  const plan = await planRefresh(templateDir, agentWorkDir, manifest, installed, {
+    defaultMode: 'seed-once',
+    ...(opts.accept === undefined ? {} : { accept: opts.accept }),
+  });
+
+  if (opts.dryRun) return plan;
+
+  await applyPlan(templateDir, agentWorkDir, plan);
+  await writeInstalledFiles(installedPath, plan.nextInstalled);
+  return plan;
+}
+
+// Human-readable per-action lines for logging / dry-run. Prefixed with the
+// agent id for readability when invoked over multiple agents at once.
+export function formatPlanActions(
+  plan: RefreshPlan,
+  opts: { agentId?: string; prefix?: string } = {}
+): string[] {
+  const prefix = opts.prefix ?? (opts.agentId ? `[${opts.agentId}] ` : '');
+  return plan.actions.map((action) => {
+    switch (action.action) {
+      case 'write':
+        return `${prefix}${action.reason === 'new' ? 'install' : 'refresh'}  ${action.relPath}`;
+      case 'skip-unchanged':
+        return `${prefix}unchanged ${action.relPath}`;
+      case 'skip-seed-once':
+        return `${prefix}seed-once ${action.relPath}`;
+      case 'skip-diverged':
+        return `${prefix}diverged ${action.relPath} (${action.reason})`;
+      case 'skip-absent-from-template':
+        return `${prefix}absent   ${action.relPath}`;
+    }
+  });
+}
+
+export type { InstalledFiles, RefreshPlan, FileMode };
 
 export async function readSettings(startDir = process.cwd()): Promise<Settings | null> {
   const data = await readJsonFile(getSettingsPath(startDir));

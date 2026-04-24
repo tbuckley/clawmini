@@ -284,3 +284,60 @@ describe('E2E Auto-update: agent overlay (`extends`)', () => {
     expect(fs.existsSync(path.join(env.e2eDir, 'bob', 'template.json'))).toBe(false);
   });
 });
+
+describe('E2E Auto-update: template.json + SHA tracking', () => {
+  let env: TestEnvironment;
+
+  beforeEach(async () => {
+    env = new TestEnvironment('e2e-au-sha');
+    await env.setup();
+    await env.init();
+  }, 30000);
+
+  afterEach(() => env.teardown(), 30000);
+
+  it('new agent with --template records SHAs and creates installed-files.json', async () => {
+    const { code } = await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    expect(code).toBe(0);
+
+    const installedPath = env.getAgentPath('bob', 'installed-files.json');
+    expect(fs.existsSync(installedPath)).toBe(true);
+    const installed = JSON.parse(fs.readFileSync(installedPath, 'utf8'));
+    // Manifest declares GEMINI.md as track; an entry must exist.
+    expect(installed.files['GEMINI.md']).toBeTruthy();
+    expect(typeof installed.files['GEMINI.md'].sha).toBe('string');
+    // Seed-once files are also recorded at first install.
+    expect(installed.files['SOUL.md']).toBeTruthy();
+  });
+
+  it('recorded SHAs match the template content at create time', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+
+    const installedPath = env.getAgentPath('bob', 'installed-files.json');
+    const installed = JSON.parse(fs.readFileSync(installedPath, 'utf8'));
+
+    const workspaceRoot = path.resolve(__dirname, '..', '..');
+    const templateGemini = path.join(workspaceRoot, 'templates', 'gemini-claw', 'GEMINI.md');
+    const templateContent = fs.readFileSync(templateGemini);
+    const { createHash } = await import('node:crypto');
+    const expected = createHash('sha256').update(templateContent).digest('hex');
+    expect(installed.files['GEMINI.md'].sha).toBe(expected);
+  });
+
+  it('up does not copy template.json to the destination', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    expect(fs.existsSync(path.join(env.e2eDir, 'bob', 'template.json'))).toBe(false);
+    const { code } = await env.up();
+    expect(code).toBe(0);
+    expect(fs.existsSync(path.join(env.e2eDir, 'bob', 'template.json'))).toBe(false);
+  });
+
+  it('directory entries in the manifest apply recursively', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const installedPath = env.getAgentPath('bob', 'installed-files.json');
+    const installed = JSON.parse(fs.readFileSync(installedPath, 'utf8'));
+    // Everything under .gemini/ is 'track' per the manifest.
+    const gemini = Object.keys(installed.files).filter((k) => k.startsWith('.gemini/'));
+    expect(gemini.length).toBeGreaterThan(0);
+  });
+});
