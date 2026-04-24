@@ -4,6 +4,7 @@ import { getPoliciesPath, getSocketPath } from '../../shared/workspace.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { installBuiltinPolicies } from '../builtin-policies.js';
+import { exportLiteToAllEnvironments } from '../../shared/lite.js';
 
 // resolvePolicies only exposes built-ins when a policies file exists, so a
 // fresh project needs an empty one for run-host etc. to be visible.
@@ -23,6 +24,7 @@ export const upCmd = new Command('up')
 
       await installBuiltinPolicies();
       ensureDefaultPoliciesFile();
+      await exportLiteToAllEnvironments();
 
       const client = await getDaemonClient({ autoStart: true });
       // Perform a ping to ensure the server is responding

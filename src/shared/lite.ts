@@ -1,8 +1,19 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { readSettings, readEnvironment, getWorkspaceRoot } from './workspace.js';
 import type { Environment } from './config.js';
+
+const LITE_MARKER = 'clawmini-lite';
+
+function sha256(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
+}
+
+function looksLikeLiteScript(content: string): boolean {
+  return content.startsWith('#!') && content.includes(LITE_MARKER);
+}
 
 export async function resolveCompiledScript(scriptName: string, metaUrl: string): Promise<string> {
   const __dirname = path.dirname(fileURLToPath(metaUrl));
@@ -77,6 +88,63 @@ export async function writeLiteScript(outPath: string): Promise<string> {
   return finalPath;
 }
 
+async function resolveLiteTargetPath(outPath: string): Promise<string> {
+  const isProbablyFile =
+    path.extname(outPath) === '.js' ||
+    path.extname(outPath) === '.mjs' ||
+    path.basename(outPath) === 'clawmini-lite';
+
+  try {
+    const stat = await fs.stat(outPath);
+    if (stat.isDirectory()) {
+      return path.join(outPath, 'clawmini-lite.js');
+    }
+    return outPath;
+  } catch {
+    if (isProbablyFile) return outPath;
+    // No extension and path doesn't yet exist — treat as a directory target.
+    return path.join(outPath, 'clawmini-lite.js');
+  }
+}
+
+// Content-hashed write that refuses to clobber an arbitrary user file at the
+// export path. Returns:
+//   - 'written' when the file was created or updated
+//   - 'unchanged' when the on-disk content already matches (no mtime touch)
+//   - 'refused' when the existing file looks like it isn't a clawmini-lite
+export async function refreshLiteAt(
+  outPath: string,
+  opts: { label?: string } = {}
+): Promise<{ status: 'written' | 'unchanged' | 'refused'; path: string }> {
+  const content = await getLiteScriptContent();
+  const finalPath = await resolveLiteTargetPath(outPath);
+
+  let existing: string | null = null;
+  try {
+    existing = await fs.readFile(finalPath, 'utf8');
+  } catch {
+    // missing — write below
+  }
+
+  if (existing !== null) {
+    if (sha256(existing) === sha256(content)) {
+      return { status: 'unchanged', path: finalPath };
+    }
+    if (!looksLikeLiteScript(existing)) {
+      const label = opts.label ? ` (${opts.label})` : '';
+      console.warn(
+        `Refusing to overwrite ${finalPath}${label}: existing file is not a clawmini-lite script`
+      );
+      return { status: 'refused', path: finalPath };
+    }
+  }
+
+  const dir = path.dirname(finalPath);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(finalPath, content, { mode: 0o755 });
+  return { status: 'written', path: finalPath };
+}
+
 export async function exportLiteToEnvironment(
   envName: string,
   envConfig: Environment,
@@ -98,8 +166,14 @@ export async function exportLiteToEnvironment(
   }
 
   try {
-    const writtenPath = await writeLiteScript(finalExportPath);
-    console.log(`Successfully exported clawmini-lite to ${writtenPath} (Environment: ${envName})`);
+    const result = await refreshLiteAt(finalExportPath, { label: `Environment: ${envName}` });
+    if (result.status === 'written') {
+      console.log(
+        `Successfully exported clawmini-lite to ${result.path} (Environment: ${envName})`
+      );
+    } else if (result.status === 'refused') {
+      return false;
+    }
     return true;
   } catch (err) {
     console.error(
