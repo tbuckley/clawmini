@@ -341,3 +341,88 @@ describe('E2E Auto-update: template.json + SHA tracking', () => {
     expect(gemini.length).toBeGreaterThan(0);
   });
 });
+
+describe('E2E Auto-update: agent refresh on `up`', () => {
+  let env: TestEnvironment;
+
+  beforeEach(async () => {
+    env = new TestEnvironment('e2e-au-up');
+    await env.setup();
+    await env.init();
+  }, 30000);
+
+  afterEach(() => env.teardown(), 30000);
+
+  it('up skips a track file when the agent edited it', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const gemini = path.join(env.e2eDir, 'bob', 'GEMINI.md');
+    const original = fs.readFileSync(gemini, 'utf8');
+    fs.writeFileSync(gemini, original + '\n<!-- agent edit -->');
+
+    const { stderr, code } = await env.up();
+    expect(code).toBe(0);
+    expect(stderr).toContain('differs from template');
+    expect(fs.readFileSync(gemini, 'utf8')).toContain('<!-- agent edit -->');
+  });
+
+  it('up never touches seed-once files', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const memory = path.join(env.e2eDir, 'bob', 'MEMORY.md');
+    fs.writeFileSync(memory, 'agent memory content\n');
+    const { code } = await env.up();
+    expect(code).toBe(0);
+    expect(fs.readFileSync(memory, 'utf8')).toBe('agent memory content\n');
+  });
+
+  it('up never touches files outside the manifest in the agent dir', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const extra = path.join(env.e2eDir, 'bob', 'agent-notes.txt');
+    fs.writeFileSync(extra, 'notes\n');
+    const { code } = await env.up();
+    expect(code).toBe(0);
+    expect(fs.readFileSync(extra, 'utf8')).toBe('notes\n');
+  });
+
+  it('up re-creates a track file that was deleted', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const gemini = path.join(env.e2eDir, 'bob', 'GEMINI.md');
+    fs.unlinkSync(gemini);
+
+    const { code } = await env.up();
+    expect(code).toBe(0);
+    expect(fs.existsSync(gemini)).toBe(true);
+  });
+
+  it('agents refresh --accept overwrites diverged files', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const gemini = path.join(env.e2eDir, 'bob', 'GEMINI.md');
+    fs.writeFileSync(gemini, 'diverged content\n');
+
+    const { code, stdout } = await env.runCli(['agents', 'refresh', 'bob', '--accept']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('refresh');
+    expect(fs.readFileSync(gemini, 'utf8')).not.toBe('diverged content\n');
+  });
+
+  it('agents refresh scoped to a single agent leaves other agents alone', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    await env.runCli(['agents', 'add', 'alice', '--template', 'gemini-claw']);
+
+    const aliceGemini = path.join(env.e2eDir, 'alice', 'GEMINI.md');
+    fs.writeFileSync(aliceGemini, 'alice edited\n');
+
+    const { code } = await env.runCli(['agents', 'refresh', 'bob', '--accept']);
+    expect(code).toBe(0);
+    expect(fs.readFileSync(aliceGemini, 'utf8')).toBe('alice edited\n');
+  });
+
+  it('pre-existing agent without recorded SHAs gets strict skip + hint', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    // Simulate an old workspace: remove installed-files.json.
+    fs.unlinkSync(env.getAgentPath('bob', 'installed-files.json'));
+
+    const { stderr, code } = await env.up();
+    expect(code).toBe(0);
+    expect(stderr).toContain('no recorded SHA');
+  });
+});

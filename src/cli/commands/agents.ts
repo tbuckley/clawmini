@@ -5,6 +5,8 @@ import {
   writeAgentSettings,
   deleteAgent,
   isValidAgentId,
+  refreshAgentTemplate,
+  formatPlanActions,
 } from '../../shared/workspace.js';
 import { type Agent } from '../../shared/config.js';
 import { createAgentWithChat } from '../../shared/agent-utils.js';
@@ -144,5 +146,32 @@ agentsCmd
       console.log(`Agent ${id} deleted successfully.`);
     } catch (err) {
       handleError('delete agent', err);
+    }
+  });
+
+agentsCmd
+  .command('refresh <id>')
+  .description("Refresh the agent's tracked template files against the installed clawmini")
+  .option('--accept', 'Overwrite files that have diverged from the recorded SHA')
+  .option('--dry-run', 'Print the per-file plan without writing anything')
+  .action(async (id: string, options: { accept?: boolean; dryRun?: boolean }) => {
+    try {
+      assertValidAgentId(id);
+      const overlay = await getAgentOverlay(id);
+      if (!overlay) {
+        throw new Error(`Agent ${id} does not exist.`);
+      }
+      if (!overlay.extends) {
+        console.log(`Agent ${id} has no 'extends' field; nothing to refresh.`);
+        return;
+      }
+      const plan = await refreshAgentTemplate(id, overlay, process.cwd(), {
+        ...(options.accept === undefined ? {} : { accept: options.accept }),
+        ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
+      });
+      if (!plan) return;
+      for (const line of formatPlanActions(plan)) console.log(line);
+    } catch (err) {
+      handleError('refresh agent', err);
     }
   });
