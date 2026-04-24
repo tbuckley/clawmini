@@ -12,12 +12,13 @@ export async function createAgentWithChat(
   agentId: string,
   agentData: Agent,
   template?: string,
-  startDir = process.cwd()
+  startDir = process.cwd(),
+  opts: { fork?: boolean } = {}
 ): Promise<void> {
   await writeAgentSettings(agentId, agentData, startDir);
 
   if (template) {
-    await applyTemplateToAgent(agentId, template, agentData, startDir);
+    await applyTemplateToAgent(agentId, template, agentData, startDir, opts);
   }
 
   try {

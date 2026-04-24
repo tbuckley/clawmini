@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import {
   listAgents,
-  getAgent,
+  getAgentOverlay,
   writeAgentSettings,
   deleteAgent,
   isValidAgentId,
@@ -57,11 +57,15 @@ agentsCmd
     '-e, --env <env...>',
     'Environment variables in KEY=VALUE format (can be specified multiple times)'
   )
+  .option('--fork', 'Copy the template settings into the agent fully (legacy, no auto-update)')
   .action(
-    async (id: string, options: { directory?: string; template?: string; env?: string[] }) => {
+    async (
+      id: string,
+      options: { directory?: string; template?: string; env?: string[]; fork?: boolean }
+    ) => {
       try {
         assertValidAgentId(id);
-        const existing = await getAgent(id);
+        const existing = await getAgentOverlay(id);
         if (existing) {
           throw new Error(`Agent ${id} already exists.`);
         }
@@ -76,7 +80,13 @@ agentsCmd
           agentData.env = { ...(agentData.env || {}), ...env };
         }
 
-        await createAgentWithChat(id, agentData, options.template);
+        await createAgentWithChat(
+          id,
+          agentData,
+          options.template,
+          process.cwd(),
+          options.fork ? { fork: true } : {}
+        );
 
         console.log(`Agent ${id} created successfully.`);
       } catch (err) {
@@ -96,7 +106,7 @@ agentsCmd
   .action(async (id: string, options: { directory?: string; env?: string[] }) => {
     try {
       assertValidAgentId(id);
-      const existing = await getAgent(id);
+      const existing = await getAgentOverlay(id);
       if (!existing) {
         throw new Error(`Agent ${id} does not exist.`);
       }
@@ -125,7 +135,7 @@ agentsCmd
   .action(async (id: string) => {
     try {
       assertValidAgentId(id);
-      const existing = await getAgent(id);
+      const existing = await getAgentOverlay(id);
       if (!existing) {
         throw new Error(`Agent ${id} does not exist.`);
       }

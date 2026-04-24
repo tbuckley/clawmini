@@ -23,6 +23,7 @@ export const FallbackSchema = z.looseObject({
 });
 
 export const AgentSchema = z.looseObject({
+  extends: z.string().optional(),
   commands: z
     .looseObject({
       new: z.string().optional(),

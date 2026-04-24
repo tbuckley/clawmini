@@ -225,7 +225,13 @@ export async function writeAgentSessionSettings(
   );
 }
 
-export async function getAgent(agentId: string, startDir = process.cwd()): Promise<Agent | null> {
+// Reads only the on-disk overlay (local settings.json). Used when editing the
+// overlay — callers that want the fully-resolved agent (template fields
+// merged in) use `getAgent` instead.
+export async function getAgentOverlay(
+  agentId: string,
+  startDir = process.cwd()
+): Promise<Agent | null> {
   const filePath = getAgentSettingsPath(agentId, startDir);
   let dataStr: string;
   try {
@@ -248,6 +254,50 @@ export async function getAgent(agentId: string, startDir = process.cwd()): Promi
     throw new Error(`Invalid schema in ${filePath}: ${parsed.error.message}`);
   }
   return parsed.data;
+}
+
+async function readAgentTemplateSettings(
+  templateName: string,
+  startDir: string
+): Promise<Agent | null> {
+  let templatePath: string;
+  try {
+    templatePath = await resolveTemplatePath(templateName, startDir);
+  } catch {
+    return null;
+  }
+  const settingsPath = path.join(templatePath, 'settings.json');
+  const data = await readJsonFile(settingsPath);
+  if (!data) return null;
+  const parsed = AgentSchema.safeParse(data);
+  if (!parsed.success) return null;
+  // `directory` in a template is never used — the overlay declares the work
+  // directory instead. Strip it so it doesn't pollute the merge.
+  const result = { ...parsed.data };
+  delete result.directory;
+  return result;
+}
+
+// Returns the fully-resolved agent: reads the local overlay, resolves any
+// `extends` template, then shallow-merges the overlay over the template
+// field-by-field. `env` and `subagentEnv` are deep-merged one level so the
+// overlay can add one entry without dropping the template's defaults.
+export async function getAgent(agentId: string, startDir = process.cwd()): Promise<Agent | null> {
+  const overlay = await getAgentOverlay(agentId, startDir);
+  if (!overlay) return null;
+  if (!overlay.extends) return overlay;
+
+  const template = await readAgentTemplateSettings(overlay.extends, startDir);
+  if (!template) return overlay;
+
+  const { env: overlayEnv, subagentEnv: overlaySub, ...overlayRest } = overlay;
+  const { env: templateEnv, subagentEnv: templateSub, ...templateRest } = template;
+  const merged: Agent = { ...templateRest, ...overlayRest };
+  const mergedEnv = mergeOneLevel(templateEnv, overlayEnv);
+  if (mergedEnv) merged.env = mergedEnv;
+  const mergedSub = mergeOneLevel(templateSub, overlaySub);
+  if (mergedSub) merged.subagentEnv = mergedSub;
+  return merged;
 }
 
 export async function writeAgentSettings(
@@ -476,40 +526,51 @@ export async function applyTemplateToAgent(
   agentId: string,
   templateName: string,
   overrides: Agent,
-  startDir = process.cwd()
+  startDir = process.cwd(),
+  opts: { fork?: boolean } = {}
 ): Promise<void> {
   const agentWorkDir = resolveAgentWorkDir(agentId, overrides.directory, startDir);
   await copyTemplate(templateName, agentWorkDir, startDir);
 
   const settingsPath = path.join(agentWorkDir, 'settings.json');
-  try {
-    const rawSettings = await fsPromises.readFile(settingsPath, 'utf-8');
-    const parsedSettings = JSON.parse(rawSettings);
-    const validation = AgentSchema.safeParse(parsedSettings);
+  const manifestPath = path.join(agentWorkDir, 'template.json');
 
-    if (validation.success) {
-      const templateData = validation.data;
-      if (templateData.directory) {
-        console.warn(
-          `Warning: Ignoring 'directory' field from template settings.json. Using default or provided directory.`
-        );
-        delete templateData.directory;
-      }
-
-      // Merge: overrides take precedence over templateData
-      const mergedEnv = { ...(templateData.env || {}), ...(overrides.env || {}) };
-      const mergedData: Agent = { ...templateData, ...overrides };
-      if (Object.keys(mergedEnv).length > 0) {
-        mergedData.env = mergedEnv;
-      }
-
-      await writeAgentSettings(agentId, mergedData, startDir);
-    }
-  } catch {
-    // Ignore parsing or file not found errors
-  } finally {
+  if (opts.fork) {
+    // Legacy path: merge template settings into the local file, drop extends.
     try {
-      await fsPromises.rm(settingsPath);
+      const rawSettings = await fsPromises.readFile(settingsPath, 'utf-8');
+      const parsedSettings = JSON.parse(rawSettings);
+      const validation = AgentSchema.safeParse(parsedSettings);
+
+      if (validation.success) {
+        const templateData = validation.data;
+        if (templateData.directory) {
+          console.warn(
+            `Warning: Ignoring 'directory' field from template settings.json. Using default or provided directory.`
+          );
+          delete templateData.directory;
+        }
+
+        const mergedEnv = { ...(templateData.env || {}), ...(overrides.env || {}) };
+        const mergedData: Agent = { ...templateData, ...overrides };
+        delete mergedData.extends;
+        if (Object.keys(mergedEnv).length > 0) mergedData.env = mergedEnv;
+
+        await writeAgentSettings(agentId, mergedData, startDir);
+      }
+    } catch {
+      // Ignore parsing or file not found errors
+    }
+  } else {
+    // Overlay mode: write the overlay pointing at the template. Field lookups
+    // resolve the template at read time via `getAgent`.
+    const overlay: Agent = { extends: templateName, ...overrides };
+    await writeAgentSettings(agentId, overlay, startDir);
+  }
+
+  for (const tmp of [settingsPath, manifestPath]) {
+    try {
+      await fsPromises.rm(tmp);
     } catch {
       // Ignore if it doesn't exist
     }

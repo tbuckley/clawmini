@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
 import { TestEnvironment } from '../_helpers/test-environment.js';
+import { getAgent } from '../../src/shared/workspace.js';
 
 describe('E2E Agents Tests', () => {
   let env: TestEnvironment;
@@ -83,7 +84,7 @@ describe('E2E Agents Tests', () => {
     expect(stdout).toContain('Agent existing-chat created successfully.');
   });
 
-  it('should create an agent using a template and merge settings correctly', async () => {
+  it('should create an agent using a template (overlay shape by default)', async () => {
     // Create a local template
     const templateDir = env.getClawminiPath('templates', 'test-template');
     fs.mkdirSync(templateDir, { recursive: true });
@@ -91,7 +92,6 @@ describe('E2E Agents Tests', () => {
     // Create some template files
     fs.writeFileSync(path.join(templateDir, 'hello.txt'), 'Hello Template!');
 
-    // Create a settings.json that should be merged/overridden
     const templateSettings = {
       directory: './should-be-ignored',
       env: {
@@ -101,7 +101,7 @@ describe('E2E Agents Tests', () => {
     };
     fs.writeFileSync(path.join(templateDir, 'settings.json'), JSON.stringify(templateSettings));
 
-    const { stdout, stderr, code } = await env.runCli([
+    const { stdout, code } = await env.runCli([
       'agents',
       'add',
       'test-template-agent',
@@ -114,25 +114,63 @@ describe('E2E Agents Tests', () => {
     ]);
 
     expect(code).toBe(0);
-    expect(stderr).toContain("Warning: Ignoring 'directory' field from template settings.json");
     expect(stdout).toContain('Agent test-template-agent created successfully.');
     expect(fs.existsSync(env.getAgentPath('test-template-agent', 'settings.json'))).toBe(true);
 
-    const agentData = env.getAgentSettings('test-template-agent');
+    // Overlay: only the user-supplied fields + `extends`; template fields
+    // are not merged in on disk.
+    const overlay = env.getAgentSettings('test-template-agent');
+    expect(overlay.extends).toBe('test-template');
+    expect(overlay.directory).toBe('./custom-agent-dir');
+    expect((overlay.env as Record<string, string>).FOO).toBe('BAR');
 
-    // Verify directory override
-    expect(agentData.directory).toBe('./custom-agent-dir');
+    // Resolved view (template merged): both TEMPLATE_VAR and FOO are present.
+    const resolved = await getAgent('test-template-agent', env.e2eDir);
+    expect(resolved?.directory).toBe('./custom-agent-dir');
+    const resolvedEnv = resolved?.env as Record<string, string> | undefined;
+    expect(resolvedEnv?.TEMPLATE_VAR).toBe('template_value');
+    expect(resolvedEnv?.FOO).toBe('BAR');
 
-    // Verify env merge
-    const templateEnv = agentData.env as Record<string, string> | undefined;
-    expect(templateEnv?.TEMPLATE_VAR).toBe('template_value');
-    expect(templateEnv?.FOO).toBe('BAR');
-
-    // Verify template files were copied
+    // Template files copied; settings.json stripped from the workdir.
     const customDir = path.resolve(env.e2eDir, 'custom-agent-dir');
     expect(fs.existsSync(path.join(customDir, 'hello.txt'))).toBe(true);
-
-    // Verify settings.json was deleted from the agent working dir
     expect(fs.existsSync(path.join(customDir, 'settings.json'))).toBe(false);
+  });
+
+  it('should create a forked agent that merges template settings into the file', async () => {
+    const templateDir = env.getClawminiPath('templates', 'fork-template');
+    fs.mkdirSync(templateDir, { recursive: true });
+    fs.writeFileSync(path.join(templateDir, 'hello.txt'), 'fork');
+    fs.writeFileSync(
+      path.join(templateDir, 'settings.json'),
+      JSON.stringify({
+        directory: './should-be-ignored',
+        env: { TEMPLATE_VAR: 'template_value', FOO: 'WILL_BE_OVERRIDDEN' },
+      })
+    );
+
+    const { stderr, code } = await env.runCli([
+      'agents',
+      'add',
+      'forked-agent',
+      '--template',
+      'fork-template',
+      '--fork',
+      '--directory',
+      './forked-dir',
+      '--env',
+      'FOO=BAR',
+    ]);
+    expect(code).toBe(0);
+    // Fork mode still warns when the template's `directory` field is ignored.
+    expect(stderr).toContain("Warning: Ignoring 'directory' field from template settings.json");
+
+    const overlay = env.getAgentSettings('forked-agent');
+    // No extends — fork mode inlines everything.
+    expect(overlay.extends).toBeUndefined();
+    expect(overlay.directory).toBe('./forked-dir');
+    const overlayEnv = overlay.env as Record<string, string>;
+    expect(overlayEnv.TEMPLATE_VAR).toBe('template_value');
+    expect(overlayEnv.FOO).toBe('BAR');
   });
 });

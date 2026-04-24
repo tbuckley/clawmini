@@ -8,13 +8,16 @@ import {
   substituteLayeredEnvDir,
   readEnvironmentPoliciesForPath,
   writeSettings,
+  getAgent,
+  getAgentOverlay,
+  writeAgentSettings,
 } from '../../src/shared/workspace.js';
 
 describe('E2E Auto-update: lite refresh on `up`', () => {
   let env: TestEnvironment;
 
   beforeEach(async () => {
-    env = new TestEnvironment('e2e-auto-update-lite');
+    env = new TestEnvironment('e2e-au-lite');
     await env.setup();
     await env.init();
   }, 30000);
@@ -107,7 +110,7 @@ describe('E2E Auto-update: environment overlay (`extends`)', () => {
   let env: TestEnvironment;
 
   beforeEach(async () => {
-    env = new TestEnvironment('e2e-auto-update-env-overlay');
+    env = new TestEnvironment('e2e-au-env');
     await env.setup();
     await env.init();
   }, 30000);
@@ -181,5 +184,103 @@ describe('E2E Auto-update: environment overlay (`extends`)', () => {
     const cmd = policies['allowlist-domain']?.command;
     expect(cmd).toBeTruthy();
     expect(cmd).toContain('templates/environments/cladding/allowlist-domain.mjs');
+  });
+});
+
+describe('E2E Auto-update: agent overlay (`extends`)', () => {
+  let env: TestEnvironment;
+
+  beforeEach(async () => {
+    env = new TestEnvironment('e2e-au-agent');
+    await env.setup();
+    await env.init();
+  }, 30000);
+
+  afterEach(() => env.teardown(), 30000);
+
+  it('agents add --template writes overlay shape with extends', async () => {
+    const { code } = await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    expect(code).toBe(0);
+
+    const overlay = env.getAgentSettings('bob');
+    expect(overlay.extends).toBe('gemini-claw');
+    // The overlay should not contain merged-in template fields like
+    // `commands`, `apiTokenEnvVar`, etc.
+    expect(overlay.commands).toBeUndefined();
+    expect(overlay.apiTokenEnvVar).toBeUndefined();
+  });
+
+  it('getAgent merges template fields into local fields', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const resolved = await getAgent('bob', env.e2eDir);
+    expect(resolved).toBeTruthy();
+    expect(resolved!.apiTokenEnvVar).toBe('GEMINI_CLI_CLAW_API_TOKEN');
+    expect(resolved!.commands?.new).toContain('gemini');
+    expect(resolved!.skillsDir).toBe('.gemini/skills/');
+    expect(resolved!.fallbacks?.length).toBeGreaterThan(0);
+  });
+
+  it('local field overrides template field shallowly', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const overlay = (await getAgentOverlay('bob', env.e2eDir)) || {};
+    overlay.commands = { new: 'echo local-command' };
+    await writeAgentSettings('bob', overlay, env.e2eDir);
+
+    const resolved = await getAgent('bob', env.e2eDir);
+    expect(resolved!.commands?.new).toBe('echo local-command');
+    // Shallow override — template's `append` is also replaced.
+    expect(resolved!.commands?.append).toBeUndefined();
+  });
+
+  it('env deep-merges one level', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const overlay = (await getAgentOverlay('bob', env.e2eDir)) || {};
+    overlay.env = { MODEL: 'gemini-custom' };
+    await writeAgentSettings('bob', overlay, env.e2eDir);
+
+    const resolved = await getAgent('bob', env.e2eDir);
+    expect(resolved!.env?.MODEL).toBe('gemini-custom');
+    // Template entries flow through (GEMINI_SYSTEM_MD, GEMINI_API_KEY).
+    expect(resolved!.env?.GEMINI_SYSTEM_MD).toBe('true');
+    expect(resolved!.env?.GEMINI_API_KEY).toBe(true);
+  });
+
+  it('agents add --fork copies everything and writes no extends', async () => {
+    const { code } = await env.runCli([
+      'agents',
+      'add',
+      'bob',
+      '--template',
+      'gemini-claw',
+      '--fork',
+    ]);
+    expect(code).toBe(0);
+    const overlay = env.getAgentSettings('bob');
+    expect(overlay.extends).toBeUndefined();
+    // Fork mode merges template fields into the local file.
+    expect(overlay.apiTokenEnvVar).toBe('GEMINI_CLI_CLAW_API_TOKEN');
+    expect(overlay.skillsDir).toBe('.gemini/skills/');
+  });
+
+  it('existing agent without extends is unchanged after up', async () => {
+    // Legacy-shape agent written by hand (no extends).
+    fs.mkdirSync(path.join(env.e2eDir, 'legacy'), { recursive: true });
+    env.writeAgentSettings('legacy', {
+      directory: './legacy',
+      commands: { new: 'echo legacy' },
+    });
+    const before = JSON.stringify(env.getAgentSettings('legacy'));
+
+    const { code } = await env.up();
+    expect(code).toBe(0);
+    const after = JSON.stringify(env.getAgentSettings('legacy'));
+    expect(after).toBe(before);
+  }, 30000);
+
+  it('template.json and settings.json are not copied into the agent workdir', async () => {
+    const { code } = await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    expect(code).toBe(0);
+    expect(fs.existsSync(path.join(env.e2eDir, 'bob', 'settings.json'))).toBe(false);
+    expect(fs.existsSync(path.join(env.e2eDir, 'bob', 'template.json'))).toBe(false);
   });
 });
