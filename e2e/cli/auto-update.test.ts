@@ -491,3 +491,53 @@ describe('E2E Auto-update: skills refresh on `up`', () => {
     expect(fs.existsSync(tmpl)).toBe(false);
   });
 });
+
+describe('E2E Auto-update: --dry-run', () => {
+  let env: TestEnvironment;
+
+  beforeEach(async () => {
+    env = new TestEnvironment('e2e-au-dry');
+    await env.setup();
+    await env.init();
+  }, 30000);
+
+  afterEach(() => env.teardown(), 30000);
+
+  it('up --dry-run prints a plan and writes nothing', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    // Divergence + unchanged mix.
+    const gemini = path.join(env.e2eDir, 'bob', 'GEMINI.md');
+    fs.writeFileSync(gemini, 'edited\n');
+
+    const installedBefore = fs.readFileSync(
+      env.getAgentPath('bob', 'installed-files.json'),
+      'utf8'
+    );
+
+    const { stdout, code } = await env.runCli(['up', '--dry-run']);
+    expect(code).toBe(0);
+    expect(stdout).toMatch(/\[bob\]/);
+
+    // Nothing written back.
+    expect(fs.readFileSync(gemini, 'utf8')).toBe('edited\n');
+    const installedAfter = fs.readFileSync(env.getAgentPath('bob', 'installed-files.json'), 'utf8');
+    expect(installedAfter).toBe(installedBefore);
+  });
+
+  it('agents refresh --dry-run prints scoped plan and writes nothing', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    await env.runCli(['agents', 'add', 'alice', '--template', 'gemini-claw']);
+    const aliceGemini = path.join(env.e2eDir, 'alice', 'GEMINI.md');
+    fs.writeFileSync(aliceGemini, 'alice edit\n');
+    const bobGemini = path.join(env.e2eDir, 'bob', 'GEMINI.md');
+    fs.writeFileSync(bobGemini, 'bob edit\n');
+
+    const { stdout, code } = await env.runCli(['agents', 'refresh', 'bob', '--dry-run']);
+    expect(code).toBe(0);
+    // Output has entries (unchanged/diverged/seed-once).
+    expect(stdout.length).toBeGreaterThan(0);
+    // Neither file mutated.
+    expect(fs.readFileSync(bobGemini, 'utf8')).toBe('bob edit\n');
+    expect(fs.readFileSync(aliceGemini, 'utf8')).toBe('alice edit\n');
+  });
+});
