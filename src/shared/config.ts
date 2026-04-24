@@ -37,7 +37,9 @@ export const AgentSchema = z.looseObject({
   env: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   subagentEnv: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   directory: z.string().optional(),
-  skillsDir: z.string().optional(),
+  // `null` explicitly disables skill install/refresh for this agent.
+  // `undefined` (omitted) falls back to the template's value or `.agents/skills`.
+  skillsDir: z.string().nullable().optional(),
   fallbacks: z.array(FallbackSchema).optional(),
   files: z.string().default('./attachments').optional(),
 });

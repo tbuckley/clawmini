@@ -72,11 +72,15 @@ export function resolveAgentWorkDir(
   return dirPath;
 }
 
+// Returns null when the agent has explicitly opted out of skills via
+// `"skillsDir": null` in its settings. Callers must handle null by
+// skipping any skill-related install/refresh work.
 export function resolveAgentSkillsDir(
   agentId: string,
   agentData: Agent,
   startDir = process.cwd()
-): string {
+): string | null {
+  if (agentData.skillsDir === null) return null;
   const workDir = resolveAgentWorkDir(agentId, agentData.directory, startDir);
   return path.resolve(workDir, agentData.skillsDir || '.agents/skills');
 }
@@ -472,7 +476,7 @@ export async function copyTemplate(
 export async function resolveTargetAgentSkillsDir(
   agentId: string,
   startDir = process.cwd()
-): Promise<string> {
+): Promise<string | null> {
   const agentDir = getAgentDir(agentId, startDir);
   try {
     const stat = await fsPromises.stat(agentDir);
@@ -516,6 +520,9 @@ export async function copyAgentSkills(
   overwrite = false
 ): Promise<void> {
   const targetDir = await resolveTargetAgentSkillsDir(agentId, startDir);
+  if (targetDir === null) {
+    throw new Error(`Agent '${agentId}' has skills disabled (skillsDir is null).`);
+  }
   const templatePath = await resolveSkillsTemplatePath(startDir);
   await copyTemplateBase(templatePath, targetDir, true, overwrite);
 }
@@ -527,6 +534,9 @@ export async function copyAgentSkill(
   overwrite = false
 ): Promise<void> {
   const targetDir = await resolveTargetAgentSkillsDir(agentId, startDir);
+  if (targetDir === null) {
+    throw new Error(`Agent '${agentId}' has skills disabled (skillsDir is null).`);
+  }
   const templatePath = await resolveSkillsTemplatePath(startDir);
   const specificSkillPath = path.join(templatePath, skillName);
 
@@ -690,6 +700,9 @@ export async function refreshAgentSkills(
   startDir = process.cwd(),
   opts: { accept?: boolean; dryRun?: boolean; firstInstall?: boolean } = {}
 ): Promise<RefreshPlan | null> {
+  const skillsTargetDir = resolveAgentSkillsDir(agentId, agent, startDir);
+  if (skillsTargetDir === null) return null;
+
   let skillsTemplateRoot: string;
   try {
     skillsTemplateRoot = await resolveSkillsTemplatePath(startDir);
@@ -697,7 +710,6 @@ export async function refreshAgentSkills(
     return null;
   }
 
-  const skillsTargetDir = resolveAgentSkillsDir(agentId, agent, startDir);
   const agentWorkDir = resolveAgentWorkDir(agentId, agent.directory, startDir);
   const prefixRel = path.relative(agentWorkDir, skillsTargetDir).split(path.sep).join('/');
 

@@ -350,6 +350,30 @@ describe('E2E Auto-update: agent overlay (`extends`)', () => {
     expect(code).toBe(0);
     expect(fs.readFileSync(unrelated, 'utf-8')).toBe('project readme');
   });
+
+  it('skillsDir: null opts out of skill refresh on up', async () => {
+    const { code: addCode } = await env.runCli([
+      'agents',
+      'add',
+      'bob',
+      '--template',
+      'gemini-claw',
+    ]);
+    expect(addCode).toBe(0);
+    const skillsDir = path.join(env.e2eDir, 'bob', '.gemini', 'skills');
+    expect(fs.existsSync(skillsDir)).toBe(true);
+
+    // User opts out and removes the installed skills.
+    const overlay = (await getAgentOverlay('bob', env.e2eDir)) || {};
+    overlay.skillsDir = null;
+    await writeAgentSettings('bob', overlay, env.e2eDir);
+    fs.rmSync(skillsDir, { recursive: true, force: true });
+
+    const { code: upCode } = await env.up();
+    expect(upCode).toBe(0);
+    // Skills directory stays removed — refresh skipped the opted-out agent.
+    expect(fs.existsSync(skillsDir)).toBe(false);
+  }, 30000);
 });
 
 describe('E2E Auto-update: template.json + SHA tracking', () => {
