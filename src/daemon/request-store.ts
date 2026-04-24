@@ -16,6 +16,7 @@ const PolicyRequestSchema = z.object({
   chatId: z.string(),
   agentId: z.string(),
   subagentId: z.string().optional(),
+  cwd: z.string().optional(),
 });
 
 function isENOENT(err: unknown): boolean {

@@ -8,6 +8,7 @@ import {
   executeSafe,
   MAX_SNAPSHOT_SIZE,
   translateSandboxPath,
+  assertPathInsideDir,
 } from './policy-utils.js';
 
 describe('policy-utils', () => {
@@ -143,66 +144,60 @@ describe('policy-utils', () => {
   });
 
   describe('translateSandboxPath', () => {
-    it('strips baseDir from sandboxCwd and resolves against agentDir', () => {
-      const sandboxCwd = '/app/src/components';
-      const baseDir = '/app';
-      const hostAgentDir = '/Users/host/projects/agent1';
-
-      const result = translateSandboxPath(sandboxCwd, baseDir, hostAgentDir);
-      expect(result).toBe(path.resolve('/Users/host/projects/agent1', 'src/components'));
+    it('strips baseDir from sandboxCwd and resolves against hostTargetDir', () => {
+      const result = translateSandboxPath('/app/src/components', '/app', '/Users/host/env');
+      expect(result).toBe(path.resolve('/Users/host/env', 'src/components'));
     });
 
     it('handles sandboxCwd exactly matching baseDir', () => {
-      const sandboxCwd = '/app';
-      const baseDir = '/app';
-      const hostAgentDir = '/Users/host/projects/agent1';
-
-      const result = translateSandboxPath(sandboxCwd, baseDir, hostAgentDir);
-      expect(result).toBe(path.resolve('/Users/host/projects/agent1'));
+      const result = translateSandboxPath('/app', '/app', '/Users/host/env');
+      expect(result).toBe(path.resolve('/Users/host/env'));
     });
 
-    it('resolves properly when baseDir is undefined by treating sandboxCwd as relative to agentDir', () => {
-      const sandboxCwd = '/src/index.js';
-      const hostAgentDir = '/Users/host/projects/agent1';
-
-      const result = translateSandboxPath(sandboxCwd, undefined, hostAgentDir);
-      expect(result).toBe(path.resolve('/Users/host/projects/agent1', 'src/index.js'));
+    it('treats sandboxCwd as relative to hostTargetDir when it does not start with baseDir', () => {
+      // Does not throw — translation is pure. Validation is the caller's job.
+      const result = translateSandboxPath('/other/path', '/app', '/Users/host/env');
+      expect(result).toBe(path.resolve('/Users/host/env', 'other/path'));
     });
 
-    it('handles sandboxCwd without leading slash when baseDir is undefined', () => {
-      const sandboxCwd = 'src/index.js';
-      const hostAgentDir = '/Users/host/projects/agent1';
+    it('does not validate path traversal (caller validates)', () => {
+      // `..` segments collapse via path.resolve but no security error is thrown.
+      const result = translateSandboxPath('/app/../../etc/passwd', '/app', '/Users/host/env');
+      expect(result).toBe(path.resolve('/Users/host/env', '../../etc/passwd'));
+    });
+  });
 
-      const result = translateSandboxPath(sandboxCwd, undefined, hostAgentDir);
-      expect(result).toBe(path.resolve('/Users/host/projects/agent1', 'src/index.js'));
+  describe('assertPathInsideDir', () => {
+    it('does not throw when cwd is inside boundaryDir', () => {
+      const inside = path.join(agentDir, 'sub');
+      expect(() => assertPathInsideDir(inside, agentDir)).not.toThrow();
     });
 
-    it('throws error on directory escape (path traversal)', () => {
-      const sandboxCwd = '/app/../../etc/passwd';
-      const baseDir = '/app';
-      const hostAgentDir = '/Users/host/projects/agent1';
+    it('allows cwd equal to boundaryDir', () => {
+      expect(() => assertPathInsideDir(agentDir, agentDir)).not.toThrow();
+    });
 
-      expect(() => translateSandboxPath(sandboxCwd, baseDir, hostAgentDir)).toThrow(
-        /Security Error: Path resolves outside the allowed agent directory/
+    it('throws when cwd escapes boundaryDir', () => {
+      const outside = path.join(agentDir, '..', 'outside');
+      expect(() => assertPathInsideDir(outside, agentDir)).toThrow(
+        /Security Error: Path resolves outside the allowed directory/
       );
     });
 
-    it('throws error if sandboxCwd without baseDir tries to escape', () => {
-      const sandboxCwd = '../outside';
-      const hostAgentDir = '/Users/host/projects/agent1';
+    it('follows symlinks before comparing (prevents symlink escape)', async () => {
+      const outsideTarget = path.join(tempDir, 'outside-target');
+      await fs.mkdir(outsideTarget);
+      const linkInsideAgent = path.join(agentDir, 'escape-link');
+      await fs.symlink(outsideTarget, linkInsideAgent);
 
-      expect(() => translateSandboxPath(sandboxCwd, undefined, hostAgentDir)).toThrow(
-        /Security Error: Path resolves outside the allowed agent directory/
+      expect(() => assertPathInsideDir(linkInsideAgent, agentDir)).toThrow(
+        /Security Error: Path resolves outside the allowed directory/
       );
     });
 
-    it('allows resolving to the agent directory itself', () => {
-      const sandboxCwd = '/app';
-      const baseDir = '/app';
-      const hostAgentDir = path.resolve('/Users/host/projects/agent1');
-
-      const result = translateSandboxPath(sandboxCwd, baseDir, hostAgentDir);
-      expect(result).toBe(hostAgentDir);
+    it('tolerates non-existent paths (uses the path as-is)', () => {
+      const nonExistentInside = path.join(agentDir, 'does-not-exist', 'nested');
+      expect(() => assertPathInsideDir(nonExistentInside, agentDir)).not.toThrow();
     });
   });
 });

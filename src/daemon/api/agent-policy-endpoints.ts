@@ -56,9 +56,9 @@ export const createPolicyRequest = apiProcedure
       commandName: z.string(),
       args: z.array(z.string()),
       fileMappings: z.record(z.string(), z.string()),
-      // Path traversal is guarded by pathIsInsideDir in translateSandboxPath
-      // (policy-utils.ts), which validates the fully-resolved path — not the
-      // raw string — so it covers encoded separators, symlinks, etc.
+      // Path traversal is guarded by assertPathInsideDir in resolveRequestCwd
+      // (policy-utils.ts), which realpath-resolves the cwd before comparing —
+      // so it covers encoded separators, symlinks, etc.
       cwd: z.string().optional(),
     })
   )
