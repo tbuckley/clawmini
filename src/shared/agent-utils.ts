@@ -15,7 +15,7 @@ export async function createAgentWithChat(
   agentData: Agent,
   template?: string,
   startDir = process.cwd(),
-  opts: { fork?: boolean } = {}
+  opts: { fork?: boolean; force?: boolean } = {}
 ): Promise<void> {
   await writeAgentSettings(agentId, agentData, startDir);
 

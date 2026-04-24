@@ -28,6 +28,7 @@ import {
   readTemplateManifest,
   planRefresh,
   applyPlan,
+  walkTemplateFiles,
   writeInstalledFiles,
   readInstalledFiles,
   sliceInstalledUnder,
@@ -461,10 +462,11 @@ export async function copyTemplateBase(
 export async function copyTemplate(
   templateName: string,
   targetDir: string,
-  startDir = process.cwd()
+  startDir = process.cwd(),
+  opts: { force?: boolean } = {}
 ): Promise<void> {
   const templatePath = await resolveTemplatePath(templateName, startDir);
-  await copyTemplateBase(templatePath, targetDir, false);
+  await copyTemplateBase(templatePath, targetDir, false, opts.force ?? false);
 }
 
 export async function resolveTargetAgentSkillsDir(
@@ -544,19 +546,47 @@ export async function copyAgentSkill(
   await copyTemplateBase(specificSkillPath, skillTargetDir, true, overwrite);
 }
 
+// Return the subset of template files that already exist in the target
+// directory. Used to refuse a silent overwrite on first install.
+async function collectTemplateCollisions(
+  templateDir: string,
+  targetDir: string
+): Promise<string[]> {
+  const templateFiles = await walkTemplateFiles(templateDir);
+  const collisions: string[] = [];
+  for (const rel of templateFiles) {
+    try {
+      await fsPromises.access(path.join(targetDir, rel));
+      collisions.push(rel);
+    } catch {
+      // not present — no collision
+    }
+  }
+  return collisions;
+}
+
+function formatCollisionError(collisions: string[]): string {
+  const preview = collisions
+    .slice(0, 5)
+    .map((p) => `  ${p}`)
+    .join('\n');
+  const suffix = collisions.length > 5 ? `\n  ... and ${collisions.length - 5} more` : '';
+  return `Target directory has existing files that the template would overwrite:\n${preview}${suffix}\nRe-run with --force to overwrite.`;
+}
+
 export async function applyTemplateToAgent(
   agentId: string,
   templateName: string,
   overrides: Agent,
   startDir = process.cwd(),
-  opts: { fork?: boolean } = {}
+  opts: { fork?: boolean; force?: boolean } = {}
 ): Promise<void> {
   const agentWorkDir = resolveAgentWorkDir(agentId, overrides.directory, startDir);
 
   if (opts.fork) {
     // Legacy path: copy everything, merge template settings into the local
     // file, then strip the template metadata files from the workdir.
-    await copyTemplate(templateName, agentWorkDir, startDir);
+    await copyTemplate(templateName, agentWorkDir, startDir, { force: opts.force ?? false });
 
     const settingsPath = path.join(agentWorkDir, 'settings.json');
     const manifestPath = path.join(agentWorkDir, 'template.json');
@@ -602,6 +632,14 @@ export async function applyTemplateToAgent(
   const templateDir = await resolveTemplatePath(templateName, startDir);
   const manifest = await readTemplateManifest(templateDir);
   await fsPromises.mkdir(agentWorkDir, { recursive: true });
+
+  if (!opts.force) {
+    const collisions = await collectTemplateCollisions(templateDir, agentWorkDir);
+    if (collisions.length > 0) {
+      throw new Error(formatCollisionError(collisions));
+    }
+  }
+
   const plan = await planRefresh(templateDir, agentWorkDir, manifest, null, {
     defaultMode: 'seed-once',
     firstInstall: true,

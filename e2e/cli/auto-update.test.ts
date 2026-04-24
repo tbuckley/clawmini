@@ -302,6 +302,54 @@ describe('E2E Auto-update: agent overlay (`extends`)', () => {
     expect(fs.existsSync(path.join(env.e2eDir, 'bob', 'settings.json'))).toBe(false);
     expect(fs.existsSync(path.join(env.e2eDir, 'bob', 'template.json'))).toBe(false);
   });
+
+  it('agents add refuses to overwrite a colliding file without --force', async () => {
+    const workdir = path.join(env.e2eDir, 'bob');
+    fs.mkdirSync(path.join(workdir, '.gemini'), { recursive: true });
+    const systemPath = path.join(workdir, '.gemini', 'system.md');
+    fs.writeFileSync(systemPath, 'user content');
+
+    const { code, stderr } = await env.runCli([
+      'agents',
+      'add',
+      'bob',
+      '--template',
+      'gemini-claw',
+    ]);
+    expect(code).not.toBe(0);
+    expect(stderr).toContain('.gemini/system.md');
+    expect(stderr).toContain('--force');
+    expect(fs.readFileSync(systemPath, 'utf-8')).toBe('user content');
+  });
+
+  it('agents add --force overwrites colliding files', async () => {
+    const workdir = path.join(env.e2eDir, 'bob');
+    fs.mkdirSync(path.join(workdir, '.gemini'), { recursive: true });
+    const systemPath = path.join(workdir, '.gemini', 'system.md');
+    fs.writeFileSync(systemPath, 'user content');
+
+    const { code } = await env.runCli([
+      'agents',
+      'add',
+      'bob',
+      '--template',
+      'gemini-claw',
+      '--force',
+    ]);
+    expect(code).toBe(0);
+    expect(fs.readFileSync(systemPath, 'utf-8')).not.toBe('user content');
+  });
+
+  it('agents add leaves unrelated workdir files alone', async () => {
+    const workdir = path.join(env.e2eDir, 'bob');
+    fs.mkdirSync(workdir, { recursive: true });
+    const unrelated = path.join(workdir, 'README.md');
+    fs.writeFileSync(unrelated, 'project readme');
+
+    const { code } = await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    expect(code).toBe(0);
+    expect(fs.readFileSync(unrelated, 'utf-8')).toBe('project readme');
+  });
 });
 
 describe('E2E Auto-update: template.json + SHA tracking', () => {

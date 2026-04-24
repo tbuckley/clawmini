@@ -62,10 +62,17 @@ agentsCmd
     'Environment variables in KEY=VALUE format (can be specified multiple times)'
   )
   .option('--fork', 'Copy the template settings into the agent fully (legacy, no auto-update)')
+  .option('--force', 'Overwrite existing files in the target directory on first install')
   .action(
     async (
       id: string,
-      options: { directory?: string; template?: string; env?: string[]; fork?: boolean }
+      options: {
+        directory?: string;
+        template?: string;
+        env?: string[];
+        fork?: boolean;
+        force?: boolean;
+      }
     ) => {
       try {
         assertValidAgentId(id);
@@ -84,13 +91,11 @@ agentsCmd
           agentData.env = { ...(agentData.env || {}), ...env };
         }
 
-        await createAgentWithChat(
-          id,
-          agentData,
-          options.template,
-          process.cwd(),
-          options.fork ? { fork: true } : {}
-        );
+        const applyOpts = {
+          ...(options.fork ? { fork: true } : {}),
+          ...(options.force ? { force: true } : {}),
+        };
+        await createAgentWithChat(id, agentData, options.template, process.cwd(), applyOpts);
 
         console.log(`Agent ${id} created successfully.`);
       } catch (err) {

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 
 export type FileMode = 'track' | 'seed-once';
@@ -226,7 +226,13 @@ export async function readInstalledFiles(filePath: string): Promise<InstalledFil
 
 export async function writeInstalledFiles(filePath: string, data: InstalledFiles): Promise<void> {
   await fsPromises.mkdir(path.dirname(filePath), { recursive: true });
-  await fsPromises.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+  // Atomic write: plain writeFile truncates before writing, so a crash mid-
+  // write drops the SHA state entirely and turns every tracked file into a
+  // `no-recorded-sha` skip on the next refresh. rename(2) on the same
+  // filesystem is atomic — readers always see the old or new content.
+  const tmpPath = `${filePath}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+  await fsPromises.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+  await fsPromises.rename(tmpPath, filePath);
 }
 
 // Return an installed-files slice scoped to keys starting with `prefix + '/'`,
