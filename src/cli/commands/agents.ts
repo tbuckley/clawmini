@@ -1,11 +1,13 @@
 import { Command } from 'commander';
 import {
   listAgents,
+  getAgent,
   getAgentOverlay,
   writeAgentSettings,
   deleteAgent,
   isValidAgentId,
   refreshAgentTemplate,
+  refreshAgentSkills,
   formatPlanActions,
 } from '../../shared/workspace.js';
 import { type Agent } from '../../shared/config.js';
@@ -165,12 +167,22 @@ agentsCmd
         console.log(`Agent ${id} has no 'extends' field; nothing to refresh.`);
         return;
       }
-      const plan = await refreshAgentTemplate(id, overlay, process.cwd(), {
+      const refreshOpts = {
         ...(options.accept === undefined ? {} : { accept: options.accept }),
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
-      });
-      if (!plan) return;
-      for (const line of formatPlanActions(plan)) console.log(line);
+      };
+      const plan = await refreshAgentTemplate(id, overlay, process.cwd(), refreshOpts);
+      if (plan) {
+        for (const line of formatPlanActions(plan)) console.log(line);
+      }
+
+      const resolved = await getAgent(id);
+      if (resolved) {
+        const skillsPlan = await refreshAgentSkills(id, resolved, process.cwd(), refreshOpts);
+        if (skillsPlan) {
+          for (const line of formatPlanActions(skillsPlan)) console.log(line);
+        }
+      }
     } catch (err) {
       handleError('refresh agent', err);
     }

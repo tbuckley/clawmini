@@ -426,3 +426,68 @@ describe('E2E Auto-update: agent refresh on `up`', () => {
     expect(stderr).toContain('no recorded SHA');
   });
 });
+
+describe('E2E Auto-update: skills refresh on `up`', () => {
+  let env: TestEnvironment;
+
+  beforeEach(async () => {
+    env = new TestEnvironment('e2e-au-skill');
+    await env.setup();
+    await env.init();
+  }, 30000);
+
+  afterEach(() => env.teardown(), 30000);
+
+  function skillPath(agentId: string, skillName: string, file: string): string {
+    // gemini-claw's skillsDir is `.gemini/skills/`
+    return path.join(env.e2eDir, agentId, '.gemini', 'skills', skillName, file);
+  }
+
+  it('agents add --template installs skills and records SHAs under full paths', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const skill = skillPath('bob', 'skill-creator', 'SKILL.md');
+    expect(fs.existsSync(skill)).toBe(true);
+
+    const installed = JSON.parse(
+      fs.readFileSync(env.getAgentPath('bob', 'installed-files.json'), 'utf8')
+    );
+    expect(installed.files['.gemini/skills/skill-creator/SKILL.md']).toBeTruthy();
+  });
+
+  it('up refreshes all skill files when no template.json is present in the skill', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const skill = skillPath('bob', 'skill-creator', 'SKILL.md');
+    // Delete the file; up should re-seed it (track default).
+    fs.unlinkSync(skill);
+    const { code } = await env.up();
+    expect(code).toBe(0);
+    expect(fs.existsSync(skill)).toBe(true);
+  });
+
+  it('up skips diverged skill files', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const skill = skillPath('bob', 'skill-creator', 'SKILL.md');
+    fs.writeFileSync(skill, 'edited skill content\n');
+
+    const { stderr, code } = await env.up();
+    expect(code).toBe(0);
+    expect(stderr).toContain('differs from template');
+    expect(fs.readFileSync(skill, 'utf8')).toBe('edited skill content\n');
+  });
+
+  it('agents refresh --accept overwrites diverged skill files', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const skill = skillPath('bob', 'skill-creator', 'SKILL.md');
+    fs.writeFileSync(skill, 'edited\n');
+
+    const { code } = await env.runCli(['agents', 'refresh', 'bob', '--accept']);
+    expect(code).toBe(0);
+    expect(fs.readFileSync(skill, 'utf8')).not.toBe('edited\n');
+  });
+
+  it('skill template.json is never copied to the destination', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const tmpl = skillPath('bob', 'skill-creator', 'template.json');
+    expect(fs.existsSync(tmpl)).toBe(false);
+  });
+});

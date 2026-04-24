@@ -1,11 +1,13 @@
 import { Command } from 'commander';
 import { getDaemonClient } from '../client.js';
 import {
+  getAgent,
   getAgentOverlay,
   getPoliciesPath,
   getSocketPath,
   listAgents,
   refreshAgentTemplate,
+  refreshAgentSkills,
   formatPlanActions,
 } from '../../shared/workspace.js';
 import fs from 'node:fs';
@@ -22,9 +24,37 @@ function ensureDefaultPoliciesFile(): void {
   fs.writeFileSync(policiesPath, JSON.stringify({ policies: {} }, null, 2));
 }
 
-// Walk every agent with `extends` set and refresh its `track` files against
-// the template. Diverged files are skipped with a warning. Returns the
-// aggregated plan actions for dry-run printing.
+interface DivergedAction {
+  action: 'skip-diverged';
+  relPath: string;
+  reason: 'edited' | 'no-recorded-sha';
+}
+
+function logPlanWarnings(
+  agentId: string,
+  directory: string | undefined,
+  actions: Array<{ action: string; relPath: string; reason?: string }>
+): void {
+  const workdir = directory ?? agentId;
+  for (const rawAction of actions) {
+    if (rawAction.action !== 'skip-diverged') continue;
+    const action = rawAction as DivergedAction;
+    if (action.reason === 'edited') {
+      console.warn(
+        `./${path.join(workdir, action.relPath)} differs from template; skipping refresh. Run 'clawmini agents refresh ${agentId} --accept' to overwrite.`
+      );
+    } else if (action.reason === 'no-recorded-sha') {
+      console.warn(
+        `./${path.join(workdir, action.relPath)} has no recorded SHA; skipping. Run 'clawmini agents refresh ${agentId} --accept' to adopt the current file.`
+      );
+    }
+  }
+}
+
+// Walk every agent with `extends` set and refresh its `track` files (both
+// workdir files and skills) against the template. Diverged files are
+// skipped with a warning. Returns the aggregated plan actions for dry-run
+// printing.
 export async function refreshAllAgents(opts: { dryRun?: boolean } = {}): Promise<string[]> {
   const output: string[] = [];
   const agentIds = await listAgents();
@@ -47,19 +77,24 @@ export async function refreshAllAgents(opts: { dryRun?: boolean } = {}): Promise
         process.cwd(),
         opts.dryRun ? { dryRun: true } : {}
       );
-      if (!plan) continue;
-      for (const action of plan.actions) {
-        if (action.action === 'skip-diverged' && action.reason === 'edited') {
-          console.warn(
-            `./${path.join(overlay.directory ?? agentId, action.relPath)} differs from template; skipping refresh. Run 'clawmini agents refresh ${agentId} --accept' to overwrite.`
-          );
-        } else if (action.action === 'skip-diverged' && action.reason === 'no-recorded-sha') {
-          console.warn(
-            `./${path.join(overlay.directory ?? agentId, action.relPath)} has no recorded SHA; skipping. Run 'clawmini agents refresh ${agentId} --accept' to adopt the current file.`
-          );
+      if (plan) {
+        logPlanWarnings(agentId, overlay.directory, plan.actions);
+        output.push(...formatPlanActions(plan, { agentId }));
+      }
+
+      const resolved = await getAgent(agentId);
+      if (resolved) {
+        const skillsPlan = await refreshAgentSkills(
+          agentId,
+          resolved,
+          process.cwd(),
+          opts.dryRun ? { dryRun: true } : {}
+        );
+        if (skillsPlan) {
+          logPlanWarnings(agentId, overlay.directory, skillsPlan.actions);
+          output.push(...formatPlanActions(skillsPlan, { agentId }));
         }
       }
-      output.push(...formatPlanActions(plan, { agentId }));
     } catch (err) {
       console.warn(
         `Failed to refresh agent '${agentId}': ${err instanceof Error ? err.message : String(err)}`

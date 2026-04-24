@@ -226,3 +226,34 @@ export async function writeInstalledFiles(filePath: string, data: InstalledFiles
   await fsPromises.mkdir(path.dirname(filePath), { recursive: true });
   await fsPromises.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
 }
+
+// Return an installed-files slice scoped to keys starting with `prefix + '/'`,
+// with the prefix stripped. Used by skill refresh, which runs a plan per
+// skill against a shared `installed-files.json`.
+export function sliceInstalledUnder(
+  installed: InstalledFiles | null,
+  prefix: string
+): InstalledFiles | null {
+  if (!installed?.files) return null;
+  const p = `${prefix}/`;
+  const filtered: Record<string, { sha: string }> = {};
+  for (const [k, v] of Object.entries(installed.files)) {
+    if (k.startsWith(p)) filtered[k.slice(p.length)] = v;
+  }
+  return { files: filtered };
+}
+
+// Re-key a plan's `actions` and `nextInstalled` entries by prefixing every
+// `relPath`. Used for merging a skill plan (with skill-internal paths) back
+// into the workdir-relative installed-files store.
+export function prefixPlanKeys(plan: RefreshPlan, prefix: string): RefreshPlan {
+  const p = prefix ? `${prefix}/` : '';
+  return {
+    actions: plan.actions.map((a) => ({ ...a, relPath: p + a.relPath })),
+    nextInstalled: {
+      files: Object.fromEntries(
+        Object.entries(plan.nextInstalled.files ?? {}).map(([k, v]) => [p + k, v])
+      ),
+    },
+  };
+}

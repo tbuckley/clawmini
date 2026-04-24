@@ -5,6 +5,8 @@ import {
   readChatSettings,
   writeChatSettings,
   copyAgentSkills,
+  refreshAgentSkills,
+  getAgent,
 } from './workspace.js';
 import { createChat, listChats } from './chats.js';
 
@@ -22,8 +24,17 @@ export async function createAgentWithChat(
   }
 
   try {
-    await copyAgentSkills(agentId, startDir);
-    console.log(`Copied skills to agent ${agentId}.`);
+    if (opts.fork || !template) {
+      // Fork mode (or untemplated agents) keeps the legacy bulk-copy flow.
+      await copyAgentSkills(agentId, startDir);
+      console.log(`Copied skills to agent ${agentId}.`);
+    } else {
+      const resolved = await getAgent(agentId, startDir);
+      if (resolved) {
+        await refreshAgentSkills(agentId, resolved, startDir, { firstInstall: true });
+        console.log(`Installed skills for agent ${agentId}.`);
+      }
+    }
   } catch (err) {
     console.warn(
       `Warning: Failed to copy skills to agent ${agentId}: ${err instanceof Error ? err.message : String(err)}`

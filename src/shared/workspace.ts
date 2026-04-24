@@ -30,6 +30,8 @@ import {
   applyPlan,
   writeInstalledFiles,
   readInstalledFiles,
+  sliceInstalledUnder,
+  prefixPlanKeys,
   type InstalledFiles,
   type RefreshPlan,
   type FileMode,
@@ -637,6 +639,76 @@ export async function refreshAgentTemplate(
   await applyPlan(templateDir, agentWorkDir, plan);
   await writeInstalledFiles(installedPath, plan.nextInstalled);
   return plan;
+}
+
+// Refresh the agent's template skills. Skills default to `track` for files
+// unlisted in their manifest — the opposite of agent workdir files — because
+// the authoring model differs: clawmini ships skill content, agents edit it.
+// SHAs share the agent's installed-files.json keyed by the path relative to
+// the agent's working directory (e.g. `.gemini/skills/skill-creator/SKILL.md`).
+export async function refreshAgentSkills(
+  agentId: string,
+  agent: Agent,
+  startDir = process.cwd(),
+  opts: { accept?: boolean; dryRun?: boolean; firstInstall?: boolean } = {}
+): Promise<RefreshPlan | null> {
+  let skillsTemplateRoot: string;
+  try {
+    skillsTemplateRoot = await resolveSkillsTemplatePath(startDir);
+  } catch {
+    return null;
+  }
+
+  const skillsTargetDir = resolveAgentSkillsDir(agentId, agent, startDir);
+  const agentWorkDir = resolveAgentWorkDir(agentId, agent.directory, startDir);
+  const prefixRel = path.relative(agentWorkDir, skillsTargetDir).split(path.sep).join('/');
+
+  let skillDirs: fs.Dirent[];
+  try {
+    skillDirs = await fsPromises.readdir(skillsTemplateRoot, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+
+  const installedPath = getInstalledFilesPath(agentId, startDir);
+  let installed = await readInstalledFiles(installedPath);
+  const allActions: RefreshPlan['actions'] = [];
+
+  for (const entry of skillDirs) {
+    if (!entry.isDirectory()) continue;
+    const skillName = entry.name;
+    const skillTemplateDir = path.join(skillsTemplateRoot, skillName);
+    const skillTargetDir = path.join(skillsTargetDir, skillName);
+    const keyPrefix = `${prefixRel}/${skillName}`;
+
+    const manifest = await readTemplateManifest(skillTemplateDir);
+    const slice = sliceInstalledUnder(installed, keyPrefix);
+
+    const plan = await planRefresh(skillTemplateDir, skillTargetDir, manifest, slice, {
+      defaultMode: 'track',
+      ...(opts.firstInstall ? { firstInstall: true } : {}),
+      ...(opts.accept === undefined ? {} : { accept: opts.accept }),
+    });
+
+    const prefixed = prefixPlanKeys(plan, keyPrefix);
+    allActions.push(...prefixed.actions);
+
+    if (!opts.dryRun) {
+      await applyPlan(skillTemplateDir, skillTargetDir, plan);
+      installed = {
+        files: {
+          ...(installed?.files ?? {}),
+          ...(prefixed.nextInstalled.files ?? {}),
+        },
+      };
+    }
+  }
+
+  if (!opts.dryRun && installed) {
+    await writeInstalledFiles(installedPath, installed);
+  }
+
+  return { actions: allActions, nextInstalled: installed ?? { files: {} } };
 }
 
 // Human-readable per-action lines for logging / dry-run. Prefixed with the
