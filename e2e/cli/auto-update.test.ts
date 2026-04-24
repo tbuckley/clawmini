@@ -374,14 +374,14 @@ describe('E2E Auto-update: agent refresh on `up`', () => {
 
   it('up skips a track file when the agent edited it', async () => {
     await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
-    const gemini = path.join(env.e2eDir, 'bob', 'GEMINI.md');
-    const original = fs.readFileSync(gemini, 'utf8');
-    fs.writeFileSync(gemini, original + '\n<!-- agent edit -->');
+    const tracked = path.join(env.e2eDir, 'bob', '.gemini', 'system.md');
+    const original = fs.readFileSync(tracked, 'utf8');
+    fs.writeFileSync(tracked, original + '\n<!-- agent edit -->');
 
     const { stderr, code } = await env.up();
     expect(code).toBe(0);
     expect(stderr).toContain('differs from template');
-    expect(fs.readFileSync(gemini, 'utf8')).toContain('<!-- agent edit -->');
+    expect(fs.readFileSync(tracked, 'utf8')).toContain('<!-- agent edit -->');
   });
 
   it('up never touches seed-once files', async () => {
@@ -404,12 +404,12 @@ describe('E2E Auto-update: agent refresh on `up`', () => {
 
   it('up re-creates a track file that was deleted', async () => {
     await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
-    const gemini = path.join(env.e2eDir, 'bob', 'GEMINI.md');
-    fs.unlinkSync(gemini);
+    const tracked = path.join(env.e2eDir, 'bob', '.gemini', 'system.md');
+    fs.unlinkSync(tracked);
 
     const { code } = await env.up();
     expect(code).toBe(0);
-    expect(fs.existsSync(gemini)).toBe(true);
+    expect(fs.existsSync(tracked)).toBe(true);
   });
 
   it('up does not re-create a seed-once file that was deleted', async () => {
@@ -425,13 +425,13 @@ describe('E2E Auto-update: agent refresh on `up`', () => {
 
   it('agents refresh --accept overwrites diverged files', async () => {
     await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
-    const gemini = path.join(env.e2eDir, 'bob', 'GEMINI.md');
-    fs.writeFileSync(gemini, 'diverged content\n');
+    const tracked = path.join(env.e2eDir, 'bob', '.gemini', 'system.md');
+    fs.writeFileSync(tracked, 'diverged content\n');
 
     const { code, stdout } = await env.runCli(['agents', 'refresh', 'bob', '--accept']);
     expect(code).toBe(0);
     expect(stdout).toContain('refresh');
-    expect(fs.readFileSync(gemini, 'utf8')).not.toBe('diverged content\n');
+    expect(fs.readFileSync(tracked, 'utf8')).not.toBe('diverged content\n');
   });
 
   it('agents refresh scoped to a single agent leaves other agents alone', async () => {
