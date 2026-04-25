@@ -36,6 +36,7 @@ export const AgentSchema = z.looseObject({
   apiUrlEnvVar: z.string().optional(),
   env: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   subagentEnv: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
+  modelShorthands: z.record(z.string(), z.string()).optional(),
   directory: z.string().optional(),
   // `null` explicitly disables skill install/refresh for this agent.
   // `undefined` (omitted) falls back to the template's value or `.agents/skills`.
