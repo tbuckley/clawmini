@@ -7,8 +7,21 @@ import {
   getWorkspaceRoot,
 } from '../../shared/workspace.js';
 
+const RESERVED_SHORTHANDS = new Set(['help', 'add', 'remove', 'rm']);
+
 function stop(state: RouterState, reply: string): RouterState {
   return { ...state, message: '', reply, action: 'stop' };
+}
+
+function formatHelp(): string {
+  return [
+    'Usage:',
+    '  /model                              List current model and shorthands.',
+    '  /model <name>                       Set MODEL (resolves shorthand if defined).',
+    '  /model add <shorthand> <full-name>  Add or replace a shorthand.',
+    '  /model remove <shorthand>           Remove a shorthand (alias: rm).',
+    '  /model help                         Show this help.',
+  ].join('\n');
 }
 
 function formatList(agent: Agent | null): string {
@@ -25,6 +38,13 @@ function formatList(agent: Agent | null): string {
     }
   }
   return lines.join('\n');
+}
+
+// Heuristic: a token that looks like a short, undecorated word a user might
+// reasonably mistake for a shorthand. Real model names typically contain at
+// least one separator (e.g. `gemini-3-pro`, `claude-opus-4-7`, `gpt-4.1`).
+function looksLikeShorthand(name: string): boolean {
+  return name.length <= 16 && !/[-./:]/.test(name);
 }
 
 async function setModel(agentId: string, fullModel: string, workspaceRoot: string): Promise<void> {
@@ -44,6 +64,26 @@ async function addShorthand(
   await writeAgentSettings(agentId, { ...overlay, modelShorthands: nextShorthands }, workspaceRoot);
 }
 
+async function removeOverlayShorthand(
+  agentId: string,
+  shorthand: string,
+  workspaceRoot: string
+): Promise<boolean> {
+  const overlay = (await getAgentOverlay(agentId, workspaceRoot)) ?? {};
+  const overlayShorthands = overlay.modelShorthands ?? {};
+  if (!(shorthand in overlayShorthands)) return false;
+  const next = { ...overlayShorthands };
+  delete next[shorthand];
+  const updated: Agent = { ...overlay };
+  if (Object.keys(next).length === 0) {
+    delete updated.modelShorthands;
+  } else {
+    updated.modelShorthands = next;
+  }
+  await writeAgentSettings(agentId, updated, workspaceRoot);
+  return true;
+}
+
 export async function slashModel(state: RouterState): Promise<RouterState> {
   const message = state.message.trim();
   if (!/^\/model(\s|$)/.test(message)) return state;
@@ -61,25 +101,73 @@ export async function slashModel(state: RouterState): Promise<RouterState> {
     return stop(state, formatList(agent));
   }
 
-  const addMatch = rest.match(/^add\s+(\S+)\s+(\S.*)$/);
-  if (addMatch) {
+  const firstSpace = rest.search(/\s/);
+  const subcommand = firstSpace === -1 ? rest : rest.slice(0, firstSpace);
+  const remainder = firstSpace === -1 ? '' : rest.slice(firstSpace + 1).trim();
+
+  if (subcommand === 'help') {
+    return stop(state, formatHelp());
+  }
+
+  if (subcommand === 'add') {
+    const addMatch = remainder.match(/^(\S+)\s+(\S.*)$/);
+    if (!addMatch) {
+      return stop(state, 'Usage: /model add <shorthand> <full-name>');
+    }
     const shorthand = addMatch[1]!;
     const fullModel = addMatch[2]!.trim();
-    if (shorthand === 'add') {
+    if (RESERVED_SHORTHANDS.has(shorthand)) {
       return stop(state, `Invalid shorthand: '${shorthand}' is reserved.`);
     }
     await addShorthand(agentId, shorthand, fullModel, workspaceRoot);
     return stop(state, `Added shorthand: ${shorthand} -> ${fullModel}`);
   }
 
-  if (/^add(\s|$)/.test(rest)) {
-    return stop(state, 'Usage: /model add <shorthand> <full-name>');
+  if (subcommand === 'remove' || subcommand === 'rm') {
+    if (!/^\S+$/.test(remainder)) {
+      return stop(state, 'Usage: /model remove <shorthand>');
+    }
+    const removed = await removeOverlayShorthand(agentId, remainder, workspaceRoot);
+    if (!removed) {
+      const merged = await getAgent(agentId, workspaceRoot);
+      if (merged?.modelShorthands?.[remainder] !== undefined) {
+        return stop(
+          state,
+          `Shorthand '${remainder}' is defined in the template, not the overlay. Edit the template to remove it.`
+        );
+      }
+      return stop(state, `Shorthand '${remainder}' not found.`);
+    }
+    const merged = await getAgent(agentId, workspaceRoot);
+    const fallback = merged?.modelShorthands?.[remainder];
+    const note = fallback !== undefined ? ` (still resolves to '${fallback}' from template)` : '';
+    return stop(state, `Removed shorthand: ${remainder}${note}.`);
+  }
+
+  if (subcommand.startsWith('-')) {
+    return stop(state, `Unknown option: ${subcommand}\n${formatHelp()}`);
+  }
+
+  // Bare model name / shorthand. Reject extra args so a typoed subcommand like
+  // `/model rmove flash` doesn't get stored as MODEL=rmove.
+  if (remainder !== '') {
+    return stop(state, `Unknown subcommand: ${subcommand}\n${formatHelp()}`);
   }
 
   const agent = await getAgent(agentId, workspaceRoot);
   const shorthands = agent?.modelShorthands ?? {};
-  const fullModel = shorthands[rest] ?? rest;
+  const matched = Object.prototype.hasOwnProperty.call(shorthands, subcommand);
+  const fullModel = matched ? shorthands[subcommand]! : subcommand;
   await setModel(agentId, fullModel, workspaceRoot);
-  const note = shorthands[rest] ? ` (shorthand '${rest}')` : '';
-  return stop(state, `Set MODEL to ${fullModel}${note}.`);
+
+  if (matched) {
+    return stop(state, `Set MODEL to ${fullModel} (shorthand '${subcommand}').`);
+  }
+  if (looksLikeShorthand(subcommand)) {
+    return stop(
+      state,
+      `Set MODEL to ${fullModel}. (No shorthand matched — was that the literal model name? Run /model add ${subcommand} <full-name> if not.)`
+    );
+  }
+  return stop(state, `Set MODEL to ${fullModel}.`);
 }
