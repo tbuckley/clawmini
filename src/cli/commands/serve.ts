@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 
 import { getClawminiDir, getSocketPath } from '../../shared/workspace.js';
@@ -9,7 +10,12 @@ import { exportLiteToAllEnvironments } from '../../shared/lite.js';
 import { ensureDefaultPoliciesFile, refreshAllAgents } from './up.js';
 import { getDiscordConfigPath } from '../../adapter-discord/config.js';
 import { getGoogleChatConfigPath } from '../../adapter-google-chat/config.js';
-import { readSupervisorPid, writeSupervisorPid, removeSupervisorPid } from '../supervisor-pid.js';
+import {
+  getSupervisorPidPath,
+  readSupervisorPid,
+  removeSupervisorPid,
+  writeSupervisorPid,
+} from '../supervisor-pid.js';
 import { Supervisor, type ServiceName } from '../supervisor.js';
 
 const ALL_SERVICES: ServiceName[] = ['daemon', 'web', 'adapter-discord', 'adapter-google-chat'];
@@ -108,12 +114,45 @@ async function runForeground(enabled: ServiceName[]): Promise<void> {
   process.stderr.write("[supervisor] press Ctrl-C to stop (or run 'clawmini down' elsewhere)\n");
 }
 
-function runDetached(args: string[]): never {
+function isSocketLive(socketPath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const client = net.createConnection({ path: socketPath });
+    client.on('connect', () => {
+      client.destroy();
+      resolve(true);
+    });
+    client.on('error', () => resolve(false));
+  });
+}
+
+function printSupervisorLogTail(supLog: string, fromOffset: number): void {
+  if (!fs.existsSync(supLog)) return;
+  const size = fs.statSync(supLog).size;
+  if (size <= fromOffset) return;
+  const fd = fs.openSync(supLog, 'r');
+  try {
+    const len = size - fromOffset;
+    const buf = Buffer.alloc(len);
+    fs.readSync(fd, buf, 0, len, fromOffset);
+    const text = buf.toString('utf-8');
+    process.stderr.write('--- supervisor.log ---\n');
+    process.stderr.write(text);
+    if (!text.endsWith('\n')) process.stderr.write('\n');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+async function runDetached(args: string[]): Promise<never> {
   const clawDir = getClawminiDir();
   const logDir = path.join(clawDir, 'logs');
   if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
   const supLog = path.join(logDir, 'supervisor.log');
+  const supLogOffset = fs.existsSync(supLog) ? fs.statSync(supLog).size : 0;
   const outFd = fs.openSync(supLog, 'a');
+
+  // Drop any stale pid file so we can detect the new child writing one.
+  removeSupervisorPid();
 
   const childArgs = args.filter((a) => a !== '--detach' && a !== '-d');
   const child = spawn(process.execPath, childArgs, {
@@ -123,11 +162,32 @@ function runDetached(args: string[]): never {
     env: process.env,
   });
   child.unref();
+  fs.closeSync(outFd);
 
-  console.log(`Started clawmini supervisor in background (pid ${child.pid}).`);
-  console.log(`  Logs:   clawmini logs -f`);
-  console.log(`  Stop:   clawmini down`);
-  process.exit(0);
+  const pidPath = getSupervisorPidPath();
+  const socketPath = getSocketPath();
+  const STARTUP_TIMEOUT_MS = 30_000;
+  const deadline = Date.now() + STARTUP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      console.error(
+        `clawmini serve exited during startup (code=${child.exitCode}, signal=${child.signalCode}).`
+      );
+      printSupervisorLogTail(supLog, supLogOffset);
+      process.exit(1);
+    }
+    if (fs.existsSync(pidPath) && fs.existsSync(socketPath)) {
+      console.log(`Started clawmini supervisor in background (pid ${child.pid}).`);
+      console.log(`  Logs:   clawmini logs -f`);
+      console.log(`  Stop:   clawmini down`);
+      process.exit(0);
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  console.error(`clawmini serve did not become ready within ${STARTUP_TIMEOUT_MS / 1000}s.`);
+  printSupervisorLogTail(supLog, supLogOffset);
+  process.exit(1);
 }
 
 export const serveCmd = new Command('serve')
@@ -150,11 +210,25 @@ export const serveCmd = new Command('serve')
       process.exit(1);
     }
 
-    if (fs.existsSync(getSocketPath())) {
-      console.error(
-        "A clawmini daemon is already running (socket present). Run 'clawmini down' before 'clawmini serve'."
-      );
-      process.exit(1);
+    const socketPath = getSocketPath();
+    if (fs.existsSync(socketPath)) {
+      if (await isSocketLive(socketPath)) {
+        console.error(
+          "A clawmini daemon is already running (socket present). Run 'clawmini down' before 'clawmini serve'."
+        );
+        process.exit(1);
+      }
+      // Socket file is left over from a crashed/killed daemon — remove it
+      // so we can bind cleanly.
+      try {
+        fs.unlinkSync(socketPath);
+        process.stderr.write(`[supervisor] removed stale socket at ${socketPath}\n`);
+      } catch (err) {
+        console.error(
+          `Failed to remove stale socket at ${socketPath}: ${err instanceof Error ? err.message : String(err)}`
+        );
+        process.exit(1);
+      }
     }
 
     let enabled: ServiceName[];
@@ -178,7 +252,7 @@ export const serveCmd = new Command('serve')
     }
 
     if (options.detach) {
-      runDetached(process.argv.slice(1));
+      await runDetached(process.argv.slice(1));
       return;
     }
 

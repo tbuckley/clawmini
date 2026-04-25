@@ -1,14 +1,22 @@
 import { Command } from 'commander';
 import { getDaemonClient } from '../client.js';
 import { getSocketPath } from '../../shared/workspace.js';
-import { readSupervisorPid } from '../supervisor-pid.js';
+import { readSupervisorPid, removeSupervisorPid } from '../supervisor-pid.js';
 import fs from 'node:fs';
+
+function isErrnoCode(err: unknown, code: string): boolean {
+  return err instanceof Error && (err as NodeJS.ErrnoException).code === code;
+}
 
 async function stopSupervisor(pid: number): Promise<void> {
   process.stdout.write(`Stopping clawmini supervisor (pid ${pid})`);
   try {
     process.kill(pid, 'SIGTERM');
   } catch (err) {
+    if (isErrnoCode(err, 'ESRCH')) {
+      process.stdout.write('\nSupervisor already exited.\n');
+      return;
+    }
     throw new Error(
       `Failed to signal supervisor: ${err instanceof Error ? err.message : String(err)}`,
       { cause: err }
@@ -46,6 +54,10 @@ export const downCmd = new Command('down')
         process.exit(1);
       }
     }
+
+    // No live supervisor — drop any stale pid file so future commands
+    // aren't confused by it.
+    removeSupervisorPid();
 
     try {
       const client = await getDaemonClient({ autoStart: false });
