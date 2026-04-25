@@ -20,21 +20,10 @@ export interface PolicyConfigFile {
 export const BUILTIN_POLICY_SCRIPTS_DIR = '.clawmini/policy-scripts';
 
 export const BUILTIN_POLICIES: Record<string, PolicyDefinition> = {
-  'propose-policy': {
-    description: 'Propose a new policy for the clawmini agent',
-    command: `./${BUILTIN_POLICY_SCRIPTS_DIR}/propose-policy.js`,
-    allowHelp: true,
-    autoApprove: false,
-  },
-  'update-policy': {
-    description: 'Modify an existing user-registered policy',
-    command: `./${BUILTIN_POLICY_SCRIPTS_DIR}/update-policy.js`,
-    allowHelp: true,
-    autoApprove: false,
-  },
-  'remove-policy': {
-    description: 'Remove (or disable) a registered policy',
-    command: `./${BUILTIN_POLICY_SCRIPTS_DIR}/remove-policy.js`,
+  'manage-policies': {
+    description:
+      'Add, update, or remove clawmini policies (subcommands: add, update, remove). Reads are unrestricted via `requests show`.',
+    command: `./${BUILTIN_POLICY_SCRIPTS_DIR}/manage-policies.js`,
     allowHelp: true,
     autoApprove: false,
   },

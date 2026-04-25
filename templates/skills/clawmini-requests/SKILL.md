@@ -71,15 +71,19 @@ The request is sent to the user's chat interface for review.
 - **If Approved:** The policy executes securely, and the STDOUT/STDERR results will be automatically sent back to you in the chat.
 - **If Rejected:** The user may provide a reason for the rejection, allowing you to correct your request and try again.
 
-## Proposing New Policies
+## Managing Policies
 
-If you need to perform an action that isn't covered by an existing policy, you can propose a new one using the default `propose-policy` policy. This allows you to request the creation of a new permission wrapper.
+The built-in `manage-policies` policy lets you add, update, or remove policies. Each invocation goes through the same approval workflow as any other policy — the user reviews exactly which subcommand and arguments you proposed before anything mutates `policies.json`. Reads do not go through this script; use `requests show <name>` (above) for read access.
 
-**Important Note for Large Outputs:** If a policy or command produces massive output (like raw API JSON responses), it will overwhelm your context window. In these cases, it is strongly recommended to propose a custom policy script that uses tools like `jq` to parse, filter, and condense the data *before* it is returned to you.
+The script has three subcommands: `add`, `update`, `remove`.
 
-You must provide a `--name` and `--description`, and either a shell `--command` or a `--script-file`.
+**Important Note for Large Outputs:** If a policy or command produces massive output (like raw API JSON responses), it will overwhelm your context window. In these cases, it is strongly recommended to register a custom policy script that uses tools like `jq` to parse, filter, and condense the data *before* it is returned to you.
 
-By default a proposed policy is **safe**: every invocation requires the user to approve it, and `--help` requests are blocked. You can opt in to looser behavior with two flags — both are prefixed `--dangerously-` because the user only sees them at proposal time:
+### Adding a New Policy (`add`)
+
+Provide a `--name` and `--description`, and either a shell `--command` or a `--script-file`. The script refuses to overwrite an existing entry — use `update` (below) if the name already exists.
+
+By default a new policy is **safe**: every invocation requires the user to approve it, and `--help` requests are blocked. You can opt in to looser behavior with two flags — both are prefixed `--dangerously-` because the user only sees them at proposal time:
 
 - `--dangerously-auto-approve`: future invocations of this policy run without the user reviewing each request. Only use for fully sandboxed, side-effect-free commands (e.g. read-only listings of local files). Never use for anything that mutates state, talks to the network, or spends money.
 - `--dangerously-allow-help`: lets you (the agent) run `<policy> --help` without approval. Safe only if the underlying command actually treats `--help` as read-only — many CLIs do, but custom scripts may not.
@@ -88,52 +92,46 @@ If neither flag is set, both default to `false`. Prefer the safe default; only r
 
 **Examples:**
 
-1. **Propose a simple command wrapper (safe defaults):**
+1. **A simple command wrapper (safe defaults):**
 
    ```bash
-   clawmini-lite.js request propose-policy -- --name npm-install --description "Run npm install globally" --command "npm install -g"
+   clawmini-lite.js request manage-policies -- add --name npm-install --description "Run npm install globally" --command "npm install -g"
    ```
 
-2. **Propose a custom script wrapper:**
+2. **A custom script wrapper:**
    First, write your complex logic to a file (e.g., `./script.sh`). **Note: The script file path MUST be inside your allowed workspace directory or use relative paths.**
    ```bash
-   clawmini-lite.js request propose-policy --file script=./script.sh -- --name custom-action --description "Run a custom deployment script" --script-file "{{script}}"
+   clawmini-lite.js request manage-policies --file script=./script.sh -- add --name custom-action --description "Run a custom deployment script" --script-file "{{script}}"
    ```
 
-3. **Propose a read-only policy that auto-approves and exposes `--help`:**
+3. **A read-only policy that auto-approves and exposes `--help`:**
 
    ```bash
-   clawmini-lite.js request propose-policy -- --name list-files --description "List files in the workspace (read-only)" --command "ls" --dangerously-auto-approve --dangerously-allow-help
+   clawmini-lite.js request manage-policies -- add --name list-files --description "List files in the workspace (read-only)" --command "ls" --dangerously-auto-approve --dangerously-allow-help
    ```
 
-`propose-policy` will refuse to overwrite an existing policy. If you want to change one that already exists, use `update-policy` (below).
+### Updating an Existing Policy (`update`)
 
-## Modifying or Removing Policies
-
-The same approval workflow gates edits to policies. Like `propose-policy`, both built-ins go through the user for review before they take effect.
-
-### Updating an Existing Policy
-
-Use `update-policy` to change fields on a policy you previously registered. Pass only the fields you want to change. The policy's name cannot be changed (remove + propose if you need a rename).
+Pass only the fields you want to change. The policy's name cannot be changed (`remove` + `add` if you need a rename).
 
 ```bash
-clawmini-lite.js request update-policy -- --name <policy-name> [--description "..."] [--command "..."] [--script-file "{{script}}"] [--dangerously-auto-approve true|false] [--dangerously-allow-help true|false]
+clawmini-lite.js request manage-policies -- update --name <policy-name> [--description "..."] [--command "..."] [--script-file "{{script}}"] [--dangerously-auto-approve true|false] [--dangerously-allow-help true|false]
 ```
 
-This refuses to update a built-in policy. If you need to override a built-in, register your own version with `propose-policy` first; subsequent updates target that override.
+This refuses to update a built-in policy. If you need to override a built-in, register your own version with `add` first; subsequent updates target that override.
 
-### Removing a Policy
+### Removing a Policy (`remove`)
 
-Use `remove-policy` to drop a registered policy entry:
+Drops a registered policy entry:
 
 ```bash
-clawmini-lite.js request remove-policy -- --name <policy-name>
+clawmini-lite.js request manage-policies -- remove --name <policy-name>
 ```
 
 To opt out of a built-in (write `false` so it stops being available even if its script is installed):
 
 ```bash
-clawmini-lite.js request remove-policy -- --name <builtin-name> --disable-builtin
+clawmini-lite.js request manage-policies -- remove --name <builtin-name> --disable-builtin
 ```
 
 ## Creating New Skills for Policies

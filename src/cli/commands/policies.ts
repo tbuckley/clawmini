@@ -6,7 +6,7 @@ import { resolveCompiledScript } from '../../shared/lite.js';
 import { BUILTIN_POLICIES, type PolicyConfig } from '../../shared/policies.js';
 import { getClawminiDir } from '../../shared/workspace.js';
 
-const SUPPORTED_POLICIES = ['propose-policy', 'update-policy', 'remove-policy'];
+const SUPPORTED_POLICIES = ['manage-policies'];
 
 export const policiesCmd = new Command('policies').description('Manage sandbox policies');
 
