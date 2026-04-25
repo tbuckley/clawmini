@@ -16,6 +16,12 @@ export const DISPLAY_NAMES: Record<ServiceName, string> = {
   'adapter-google-chat': 'google-chat',
 };
 
+// Adapters and the web UI are mostly stateless — give them a tight window.
+// The daemon runs `down` hooks (e.g. sandbox/container teardown) that can
+// legitimately take tens of seconds, so it needs much longer to drain.
+const ADAPTER_TERMINATE_TIMEOUT_MS = 10_000;
+const DAEMON_TERMINATE_TIMEOUT_MS = 60_000;
+
 interface ResolvedCommand {
   command: string;
   args: string[];
@@ -132,11 +138,22 @@ export class Supervisor {
     this.shuttingDown = true;
     process.stderr.write('\n[supervisor] shutting down...\n');
 
-    const stops: Promise<void>[] = [];
+    // Phase 1: stop adapters and the web UI in parallel. They depend on the
+    // daemon, so taking them down first lets the daemon's `down` hooks run
+    // without interference from disconnect noise.
+    const adapterStops: Promise<void>[] = [];
     for (const [name, child] of this.children) {
-      stops.push(Supervisor.terminateChild(name, child));
+      if (name === 'daemon') continue;
+      adapterStops.push(Supervisor.terminateChild(name, child, ADAPTER_TERMINATE_TIMEOUT_MS));
     }
-    await Promise.allSettled(stops);
+    await Promise.allSettled(adapterStops);
+
+    // Phase 2: stop the daemon with a generous timeout so its `down` hooks
+    // (sandbox/container teardown) can complete.
+    const daemonChild = this.children.get('daemon');
+    if (daemonChild) {
+      await Supervisor.terminateChild('daemon', daemonChild, DAEMON_TERMINATE_TIMEOUT_MS);
+    }
 
     for (const fd of this.logFds.values()) {
       try {
@@ -150,20 +167,26 @@ export class Supervisor {
     process.exit(exitCode);
   }
 
-  private static terminateChild(name: ServiceName, child: ChildProcess): Promise<void> {
+  private static terminateChild(
+    name: ServiceName,
+    child: ChildProcess,
+    timeoutMs: number
+  ): Promise<void> {
     return new Promise((resolve) => {
       if (child.exitCode !== null || child.signalCode !== null) {
         resolve();
         return;
       }
       const timer = setTimeout(() => {
-        process.stderr.write(`[supervisor] ${name} did not exit in 10s, sending SIGKILL\n`);
+        process.stderr.write(
+          `[supervisor] ${name} did not exit in ${Math.round(timeoutMs / 1000)}s, sending SIGKILL\n`
+        );
         try {
           child.kill('SIGKILL');
         } catch {
           // ignore
         }
-      }, 10_000);
+      }, timeoutMs);
       child.once('exit', () => {
         clearTimeout(timer);
         resolve();

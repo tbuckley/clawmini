@@ -15,8 +15,11 @@ async function stopSupervisor(pid: number): Promise<void> {
     );
   }
 
-  // Poll until the process is gone or we time out.
-  const deadline = Date.now() + 30_000;
+  // Poll until the process is gone or we time out. Must exceed the
+  // supervisor's internal phase-2 timeout (60s for the daemon) so we don't
+  // bail while it's still draining `down` hooks.
+  const TIMEOUT_MS = 90_000;
+  const deadline = Date.now() + TIMEOUT_MS;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 200));
     process.stdout.write('.');
@@ -27,7 +30,7 @@ async function stopSupervisor(pid: number): Promise<void> {
       return;
     }
   }
-  throw new Error('Supervisor did not exit within 30 seconds.');
+  throw new Error(`Supervisor did not exit within ${TIMEOUT_MS / 1000} seconds.`);
 }
 
 export const downCmd = new Command('down')
