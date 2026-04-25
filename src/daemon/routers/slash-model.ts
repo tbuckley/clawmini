@@ -16,11 +16,11 @@ function stop(state: RouterState, reply: string): RouterState {
 function formatHelp(): string {
   return [
     'Usage:',
-    '  /model                              List current model and shorthands.',
-    '  /model <name>                       Set MODEL (resolves shorthand if defined).',
-    '  /model add <shorthand> <full-name>  Add or replace a shorthand.',
-    '  /model remove <shorthand>           Remove a shorthand (alias: rm).',
-    '  /model help                         Show this help.',
+    '- /model — List current model and shorthands.',
+    '- /model <name> — Set MODEL (resolves shorthand if defined).',
+    '- /model add <shorthand> <full-name> — Add or replace a shorthand.',
+    '- /model remove <shorthand> — Remove a shorthand (alias: rm).',
+    '- /model help — Show this help.',
   ].join('\n');
 }
 
