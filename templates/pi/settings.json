@@ -1,0 +1,14 @@
+{
+  "commands": {
+    "new": ".pi/run",
+    "getSessionId": "jq -r .id",
+    "getMessageContent": "jq -r .out",
+    "append": ".pi/run"
+  },
+  "env": {
+    "APPEND_SYSTEM_PROMPT": ".pi/APPEND_SYSTEM.md"
+  },
+  "subagentEnv": {
+    "APPEND_SYSTEM_PROMPT": ".pi/APPEND_SYSTEM.subagent.md"
+  }
+}
