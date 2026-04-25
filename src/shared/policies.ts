@@ -26,6 +26,18 @@ export const BUILTIN_POLICIES: Record<string, PolicyDefinition> = {
     allowHelp: true,
     autoApprove: false,
   },
+  'update-policy': {
+    description: 'Modify an existing user-registered policy',
+    command: `./${BUILTIN_POLICY_SCRIPTS_DIR}/update-policy.js`,
+    allowHelp: true,
+    autoApprove: false,
+  },
+  'remove-policy': {
+    description: 'Remove (or disable) a registered policy',
+    command: `./${BUILTIN_POLICY_SCRIPTS_DIR}/remove-policy.js`,
+    allowHelp: true,
+    autoApprove: false,
+  },
   'run-host': {
     description: 'Run an arbitrary shell command on the host via `sh -c`',
     command: `./${BUILTIN_POLICY_SCRIPTS_DIR}/run-host.js`,

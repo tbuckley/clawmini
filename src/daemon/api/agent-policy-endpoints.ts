@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { apiProcedure } from './trpc.js';
 import { getWorkspaceRoot, readPoliciesForPath, getClawminiDir } from '../../shared/workspace.js';
+import { pathIsInsideDir } from '../../shared/utils/fs.js';
 import { resolveAgentDir } from './router-utils.js';
 import { PolicyRequestService } from '../policy-request-service.js';
 import { RequestStore } from '../request-store.js';
@@ -16,12 +18,72 @@ import {
 } from '../policy-utils.js';
 import { appendMessage, type PolicyRequestMessage } from '../chats.js';
 
+const MAX_POLICY_SCRIPT_BYTES = 1 * 1024 * 1024;
+
 export const listPolicies = apiProcedure.query(async ({ ctx }) => {
   const workspaceRoot = getWorkspaceRoot();
   const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
   const config = await readPoliciesForPath(agentDir, workspaceRoot);
   return { policies: config?.policies || {} };
 });
+
+// Returns the contents of a policy's script file. Restricted to scripts inside
+// `.clawmini/policy-scripts/` so an arbitrary `command` path (e.g. `/etc/passwd`
+// or a built-in node binary) cannot be exfiltrated through this endpoint.
+export const readPolicyScript = apiProcedure
+  .input(z.object({ commandName: z.string() }))
+  .query(async ({ input, ctx }) => {
+    const workspaceRoot = getWorkspaceRoot();
+    const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
+    const config = await readPoliciesForPath(agentDir, workspaceRoot);
+    const policy = config?.policies?.[input.commandName];
+
+    if (!policy) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: `Policy not found: ${input.commandName}`,
+      });
+    }
+
+    const scriptsDir = path.join(getClawminiDir(), 'policy-scripts');
+    const resolvedCommand = path.resolve(policy.command);
+
+    if (!pathIsInsideDir(resolvedCommand, scriptsDir, { allowSameDir: false })) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: `Policy '${input.commandName}' does not point at a script in policy-scripts/.`,
+      });
+    }
+
+    let stat;
+    try {
+      stat = await fs.stat(resolvedCommand);
+    } catch (err) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: `Script file not found for policy '${input.commandName}': ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      });
+    }
+
+    if (!stat.isFile()) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: `Script path for policy '${input.commandName}' is not a regular file.`,
+      });
+    }
+
+    if (stat.size > MAX_POLICY_SCRIPT_BYTES) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: `Script file exceeds the ${MAX_POLICY_SCRIPT_BYTES}-byte limit.`,
+      });
+    }
+
+    const content = await fs.readFile(resolvedCommand, 'utf8');
+    return { path: resolvedCommand, size: stat.size, content };
+  });
 
 export const executePolicyHelp = apiProcedure
   .input(z.object({ commandName: z.string() }))

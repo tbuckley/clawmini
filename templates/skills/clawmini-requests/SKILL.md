@@ -21,6 +21,16 @@ clawmini-lite.js requests list
 
 This will output the available policy names and their descriptions.
 
+### Inspecting a Single Policy
+
+To see the full definition of a policy (its underlying command, args, and flags like `autoApprove` / `allowHelp`):
+
+```bash
+clawmini-lite.js requests show <policy-name>
+```
+
+The output is JSON, followed by the script body when the policy's command points at a file inside `.clawmini/policy-scripts/`. Policies that wrap a system command print only the JSON — there is no script body to show, and the daemon refuses to read paths outside `policy-scripts/`. Reading is unrestricted — no approval is needed.
+
 ### Getting Help for a Policy
 
 If a policy supports it, you can query it for help to understand what arguments it expects:
@@ -95,6 +105,36 @@ If neither flag is set, both default to `false`. Prefer the safe default; only r
    ```bash
    clawmini-lite.js request propose-policy -- --name list-files --description "List files in the workspace (read-only)" --command "ls" --dangerously-auto-approve --dangerously-allow-help
    ```
+
+`propose-policy` will refuse to overwrite an existing policy. If you want to change one that already exists, use `update-policy` (below).
+
+## Modifying or Removing Policies
+
+The same approval workflow gates edits to policies. Like `propose-policy`, both built-ins go through the user for review before they take effect.
+
+### Updating an Existing Policy
+
+Use `update-policy` to change fields on a policy you previously registered. Pass only the fields you want to change. The policy's name cannot be changed (remove + propose if you need a rename).
+
+```bash
+clawmini-lite.js request update-policy -- --name <policy-name> [--description "..."] [--command "..."] [--script-file "{{script}}"] [--dangerously-auto-approve true|false] [--dangerously-allow-help true|false]
+```
+
+This refuses to update a built-in policy. If you need to override a built-in, register your own version with `propose-policy` first; subsequent updates target that override.
+
+### Removing a Policy
+
+Use `remove-policy` to drop a registered policy entry:
+
+```bash
+clawmini-lite.js request remove-policy -- --name <policy-name>
+```
+
+To opt out of a built-in (write `false` so it stops being available even if its script is installed):
+
+```bash
+clawmini-lite.js request remove-policy -- --name <builtin-name> --disable-builtin
+```
 
 ## Creating New Skills for Policies
 

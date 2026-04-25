@@ -210,6 +210,39 @@ requests
     }
   });
 
+requests
+  .command('show <name>')
+  .description(
+    'Show full details of a single policy. Includes the script body when the command points inside .clawmini/policy-scripts/.'
+  )
+  .action(async (name: string) => {
+    try {
+      const client = getClient();
+      const config = await client.listPolicies.query();
+      const policy = config?.policies?.[name];
+
+      if (!policy) {
+        console.error(`Policy not found: ${name}`);
+        process.exit(1);
+      }
+
+      console.log(JSON.stringify({ name, ...policy }, null, 2));
+
+      try {
+        const script = await client.readPolicyScript.query({ commandName: name });
+        console.log(`\n--- Script: ${script.path} (${script.size} bytes) ---`);
+        process.stdout.write(script.content);
+        if (!script.content.endsWith('\n')) process.stdout.write('\n');
+      } catch {
+        // Script body unavailable (policy points at a system command, not a
+        // script in policy-scripts/). Showing JSON is enough — stay quiet.
+      }
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
 program
   .command('request <cmd>')
   .description('Submit a sandbox policy request')

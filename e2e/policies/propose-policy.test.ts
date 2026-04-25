@@ -167,9 +167,9 @@ describe('propose-policy CLI', () => {
     );
   });
 
-  it('should overwrite an existing policy with the same name', async () => {
-    // Overwrite the 'echo-test' policy from previous test
-    const { stdout, code } = await env.runBin(binPath, [
+  it('should refuse to overwrite an existing policy with the same name', async () => {
+    // The 'echo-test' policy from the earlier test in this suite already exists
+    const { stderr, code } = await env.runBin(binPath, [
       '--name',
       'echo-test',
       '--description',
@@ -178,16 +178,15 @@ describe('propose-policy CLI', () => {
       'echo "Updated"',
     ]);
 
-    expect(code).toBe(0);
-    expect(stdout).toContain("Successfully proposed and registered policy 'echo-test'");
+    expect(code).toBe(1);
+    expect(stderr).toContain(
+      "Policy 'echo-test' is already registered. Use update-policy to modify it"
+    );
 
+    // The original echo-test entry should be untouched.
     const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
     const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
-
-    expect(policies.policies['echo-test']).toBeDefined();
-    expect(policies.policies['echo-test'].description).toBe('An updated echo command');
-    expect(policies.policies['echo-test'].command).toBe('echo');
-    expect(policies.policies['echo-test'].args).toEqual(['"Updated"']);
+    expect(policies.policies['echo-test'].description).toBe('A simple echo command');
   });
 });
 

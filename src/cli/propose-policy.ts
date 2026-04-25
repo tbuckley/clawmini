@@ -72,6 +72,13 @@ Examples:
       policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
     }
 
+    if (Object.prototype.hasOwnProperty.call(policies.policies, name)) {
+      console.error(
+        `Error: Policy '${name}' is already registered. Use update-policy to modify it, or remove-policy first.`
+      );
+      process.exit(1);
+    }
+
     const policyDefinition: PolicyDefinition = {
       description,
       allowHelp,

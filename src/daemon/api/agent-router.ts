@@ -202,7 +202,12 @@ export const agentDeleteCronJob = apiProcedure
     return deleteCronJobShared(chatId, input.id);
   });
 
-import { listPolicies, executePolicyHelp, createPolicyRequest } from './agent-policy-endpoints.js';
+import {
+  listPolicies,
+  executePolicyHelp,
+  createPolicyRequest,
+  readPolicyScript,
+} from './agent-policy-endpoints.js';
 
 import { ping } from './user-router.js';
 
@@ -240,6 +245,7 @@ export const agentRouter = router({
   listPolicies,
   executePolicyHelp,
   createPolicyRequest,
+  readPolicyScript,
   fetchPendingMessages,
   ping,
   subagentSpawn,
