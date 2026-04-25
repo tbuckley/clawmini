@@ -3,7 +3,9 @@
 ### Initialization & Daemon
 - `clawmini init`: Initialize a new `.clawmini` configuration folder.
 - `clawmini up`: Start the local daemon server in the background.
-- `clawmini down`: Stop the local daemon server.
+- `clawmini serve [--detach] [--only <services>] [--exclude <services>]`: Run the daemon, web UI, and any configured adapters under a single supervisor with interleaved prefixed logs. Use `--detach` to run in the background. Adapters (`discord`, `google-chat`) are auto-detected by the presence of their config files.
+- `clawmini logs [-f] [-s <service>] [-n <lines>]`: View logs from `clawmini serve` services.
+- `clawmini down`: Stop the local supervisor (if running) or daemon.
 - `clawmini export-lite [--out <path>] [--stdout]`: Export the standalone `clawmini-lite` client script.
 
 ### Chat Management

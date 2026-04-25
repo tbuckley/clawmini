@@ -67,11 +67,13 @@ export async function initDaemon() {
           const command = envConfig?.[hookType];
           if (command) {
             console.log(`Executing '${hookType}' hook for environment '${envName}': ${command}`);
+            // No timeout: a SIGTERM mid-hook risks partial teardown (e.g.
+            // containers left running). The supervisor's per-service SIGKILL
+            // timer is the ultimate backstop for runaway hooks.
             execSync(command, {
               cwd: affectedDir,
               stdio: 'inherit',
               env: { ...process.env, ENV_DIR: envDir },
-              timeout: hookType === 'down' ? 10000 : undefined,
             });
           }
         } catch (err) {

@@ -193,6 +193,49 @@ describe('workspace utilities', () => {
       list = await listAgents(testDir);
       expect(list).not.toContain('agent-to-delete');
     });
+
+    it('should serialize concurrent updateAgentOverlay calls', async () => {
+      const { updateAgentOverlay, agentSettingsLocks } = await import('./workspace.js');
+      await writeAgentSettings('lock-agent', { env: { COUNT: '0' } }, testDir);
+
+      // Fire many concurrent increments. Without the lock, the read-modify-write
+      // races and the final count is < N.
+      const N = 20;
+      await Promise.all(
+        Array.from({ length: N }, () =>
+          updateAgentOverlay(
+            'lock-agent',
+            (overlay) => {
+              const prev = Number((overlay.env?.COUNT as string) ?? '0');
+              return { ...overlay, env: { ...(overlay.env ?? {}), COUNT: String(prev + 1) } };
+            },
+            testDir
+          )
+        )
+      );
+
+      const final = await getAgent('lock-agent', testDir);
+      expect(final?.env?.COUNT).toBe(String(N));
+      expect(agentSettingsLocks.size).toBe(0);
+    });
+
+    it('should throw from updateAgentOverlay when the overlay is missing', async () => {
+      const { updateAgentOverlay } = await import('./workspace.js');
+      await expect(
+        updateAgentOverlay('ghost-agent', (overlay) => overlay, testDir)
+      ).rejects.toThrow(/no settings overlay/);
+    });
+
+    it('should skip the write when updateAgentOverlay updater returns null', async () => {
+      const { updateAgentOverlay } = await import('./workspace.js');
+      await writeAgentSettings('skip-agent', { env: { KEEP: '1' } }, testDir);
+
+      const wrote = await updateAgentOverlay('skip-agent', () => null, testDir);
+      expect(wrote).toBe(false);
+
+      const after = await getAgent('skip-agent', testDir);
+      expect(after?.env?.KEEP).toBe('1');
+    });
   });
 
   describe('resolveTargetAgentSkillsDir', () => {
