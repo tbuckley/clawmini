@@ -63,6 +63,7 @@ export async function main() {
     startDaemonToDiscordForwarder(readyClient, trpc, config.authorizedUserId, {
       chatId: config.chatId,
       config: filteringConfig,
+      discordConfig: config,
     }).catch((error) => {
       console.error('Error in daemon-to-discord forwarder:', error);
     });
@@ -113,6 +114,7 @@ export async function main() {
         mentionsBot: !!message.mentions?.has(client.user!.id),
         isReplyToBot,
         attachments,
+        messageId: message.id,
         ...(referenceContent ? { referenceContent } : {}),
         ...(referenceAuthor ? { referenceAuthor } : {}),
       }

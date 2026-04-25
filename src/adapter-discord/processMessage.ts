@@ -1,5 +1,6 @@
 import { readDiscordState, updateDiscordState } from './state.js';
 import type { DiscordConfig } from './config.js';
+import { recordInbound } from './inbound-cache.js';
 import { handleAdapterCommand, type CommandTrpcClient } from '../shared/adapters/commands.js';
 import { formatMessage, type FilteringConfig } from '../shared/adapters/filtering.js';
 import { handleRoutingCommand, type RoutingTrpcClient } from '../shared/adapters/routing.js';
@@ -15,6 +16,13 @@ export type ProcessMessageOptions = {
   referenceContent?: string;
   referenceAuthor?: string;
   explicitChatId?: string;
+  /**
+   * Discord message id of the inbound. Recorded in the in-memory inbound
+   * cache and sent to the daemon as `externalRef` so the forwarder can
+   * resolve the user's message and start a Discord thread anchored on it
+   * when `turnStarted` arrives.
+   */
+  messageId?: string;
 };
 
 export async function processDiscordMessage(
@@ -204,6 +212,9 @@ export async function processDiscordMessage(
   }
 
   console.log(`Forwarding message to daemon: ${finalContent}`);
+  if (options.messageId && channelId) {
+    recordInbound({ messageId: options.messageId, channelId });
+  }
   try {
     await trpc.sendMessage.mutate({
       type: 'send-message',
@@ -214,6 +225,7 @@ export async function processDiscordMessage(
         files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
         adapter: 'discord',
         noWait: true,
+        ...(options.messageId ? { externalRef: options.messageId } : {}),
       },
     });
     console.log('Message forwarded to daemon successfully.');
