@@ -3,6 +3,7 @@ import { slashModel } from './slash-model.js';
 import {
   getAgent,
   getAgentOverlay,
+  updateAgentOverlay,
   writeAgentSettings,
   getWorkspaceRoot,
 } from '../../shared/workspace.js';
@@ -20,6 +21,17 @@ describe('slashModel router', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getWorkspaceRoot).mockReturnValue('/mock/workspace');
+    // Mirror the real `updateAgentOverlay`: read overlay, throw if missing,
+    // run updater, write iff updater returned non-null. Keeps existing
+    // assertions on `writeAgentSettings` working after the refactor.
+    vi.mocked(updateAgentOverlay).mockImplementation(async (agentId, updater, startDir) => {
+      const overlay = await getAgentOverlay(agentId, startDir);
+      if (!overlay) throw new Error(`Agent '${agentId}' has no settings overlay.`);
+      const updated = await updater(overlay);
+      if (updated === null) return false;
+      await writeAgentSettings(agentId, updated, startDir);
+      return true;
+    });
   });
 
   it('passes through unrelated messages', async () => {
@@ -77,7 +89,7 @@ describe('slashModel router', () => {
 
   it('sets env.MODEL to a full string when no shorthand matches', async () => {
     vi.mocked(getAgent).mockResolvedValue({ modelShorthands: {} });
-    vi.mocked(getAgentOverlay).mockResolvedValue(null);
+    vi.mocked(getAgentOverlay).mockResolvedValue({});
 
     const result = await slashModel({
       ...baseState,
@@ -259,7 +271,7 @@ describe('slashModel router', () => {
 
   it('warns when an unknown shorthand-shaped name is set', async () => {
     vi.mocked(getAgent).mockResolvedValue({ modelShorthands: { flash: 'x' } });
-    vi.mocked(getAgentOverlay).mockResolvedValue(null);
+    vi.mocked(getAgentOverlay).mockResolvedValue({});
 
     const result = await slashModel({ ...baseState, message: '/model claude' });
 
@@ -275,7 +287,7 @@ describe('slashModel router', () => {
 
   it('does not warn when the literal name has separators', async () => {
     vi.mocked(getAgent).mockResolvedValue({ modelShorthands: {} });
-    vi.mocked(getAgentOverlay).mockResolvedValue(null);
+    vi.mocked(getAgentOverlay).mockResolvedValue({});
 
     const result = await slashModel({ ...baseState, message: '/model claude-opus-4-7' });
 
@@ -286,5 +298,47 @@ describe('slashModel router', () => {
     const state = { ...baseState, message: '/models gpt-5' };
     const result = await slashModel(state);
     expect(result).toEqual(state);
+  });
+
+  describe('refuses to write when the agent has no overlay', () => {
+    beforeEach(() => {
+      vi.mocked(getAgentOverlay).mockResolvedValue(null);
+    });
+
+    it('on /model <name>', async () => {
+      const result = await slashModel({ ...baseState, message: '/model gemini-3-pro' });
+      expect(result.reply).toBe("Agent 'jeeves' has no settings overlay; cannot configure model.");
+      expect(writeAgentSettings).not.toHaveBeenCalled();
+      expect(updateAgentOverlay).not.toHaveBeenCalled();
+    });
+
+    it('on /model add', async () => {
+      const result = await slashModel({
+        ...baseState,
+        message: '/model add flash gemini-3-flash-preview',
+      });
+      expect(result.reply).toBe("Agent 'jeeves' has no settings overlay; cannot configure model.");
+      expect(writeAgentSettings).not.toHaveBeenCalled();
+      expect(updateAgentOverlay).not.toHaveBeenCalled();
+    });
+
+    it('on /model remove', async () => {
+      const result = await slashModel({ ...baseState, message: '/model rm flash' });
+      expect(result.reply).toBe("Agent 'jeeves' has no settings overlay; cannot configure model.");
+      expect(writeAgentSettings).not.toHaveBeenCalled();
+      expect(updateAgentOverlay).not.toHaveBeenCalled();
+    });
+  });
+
+  it('rejects /model add when the full name has whitespace', async () => {
+    vi.mocked(getAgentOverlay).mockResolvedValue({});
+
+    const result = await slashModel({
+      ...baseState,
+      message: '/model add foo gemini-3 pro',
+    });
+
+    expect(result.reply).toBe('Usage: /model add <shorthand> <full-name>');
+    expect(writeAgentSettings).not.toHaveBeenCalled();
   });
 });

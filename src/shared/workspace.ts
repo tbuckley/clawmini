@@ -342,6 +342,45 @@ export async function writeAgentSettings(
   await writeJsonFile(getAgentSettingsPath(agentId, startDir), data as Record<string, unknown>);
 }
 
+export const agentSettingsLocks = new Map<string, Promise<void>>();
+
+// Read-modify-write the agent's on-disk overlay under a per-agent lock so
+// concurrent callers can't lose updates. Throws if the overlay does not
+// exist — callers that intend to *create* an agent should use
+// `writeAgentSettings` directly. Returning `null` from the updater skips
+// the write (useful when a fresh read shows the change is a no-op).
+// Returns `true` iff a write happened.
+export async function updateAgentOverlay(
+  agentId: string,
+  updater: (overlay: Agent) => Agent | null | Promise<Agent | null>,
+  startDir = process.cwd()
+): Promise<boolean> {
+  const prevLock = agentSettingsLocks.get(agentId) || Promise.resolve();
+  let release!: () => void;
+  const nextLock = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const nextLockPromise = prevLock.catch(() => {}).then(() => nextLock);
+  agentSettingsLocks.set(agentId, nextLockPromise);
+
+  try {
+    await prevLock;
+    const overlay = await getAgentOverlay(agentId, startDir);
+    if (!overlay) {
+      throw new Error(`Agent '${agentId}' has no settings overlay.`);
+    }
+    const updated = await updater(overlay);
+    if (updated === null) return false;
+    await writeAgentSettings(agentId, updated, startDir);
+    return true;
+  } finally {
+    release();
+    if (agentSettingsLocks.get(agentId) === nextLockPromise) {
+      agentSettingsLocks.delete(agentId);
+    }
+  }
+}
+
 export async function listAgents(startDir = process.cwd()): Promise<string[]> {
   const agentsDir = path.join(getClawminiDir(startDir), 'agents');
   try {

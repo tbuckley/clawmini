@@ -3,7 +3,7 @@ import type { Agent } from '../../shared/config.js';
 import {
   getAgent,
   getAgentOverlay,
-  writeAgentSettings,
+  updateAgentOverlay,
   getWorkspaceRoot,
 } from '../../shared/workspace.js';
 
@@ -48,9 +48,14 @@ function looksLikeShorthand(name: string): boolean {
 }
 
 async function setModel(agentId: string, fullModel: string, workspaceRoot: string): Promise<void> {
-  const overlay = (await getAgentOverlay(agentId, workspaceRoot)) ?? {};
-  const nextEnv = { ...(overlay.env ?? {}), MODEL: fullModel };
-  await writeAgentSettings(agentId, { ...overlay, env: nextEnv }, workspaceRoot);
+  await updateAgentOverlay(
+    agentId,
+    (overlay) => {
+      const nextEnv = { ...(overlay.env ?? {}), MODEL: fullModel };
+      return { ...overlay, env: nextEnv };
+    },
+    workspaceRoot
+  );
 }
 
 async function addShorthand(
@@ -59,9 +64,14 @@ async function addShorthand(
   fullModel: string,
   workspaceRoot: string
 ): Promise<void> {
-  const overlay = (await getAgentOverlay(agentId, workspaceRoot)) ?? {};
-  const nextShorthands = { ...(overlay.modelShorthands ?? {}), [shorthand]: fullModel };
-  await writeAgentSettings(agentId, { ...overlay, modelShorthands: nextShorthands }, workspaceRoot);
+  await updateAgentOverlay(
+    agentId,
+    (overlay) => {
+      const nextShorthands = { ...(overlay.modelShorthands ?? {}), [shorthand]: fullModel };
+      return { ...overlay, modelShorthands: nextShorthands };
+    },
+    workspaceRoot
+  );
 }
 
 async function removeOverlayShorthand(
@@ -69,19 +79,33 @@ async function removeOverlayShorthand(
   shorthand: string,
   workspaceRoot: string
 ): Promise<boolean> {
-  const overlay = (await getAgentOverlay(agentId, workspaceRoot)) ?? {};
-  const overlayShorthands = overlay.modelShorthands ?? {};
-  if (!(shorthand in overlayShorthands)) return false;
-  const next = { ...overlayShorthands };
-  delete next[shorthand];
-  const updated: Agent = { ...overlay };
-  if (Object.keys(next).length === 0) {
-    delete updated.modelShorthands;
-  } else {
-    updated.modelShorthands = next;
-  }
-  await writeAgentSettings(agentId, updated, workspaceRoot);
-  return true;
+  return await updateAgentOverlay(
+    agentId,
+    (overlay) => {
+      const overlayShorthands = overlay.modelShorthands ?? {};
+      if (!(shorthand in overlayShorthands)) return null;
+      const next = { ...overlayShorthands };
+      delete next[shorthand];
+      const updated: Agent = { ...overlay };
+      if (Object.keys(next).length === 0) {
+        delete updated.modelShorthands;
+      } else {
+        updated.modelShorthands = next;
+      }
+      return updated;
+    },
+    workspaceRoot
+  );
+}
+
+async function ensureOverlay(
+  state: RouterState,
+  agentId: string,
+  workspaceRoot: string
+): Promise<RouterState | null> {
+  const overlay = await getAgentOverlay(agentId, workspaceRoot);
+  if (overlay !== null) return null;
+  return stop(state, `Agent '${agentId}' has no settings overlay; cannot configure model.`);
 }
 
 export async function slashModel(state: RouterState): Promise<RouterState> {
@@ -110,15 +134,20 @@ export async function slashModel(state: RouterState): Promise<RouterState> {
   }
 
   if (subcommand === 'add') {
-    const addMatch = remainder.match(/^(\S+)\s+(\S.*)$/);
+    // Require a single-token full name. Model identifiers don't contain
+    // whitespace, and accepting trailing tokens silently swallows typos
+    // (e.g. `/model add foo gemini-3 pro` storing `MODEL=gemini-3 pro`).
+    const addMatch = remainder.match(/^(\S+)\s+(\S+)\s*$/);
     if (!addMatch) {
       return stop(state, 'Usage: /model add <shorthand> <full-name>');
     }
     const shorthand = addMatch[1]!;
-    const fullModel = addMatch[2]!.trim();
+    const fullModel = addMatch[2]!;
     if (RESERVED_SHORTHANDS.has(shorthand)) {
       return stop(state, `Invalid shorthand: '${shorthand}' is reserved.`);
     }
+    const guard = await ensureOverlay(state, agentId, workspaceRoot);
+    if (guard) return guard;
     await addShorthand(agentId, shorthand, fullModel, workspaceRoot);
     return stop(state, `Added shorthand: ${shorthand} -> ${fullModel}`);
   }
@@ -127,6 +156,8 @@ export async function slashModel(state: RouterState): Promise<RouterState> {
     if (!/^\S+$/.test(remainder)) {
       return stop(state, 'Usage: /model remove <shorthand>');
     }
+    const guard = await ensureOverlay(state, agentId, workspaceRoot);
+    if (guard) return guard;
     const removed = await removeOverlayShorthand(agentId, remainder, workspaceRoot);
     if (!removed) {
       const merged = await getAgent(agentId, workspaceRoot);
@@ -153,6 +184,9 @@ export async function slashModel(state: RouterState): Promise<RouterState> {
   if (remainder !== '') {
     return stop(state, `Unknown subcommand: ${subcommand}\n${formatHelp()}`);
   }
+
+  const guard = await ensureOverlay(state, agentId, workspaceRoot);
+  if (guard) return guard;
 
   const agent = await getAgent(agentId, workspaceRoot);
   const shorthands = agent?.modelShorthands ?? {};
