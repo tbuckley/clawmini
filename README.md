@@ -33,11 +33,12 @@ npm install -g clawmini
 mkdir my-workspace && cd my-workspace
 clawmini init --agent jeeves --agent-template gemini-claw --environment macos
 
-# 3. Start the background daemon
-clawmini up
+# 3. Start the daemon + web UI (plus any configured adapters) with visible logs
+clawmini serve
 
-# 4. Open the Web UI to start chatting!
-clawmini web
+# Or run it in the background and tail logs separately:
+#   clawmini serve --detach
+#   clawmini logs -f
 ```
 
 **Try asking Jeeves:** _"Summarize the recent changes in my git repository."_ Jeeves will run securely in its sandbox, read the diffs, and report back.

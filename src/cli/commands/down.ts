@@ -1,18 +1,70 @@
 import { Command } from 'commander';
 import { getDaemonClient } from '../client.js';
 import { getSocketPath } from '../../shared/workspace.js';
+import { readSupervisorPid, removeSupervisorPid } from '../supervisor-pid.js';
 import fs from 'node:fs';
 
+function isErrnoCode(err: unknown, code: string): boolean {
+  return err instanceof Error && (err as NodeJS.ErrnoException).code === code;
+}
+
+async function stopSupervisor(pid: number): Promise<void> {
+  process.stdout.write(`Stopping clawmini supervisor (pid ${pid})`);
+  try {
+    process.kill(pid, 'SIGTERM');
+  } catch (err) {
+    if (isErrnoCode(err, 'ESRCH')) {
+      process.stdout.write('\nSupervisor already exited.\n');
+      return;
+    }
+    throw new Error(
+      `Failed to signal supervisor: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err }
+    );
+  }
+
+  // Poll until the process is gone or we time out. Must exceed the
+  // supervisor's internal phase-2 timeout (60s for the daemon) so we don't
+  // bail while it's still draining `down` hooks.
+  const TIMEOUT_MS = 90_000;
+  const deadline = Date.now() + TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 200));
+    process.stdout.write('.');
+    try {
+      process.kill(pid, 0);
+    } catch {
+      process.stdout.write('\nSuccessfully shut down clawmini supervisor.\n');
+      return;
+    }
+  }
+  throw new Error(`Supervisor did not exit within ${TIMEOUT_MS / 1000} seconds.`);
+}
+
 export const downCmd = new Command('down')
-  .description('Stop the local clawmini daemon server')
+  .description('Stop the local clawmini supervisor or daemon')
   .action(async () => {
+    const supPid = readSupervisorPid();
+    if (supPid) {
+      try {
+        await stopSupervisor(supPid);
+        return;
+      } catch (err) {
+        console.error('\n', err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    }
+
+    // No live supervisor — drop any stale pid file so future commands
+    // aren't confused by it.
+    removeSupervisorPid();
+
     try {
       const client = await getDaemonClient({ autoStart: false });
       process.stdout.write('Shutting down clawmini daemon...');
       await client.shutdown.mutate();
 
       const socketPath = getSocketPath();
-      // Wait for the socket file to be removed by the daemon's exit handler
       while (fs.existsSync(socketPath)) {
         await new Promise((resolve) => setTimeout(resolve, 200));
         process.stdout.write('.');
