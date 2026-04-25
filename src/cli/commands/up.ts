@@ -17,7 +17,7 @@ import { exportLiteToAllEnvironments } from '../../shared/lite.js';
 
 // resolvePolicies only exposes built-ins when a policies file exists, so a
 // fresh project needs an empty one for run-host etc. to be visible.
-function ensureDefaultPoliciesFile(): void {
+export function ensureDefaultPoliciesFile(): void {
   const policiesPath = getPoliciesPath();
   if (fs.existsSync(policiesPath)) return;
   fs.mkdirSync(path.dirname(policiesPath), { recursive: true });
