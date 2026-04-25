@@ -8,6 +8,7 @@ import {
   type PolicyConfigFile,
   type PolicyDefinition,
 } from '../shared/policies.js';
+import { parseShellArgs } from '../shared/utils/shell.js';
 import { getClawminiDir } from '../shared/workspace.js';
 
 const NAME_RE = /^[a-z0-9-]+$/;
@@ -99,13 +100,15 @@ root
   .option('--command <command_string>', 'Replace the shell command (e.g. "npm install -g")')
   .option('--script-file <path>', 'Replace the policy with a script file (mapped via --file)')
   .option(
-    '--dangerously-auto-approve <bool>',
-    'Set autoApprove (true|false). Only safe for fully sandboxed, side-effect-free commands.'
+    '--dangerously-auto-approve',
+    'Enable autoApprove. Only safe for fully sandboxed, side-effect-free commands.'
   )
+  .option('--no-dangerously-auto-approve', 'Disable autoApprove.')
   .option(
-    '--dangerously-allow-help <bool>',
-    'Set allowHelp (true|false). Only safe if the underlying command treats `--help` as read-only.'
+    '--dangerously-allow-help',
+    'Enable allowHelp. Only safe if the underlying command treats `--help` as read-only.'
   )
+  .option('--no-dangerously-allow-help', 'Disable allowHelp.')
   .addHelpText(
     'after',
     `
@@ -116,8 +119,11 @@ Examples:
   2. Replace the command:
      clawmini-lite request manage-policies -- update --name npm-install --command "npm ci"
 
-  3. Toggle the dangerous flags:
-     clawmini-lite request manage-policies -- update --name list-files --dangerously-auto-approve true --dangerously-allow-help true
+  3. Enable the dangerous flags:
+     clawmini-lite request manage-policies -- update --name list-files --dangerously-auto-approve --dangerously-allow-help
+
+  4. Turn a dangerous flag off again:
+     clawmini-lite request manage-policies -- update --name list-files --no-dangerously-auto-approve
 `
   )
   .action((options) => {
@@ -125,8 +131,8 @@ Examples:
     const description: string | undefined = options.description;
     const commandStr: string | undefined = options.command;
     const scriptFile: string | undefined = options.scriptFile;
-    const autoApprove = parseBoolFlag('--dangerously-auto-approve', options.dangerouslyAutoApprove);
-    const allowHelp = parseBoolFlag('--dangerously-allow-help', options.dangerouslyAllowHelp);
+    const autoApprove: boolean | undefined = options.dangerouslyAutoApprove;
+    const allowHelp: boolean | undefined = options.dangerouslyAllowHelp;
 
     assertValidName(name);
 
@@ -149,7 +155,16 @@ Examples:
     const { dirPath, policies, policiesPath } = loadPolicies();
     const existing = policies.policies[name];
 
-    if (existing === undefined || existing === false) {
+    if (existing === false) {
+      // The user previously disabled this entry with `remove --disable-builtin`.
+      // We don't auto-clear that here — the agent must reaffirm intent via remove
+      // (which clears the false) and then add. Otherwise an update could silently
+      // re-enable a policy the user explicitly opted out of.
+      fail(
+        `Policy '${name}' is currently disabled. Run 'manage-policies remove --name ${name}' to clear the disable, then 'manage-policies add' to register it.`
+      );
+    }
+    if (existing === undefined) {
       // Built-ins are only modifiable by writing an explicit user override
       // (which is what `add` does). We refuse here so updates can't silently
       // shadow a built-in the user never opted into.
@@ -288,19 +303,20 @@ function installScript(dirPath: string, name: string, scriptFile: string): strin
 }
 
 function applyCommandString(definition: PolicyDefinition, commandStr: string): void {
-  const parts = commandStr.split(' ');
-  definition.command = parts[0] || '';
-  if (parts.length > 1) {
-    definition.args = parts.slice(1);
+  let parts: string[];
+  try {
+    parts = parseShellArgs(commandStr);
+  } catch (err) {
+    fail(`--command: ${err instanceof Error ? err.message : String(err)}`);
   }
-}
-
-function parseBoolFlag(flag: string, value: string | undefined): boolean | undefined {
-  if (value === undefined) return undefined;
-  const lower = value.toLowerCase();
-  if (lower === 'true') return true;
-  if (lower === 'false') return false;
-  fail(`${flag} must be 'true' or 'false', got '${value}'.`);
+  const [head, ...rest] = parts;
+  if (head === undefined) {
+    fail('--command must contain a command to run.');
+  }
+  definition.command = head;
+  if (rest.length > 0) {
+    definition.args = rest;
+  }
 }
 
 function fail(message: string): never {

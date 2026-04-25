@@ -115,10 +115,14 @@ If neither flag is set, both default to `false`. Prefer the safe default; only r
 Pass only the fields you want to change. The policy's name cannot be changed (`remove` + `add` if you need a rename).
 
 ```bash
-clawmini-lite.js request manage-policies -- update --name <policy-name> [--description "..."] [--command "..."] [--script-file "{{script}}"] [--dangerously-auto-approve true|false] [--dangerously-allow-help true|false]
+clawmini-lite.js request manage-policies -- update --name <policy-name> [--description "..."] [--command "..."] [--script-file "{{script}}"] [--dangerously-auto-approve | --no-dangerously-auto-approve] [--dangerously-allow-help | --no-dangerously-allow-help]
 ```
 
+The dangerous flags use the same bare-flag style as `add`: pass `--dangerously-auto-approve` to enable, `--no-dangerously-auto-approve` to disable, or omit it to leave the field unchanged.
+
 This refuses to update a built-in policy. If you need to override a built-in, register your own version with `add` first; subsequent updates target that override.
+
+If the policy is currently disabled (a `false` entry from `remove --disable-builtin`), `update` will tell you to clear the disable first via `remove --name <policy-name>` (without `--disable-builtin`), then re-register with `add`.
 
 ### Removing a Policy (`remove`)
 

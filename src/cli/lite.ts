@@ -233,9 +233,17 @@ requests
         console.log(`\n--- Script: ${script.path} (${script.size} bytes) ---`);
         process.stdout.write(script.content);
         if (!script.content.endsWith('\n')) process.stdout.write('\n');
-      } catch {
-        // Script body unavailable (policy points at a system command, not a
-        // script in policy-scripts/). Showing JSON is enough — stay quiet.
+      } catch (err) {
+        // Distinguish "no script body to show" (policy wraps a system command,
+        // script file missing, too large, etc.) from a real failure (auth,
+        // network, daemon down). Re-raise the latter so the outer catch surfaces it.
+        const code = (err as { data?: { code?: string } })?.data?.code;
+        if (code === 'BAD_REQUEST' || code === 'NOT_FOUND') {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.log(`\n(no script body: ${msg})`);
+        } else {
+          throw err;
+        }
       }
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);

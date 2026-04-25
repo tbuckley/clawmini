@@ -75,7 +75,7 @@ describe('manage-policies add', () => {
     expect(policies.policies['echo-test']).toBeDefined();
     expect(policies.policies['echo-test'].description).toBe('A simple echo command');
     expect(policies.policies['echo-test'].command).toBe('echo');
-    expect(policies.policies['echo-test'].args).toEqual(['"Hello', 'World"']);
+    expect(policies.policies['echo-test'].args).toEqual(['Hello World']);
     expect(policies.policies['echo-test'].allowHelp).toBe(false);
     expect(policies.policies['echo-test'].autoApprove).toBe(false);
   });
@@ -232,6 +232,31 @@ describe('manage-policies update', () => {
     );
   });
 
+  it('should explain the recovery path when updating a disabled policy', async () => {
+    // Manually mark a policy as disabled (`false`) so we exercise that branch
+    // without depending on remove/add ordering inside this suite.
+    const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
+    const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
+    policies.policies['disabled-thing'] = false;
+    fs.writeFileSync(policiesPath, JSON.stringify(policies, null, 2));
+
+    const { stderr, code } = await env.runBin(binPath, [
+      'update',
+      '--name',
+      'disabled-thing',
+      '--description',
+      'whatever',
+    ]);
+    expect(code).toBe(1);
+    expect(stderr).toContain(
+      "Policy 'disabled-thing' is currently disabled. Run 'manage-policies remove --name disabled-thing'"
+    );
+
+    // Cleanup so later tests in this suite see a clean slate.
+    delete policies.policies['disabled-thing'];
+    fs.writeFileSync(policiesPath, JSON.stringify(policies, null, 2));
+  });
+
   it('should fail if no fields are specified to update', async () => {
     const { stderr, code } = await env.runBin(binPath, [
       'update',
@@ -257,7 +282,7 @@ describe('manage-policies update', () => {
     const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
     expect(policies.policies['echo-test'].description).toBe('Updated description');
     expect(policies.policies['echo-test'].command).toBe('echo');
-    expect(policies.policies['echo-test'].args).toEqual(['"Hello"']);
+    expect(policies.policies['echo-test'].args).toEqual(['Hello']);
   });
 
   it('should replace the command and clear stale args', async () => {
@@ -276,15 +301,13 @@ describe('manage-policies update', () => {
     expect(policies.policies['echo-test'].args).toBeUndefined();
   });
 
-  it('should toggle the dangerous flags', async () => {
+  it('should enable the dangerous flags via bare flags', async () => {
     const { code } = await env.runBin(binPath, [
       'update',
       '--name',
       'echo-test',
       '--dangerously-auto-approve',
-      'true',
       '--dangerously-allow-help',
-      'true',
     ]);
     expect(code).toBe(0);
 
@@ -294,16 +317,20 @@ describe('manage-policies update', () => {
     expect(policies.policies['echo-test'].allowHelp).toBe(true);
   });
 
-  it('should reject non-boolean values for dangerous flags', async () => {
-    const { stderr, code } = await env.runBin(binPath, [
+  it('should disable a dangerous flag via the --no- negation', async () => {
+    const { code } = await env.runBin(binPath, [
       'update',
       '--name',
       'echo-test',
-      '--dangerously-auto-approve',
-      'maybe',
+      '--no-dangerously-auto-approve',
     ]);
-    expect(code).toBe(1);
-    expect(stderr).toContain("--dangerously-auto-approve must be 'true' or 'false'");
+    expect(code).toBe(0);
+
+    const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
+    const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
+    expect(policies.policies['echo-test'].autoApprove).toBe(false);
+    // The other flag stays as it was — we only touched auto-approve.
+    expect(policies.policies['echo-test'].allowHelp).toBe(true);
   });
 });
 
