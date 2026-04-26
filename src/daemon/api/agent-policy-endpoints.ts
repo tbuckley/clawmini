@@ -19,6 +19,10 @@ import {
 import { appendMessage, type PolicyRequestMessage } from '../chats.js';
 
 const MAX_POLICY_SCRIPT_BYTES = 1 * 1024 * 1024;
+// Above this, the script is copied into the agent's tmp/ instead of being
+// inlined in the response, so `requests show` does not flood the agent's
+// context with a long script body. Mirrors truncateLargeOutput in policy-utils.
+const MAX_INLINE_SCRIPT_LENGTH = 4000;
 
 export const listPolicies = apiProcedure.query(async ({ ctx }) => {
   const workspaceRoot = getWorkspaceRoot();
@@ -79,6 +83,21 @@ export const readPolicyScript = apiProcedure
         code: 'BAD_REQUEST',
         message: `Script file exceeds the ${MAX_POLICY_SCRIPT_BYTES}-byte limit.`,
       });
+    }
+
+    if (stat.size > MAX_INLINE_SCRIPT_LENGTH) {
+      const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
+      const tmpDir = path.join(agentDir, 'tmp');
+      await fs.mkdir(tmpDir, { recursive: true });
+      const ext = path.extname(resolvedCommand);
+      const safeName = input.commandName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const destPath = path.join(tmpDir, `policy-script-${safeName}${ext}`);
+      await fs.copyFile(resolvedCommand, destPath);
+      return {
+        path: resolvedCommand,
+        size: stat.size,
+        spilledTo: `./tmp/policy-script-${safeName}${ext}`,
+      };
     }
 
     const content = await fs.readFile(resolvedCommand, 'utf8');

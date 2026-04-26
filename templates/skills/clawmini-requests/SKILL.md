@@ -31,6 +31,8 @@ clawmini-lite.js requests show <policy-name>
 
 The output is JSON, followed by the script body when the policy's command points at a file inside `.clawmini/policy-scripts/`. Policies that wrap a system command print only the JSON — there is no script body to show, and the daemon refuses to read paths outside `policy-scripts/`. Reading is unrestricted — no approval is needed.
 
+If the script body is large, it is copied to `./tmp/policy-script-<name><ext>` instead of being printed inline; `requests show` will tell you the path so you can `cat` or `Read` it on demand.
+
 ### Getting Help for a Policy
 
 If a policy supports it, you can query it for help to understand what arguments it expects:

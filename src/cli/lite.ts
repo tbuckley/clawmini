@@ -231,8 +231,12 @@ requests
       try {
         const script = await client.readPolicyScript.query({ commandName: name });
         console.log(`\n--- Script: ${script.path} (${script.size} bytes) ---`);
-        process.stdout.write(script.content);
-        if (!script.content.endsWith('\n')) process.stdout.write('\n');
+        if ('spilledTo' in script && script.spilledTo) {
+          console.log(`(script body too large to inline; copied to ${script.spilledTo})`);
+        } else if ('content' in script && typeof script.content === 'string') {
+          process.stdout.write(script.content);
+          if (!script.content.endsWith('\n')) process.stdout.write('\n');
+        }
       } catch (err) {
         // Distinguish "no script body to show" (policy wraps a system command,
         // script file missing, too large, etc.) from a real failure (auth,
