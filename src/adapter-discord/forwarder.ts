@@ -206,7 +206,10 @@ export async function startDaemonToDiscordForwarder(
     try {
       return await userMessage.startThread({
         name: 'Activity log',
-        autoArchiveDuration: 60,
+        // 1 day. Long agent runs (refactors, builds) outlive the previous
+        // 60-minute archive window and end up posting into archived threads
+        // that fall off the channel sidebar.
+        autoArchiveDuration: 1440,
       });
     } catch (err) {
       console.warn(`Failed to start thread on message ${inbound.messageId}:`, err);
@@ -215,16 +218,18 @@ export async function startDaemonToDiscordForwarder(
   };
 
   const handleTurnStarted = async (chatId: string, turnId: string, externalRef?: string) => {
-    if (!threadsGloballyEnabled) return;
-    const threadsDisabled = await channelThreadsDisabled(chatId);
-    if (threadsDisabled) return;
-    const anchor = await openThreadForTurn(externalRef);
-    // No anchor: proactive turn (cron, subagent, CLI) or DM-only flow. Skip
-    // start entirely so the buffer doesn't accrue entries it can never flush;
-    // subsequent thread-log events drop silently because `turnLog.has(...)`
-    // returns false.
-    if (!anchor) return;
-    turnLog.start({ turnId, threadsDisabled: false, anchorThread: anchor });
+    // Single source of truth for "is the activity log on for this turn":
+    // global kill switch OR per-channel opt-out. The buffer's `engaged()`
+    // and `collapseDestination`'s `threadsDisabledFor()` both consult the
+    // ctx flag set here, so we don't have to re-derive it later.
+    const threadsDisabled = !threadsGloballyEnabled || (await channelThreadsDisabled(chatId));
+    // Skip the API roundtrip when we already know the log is off.
+    const anchor = threadsDisabled ? undefined : await openThreadForTurn(externalRef);
+    // No anchor and threads enabled: proactive turn (cron, subagent, CLI),
+    // DM-only flow, or thread creation failed. Skip start entirely so the
+    // buffer doesn't accrue entries it can never flush.
+    if (!anchor && !threadsDisabled) return;
+    turnLog.start({ turnId, threadsDisabled, anchorThread: anchor });
   };
 
   const handleTurnEnded = async (turnId: string) => {
@@ -407,34 +412,47 @@ export async function startDaemonToDiscordForwarder(
               return;
             }
 
-            messageQueue = messageQueue.then(async () => {
-              for (const raw of items) {
-                if (signal?.aborted || !activeSubscriptions.has(chatId)) break;
+            messageQueue = messageQueue
+              .then(async () => {
+                for (const raw of items) {
+                  if (signal?.aborted || !activeSubscriptions.has(chatId)) break;
 
-                const item = raw as StreamItem;
-                if (item.kind === 'turn') {
-                  if (item.event.type === 'started') {
-                    await handleTurnStarted(chatId, item.event.turnId, item.event.externalRef);
-                  } else {
-                    await handleTurnEnded(item.event.turnId);
+                  const item = raw as StreamItem;
+                  if (item.kind === 'turn') {
+                    // Turn events do disk reads (state.json) and Discord API
+                    // fetches; either can throw transiently. Catch here so a
+                    // single bad event doesn't reject the .then and poison
+                    // the chain — every subsequent batch would silently no-op.
+                    try {
+                      if (item.event.type === 'started') {
+                        await handleTurnStarted(chatId, item.event.turnId, item.event.externalRef);
+                      } else {
+                        await handleTurnEnded(item.event.turnId);
+                      }
+                    } catch (err) {
+                      console.error('Failed to handle turn event:', err);
+                    }
+                    continue;
                   }
-                  continue;
-                }
 
-                const message = item.message;
-                try {
-                  await handleMessageForChat(chatId, message);
-                } catch (err) {
-                  console.error('Failed to handle message:', err);
-                  // Don't advance lastMessageId on a hard error so we retry on
-                  // reconnect; matches prior behavior.
-                  break;
-                }
+                  const message = item.message;
+                  try {
+                    await handleMessageForChat(chatId, message);
+                  } catch (err) {
+                    console.error('Failed to handle message:', err);
+                    // Don't advance lastMessageId on a hard error so we retry on
+                    // reconnect; matches prior behavior.
+                    break;
+                  }
 
-                await saveLastMessageId(chatId, message.id).catch(console.error);
-                lastMessageId = message.id;
-              }
-            });
+                  await saveLastMessageId(chatId, message.id).catch(console.error);
+                  lastMessageId = message.id;
+                }
+              })
+              // Belt-and-suspenders: anything that escapes the per-item
+              // try/catches above (sync throw before the loop, etc.) must
+              // not leave the chain in a rejected state.
+              .catch((err) => console.error('Message queue chain error:', err));
           },
           onError: (error) => {
             console.error(
