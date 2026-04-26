@@ -48,6 +48,24 @@ export async function main() {
   client.once(Events.ClientReady, async (readyClient) => {
     console.log(`Ready! Logged in as ${readyClient.user.tag}`);
 
+    // Workaround: pre-cache the authorized user's DM channel so inbound
+    // DMs aren't dropped before they reach the MessageCreate handler.
+    // discord.js >= 14.26 can't construct a partial DMChannel from a
+    // MESSAGE_CREATE payload (no `type`, no `recipients`), and the
+    // ChannelManager silently drops the dispatch when the channel isn't
+    // already in cache. Opening the DM here populates the cache so later
+    // events short-circuit to the existing entry.
+    // See: https://github.com/discordjs/discord.js/issues/11486
+    try {
+      const user = await readyClient.users.fetch(config.authorizedUserId);
+      await user.createDM();
+    } catch (err) {
+      console.error(
+        `Failed to pre-cache DM channel for authorized user ${config.authorizedUserId}:`,
+        err
+      );
+    }
+
     try {
       const rest = new REST({ version: '10' }).setToken(config.botToken);
       console.log('Started refreshing application (/) commands.');
