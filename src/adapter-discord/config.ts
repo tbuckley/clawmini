@@ -5,12 +5,12 @@ import { getClawminiDir } from '../shared/workspace.js';
 import fs from 'node:fs';
 
 export const ThreadVisibilitySchema = z.object({
-  threads: z.boolean().default(true).optional(),
+  threads: z.boolean().default(true),
   threadLog: z
     .object({
-      maxToolPreview: z.number().default(400).optional(),
-      maxLogMessageChars: z.number().default(1800).optional(),
-      editDebounceMs: z.number().default(1000).optional(),
+      maxToolPreview: z.number().default(400),
+      maxLogMessageChars: z.number().default(1800),
+      editDebounceMs: z.number().default(1000),
     })
     .optional(),
 });

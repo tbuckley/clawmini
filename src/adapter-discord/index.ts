@@ -123,7 +123,7 @@ export async function main() {
       message.channelId,
       message.guild,
       async (text) => {
-        await message.reply(text);
+        await message.reply({ content: text, allowedMentions: { parse: [] } });
       },
       config,
       trpc,

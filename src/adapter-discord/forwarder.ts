@@ -17,7 +17,7 @@ import type { getTRPCClient } from './client.js';
 import type { DiscordConfig } from './config.js';
 import { readDiscordState, updateDiscordState, getDiscordStatePath } from './state.js';
 import { resolveInbound } from './inbound-cache.js';
-import { createTurnLogBuffer, type TurnLogBuffer } from './turn-log-buffer.js';
+import { createTurnLogBuffer, type TurnLogBuffer } from '../shared/adapters/turn-log-buffer.js';
 import type { ChatMessage } from '../shared/chats.js';
 import { getWorkspaceRoot } from '../shared/workspace.js';
 import {
@@ -56,6 +56,12 @@ function resolveThreadLogOpts(config?: DiscordConfig): ThreadLogOptions {
     editDebounceMs: v?.editDebounceMs ?? DEFAULT_THREAD_LOG_OPTS.editDebounceMs,
   };
 }
+
+// Suppresses every form of mention (@everyone, @here, role, user) on bot
+// posts. Tool payloads, agent output, and policy descriptions can contain
+// arbitrary text; without this, an `@everyone` substring in (e.g.) a shell
+// command echoed into the activity log would page the entire channel.
+const NO_MENTIONS = { allowedMentions: { parse: [] as [] } } as const;
 
 async function resolveDiscordDestination(
   client: Client,
@@ -112,11 +118,6 @@ export async function startDaemonToDiscordForwarder(
   const activeTypingSubscriptions = new Map<string, { unsubscribe: () => void }>();
   let currentLastSyncedMessageIds = (await readDiscordState()).lastSyncedMessageIds || {};
 
-  // Cache of opened activity-log threads by thread id so the buffer's
-  // post/edit deps can locate the ThreadChannel without re-fetching on every
-  // event.
-  const threadsById = new Map<string, ThreadChannel>();
-
   const saveLastMessageId = async (chatId: string, id: string) => {
     currentLastSyncedMessageIds = { ...currentLastSyncedMessageIds, [chatId]: id };
     return updateDiscordState((state) => ({
@@ -127,27 +128,32 @@ export async function startDaemonToDiscordForwarder(
     }));
   };
 
-  const postThreaded = async (threadId: string, text: string): Promise<string | undefined> => {
-    const thread = threadsById.get(threadId);
-    if (!thread) {
-      throw new Error(`Unknown thread id ${threadId} (no cached ThreadChannel).`);
-    }
-    const sent = await thread.send({ content: text || '​' });
+  const postThreaded = async (anchor: ThreadChannel, text: string): Promise<string | undefined> => {
+    const sent = await anchor.send({ content: text || '​', ...NO_MENTIONS });
     return sent.id;
   };
 
-  const editThreaded = async (threadId: string, messageId: string, text: string): Promise<void> => {
-    const thread = threadsById.get(threadId);
-    if (!thread) {
-      throw new Error(`Unknown thread id ${threadId} (no cached ThreadChannel).`);
-    }
-    const msg = await thread.messages.fetch(messageId);
-    await msg.edit({ content: text || '​' });
+  const editThreaded = async (
+    anchor: ThreadChannel,
+    messageId: string,
+    text: string
+  ): Promise<void> => {
+    const msg = await anchor.messages.fetch(messageId);
+    await msg.edit({ content: text || '​', ...NO_MENTIONS });
   };
 
-  const turnLog: TurnLogBuffer = createTurnLogBuffer({
+  // Discord returns 10008 (Unknown Message) when an activity-log message has
+  // been deleted by the user; Cloudflare/HTTP layers may surface a generic
+  // 404. Either case means the same thing: open a fresh log message.
+  const isMissingMessageError = (err: unknown): boolean => {
+    const code = (err as { code?: number; status?: number })?.code ?? 0;
+    return code === 404 || code === 10008;
+  };
+
+  const turnLog: TurnLogBuffer<ThreadChannel> = createTurnLogBuffer<ThreadChannel>({
     postThreaded,
     editThreaded,
+    isMissingMessageError,
     options: threadLogOpts,
     threadsEnabled: threadsGloballyEnabled,
   });
@@ -173,7 +179,7 @@ export async function startDaemonToDiscordForwarder(
 
   const openThreadForTurn = async (
     externalRef: string | undefined
-  ): Promise<string | undefined> => {
+  ): Promise<ThreadChannel | undefined> => {
     if (!externalRef) return undefined;
     const inbound = resolveInbound(externalRef);
     if (!inbound) return undefined;
@@ -186,7 +192,7 @@ export async function startDaemonToDiscordForwarder(
     }
     if (!channel || !channel.isTextBased() || channel.isDMBased() || channel.isThread()) {
       // DMs and existing threads can't host a new thread. Skip silently —
-      // thread-log activity will accumulate then drop on turn end.
+      // proactive turns and DM-only flows simply have no activity log.
       return undefined;
     }
     const guildChannel = channel as TextChannel | NewsChannel;
@@ -198,42 +204,31 @@ export async function startDaemonToDiscordForwarder(
       return undefined;
     }
     try {
-      const thread = await userMessage.startThread({
+      return await userMessage.startThread({
         name: 'Activity log',
         autoArchiveDuration: 60,
       });
-      threadsById.set(thread.id, thread);
-      return thread.id;
     } catch (err) {
       console.warn(`Failed to start thread on message ${inbound.messageId}:`, err);
       return undefined;
     }
   };
 
-  const handleTurnStarted = async (
-    chatId: string,
-    turnId: string,
-    _rootMessageId: string,
-    externalRef?: string
-  ) => {
+  const handleTurnStarted = async (chatId: string, turnId: string, externalRef?: string) => {
+    if (!threadsGloballyEnabled) return;
     const threadsDisabled = await channelThreadsDisabled(chatId);
-    let anchorThread: string | undefined;
-    if (threadsGloballyEnabled && !threadsDisabled) {
-      anchorThread = await openThreadForTurn(externalRef);
-    }
-    turnLog.start({ turnId, threadsDisabled, anchorThread });
+    if (threadsDisabled) return;
+    const anchor = await openThreadForTurn(externalRef);
+    // No anchor: proactive turn (cron, subagent, CLI) or DM-only flow. Skip
+    // start entirely so the buffer doesn't accrue entries it can never flush;
+    // subsequent thread-log events drop silently because `turnLog.has(...)`
+    // returns false.
+    if (!anchor) return;
+    turnLog.start({ turnId, threadsDisabled: false, anchorThread: anchor });
   };
 
   const handleTurnEnded = async (turnId: string) => {
-    const wasAnchored = turnLog.isAnchored(turnId);
     await turnLog.end(turnId);
-    if (wasAnchored) {
-      // The thread cache is keyed by thread id; we don't know which one to
-      // free here without round-tripping through the buffer. Threads are
-      // long-lived (Discord keeps them around archived) and the cache
-      // bounds itself to the lifetime of the adapter process, so leaking
-      // entries is acceptable in MVP.
-    }
   };
 
   const sendPolicyCard = async (chatId: string, message: ChatMessage): Promise<boolean> => {
@@ -261,6 +256,7 @@ export async function startDaemonToDiscordForwarder(
       const optionsMsg: MessageCreateOptions = {
         embeds: [embed],
         components: [row],
+        ...NO_MENTIONS,
       };
 
       try {
@@ -274,6 +270,7 @@ export async function startDaemonToDiscordForwarder(
           content: `Action Required: Policy Request\n\n${
             message.content || 'A pending policy request requires your attention.'
           }\n\nApprove: \`/approve ${policyId}\`\nReject: \`/reject ${policyId} <optional_rationale>\``,
+          ...NO_MENTIONS,
         });
       }
     } catch (error) {
@@ -305,14 +302,17 @@ export async function startDaemonToDiscordForwarder(
         const chunks = chunkString(formattedContent, 2000);
         for (let i = 0; i < chunks.length; i++) {
           if (signal?.aborted) break;
-          const chunkOptions: MessageCreateOptions = { content: chunks[i] as string };
+          const chunkOptions: MessageCreateOptions = {
+            content: chunks[i] as string,
+            ...NO_MENTIONS,
+          };
           if (i === chunks.length - 1 && hasFiles) {
             chunkOptions.files = absoluteFiles;
           }
           await dm.send(chunkOptions);
         }
       } else {
-        const optionsMsg: MessageCreateOptions = {};
+        const optionsMsg: MessageCreateOptions = { ...NO_MENTIONS };
         if (formattedContent) optionsMsg.content = formattedContent;
         if (hasFiles) optionsMsg.files = absoluteFiles;
         await dm.send(optionsMsg);
@@ -335,7 +335,8 @@ export async function startDaemonToDiscordForwarder(
         return;
       }
       // No turn context: turnStarted may have been missed (adapter restart,
-      // subscription reconnect). Drop silently rather than flooding the chat.
+      // subscription reconnect) or the turn had no anchor (proactive / DM).
+      // Drop silently rather than flooding the chat.
       if (!turnLog.has(message.turnId)) return;
       turnLog.append(message.turnId, message);
       return;
@@ -413,12 +414,7 @@ export async function startDaemonToDiscordForwarder(
                 const item = raw as StreamItem;
                 if (item.kind === 'turn') {
                   if (item.event.type === 'started') {
-                    await handleTurnStarted(
-                      chatId,
-                      item.event.turnId,
-                      item.event.rootMessageId,
-                      item.event.externalRef
-                    );
+                    await handleTurnStarted(chatId, item.event.turnId, item.event.externalRef);
                   } else {
                     await handleTurnEnded(item.event.turnId);
                   }

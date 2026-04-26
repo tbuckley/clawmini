@@ -155,6 +155,9 @@ export async function processDiscordMessage(
       }
       await reply(commandResult.text);
     } else if (commandResult.type === 'debug') {
+      // Debug output echoes raw message content (which may include @everyone /
+      // @here as a substring). The `reply` lambda already strips mentions, so
+      // there's no extra escaping to do here.
       const formatted =
         commandResult.messages.length === 0
           ? 'No ignored background messages found.'

@@ -150,7 +150,12 @@ describe('Daemon to Discord Forwarder', () => {
 
     expect(mockClient.users.fetch).toHaveBeenCalledWith('user-123');
     expect(mockUser.createDM).toHaveBeenCalled();
-    expect(mockDm.send).toHaveBeenCalledWith({ content: 'Agent response' });
+    expect(mockDm.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Agent response',
+        allowedMentions: { parse: [] },
+      })
+    );
     expect(mockUpdateDiscordState).toHaveBeenCalledWith({
       lastSyncedMessageIds: { default: 'msg-1' },
     });
@@ -275,8 +280,20 @@ describe('Daemon to Discord Forwarder', () => {
 
     await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalledTimes(2));
 
-    expect(mockDm.send).toHaveBeenNthCalledWith(1, { content: 'a'.repeat(2000) });
-    expect(mockDm.send).toHaveBeenNthCalledWith(2, { content: 'a'.repeat(500) });
+    expect(mockDm.send).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        content: 'a'.repeat(2000),
+        allowedMentions: { parse: [] },
+      })
+    );
+    expect(mockDm.send).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        content: 'a'.repeat(500),
+        allowedMentions: { parse: [] },
+      })
+    );
     expect(mockUpdateDiscordState).toHaveBeenCalledWith({
       lastSyncedMessageIds: { default: 'msg-1' },
     });
@@ -313,10 +330,13 @@ describe('Daemon to Discord Forwarder', () => {
 
     await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalled());
 
-    expect(mockDm.send).toHaveBeenCalledWith({
-      content: 'Here is your file',
-      files: ['/path/to/my/file.txt'],
-    });
+    expect(mockDm.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Here is your file',
+        files: ['/path/to/my/file.txt'],
+        allowedMentions: { parse: [] },
+      })
+    );
 
     controller.abort();
     await forwarderPromise;
@@ -350,9 +370,12 @@ describe('Daemon to Discord Forwarder', () => {
 
     await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalled());
 
-    expect(mockDm.send).toHaveBeenCalledWith({
-      files: ['/path/to/my/file.txt'],
-    });
+    expect(mockDm.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: ['/path/to/my/file.txt'],
+        allowedMentions: { parse: [] },
+      })
+    );
 
     controller.abort();
     await forwarderPromise;
@@ -387,11 +410,21 @@ describe('Daemon to Discord Forwarder', () => {
 
     await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalledTimes(2));
 
-    expect(mockDm.send).toHaveBeenNthCalledWith(1, { content: 'a'.repeat(2000) });
-    expect(mockDm.send).toHaveBeenNthCalledWith(2, {
-      content: 'a'.repeat(500),
-      files: ['/path/to/my/file.txt'],
-    });
+    expect(mockDm.send).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        content: 'a'.repeat(2000),
+        allowedMentions: { parse: [] },
+      })
+    );
+    expect(mockDm.send).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        content: 'a'.repeat(500),
+        files: ['/path/to/my/file.txt'],
+        allowedMentions: { parse: [] },
+      })
+    );
 
     controller.abort();
     await forwarderPromise;
@@ -450,7 +483,12 @@ describe('Daemon to Discord Forwarder', () => {
     await vi.advanceTimersByTimeAsync(30000);
 
     expect(mockTrpc.waitForMessages.subscribe).toHaveBeenCalledTimes(3);
-    expect(mockDm.send).toHaveBeenCalledWith({ content: 'Finally up' });
+    expect(mockDm.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Finally up',
+        allowedMentions: { parse: [] },
+      })
+    );
 
     controller.abort();
     await forwarderPromise;
@@ -596,10 +634,14 @@ describe('Daemon to Discord Forwarder', () => {
 
     await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalledTimes(2));
 
-    expect(mockDm.send).toHaveBeenNthCalledWith(2, {
-      content:
-        'Action Required: Policy Request\n\nPlease approve this\n\nApprove: `/approve msg-1`\nReject: `/reject msg-1 <optional_rationale>`',
-    });
+    expect(mockDm.send).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        content:
+          'Action Required: Policy Request\n\nPlease approve this\n\nApprove: `/approve msg-1`\nReject: `/reject msg-1 <optional_rationale>`',
+        allowedMentions: { parse: [] },
+      })
+    );
 
     // Should still update state to avoid infinite loop
     expect(mockUpdateDiscordState).toHaveBeenCalledWith({
@@ -1006,7 +1048,12 @@ describe('Daemon to Discord Forwarder', () => {
       await vi.advanceTimersByTimeAsync(1500);
       await vi.runOnlyPendingTimersAsync();
 
-      expect(mockChannel.send).toHaveBeenCalledWith({ content: 'Final reply' });
+      expect(mockChannel.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: 'Final reply',
+          allowedMentions: { parse: [] },
+        })
+      );
       // The thread itself doesn't carry the agent reply.
       const threadBody = mockThread.send.mock.calls.map((c) => c[0]?.content as string).join('\n');
       expect(threadBody).not.toContain('Final reply');

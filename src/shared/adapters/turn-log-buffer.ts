@@ -1,10 +1,10 @@
-import type { ChatMessage } from '../shared/chats.js';
+import type { ChatMessage } from '../chats.js';
 import {
   buildTurnStartEntry,
   condenseTurnLog,
   formatTurnLogEntry,
   type TurnLogEntry,
-} from '../shared/adapters/turn-log.js';
+} from './turn-log.js';
 
 export interface TurnLogBufferOptions {
   maxToolPreview: number;
@@ -12,32 +12,39 @@ export interface TurnLogBufferOptions {
   editDebounceMs: number;
 }
 
-export interface TurnLogBufferDeps {
+export interface TurnLogBufferDeps<TAnchor> {
   /**
-   * Sends a new message into the given Discord thread and returns its message
-   * id. Throws on failure; the buffer treats that as an unrecoverable per-turn
-   * abort.
+   * Posts a new threaded message under `anchor` and returns the new message's
+   * id (whatever the transport uses to address it later for editing). Throws
+   * on failure; the buffer treats the *initial* post failure as an
+   * unrecoverable per-turn abort.
    */
-  postThreaded: (threadId: string, text: string) => Promise<string | undefined>;
-  /** Edits an existing thread message by id. Throws on failure. */
-  editThreaded: (threadId: string, messageId: string, text: string) => Promise<void>;
+  postThreaded: (anchor: TAnchor, text: string) => Promise<string | undefined>;
+  /** Edits a previously-posted threaded message by id. Throws on failure. */
+  editThreaded: (anchor: TAnchor, messageId: string, text: string) => Promise<void>;
+  /**
+   * Predicate that decides whether an error from `editThreaded` indicates the
+   * underlying message no longer exists (e.g. user deleted it). When true,
+   * the buffer recovers by posting a fresh log message rather than retrying.
+   */
+  isMissingMessageError: (err: unknown) => boolean;
   options: TurnLogBufferOptions;
   /** When false, no thread-log activity is ever posted. */
   threadsEnabled: boolean;
 }
 
-export interface StartParams {
+export interface StartParams<TAnchor> {
   turnId: string;
-  /** Per-channel opt-out. When true, thread-log is suppressed for this turn. */
+  /** Per-chat opt-out. When true, thread-log is suppressed for this turn. */
   threadsDisabled: boolean;
-  /** Discord thread id to post into, if known at turn start. */
-  anchorThread: string | undefined;
+  /** Anchor to post into, if known at turn start. */
+  anchorThread: TAnchor | undefined;
 }
 
-export interface TurnLogBuffer {
-  start(params: StartParams): void;
+export interface TurnLogBuffer<TAnchor> {
+  start(params: StartParams<TAnchor>): void;
   append(turnId: string, message: ChatMessage): void;
-  assignAnchor(turnId: string, threadId: string): void;
+  assignAnchor(turnId: string, anchor: TAnchor): void;
   end(turnId: string): Promise<void>;
   has(turnId: string): boolean;
   isAnchored(turnId: string): boolean;
@@ -45,11 +52,11 @@ export interface TurnLogBuffer {
   shutdown(): void;
 }
 
-interface Ctx {
+interface Ctx<TAnchor> {
   turnId: string;
   threadsDisabled: boolean;
   startedAt: string;
-  threadId: string | undefined;
+  anchor: TAnchor | undefined;
   activityLogMessageId: string | undefined;
   entries: TurnLogEntry[];
   editTimer: NodeJS.Timeout | null;
@@ -63,18 +70,20 @@ interface Ctx {
   aborted: boolean;
 }
 
-export function createTurnLogBuffer(deps: TurnLogBufferDeps): TurnLogBuffer {
-  const { options, threadsEnabled, postThreaded, editThreaded } = deps;
-  const ctxs = new Map<string, Ctx>();
+export function createTurnLogBuffer<TAnchor>(
+  deps: TurnLogBufferDeps<TAnchor>
+): TurnLogBuffer<TAnchor> {
+  const { options, threadsEnabled, postThreaded, editThreaded, isMissingMessageError } = deps;
+  const ctxs = new Map<string, Ctx<TAnchor>>();
 
-  const engaged = (ctx: Ctx) => threadsEnabled && !ctx.threadsDisabled && !ctx.aborted;
+  const engaged = (ctx: Ctx<TAnchor>) => threadsEnabled && !ctx.threadsDisabled && !ctx.aborted;
 
-  const runFlush = async (ctx: Ctx): Promise<void> => {
+  const runFlush = async (ctx: Ctx<TAnchor>): Promise<void> => {
     if (!engaged(ctx)) {
       ctx.entries = [];
       return;
     }
-    if (!ctx.threadId) return;
+    if (ctx.anchor === undefined) return;
     if (ctx.entries.length === 0) return;
 
     let result = condenseTurnLog(ctx.entries, { maxChars: options.maxLogMessageChars });
@@ -83,7 +92,7 @@ export function createTurnLogBuffer(deps: TurnLogBufferDeps): TurnLogBuffer {
       const text = result.kind === 'fits' ? result.text : result.finalText;
       if (!ctx.activityLogMessageId) {
         try {
-          const id = await postThreaded(ctx.threadId!, text);
+          const id = await postThreaded(ctx.anchor!, text);
           if (id) ctx.activityLogMessageId = id;
         } catch (err) {
           console.error(
@@ -96,26 +105,25 @@ export function createTurnLogBuffer(deps: TurnLogBufferDeps): TurnLogBuffer {
         return;
       }
       try {
-        await editThreaded(ctx.threadId!, ctx.activityLogMessageId, text);
+        await editThreaded(ctx.anchor!, ctx.activityLogMessageId, text);
       } catch (err) {
-        const status = (err as { code?: number; status?: number })?.code ?? 0;
-        if (status === 404 || status === 10008) {
-          // Discord returns 10008 (Unknown Message) when an activity-log
-          // message has been deleted by a user. Treat it the same as a 404:
-          // open a fresh log message on the next event.
+        if (isMissingMessageError(err)) {
+          // The activity-log message is gone (user deleted it, transport
+          // returned a "not found" code). Open a fresh log message on the
+          // next event rather than retrying the edit.
           console.warn('Log message missing on edit — opening a fresh log message.');
           ctx.activityLogMessageId = undefined;
           try {
-            const id = await postThreaded(ctx.threadId!, text);
+            const id = await postThreaded(ctx.anchor!, text);
             if (id) ctx.activityLogMessageId = id;
           } catch (innerErr) {
-            console.error('Failed to re-open log message after 404:', innerErr);
+            console.error('Failed to re-open log message after missing edit:', innerErr);
             ctx.activityLogMessageId = undefined;
           }
         } else {
           await new Promise((resolve) => setTimeout(resolve, 500));
           try {
-            await editThreaded(ctx.threadId!, ctx.activityLogMessageId, text);
+            await editThreaded(ctx.anchor!, ctx.activityLogMessageId, text);
           } catch (retryErr) {
             console.warn('Edit failed twice — finalizing log message.', retryErr);
             ctx.activityLogMessageId = undefined;
@@ -150,13 +158,13 @@ export function createTurnLogBuffer(deps: TurnLogBufferDeps): TurnLogBuffer {
     }
   };
 
-  const enqueueFlush = (ctx: Ctx): void => {
+  const enqueueFlush = (ctx: Ctx<TAnchor>): void => {
     ctx.flushChain = ctx.flushChain
       .then(() => runFlush(ctx))
       .catch((err) => console.error('Flush error:', err));
   };
 
-  const scheduleFlush = (ctx: Ctx) => {
+  const scheduleFlush = (ctx: Ctx<TAnchor>) => {
     if (!engaged(ctx)) return;
     if (ctx.editTimer) return;
     ctx.editTimer = setTimeout(() => {
@@ -167,11 +175,11 @@ export function createTurnLogBuffer(deps: TurnLogBufferDeps): TurnLogBuffer {
 
   return {
     start(params) {
-      const ctx: Ctx = {
+      const ctx: Ctx<TAnchor> = {
         turnId: params.turnId,
         threadsDisabled: params.threadsDisabled,
         startedAt: new Date().toISOString(),
-        threadId: params.anchorThread,
+        anchor: params.anchorThread,
         activityLogMessageId: undefined,
         // Seed the turn's activity log with an opening entry so the thread
         // appears as soon as the turn starts, rather than only after the first
@@ -182,10 +190,10 @@ export function createTurnLogBuffer(deps: TurnLogBufferDeps): TurnLogBuffer {
         aborted: false,
       };
       ctxs.set(params.turnId, ctx);
-      // If the anchor is known at start (inbound-user turn), flush immediately
-      // so the "Started processing…" line appears without waiting for the
-      // debounce.
-      if (ctx.threadId && engaged(ctx)) {
+      // If the anchor is known at start (inbound-user turn, or proactive turn
+      // whose top-level post already landed), flush immediately so the
+      // "Started processing…" line appears without waiting for the debounce.
+      if (ctx.anchor !== undefined && engaged(ctx)) {
         enqueueFlush(ctx);
       }
     },
@@ -202,16 +210,16 @@ export function createTurnLogBuffer(deps: TurnLogBufferDeps): TurnLogBuffer {
       ctx.entries.push(entry);
       // Without an anchor yet, entries accumulate; assignAnchor will flush
       // them once the anchor arrives.
-      if (ctx.threadId) {
+      if (ctx.anchor !== undefined) {
         scheduleFlush(ctx);
       }
     },
 
-    assignAnchor(turnId, threadId) {
+    assignAnchor(turnId, anchor) {
       const ctx = ctxs.get(turnId);
       if (!ctx) return;
-      if (ctx.threadId) return;
-      ctx.threadId = threadId;
+      if (ctx.anchor !== undefined) return;
+      ctx.anchor = anchor;
       if (engaged(ctx) && ctx.entries.length > 0) {
         enqueueFlush(ctx);
       }
@@ -240,7 +248,7 @@ export function createTurnLogBuffer(deps: TurnLogBufferDeps): TurnLogBuffer {
 
     isAnchored(turnId) {
       const ctx = ctxs.get(turnId);
-      return !!ctx?.threadId;
+      return ctx?.anchor !== undefined;
     },
 
     threadsDisabledFor(turnId) {
