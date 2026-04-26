@@ -210,6 +210,51 @@ requests
     }
   });
 
+requests
+  .command('show <name>')
+  .description(
+    'Show full details of a single policy. Includes the script body when the command points inside .clawmini/policy-scripts/.'
+  )
+  .action(async (name: string) => {
+    try {
+      const client = getClient();
+      const config = await client.listPolicies.query();
+      const policy = config?.policies?.[name];
+
+      if (!policy) {
+        console.error(`Policy not found: ${name}`);
+        process.exit(1);
+      }
+
+      console.log(JSON.stringify({ name, ...policy }, null, 2));
+
+      try {
+        const script = await client.readPolicyScript.query({ commandName: name });
+        console.log(`\n--- Script: ${script.path} (${script.size} bytes) ---`);
+        if ('spilledTo' in script && script.spilledTo) {
+          console.log(`(script body too large to inline; copied to ${script.spilledTo})`);
+        } else if ('content' in script && typeof script.content === 'string') {
+          process.stdout.write(script.content);
+          if (!script.content.endsWith('\n')) process.stdout.write('\n');
+        }
+      } catch (err) {
+        // Distinguish "no script body to show" (policy wraps a system command,
+        // script file missing, too large, etc.) from a real failure (auth,
+        // network, daemon down). Re-raise the latter so the outer catch surfaces it.
+        const code = (err as { data?: { code?: string } })?.data?.code;
+        if (code === 'BAD_REQUEST' || code === 'NOT_FOUND') {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.log(`\n(no script body: ${msg})`);
+        } else {
+          throw err;
+        }
+      }
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
 program
   .command('request <cmd>')
   .description('Submit a sandbox policy request')

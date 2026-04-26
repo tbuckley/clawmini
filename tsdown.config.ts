@@ -17,7 +17,7 @@ export default defineConfig([
     inlineOnly: false,
   },
   {
-    entry: ['src/cli/propose-policy.ts'],
+    entry: ['src/cli/manage-policies.ts'],
     format: 'esm',
     dts: true,
     clean: false,
