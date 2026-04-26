@@ -59,9 +59,39 @@ export const readPolicyScript = apiProcedure
       });
     }
 
+    // realpath resolves symlinks in both paths; without this, a symlink inside
+    // policy-scripts/ pointing at /etc/passwd would pass the string-prefix
+    // check above, then fs.stat/readFile would dereference and exfiltrate.
+    let realCommand: string;
+    let realScriptsDir: string;
+    try {
+      realCommand = await fs.realpath(resolvedCommand);
+    } catch (err) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: `Script file not found for policy '${input.commandName}': ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      });
+    }
+    try {
+      realScriptsDir = await fs.realpath(scriptsDir);
+    } catch {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: `Policy '${input.commandName}' does not point at a script in policy-scripts/.`,
+      });
+    }
+    if (!pathIsInsideDir(realCommand, realScriptsDir, { allowSameDir: false })) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: `Policy '${input.commandName}' does not point at a script in policy-scripts/.`,
+      });
+    }
+
     let stat;
     try {
-      stat = await fs.stat(resolvedCommand);
+      stat = await fs.stat(realCommand);
     } catch (err) {
       throw new TRPCError({
         code: 'NOT_FOUND',
@@ -86,22 +116,21 @@ export const readPolicyScript = apiProcedure
     }
 
     if (stat.size > MAX_INLINE_SCRIPT_LENGTH) {
-      const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
       const tmpDir = path.join(agentDir, 'tmp');
       await fs.mkdir(tmpDir, { recursive: true });
-      const ext = path.extname(resolvedCommand);
+      const ext = path.extname(realCommand);
       const safeName = input.commandName.replace(/[^a-zA-Z0-9._-]/g, '_');
       const destPath = path.join(tmpDir, `policy-script-${safeName}${ext}`);
-      await fs.copyFile(resolvedCommand, destPath);
+      await fs.copyFile(realCommand, destPath);
       return {
-        path: resolvedCommand,
+        path: realCommand,
         size: stat.size,
         spilledTo: `./tmp/policy-script-${safeName}${ext}`,
       };
     }
 
-    const content = await fs.readFile(resolvedCommand, 'utf8');
-    return { path: resolvedCommand, size: stat.size, content };
+    const content = await fs.readFile(realCommand, 'utf8');
+    return { path: realCommand, size: stat.size, content };
   });
 
 export const executePolicyHelp = apiProcedure

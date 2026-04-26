@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import fs from 'node:fs';
-import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { BUILTIN_POLICIES, type PolicyDefinition } from '../shared/policies.js';
 import {
-  BUILTIN_POLICIES,
-  type PolicyConfigFile,
-  type PolicyDefinition,
-} from '../shared/policies.js';
-import { parseShellArgs } from '../shared/utils/shell.js';
-import { getClawminiDir } from '../shared/workspace.js';
-
-const NAME_RE = /^[a-z0-9-]+$/;
+  applyCommandString,
+  assertValidName,
+  fail,
+  installScript,
+  loadPolicies,
+  scriptInsidePolicyScripts,
+  unlinkIfExists,
+  writePolicies,
+} from './manage-policies-utils.js';
 
 const root = new Command('manage-policies');
 root.description(
@@ -173,6 +173,10 @@ Examples:
       );
     }
 
+    // Capture before mutating: if the policy currently points at a managed
+    // script file, we may need to unlink it after replacing the command.
+    const priorScriptAbs = scriptInsidePolicyScripts(dirPath, existing.command);
+
     const updated: PolicyDefinition = { ...existing };
     if (description !== undefined) updated.description = description;
     if (scriptFile !== undefined) {
@@ -187,6 +191,17 @@ Examples:
 
     policies.policies[name] = updated;
     writePolicies(policiesPath, policies);
+
+    // Now that policies.json points at the new command, drop the orphaned
+    // prior script (e.g. `<name>.sh` left behind when updating to `<name>.py`,
+    // or any script file when switching to --command). Done after the json
+    // write so a failure here cannot strand policies.json pointing at a
+    // file we just deleted.
+    const newScriptAbs = scriptInsidePolicyScripts(dirPath, updated.command);
+    if (priorScriptAbs && priorScriptAbs !== newScriptAbs) {
+      unlinkIfExists(priorScriptAbs);
+    }
+
     console.log(`Successfully updated policy '${name}'.`);
   });
 
@@ -232,6 +247,14 @@ Examples:
       if (existing === false) {
         fail(`Built-in policy '${name}' is already disabled.`);
       }
+      // A user override (object) is a deliberate customization; silently
+      // replacing it with `false` would destroy approved work. Force the
+      // agent to drop the override first, then re-run with --disable-builtin.
+      if (existing !== undefined) {
+        fail(
+          `Policy '${name}' has a user override that would be lost. Run 'manage-policies remove --name ${name}' first, then re-run with --disable-builtin.`
+        );
+      }
       policies.policies[name] = false;
       writePolicies(policiesPath, policies);
       console.log(`Successfully disabled built-in policy '${name}'.`);
@@ -262,67 +285,6 @@ Examples:
       console.log(`Successfully removed policy '${name}'.`);
     }
   });
-
-function assertValidName(name: string): void {
-  if (!NAME_RE.test(name)) {
-    fail('Policy name must only contain lowercase letters, numbers, and hyphens.');
-  }
-}
-
-function loadPolicies(): {
-  dirPath: string;
-  policies: PolicyConfigFile;
-  policiesPath: string;
-} {
-  const dirPath = getClawminiDir();
-  const policiesPath = path.join(dirPath, 'policies.json');
-  if (!fs.existsSync(dirPath)) {
-    fail('.clawmini directory not found. Please run "clawmini init" first.');
-  }
-  let policies: PolicyConfigFile = { policies: {} };
-  if (fs.existsSync(policiesPath)) {
-    policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
-  }
-  return { dirPath, policies, policiesPath };
-}
-
-function writePolicies(policiesPath: string, policies: PolicyConfigFile): void {
-  fs.writeFileSync(policiesPath, JSON.stringify(policies, null, 2));
-}
-
-function installScript(dirPath: string, name: string, scriptFile: string): string {
-  const scriptsDir = path.join(dirPath, 'policy-scripts');
-  if (!fs.existsSync(scriptsDir)) {
-    fs.mkdirSync(scriptsDir, { recursive: true });
-  }
-  const ext = path.extname(scriptFile) || '.sh';
-  const destScript = path.join(scriptsDir, `${name}${ext}`);
-  fs.copyFileSync(scriptFile, destScript);
-  fs.chmodSync(destScript, 0o755);
-  return `./.clawmini/policy-scripts/${path.basename(destScript)}`;
-}
-
-function applyCommandString(definition: PolicyDefinition, commandStr: string): void {
-  let parts: string[];
-  try {
-    parts = parseShellArgs(commandStr);
-  } catch (err) {
-    fail(`--command: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  const [head, ...rest] = parts;
-  if (head === undefined) {
-    fail('--command must contain a command to run.');
-  }
-  definition.command = head;
-  if (rest.length > 0) {
-    definition.args = rest;
-  }
-}
-
-function fail(message: string): never {
-  console.error(`Error: ${message}`);
-  process.exit(1);
-}
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   root.parse(process.argv);

@@ -332,6 +332,79 @@ describe('manage-policies update', () => {
     // The other flag stays as it was — we only touched auto-approve.
     expect(policies.policies['echo-test'].allowHelp).toBe(true);
   });
+
+  it('should unlink the prior script when --script-file changes the extension', async () => {
+    // Seed a policy backed by a .sh script.
+    const shSrc = path.resolve(env.e2eDir, 'extension-test.sh');
+    fs.writeFileSync(shSrc, '#!/bin/bash\necho sh\n', { mode: 0o755 });
+    const { code: addCode } = await env.runBin(binPath, [
+      'add',
+      '--name',
+      'ext-policy',
+      '--description',
+      'extension test',
+      '--script-file',
+      shSrc,
+    ]);
+    expect(addCode).toBe(0);
+
+    const oldScript = path.resolve(
+      env.e2eDir,
+      '.clawmini/policy-scripts/ext-policy.sh'
+    );
+    expect(fs.existsSync(oldScript)).toBe(true);
+
+    // Replace with a .py script of the same policy name; the extension
+    // changes, so the old .sh would otherwise be orphaned.
+    const pySrc = path.resolve(env.e2eDir, 'extension-test.py');
+    fs.writeFileSync(pySrc, '#!/usr/bin/env python3\nprint("py")\n', { mode: 0o755 });
+    const { code: updateCode } = await env.runBin(binPath, [
+      'update',
+      '--name',
+      'ext-policy',
+      '--script-file',
+      pySrc,
+    ]);
+    expect(updateCode).toBe(0);
+
+    const newScript = path.resolve(
+      env.e2eDir,
+      '.clawmini/policy-scripts/ext-policy.py'
+    );
+    expect(fs.existsSync(newScript)).toBe(true);
+    expect(fs.existsSync(oldScript)).toBe(false);
+
+    const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
+    const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
+    expect(policies.policies['ext-policy'].command).toBe(
+      './.clawmini/policy-scripts/ext-policy.py'
+    );
+  });
+
+  it('should unlink the prior script when --command replaces a script policy', async () => {
+    // The previous test left ext-policy backed by ext-policy.py.
+    const pyScript = path.resolve(
+      env.e2eDir,
+      '.clawmini/policy-scripts/ext-policy.py'
+    );
+    expect(fs.existsSync(pyScript)).toBe(true);
+
+    const { code } = await env.runBin(binPath, [
+      'update',
+      '--name',
+      'ext-policy',
+      '--command',
+      'echo plain',
+    ]);
+    expect(code).toBe(0);
+
+    expect(fs.existsSync(pyScript)).toBe(false);
+
+    const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
+    const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
+    expect(policies.policies['ext-policy'].command).toBe('echo');
+    expect(policies.policies['ext-policy'].args).toEqual(['plain']);
+  });
 });
 
 describe('manage-policies remove', () => {
@@ -427,6 +500,40 @@ describe('manage-policies remove', () => {
     const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
     const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
     expect(policies.policies['manage-policies']).toBeUndefined();
+  });
+
+  it('should refuse --disable-builtin when a user override exists', async () => {
+    // Register a user override of the built-in `manage-policies` first.
+    const { code: addCode } = await env.runBin(binPath, [
+      'add',
+      '--name',
+      'manage-policies',
+      '--description',
+      'override',
+      '--command',
+      'echo override',
+    ]);
+    expect(addCode).toBe(0);
+
+    const { stderr, code } = await env.runBin(binPath, [
+      'remove',
+      '--name',
+      'manage-policies',
+      '--disable-builtin',
+    ]);
+    expect(code).toBe(1);
+    expect(stderr).toContain(
+      "Policy 'manage-policies' has a user override that would be lost. Run 'manage-policies remove --name manage-policies' first"
+    );
+
+    // The override must be intact — the failed --disable-builtin must not
+    // have replaced it with `false`.
+    const policiesPath = path.resolve(env.e2eDir, '.clawmini/policies.json');
+    const policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
+    expect(policies.policies['manage-policies']).toMatchObject({
+      command: 'echo',
+      args: ['override'],
+    });
   });
 });
 

@@ -25,6 +25,10 @@ describe('E2E `requests show` script size handling', () => {
           command: 'echo',
           args: ['hi'],
         },
+        'symlink-escape': {
+          description: 'A symlink in policy-scripts/ pointing outside it',
+          command: './.clawmini/policy-scripts/symlink-escape.sh',
+        },
       },
     });
 
@@ -41,6 +45,13 @@ describe('E2E `requests show` script size handling', () => {
       '#!/bin/sh\n' + 'x'.repeat(5000) + '\n',
       { mode: 0o755 }
     );
+
+    // Plant a sensitive file outside policy-scripts/, then a symlink inside
+    // policy-scripts/ pointing at it. The endpoint must refuse to read the
+    // symlink target — string-prefix containment alone would allow this.
+    const sensitive = path.resolve(env.e2eDir, 'outside-sensitive.txt');
+    fs.writeFileSync(sensitive, 'top secret\n');
+    fs.symlinkSync(sensitive, path.join(scriptsDir, 'symlink-escape.sh'));
 
     agentDir = path.resolve(env.e2eDir, 'debug-agent');
     await env.getAgentCredentials();
@@ -103,5 +114,22 @@ describe('E2E `requests show` script size handling', () => {
     expect(stdout).toContain('"command": "echo"');
     expect(stdout).toContain('(no script body:');
     expect(stdout).not.toContain('--- Script:');
+  });
+
+  it('refuses to read a symlink in policy-scripts/ that points outside', async () => {
+    const { stdout, stderr, code } = await runLite([
+      'requests',
+      'show',
+      'symlink-escape',
+    ]);
+
+    expect(stderr).toBe('');
+    expect(code).toBe(0);
+    // The body itself must never appear, regardless of what error path the
+    // endpoint takes.
+    expect(stdout).not.toContain('top secret');
+    // The CLI surfaces BAD_REQUEST as a "(no script body: ...)" hint.
+    expect(stdout).toContain('(no script body:');
+    expect(stdout).toContain('does not point at a script in policy-scripts/');
   });
 });
