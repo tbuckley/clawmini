@@ -21,6 +21,8 @@ import { validateToken, getApiContext } from './auth.js';
 import path from 'node:path';
 import { exportLiteToEnvironment } from '../shared/lite.js';
 import { RequestStore } from './request-store.js';
+import { drainPendingReplies } from './pending-replies.js';
+import { getClawminiVersion } from '../shared/version.js';
 
 export async function initDaemon() {
   const socketPath = getSocketPath();
@@ -179,6 +181,15 @@ export async function initDaemon() {
 
   isReady = true;
   readyPromiseResolve!();
+
+  // Drain any replies queued by the previous daemon instance (e.g. /restart
+  // or /upgrade). This must run after the daemon is `isReady` so the tRPC
+  // subscription that the adapter forwarder reconnects to can deliver them.
+  try {
+    await drainPendingReplies(getClawminiVersion());
+  } catch (err) {
+    console.warn('Failed to drain pending replies:', err);
+  }
 
   // Initialize cron jobs
   cronManager.init().catch((err) => {

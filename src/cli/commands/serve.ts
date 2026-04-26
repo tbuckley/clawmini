@@ -10,6 +10,8 @@ import { exportLiteToAllEnvironments } from '../../shared/lite.js';
 import { ensureDefaultPoliciesFile, refreshAllAgents } from './up.js';
 import { getDiscordConfigPath } from '../../adapter-discord/config.js';
 import { getGoogleChatConfigPath } from '../../adapter-google-chat/config.js';
+import { startSupervisorControl } from '../supervisor-actions.js';
+import { getControlSocketPath } from '../supervisor-control.js';
 import {
   getSupervisorPidPath,
   readSupervisorPid,
@@ -90,7 +92,14 @@ async function runForeground(enabled: ServiceName[]): Promise<void> {
   const supervisor = new Supervisor(logDir);
 
   writeSupervisorPid(process.pid);
-  process.on('exit', () => removeSupervisorPid());
+  process.on('exit', () => {
+    removeSupervisorPid();
+    try {
+      fs.unlinkSync(getControlSocketPath());
+    } catch {
+      // best-effort cleanup
+    }
+  });
 
   const onSignal = () => {
     void supervisor.shutdown(0);
@@ -109,6 +118,8 @@ async function runForeground(enabled: ServiceName[]): Promise<void> {
     if (name === 'daemon') continue;
     await supervisor.startService(name);
   }
+
+  startSupervisorControl(supervisor);
 
   process.stderr.write(`[supervisor] running: ${enabled.join(', ')}\n`);
   process.stderr.write("[supervisor] press Ctrl-C to stop (or run 'clawmini down' elsewhere)\n");
