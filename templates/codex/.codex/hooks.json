@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".codex/clawmini-insert-pending.sh",
+            "statusMessage": "Checking pending clawmini context"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".codex/clawmini-tool-logging.sh",
+            "statusMessage": "Logging tool use"
+          }
+        ]
+      }
+    ]
+  }
+}
