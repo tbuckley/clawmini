@@ -168,17 +168,15 @@ agentsCmd
       if (!overlay) {
         throw new Error(`Agent ${id} does not exist.`);
       }
-      if (!overlay.extends) {
-        console.log(`Agent ${id} has no 'extends' field; nothing to refresh.`);
-        return;
-      }
       const refreshOpts = {
         ...(options.accept === undefined ? {} : { accept: options.accept }),
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
       };
-      const plan = await refreshAgentTemplate(id, overlay, process.cwd(), refreshOpts);
-      if (plan) {
-        for (const line of formatPlanActions(plan)) console.log(line);
+      if (overlay.extends) {
+        const plan = await refreshAgentTemplate(id, overlay, process.cwd(), refreshOpts);
+        if (plan) {
+          for (const line of formatPlanActions(plan)) console.log(line);
+        }
       }
 
       const resolved = await getAgent(id);

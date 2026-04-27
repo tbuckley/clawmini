@@ -51,10 +51,11 @@ function logPlanWarnings(
   }
 }
 
-// Walk every agent with `extends` set and refresh its `track` files (both
-// workdir files and skills) against the template. Diverged files are
-// skipped with a warning. Returns the aggregated plan actions for dry-run
-// printing.
+// Walk every agent and refresh its tracked files against the installed
+// clawmini. Workdir-template refresh requires `extends`; skill refresh runs
+// for any agent that hasn't opted out via `skillsDir: null`. Diverged files
+// are skipped with a warning. Returns the aggregated plan actions for
+// dry-run printing.
 export async function refreshAllAgents(opts: { dryRun?: boolean } = {}): Promise<string[]> {
   const output: string[] = [];
   const agentIds = await listAgents();
@@ -68,18 +69,20 @@ export async function refreshAllAgents(opts: { dryRun?: boolean } = {}): Promise
       );
       continue;
     }
-    if (!overlay?.extends) continue;
+    if (!overlay) continue;
 
     try {
-      const plan = await refreshAgentTemplate(
-        agentId,
-        overlay,
-        process.cwd(),
-        opts.dryRun ? { dryRun: true } : {}
-      );
-      if (plan) {
-        logPlanWarnings(agentId, overlay.directory, plan.actions);
-        output.push(...formatPlanActions(plan, { agentId }));
+      if (overlay.extends) {
+        const plan = await refreshAgentTemplate(
+          agentId,
+          overlay,
+          process.cwd(),
+          opts.dryRun ? { dryRun: true } : {}
+        );
+        if (plan) {
+          logPlanWarnings(agentId, overlay.directory, plan.actions);
+          output.push(...formatPlanActions(plan, { agentId }));
+        }
       }
 
       const resolved = await getAgent(agentId);
@@ -115,7 +118,7 @@ export const upCmd = new Command('up')
       if (options.dryRun) {
         const lines = await refreshAllAgents({ dryRun: true });
         if (lines.length === 0) {
-          console.log('Dry run: no agents with `extends` to refresh.');
+          console.log('Dry run: no agents to refresh.');
         } else {
           for (const line of lines) console.log(line);
         }
