@@ -91,28 +91,209 @@ separate uncommitted file, your OS keychain) before committing.
 
 If you want chat history and adapter credentials to survive a disk
 failure, use a real backup tool. Restic, Borg, and Time Machine all
-work; the example below uses restic because it's cross-platform and
-encrypts at rest.
+work; the walkthrough below uses restic because it's cross-platform,
+encrypts at rest, dedupes between snapshots, and handles the unbounded
+growth of `chat.jsonl` far better than git would.
+
+The setup below backs up to **another local folder on the same
+machine** every day. That protects you from `rm -rf`, agents going
+sideways, and accidental git operations — but **not** from disk
+failure or theft. Point the repo at an external drive or a remote
+target (`b2:`, `sftp:`, `s3:`, …) when you want real off-device
+durability; everything else in this section stays the same.
+
+#### 1. Install restic
+
+macOS:
 
 ```sh
-# one-time setup
-restic init -r <your-restic-repo>   # e.g. b2:bucket:path or sftp:host:path
-
-# back up
-restic -r <your-restic-repo> backup ~/path/to/workspace/.clawmini \
-  --exclude '*.sock' \
-  --exclude '*.tmp' \
-  --exclude '.clawmini/tmp/snapshots/*'    # optional, can be large
+brew install restic
 ```
 
-Restic encrypts with a passphrase you control, dedupes between
-snapshots, and handles the unbounded growth of `chat.jsonl` far better
-than git would. Schedule it (cron, launchd, systemd timer) and you're
-done.
+Linux (pick whichever your distro uses):
+
+```sh
+sudo apt install restic            # Debian / Ubuntu
+sudo dnf install restic            # Fedora / RHEL
+sudo pacman -S restic              # Arch
+```
+
+#### 2. Pick a destination and a passphrase
+
+Choose a folder *outside* your workspace — ideally on a different disk
+or partition, but any local path works for a baseline.
+
+```sh
+export RESTIC_REPOSITORY="$HOME/Backups/clawmini-restic"
+mkdir -p "$RESTIC_REPOSITORY"
+```
+
+Restic encrypts every snapshot with a passphrase. If you lose it, the
+backup is unrecoverable — store it somewhere you'll still have after
+your laptop dies (password manager, paper in a drawer, etc.). Save it
+to a 0600-mode file so the scheduled job can read it without a prompt:
+
+```sh
+umask 077
+printf '%s\n' 'your-long-passphrase-here' > "$HOME/.config/restic/clawmini.pw"
+```
+
+Initialize the repo (one time only):
+
+```sh
+restic init --password-file "$HOME/.config/restic/clawmini.pw"
+```
+
+#### 3. Write the backup script
+
+Save this as `~/bin/clawmini-backup.sh` and `chmod +x` it. Edit
+`WORKSPACE` to point at your workspace.
+
+```sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+WORKSPACE="$HOME/path/to/workspace"
+export RESTIC_REPOSITORY="$HOME/Backups/clawmini-restic"
+export RESTIC_PASSWORD_FILE="$HOME/.config/restic/clawmini.pw"
+
+RESTIC_BIN="$(command -v restic)"
+
+"$RESTIC_BIN" backup "$WORKSPACE/.clawmini" \
+  --tag clawmini \
+  --exclude '*.sock' \
+  --exclude '*.tmp' \
+  --exclude '.clawmini/tmp/snapshots/*'
+
+"$RESTIC_BIN" forget \
+  --tag clawmini \
+  --keep-daily 30 --keep-weekly 8 --keep-monthly 12 \
+  --prune
+```
+
+The retention policy keeps the last 30 daily snapshots, 8 weekly, and
+12 monthly — roughly a year of history with a long tail of dailies for
+recent recovery. `--prune` reclaims the space from forgotten snapshots
+in the same run.
+
+Verify the script works manually before scheduling it:
+
+```sh
+~/bin/clawmini-backup.sh
+restic snapshots                   # should list a snapshot
+```
+
+#### 4. Schedule it daily
+
+##### macOS — launchd
+
+Save this as `~/Library/LaunchAgents/com.clawmini.backup.plist`,
+replacing `YOURUSER` with your home-directory username:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key><string>com.clawmini.backup</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/Users/YOURUSER/bin/clawmini-backup.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Hour</key><integer>3</integer>
+      <key>Minute</key><integer>15</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/YOURUSER/Library/Logs/clawmini-backup.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/YOURUSER/Library/Logs/clawmini-backup.log</string>
+  </dict>
+</plist>
+```
+
+Load it and verify:
+
+```sh
+launchctl load ~/Library/LaunchAgents/com.clawmini.backup.plist
+launchctl list | grep clawmini       # confirms it's registered
+launchctl start com.clawmini.backup   # run once now
+tail ~/Library/Logs/clawmini-backup.log
+```
+
+To remove it later: `launchctl unload ~/Library/LaunchAgents/com.clawmini.backup.plist`.
+
+If your laptop is asleep at the scheduled time, launchd runs the job
+on the next wake. Good enough for a daily backup.
+
+##### Linux — systemd timer
+
+Create the service unit at `~/.config/systemd/user/clawmini-backup.service`:
+
+```ini
+[Unit]
+Description=Clawmini workspace restic backup
+
+[Service]
+Type=oneshot
+ExecStart=%h/bin/clawmini-backup.sh
+Nice=10
+IOSchedulingClass=idle
+```
+
+Create the timer at `~/.config/systemd/user/clawmini-backup.timer`:
+
+```ini
+[Unit]
+Description=Daily Clawmini restic backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target
+```
+
+`Persistent=true` makes systemd run a missed backup on next boot
+(important for laptops). Enable and start:
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now clawmini-backup.timer
+systemctl --user list-timers clawmini-backup.timer
+```
+
+To run a backup immediately:
+`systemctl --user start clawmini-backup.service`. Logs:
+`journalctl --user -u clawmini-backup.service`.
+
+If you want the timer to fire while you're logged out, run
+`loginctl enable-linger $USER` once.
+
+If you don't have systemd (or prefer cron), the equivalent crontab
+entry is:
+
+```cron
+15 3 * * * /home/YOURUSER/bin/clawmini-backup.sh >> /home/YOURUSER/.local/share/clawmini-backup.log 2>&1
+```
+
+#### 5. Restore
+
+```sh
+restic snapshots                                # list backups
+restic restore latest --target /tmp/restore     # pull latest into /tmp/restore
+```
+
+The restored tree contains a `.clawmini/` directory you can copy back
+into a fresh workspace.
 
 If you don't want a separate tool, Time Machine on macOS or your
-distro's equivalent covers this case; just make sure `.clawmini/` is
-included.
+distro's equivalent covers the same use case at coarser granularity;
+just make sure `.clawmini/` is included.
 
 ## Common questions
 
