@@ -6,6 +6,9 @@ import { slashStop } from './routers/slash-stop.js';
 import { slashInterrupt } from './routers/slash-interrupt.js';
 import { slashPolicies } from './routers/slash-policies.js';
 import { slashModel } from './routers/slash-model.js';
+import { slashRestart } from './routers/slash-restart.js';
+import { slashShutdown } from './routers/slash-shutdown.js';
+import { slashUpgrade } from './routers/slash-upgrade.js';
 import { createSessionTimeoutRouter } from './routers/session-timeout.js';
 import type { RouterConfig } from '../shared/config.js';
 
@@ -18,6 +21,9 @@ export const USER_ROUTERS: RouterConfig[] = [
   '@clawmini/slash-interrupt',
   '@clawmini/slash-policies',
   '@clawmini/slash-model',
+  '@clawmini/slash-restart',
+  '@clawmini/slash-shutdown',
+  '@clawmini/slash-upgrade',
 ];
 
 export function resolveRouters(
@@ -91,6 +97,12 @@ export async function executeRouterPipeline(
       state = await slashPolicies(state);
     } else if (router === '@clawmini/slash-model') {
       state = await slashModel(state);
+    } else if (router === '@clawmini/slash-restart') {
+      state = await slashRestart(state);
+    } else if (router === '@clawmini/slash-shutdown') {
+      state = await slashShutdown(state);
+    } else if (router === '@clawmini/slash-upgrade') {
+      state = await slashUpgrade(state);
     } else if (router === '@clawmini/session-timeout') {
       state = createSessionTimeoutRouter(config)(state);
     } else {
