@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { handleError } from '../utils.js';
 import { resolveCompiledScript } from '../../shared/lite.js';
-import type { PolicyConfig } from '../../shared/policies.js';
+import { BUILTIN_POLICIES, type PolicyConfig } from '../../shared/policies.js';
 import { getClawminiDir } from '../../shared/workspace.js';
 
-const SUPPORTED_POLICIES = ['propose-policy'];
+const SUPPORTED_POLICIES = ['manage-policies'];
 
 export const policiesCmd = new Command('policies').description('Manage sandbox policies');
 
@@ -44,10 +44,12 @@ policiesCmd
       policies = JSON.parse(fs.readFileSync(policiesPath, 'utf8'));
     }
 
+    const builtin = BUILTIN_POLICIES[name];
     policies.policies[name] = {
-      description: 'Propose a new policy to create',
+      description: builtin?.description ?? `Built-in policy ${name}`,
       command: `./.clawmini/policy-scripts/${name}.js`,
-      allowHelp: true,
+      allowHelp: builtin?.allowHelp ?? true,
+      ...(builtin?.autoApprove !== undefined ? { autoApprove: builtin.autoApprove } : {}),
     };
 
     fs.writeFileSync(policiesPath, JSON.stringify(policies, null, 2));

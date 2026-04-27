@@ -436,7 +436,7 @@ describe('workspace utilities', () => {
 
   describe('resolvePolicies', () => {
     const scriptsDir = path.join(clawminiDir, 'policy-scripts');
-    const proposeScript = path.join(scriptsDir, 'propose-policy.js');
+    const proposeScript = path.join(scriptsDir, 'manage-policies.js');
 
     function installProposePolicyScript() {
       fs.mkdirSync(scriptsDir, { recursive: true });
@@ -447,11 +447,11 @@ describe('workspace utilities', () => {
       expect(resolvePolicies(null, clawminiDir)).toBeNull();
     });
 
-    it('injects propose-policy when its script is installed', () => {
+    it('injects manage-policies when its script is installed', () => {
       installProposePolicyScript();
       const resolved = resolvePolicies({ policies: {} }, clawminiDir);
-      expect(resolved?.policies['propose-policy']).toEqual({
-        ...BUILTIN_POLICIES['propose-policy'],
+      expect(resolved?.policies['manage-policies']).toEqual({
+        ...BUILTIN_POLICIES['manage-policies'],
         command: proposeScript,
       });
     });
@@ -479,22 +479,22 @@ describe('workspace utilities', () => {
       expect(resolved?.policies.bare?.command).toBe('echo');
     });
 
-    it('omits propose-policy when its script is missing', () => {
+    it('omits manage-policies when its script is missing', () => {
       const resolved = resolvePolicies({ policies: {} }, clawminiDir);
-      expect(resolved?.policies['propose-policy']).toBeUndefined();
+      expect(resolved?.policies['manage-policies']).toBeUndefined();
     });
 
-    it('omits propose-policy when explicitly disabled, even if script exists', () => {
+    it('omits manage-policies when explicitly disabled, even if script exists', () => {
       installProposePolicyScript();
-      const resolved = resolvePolicies({ policies: { 'propose-policy': false } }, clawminiDir);
-      expect(resolved?.policies['propose-policy']).toBeUndefined();
+      const resolved = resolvePolicies({ policies: { 'manage-policies': false } }, clawminiDir);
+      expect(resolved?.policies['manage-policies']).toBeUndefined();
     });
 
-    it('preserves a user-defined propose-policy without overwriting', () => {
+    it('preserves a user-defined manage-policies without overwriting', () => {
       installProposePolicyScript();
       const custom = { command: 'echo', args: ['custom'], description: 'mine' };
-      const resolved = resolvePolicies({ policies: { 'propose-policy': custom } }, clawminiDir);
-      expect(resolved?.policies['propose-policy']).toEqual(custom);
+      const resolved = resolvePolicies({ policies: { 'manage-policies': custom } }, clawminiDir);
+      expect(resolved?.policies['manage-policies']).toEqual(custom);
     });
 
     it('strips arbitrary entries set to false', () => {

@@ -259,6 +259,7 @@ describe('Discord Adapter Entry Point', () => {
         files: undefined,
         adapter: 'discord',
         noWait: true,
+        externalRef: 'msg-1',
       },
     });
     expect(mockTrpc.sendMessage.mutate).toHaveBeenNthCalledWith(2, {
@@ -270,6 +271,7 @@ describe('Discord Adapter Entry Point', () => {
         files: undefined,
         adapter: 'discord',
         noWait: true,
+        externalRef: 'msg-2',
       },
     });
   });
@@ -535,7 +537,12 @@ describe('Discord Adapter Entry Point', () => {
     await vi.runAllTimersAsync();
 
     expect(global.fetch).not.toHaveBeenCalled();
-    expect(replyMock).toHaveBeenCalledWith(expect.stringContaining('exceeds the size limit'));
+    expect(replyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('exceeds the size limit'),
+        allowedMentions: { parse: [] },
+      })
+    );
 
     expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith({
       type: 'send-message',
