@@ -4,12 +4,24 @@ import { z } from 'zod';
 import { getClawminiDir } from '../shared/workspace.js';
 import fs from 'node:fs';
 
+export const ThreadVisibilitySchema = z.object({
+  threads: z.boolean().default(true),
+  threadLog: z
+    .object({
+      maxToolPreview: z.number().default(400),
+      maxLogMessageChars: z.number().default(1800),
+      editDebounceMs: z.number().default(1000),
+    })
+    .optional(),
+});
+
 export const DiscordConfigSchema = z.looseObject({
   botToken: z.string().min(1, 'Discord Bot Token is required.'),
   authorizedUserId: z.string().min(1, 'Authorized Discord User ID is required.'),
   chatId: z.string().default('default'),
   maxAttachmentSizeMB: z.number().default(25),
   requireMention: z.boolean().default(false),
+  visibility: ThreadVisibilitySchema.optional(),
 });
 
 export type DiscordConfig = z.infer<typeof DiscordConfigSchema>;

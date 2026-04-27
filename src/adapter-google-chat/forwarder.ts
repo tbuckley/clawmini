@@ -14,9 +14,19 @@ import {
   type Destination,
   type FilteringConfig,
 } from '../shared/adapters/filtering.js';
-import { createTurnLogBuffer, type TurnLogBuffer } from './turn-log-buffer.js';
+import { createTurnLogBuffer, type TurnLogBuffer } from '../shared/adapters/turn-log-buffer.js';
 import { buildPolicyCard, chunkString } from './utils.js';
 import { uploadFilesToDrive } from './upload.js';
+
+/**
+ * Google Chat anchor handle: the space (`parent`) and the thread (`thread.name`)
+ * are both required by the spaces.messages.create API, so we carry them
+ * together as the buffer's opaque `TAnchor`.
+ */
+interface GChatAnchor {
+  spaceName: string;
+  threadName: string;
+}
 
 export interface GoogleChatForwarderDeps {
   /** Google Chat API client (defaults to `google.chat()` with ADC credentials). */
@@ -158,17 +168,13 @@ export async function startDaemonToGoogleChatForwarder(
     return { threadName: extractThread(res) };
   };
 
-  const postThreaded = async (
-    spaceName: string,
-    threadName: string,
-    text: string
-  ): Promise<string | undefined> => {
+  const postThreaded = async (anchor: GChatAnchor, text: string): Promise<string | undefined> => {
     const chatApi = await getChatApi();
     const res = await chatApi.spaces.messages.create({
-      parent: spaceName,
+      parent: anchor.spaceName,
       requestBody: {
         text: text || '',
-        thread: { name: threadName },
+        thread: { name: anchor.threadName },
       },
       messageReplyOption: 'REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD',
     });
@@ -176,7 +182,11 @@ export async function startDaemonToGoogleChatForwarder(
     return data?.name ?? undefined;
   };
 
-  const editThreaded = async (messageName: string, text: string): Promise<void> => {
+  const editThreaded = async (
+    _anchor: GChatAnchor,
+    messageName: string,
+    text: string
+  ): Promise<void> => {
     const chatApi = await getChatApi();
     await chatApi.spaces.messages.update({
       name: messageName,
@@ -185,9 +195,17 @@ export async function startDaemonToGoogleChatForwarder(
     });
   };
 
-  const turnLog: TurnLogBuffer = createTurnLogBuffer({
+  // GChat surfaces a missing message as HTTP 404 on update; treat that as the
+  // signal to open a fresh log message rather than retrying the edit.
+  const isMissingMessageError = (err: unknown): boolean => {
+    const status = (err as { code?: number; status?: number })?.code ?? 0;
+    return status === 404;
+  };
+
+  const turnLog: TurnLogBuffer<GChatAnchor> = createTurnLogBuffer<GChatAnchor>({
     postThreaded,
     editThreaded,
+    isMissingMessageError,
     options: threadLogOpts,
     threadsEnabled: threadsGloballyEnabled,
   });
@@ -312,7 +330,10 @@ export async function startDaemonToGoogleChatForwarder(
       if (createdThread && message.turnId) {
         if (turnLog.has(message.turnId)) {
           if (!turnLog.isAnchored(message.turnId)) {
-            turnLog.assignAnchor(message.turnId, createdThread);
+            turnLog.assignAnchor(message.turnId, {
+              spaceName: space.spaceName,
+              threadName: createdThread,
+            });
           }
         } else {
           // turnStarted hasn't arrived yet — cache the mapping so it picks
@@ -347,11 +368,11 @@ export async function startDaemonToGoogleChatForwarder(
     const proactiveThread = entry ? undefined : proactiveAnchors.get(rootMessageId);
     if (proactiveThread) proactiveAnchors.delete(rootMessageId);
 
+    const threadName = entry?.gchatThreadName ?? proactiveThread;
     turnLog.start({
       turnId,
-      spaceName: space.spaceName,
       threadsDisabled: space.threadsDisabled,
-      anchorThread: entry?.gchatThreadName ?? proactiveThread,
+      anchorThread: threadName ? { spaceName: space.spaceName, threadName } : undefined,
     });
   };
 
