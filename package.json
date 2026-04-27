@@ -26,7 +26,9 @@
     "check": "tsc --noEmit && npm run check -w web",
     "test": "vitest run && npm run test -w web",
     "build:web": "npm run build -w web",
-    "validate": "npm run format:check && npm run lint && npm run check && npm run test"
+    "validate": "npm run format:check && npm run lint && npm run check && npm run test",
+    "version": "changeset version && npm install --package-lock-only --no-audit",
+    "release": "npm run build && changeset publish"
   },
   "dependencies": {
     "@google-cloud/pubsub": "^5.3.0",
@@ -40,6 +42,8 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^0.6.0",
+    "@changesets/cli": "^2.31.0",
     "@eslint/js": "^10.0.1",
     "@types/mime-types": "^3.0.1",
     "@types/node": "^25.3.0",
