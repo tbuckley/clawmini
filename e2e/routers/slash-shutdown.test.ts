@@ -34,7 +34,7 @@ describe('/shutdown router e2e', () => {
 
     const pidPath = env.getClawminiPath('supervisor.pid');
     const socketPath = env.getClawminiPath('daemon.sock');
-    const controlPath = env.getClawminiPath('supervisor.sock');
+    const controlPath = env.getClawminiPath('super.sock');
     expect(await waitUntil(() => fs.existsSync(pidPath), 5000)).toBe(true);
     expect(await waitUntil(() => fs.existsSync(socketPath), 10000)).toBe(true);
     expect(await waitUntil(() => fs.existsSync(controlPath), 10000)).toBe(true);

@@ -8,6 +8,12 @@ export type ControlAction = 'restart' | 'shutdown' | 'upgrade';
 
 export interface ControlRequest {
   action: ControlAction;
+  /** Target version for `upgrade` (e.g. "1.2.3" or "latest"). */
+  version?: string;
+  /** Chat to deliver the post-action SystemMessage to. */
+  chatId?: string;
+  /** User message that triggered the action, threaded onto the reply. */
+  messageId?: string;
 }
 
 export interface ControlResponse {
@@ -15,11 +21,15 @@ export interface ControlResponse {
   error?: string;
 }
 
+// Kept short on purpose: AF_UNIX sun_path is 104 bytes on macOS, 108 on
+// Linux. A workspace nested a few directories deep + ".clawmini/super.sock"
+// is already close to the limit; "supervisor.sock" pushed common paths over
+// it (EINVAL from listen()).
 export function getControlSocketPath(startDir = process.cwd()): string {
-  return path.join(getClawminiDir(startDir), 'supervisor.sock');
+  return path.join(getClawminiDir(startDir), 'super.sock');
 }
 
-export type ControlHandler = () => Promise<ControlResponse> | ControlResponse;
+export type ControlHandler = (req: ControlRequest) => Promise<ControlResponse> | ControlResponse;
 
 export function startControlServer(
   handlers: Record<ControlAction, ControlHandler>,
@@ -62,7 +72,7 @@ export function startControlServer(
         return;
       }
       Promise.resolve()
-        .then(() => handler())
+        .then(() => handler(req))
         .then(
           (res) => respond(res),
           (err: unknown) =>
@@ -75,7 +85,16 @@ export function startControlServer(
     });
   });
 
-  server.listen(socketPath);
+  server.listen(socketPath, () => {
+    // Restrict to the owning user. The control channel can shut down or
+    // upgrade clawmini, so a process running as another local user must not
+    // be able to connect just because they can reach the .clawmini directory.
+    try {
+      fs.chmodSync(socketPath, 0o600);
+    } catch {
+      // best-effort
+    }
+  });
   return server;
 }
 

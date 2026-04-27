@@ -98,11 +98,11 @@ export async function executeRouterPipeline(
     } else if (router === '@clawmini/slash-model') {
       state = await slashModel(state);
     } else if (router === '@clawmini/slash-restart') {
-      state = slashRestart(state);
+      state = await slashRestart(state);
     } else if (router === '@clawmini/slash-shutdown') {
-      state = slashShutdown(state);
+      state = await slashShutdown(state);
     } else if (router === '@clawmini/slash-upgrade') {
-      state = slashUpgrade(state);
+      state = await slashUpgrade(state);
     } else if (router === '@clawmini/session-timeout') {
       state = createSessionTimeoutRouter(config)(state);
     } else {

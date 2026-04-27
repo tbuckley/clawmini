@@ -7,7 +7,8 @@ import {
   startControlServer,
   sendControlRequest,
   type ControlAction,
-  type ControlResponse,
+  type ControlHandler,
+  type ControlRequest,
 } from './supervisor-control.js';
 
 describe('supervisor control socket', () => {
@@ -29,29 +30,26 @@ describe('supervisor control socket', () => {
     return path.join(tmp, 'supervisor.sock');
   }
 
-  it('round-trips a request to the matching handler', async () => {
+  it('round-trips a request to the matching handler and forwards extra fields', async () => {
     const sockPath = makeSocketPath();
-    const calls: ControlAction[] = [];
-    const handlers: Record<ControlAction, () => Promise<ControlResponse>> = {
-      restart: async () => {
-        calls.push('restart');
+    const seen: ControlRequest[] = [];
+    const handlers: Record<ControlAction, ControlHandler> = {
+      restart: async (req) => {
+        seen.push(req);
         return { ok: true };
       },
-      shutdown: async () => {
-        calls.push('shutdown');
-        return { ok: true };
-      },
-      upgrade: async () => {
-        calls.push('upgrade');
-        return { ok: true };
-      },
+      shutdown: async () => ({ ok: true }),
+      upgrade: async () => ({ ok: true }),
     };
     const server = startControlServer(handlers, sockPath);
     cleanup.push(() => server.close());
 
-    const res = await sendControlRequest({ action: 'restart' }, sockPath);
+    const res = await sendControlRequest(
+      { action: 'restart', chatId: 'c1', messageId: 'm1' },
+      sockPath
+    );
     expect(res).toEqual({ ok: true });
-    expect(calls).toEqual(['restart']);
+    expect(seen).toEqual([{ action: 'restart', chatId: 'c1', messageId: 'm1' }]);
   });
 
   it('returns the handler error when the handler rejects', async () => {
@@ -105,5 +103,27 @@ describe('supervisor control socket', () => {
 
     const res = await sendControlRequest({ action: 'shutdown' }, sockPath);
     expect(res).toEqual({ ok: true });
+  });
+
+  it('chmods the socket to 0600 so other users on the host cannot connect', async () => {
+    const sockPath = makeSocketPath();
+    const server = startControlServer(
+      {
+        restart: async () => ({ ok: true }),
+        shutdown: async () => ({ ok: true }),
+        upgrade: async () => ({ ok: true }),
+      },
+      sockPath
+    );
+    cleanup.push(() => server.close());
+
+    // Round-trip a request to make sure the server is fully up — once we get
+    // a response, the listen() callback that does the chmod has fired.
+    const res = await sendControlRequest({ action: 'restart' }, sockPath);
+    expect(res.ok).toBe(true);
+
+    const stat = fs.statSync(sockPath);
+    // Compare mode bits, not the full mode (which includes the file type).
+    expect(stat.mode & 0o777).toBe(0o600);
   });
 });

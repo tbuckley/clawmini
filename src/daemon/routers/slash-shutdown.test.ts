@@ -17,26 +17,34 @@ describe('slashShutdown', () => {
     vi.mocked(sendControlRequest).mockResolvedValue({ ok: true });
   });
 
-  it('passes through unrelated messages', () => {
+  it('passes through unrelated messages', async () => {
     const state = { ...baseState, message: 'hello' };
-    const result = slashShutdown(state);
+    const result = await slashShutdown(state);
     expect(result).toEqual(state);
     expect(sendControlRequest).not.toHaveBeenCalled();
   });
 
-  it('triggers shutdown for /shutdown', () => {
+  it('triggers shutdown for /shutdown', async () => {
     const state = { ...baseState, message: '/shutdown' };
-    const result = slashShutdown(state);
+    const result = await slashShutdown(state);
     expect(result.action).toBe('stop');
     expect(result.reply).toBe('Shutting down clawmini supervisor...');
     expect(result.message).toBe('');
     expect(sendControlRequest).toHaveBeenCalledWith({ action: 'shutdown' });
   });
 
-  it('does not match /shutdownz', () => {
+  it('does not match /shutdownz', async () => {
     const state = { ...baseState, message: '/shutdownz' };
-    const result = slashShutdown(state);
+    const result = await slashShutdown(state);
     expect(result).toEqual(state);
     expect(sendControlRequest).not.toHaveBeenCalled();
+  });
+
+  it('returns an error reply when the supervisor request rejects', async () => {
+    vi.mocked(sendControlRequest).mockRejectedValueOnce(new Error('socket missing'));
+    const state = { ...baseState, message: '/shutdown' };
+    const result = await slashShutdown(state);
+    expect(result.action).toBe('stop');
+    expect(result.reply).toBe('Could not reach supervisor: socket missing.');
   });
 });
