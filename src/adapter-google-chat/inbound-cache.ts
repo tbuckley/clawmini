@@ -1,59 +1,36 @@
 /**
- * In-memory inbound message cache. The adapter's ingestion and forwarder
- * both run in the same Node process (`startGoogleChatIngestion` and
- * `startDaemonToGoogleChatForwarder` start side-by-side in `index.ts`), so
- * the disk-persisted ring buffer that existed historically is unnecessary.
+ * Google Chat-side wrapper around the shared inbound-message TTL cache.
  *
- * Ingestion records each inbound by its `gchatMessageName` (also sent to
- * the daemon as `externalRef`). When the forwarder later sees
- * `turnStarted` with that `externalRef`, it resolves the thread anchor by
- * looking up the same key here.
- *
- * Entries older than `INBOUND_TTL_MS` are swept on every insert — bounded
- * memory without an LRU. The common case (daemon runs indefinitely and
- * adapter stays up alongside it) is fully covered; adapter restart
- * mid-turn loses the cache and is an explicit tradeoff.
+ * Ingestion records each inbound by its `gchatMessageName` (also sent to the
+ * daemon as `externalRef`). When the forwarder later sees `turnStarted` with
+ * that `externalRef`, it resolves the thread anchor by looking up the same
+ * key here.
  */
-
-interface InboundRecord {
-  gchatMessageName: string;
-  gchatThreadName: string;
-  receivedAt: number;
-}
+import { createInboundCache } from '../shared/adapters/inbound-cache.js';
 
 export const INBOUND_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-const cache = new Map<string, InboundRecord>();
-
-function sweep(now: number): void {
-  for (const [key, record] of cache) {
-    if (now - record.receivedAt > INBOUND_TTL_MS) {
-      cache.delete(key);
-    }
-  }
+interface GChatInboundValue {
+  gchatThreadName: string;
 }
 
-export function recordInbound(entry: { gchatMessageName: string; gchatThreadName: string }): void {
-  const now = Date.now();
-  sweep(now);
-  cache.set(entry.gchatMessageName, {
-    gchatMessageName: entry.gchatMessageName,
-    gchatThreadName: entry.gchatThreadName,
-    receivedAt: now,
-  });
+const cache = createInboundCache<GChatInboundValue>(INBOUND_TTL_MS);
+
+export interface GChatInboundRecord {
+  gchatMessageName: string;
+  gchatThreadName: string;
 }
 
-export function resolveInbound(gchatMessageName: string): InboundRecord | null {
-  const record = cache.get(gchatMessageName);
-  if (!record) return null;
-  if (Date.now() - record.receivedAt > INBOUND_TTL_MS) {
-    cache.delete(gchatMessageName);
-    return null;
-  }
-  return record;
+export function recordInbound(entry: GChatInboundRecord): void {
+  cache.record(entry.gchatMessageName, { gchatThreadName: entry.gchatThreadName });
+}
+
+export function resolveInbound(gchatMessageName: string): GChatInboundRecord | null {
+  const value = cache.resolve(gchatMessageName);
+  return value ? { gchatMessageName, gchatThreadName: value.gchatThreadName } : null;
 }
 
 /** Test hook: drop all cached records. */
 export function _resetInboundCacheForTests(): void {
-  cache.clear();
+  cache.reset();
 }

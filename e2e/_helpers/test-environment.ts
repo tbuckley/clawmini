@@ -148,7 +148,10 @@ export class TestEnvironment {
     });
   }
 
-  public async connect(chatId: string = 'default'): Promise<ChatSubscription> {
+  public async connect(
+    chatId: string = 'default',
+    opts: { lastMessageId?: string } = {}
+  ): Promise<ChatSubscription> {
     await this.ensureTrpcClient();
 
     const messageBuffer: ChatMessage[] = [];
@@ -159,7 +162,7 @@ export class TestEnvironment {
     const waiters: Waiter[] = [];
 
     const sub = this.trpcClient!.waitForMessages.subscribe(
-      { chatId },
+      { chatId, ...(opts.lastMessageId ? { lastMessageId: opts.lastMessageId } : {}) },
       {
         onData: (items) => {
           for (const item of items) {

@@ -11,6 +11,7 @@ export const DiscordStateSchema = z.object({
       z.object({
         chatId: z.string().nullable().optional(),
         requireMention: z.boolean().optional(),
+        threadsDisabled: z.boolean().optional(),
       })
     )
     .optional(),

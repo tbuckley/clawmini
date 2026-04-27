@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
 import { readDiscordState, updateDiscordState } from './state.js';
+import { recordInbound, _resetInboundCacheForTests } from './inbound-cache.js';
 
 vi.mock('./state.js', () => ({
   readDiscordState: vi.fn(),
@@ -71,12 +72,20 @@ describe('Daemon to Discord Forwarder', () => {
         subscribe: vi.fn().mockImplementation((input, options) => {
           // The subscription now yields `ChatStreamItem` envelopes. Tests
           // continue to hand us raw message arrays; wrap them here so each
-          // individual test site stays readable.
+          // individual test site stays readable. Pre-shaped envelopes
+          // (objects with a `kind` field) pass through untouched so tests
+          // can also send `{kind:'turn'}` items.
           subscribeCallbacks = {
             onData: (raw: unknown) => {
               if (!Array.isArray(raw)) return options.onData(raw);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              options.onData(raw.map((message: any) => ({ kind: 'message', message })));
+              options.onData(
+                raw.map((item: unknown) =>
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  item && typeof item === 'object' && 'kind' in (item as any)
+                    ? item
+                    : { kind: 'message', message: item }
+                )
+              );
             },
             onError: options.onError,
             onComplete: options.onComplete,
@@ -141,7 +150,12 @@ describe('Daemon to Discord Forwarder', () => {
 
     expect(mockClient.users.fetch).toHaveBeenCalledWith('user-123');
     expect(mockUser.createDM).toHaveBeenCalled();
-    expect(mockDm.send).toHaveBeenCalledWith({ content: 'Agent response' });
+    expect(mockDm.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Agent response',
+        allowedMentions: { parse: [] },
+      })
+    );
     expect(mockUpdateDiscordState).toHaveBeenCalledWith({
       lastSyncedMessageIds: { default: 'msg-1' },
     });
@@ -266,8 +280,20 @@ describe('Daemon to Discord Forwarder', () => {
 
     await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalledTimes(2));
 
-    expect(mockDm.send).toHaveBeenNthCalledWith(1, { content: 'a'.repeat(2000) });
-    expect(mockDm.send).toHaveBeenNthCalledWith(2, { content: 'a'.repeat(500) });
+    expect(mockDm.send).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        content: 'a'.repeat(2000),
+        allowedMentions: { parse: [] },
+      })
+    );
+    expect(mockDm.send).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        content: 'a'.repeat(500),
+        allowedMentions: { parse: [] },
+      })
+    );
     expect(mockUpdateDiscordState).toHaveBeenCalledWith({
       lastSyncedMessageIds: { default: 'msg-1' },
     });
@@ -304,10 +330,13 @@ describe('Daemon to Discord Forwarder', () => {
 
     await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalled());
 
-    expect(mockDm.send).toHaveBeenCalledWith({
-      content: 'Here is your file',
-      files: ['/path/to/my/file.txt'],
-    });
+    expect(mockDm.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Here is your file',
+        files: ['/path/to/my/file.txt'],
+        allowedMentions: { parse: [] },
+      })
+    );
 
     controller.abort();
     await forwarderPromise;
@@ -341,9 +370,12 @@ describe('Daemon to Discord Forwarder', () => {
 
     await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalled());
 
-    expect(mockDm.send).toHaveBeenCalledWith({
-      files: ['/path/to/my/file.txt'],
-    });
+    expect(mockDm.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: ['/path/to/my/file.txt'],
+        allowedMentions: { parse: [] },
+      })
+    );
 
     controller.abort();
     await forwarderPromise;
@@ -378,11 +410,21 @@ describe('Daemon to Discord Forwarder', () => {
 
     await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalledTimes(2));
 
-    expect(mockDm.send).toHaveBeenNthCalledWith(1, { content: 'a'.repeat(2000) });
-    expect(mockDm.send).toHaveBeenNthCalledWith(2, {
-      content: 'a'.repeat(500),
-      files: ['/path/to/my/file.txt'],
-    });
+    expect(mockDm.send).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        content: 'a'.repeat(2000),
+        allowedMentions: { parse: [] },
+      })
+    );
+    expect(mockDm.send).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        content: 'a'.repeat(500),
+        files: ['/path/to/my/file.txt'],
+        allowedMentions: { parse: [] },
+      })
+    );
 
     controller.abort();
     await forwarderPromise;
@@ -441,7 +483,12 @@ describe('Daemon to Discord Forwarder', () => {
     await vi.advanceTimersByTimeAsync(30000);
 
     expect(mockTrpc.waitForMessages.subscribe).toHaveBeenCalledTimes(3);
-    expect(mockDm.send).toHaveBeenCalledWith({ content: 'Finally up' });
+    expect(mockDm.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Finally up',
+        allowedMentions: { parse: [] },
+      })
+    );
 
     controller.abort();
     await forwarderPromise;
@@ -587,10 +634,14 @@ describe('Daemon to Discord Forwarder', () => {
 
     await vi.waitFor(() => expect(mockDm.send).toHaveBeenCalledTimes(2));
 
-    expect(mockDm.send).toHaveBeenNthCalledWith(2, {
-      content:
-        'Action Required: Policy Request\n\nPlease approve this\n\nApprove: `/approve msg-1`\nReject: `/reject msg-1 <optional_rationale>`',
-    });
+    expect(mockDm.send).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        content:
+          'Action Required: Policy Request\n\nPlease approve this\n\nApprove: `/approve msg-1`\nReject: `/reject msg-1 <optional_rationale>`',
+        allowedMentions: { parse: [] },
+      })
+    );
 
     // Should still update state to avoid infinite loop
     expect(mockUpdateDiscordState).toHaveBeenCalledWith({
@@ -693,5 +744,421 @@ describe('Daemon to Discord Forwarder', () => {
 
     controller.abort();
     await forwarderPromise;
+  });
+
+  describe('turn-log threading', () => {
+    let mockChannel: {
+      isTextBased: () => boolean;
+      isDMBased: () => boolean;
+      isThread: () => boolean;
+      send: import('vitest').Mock;
+      messages: { fetch: import('vitest').Mock };
+    };
+    let mockUserMessage: {
+      startThread: import('vitest').Mock;
+    };
+    let mockThread: {
+      id: string;
+      send: import('vitest').Mock;
+      messages: { fetch: import('vitest').Mock };
+    };
+    let mockLogMessage: { id: string; edit: import('vitest').Mock };
+
+    beforeEach(() => {
+      _resetInboundCacheForTests();
+
+      mockLogMessage = {
+        id: 'log-msg-1',
+        edit: vi.fn().mockResolvedValue({}),
+      };
+      mockThread = {
+        id: 'thread-1',
+        send: vi.fn().mockResolvedValue({ id: 'log-msg-1' }),
+        messages: {
+          fetch: vi.fn().mockResolvedValue(mockLogMessage),
+        },
+      };
+      mockUserMessage = {
+        startThread: vi.fn().mockResolvedValue(mockThread),
+      };
+      mockChannel = {
+        isTextBased: () => true,
+        isDMBased: () => false,
+        isThread: () => false,
+        send: vi.fn().mockResolvedValue({}),
+        messages: {
+          fetch: vi.fn().mockResolvedValue(mockUserMessage),
+        },
+      };
+      mockClient.channels.fetch = vi.fn().mockResolvedValue(mockChannel);
+
+      vi.mocked(readDiscordState).mockResolvedValue({
+        lastSyncedMessageIds: { 'mapped-chat': 'msg-0' },
+        channelChatMap: { 'channel-123': { chatId: 'mapped-chat' } },
+      });
+    });
+
+    it('opens a thread on the user message and posts the activity log entry', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      recordInbound({ messageId: 'inbound-1', channelId: 'channel-123' });
+
+      const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+        chatId: 'mapped-chat',
+        signal: controller.signal,
+      });
+
+      await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+      subscribeCallbacks.onData([
+        {
+          kind: 'turn',
+          event: {
+            type: 'started',
+            turnId: 'turn-1',
+            rootMessageId: 'msg-1',
+            externalRef: 'inbound-1',
+          },
+        },
+        {
+          kind: 'message',
+          message: {
+            id: 'msg-2',
+            role: 'tool',
+            name: 'Read',
+            payload: { file_path: '/foo/bar.txt' },
+            timestamp: '',
+            turnId: 'turn-1',
+          },
+        },
+      ]);
+
+      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(1500);
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(mockUserMessage.startThread).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Activity log' })
+      );
+      // Initial flush posts the "Started processing…" entry; coalesced flush
+      // adds the tool entry. We assert the tool entry made it into a posted
+      // message.
+      const sentTexts = mockThread.send.mock.calls.map((c) => c[0]?.content as string);
+      const editedTexts = mockLogMessage.edit.mock.calls.map((c) => c[0]?.content as string);
+      const allTexts = [...sentTexts, ...editedTexts];
+      expect(allTexts.some((t) => t.includes('Started processing'))).toBe(true);
+      expect(allTexts.some((t) => t.includes('/foo/bar.txt'))).toBe(true);
+
+      controller.abort();
+      vi.useRealTimers();
+      await forwarderPromise;
+    });
+
+    it('does not open a thread when the inbound is missing (no cached anchor)', async () => {
+      const controller = new AbortController();
+
+      const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+        chatId: 'mapped-chat',
+        signal: controller.signal,
+      });
+
+      await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+      subscribeCallbacks.onData([
+        {
+          kind: 'turn',
+          event: {
+            type: 'started',
+            turnId: 'turn-1',
+            rootMessageId: 'msg-1',
+            externalRef: 'unknown-inbound',
+          },
+        },
+        {
+          kind: 'message',
+          message: {
+            id: 'msg-2',
+            role: 'tool',
+            name: 'Read',
+            payload: { file_path: '/foo/bar.txt' },
+            timestamp: '',
+            turnId: 'turn-1',
+          },
+        },
+        {
+          kind: 'turn',
+          event: { type: 'ended', turnId: 'turn-1', outcome: 'ok' },
+        },
+      ]);
+
+      await vi.waitFor(() =>
+        expect(mockUpdateDiscordState).toHaveBeenCalledWith({
+          lastSyncedMessageIds: { 'mapped-chat': 'msg-2' },
+        })
+      );
+
+      expect(mockUserMessage.startThread).not.toHaveBeenCalled();
+      expect(mockThread.send).not.toHaveBeenCalled();
+
+      controller.abort();
+      await forwarderPromise;
+    });
+
+    it('drops thread-log activity when visibility.threads is false', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      recordInbound({ messageId: 'inbound-1', channelId: 'channel-123' });
+
+      const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+        chatId: 'mapped-chat',
+        signal: controller.signal,
+        discordConfig: {
+          botToken: 't',
+          authorizedUserId: 'user-123',
+          chatId: 'mapped-chat',
+          maxAttachmentSizeMB: 25,
+          requireMention: false,
+          visibility: { threads: false },
+        },
+      });
+
+      await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+      subscribeCallbacks.onData([
+        {
+          kind: 'turn',
+          event: {
+            type: 'started',
+            turnId: 'turn-1',
+            rootMessageId: 'msg-1',
+            externalRef: 'inbound-1',
+          },
+        },
+        {
+          kind: 'message',
+          message: {
+            id: 'msg-2',
+            role: 'tool',
+            name: 'Read',
+            payload: { file_path: '/foo/bar.txt' },
+            timestamp: '',
+            turnId: 'turn-1',
+          },
+        },
+      ]);
+
+      await vi.advanceTimersByTimeAsync(1500);
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(mockUserMessage.startThread).not.toHaveBeenCalled();
+      expect(mockThread.send).not.toHaveBeenCalled();
+
+      controller.abort();
+      vi.useRealTimers();
+      await forwarderPromise;
+    });
+
+    it('drops thread-log activity when the channel has threadsDisabled', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      recordInbound({ messageId: 'inbound-1', channelId: 'channel-123' });
+
+      vi.mocked(readDiscordState).mockResolvedValue({
+        lastSyncedMessageIds: { 'mapped-chat': 'msg-0' },
+        channelChatMap: {
+          'channel-123': { chatId: 'mapped-chat', threadsDisabled: true },
+        },
+      });
+
+      const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+        chatId: 'mapped-chat',
+        signal: controller.signal,
+      });
+
+      await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+      subscribeCallbacks.onData([
+        {
+          kind: 'turn',
+          event: {
+            type: 'started',
+            turnId: 'turn-1',
+            rootMessageId: 'msg-1',
+            externalRef: 'inbound-1',
+          },
+        },
+        {
+          kind: 'message',
+          message: {
+            id: 'msg-2',
+            role: 'tool',
+            name: 'Read',
+            payload: { file_path: '/foo/bar.txt' },
+            timestamp: '',
+            turnId: 'turn-1',
+          },
+        },
+      ]);
+
+      await vi.advanceTimersByTimeAsync(1500);
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(mockUserMessage.startThread).not.toHaveBeenCalled();
+      expect(mockThread.send).not.toHaveBeenCalled();
+
+      controller.abort();
+      vi.useRealTimers();
+      await forwarderPromise;
+    });
+
+    it('reuses an existing thread when the user message already has one', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      recordInbound({ messageId: 'inbound-1', channelId: 'channel-123' });
+
+      mockUserMessage = {
+        startThread: vi.fn(),
+        hasThread: true,
+        thread: mockThread,
+      } as unknown as typeof mockUserMessage;
+      mockChannel.messages.fetch = vi.fn().mockResolvedValue(mockUserMessage);
+
+      const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+        chatId: 'mapped-chat',
+        signal: controller.signal,
+      });
+
+      await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+      subscribeCallbacks.onData([
+        {
+          kind: 'turn',
+          event: {
+            type: 'started',
+            turnId: 'turn-1',
+            rootMessageId: 'msg-1',
+            externalRef: 'inbound-1',
+          },
+        },
+      ]);
+
+      await vi.advanceTimersByTimeAsync(1500);
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(mockUserMessage.startThread).not.toHaveBeenCalled();
+      expect(mockThread.send).toHaveBeenCalled();
+
+      controller.abort();
+      vi.useRealTimers();
+      await forwarderPromise;
+    });
+
+    it('recovers when startThread races with another caller (160004)', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      recordInbound({ messageId: 'inbound-1', channelId: 'channel-123' });
+
+      const raceErr: Error & { code?: number } = new Error(
+        'A thread has already been created for this message'
+      );
+      raceErr.code = 160004;
+      mockUserMessage = {
+        startThread: vi.fn().mockRejectedValue(raceErr),
+        hasThread: false,
+        thread: null,
+      } as unknown as typeof mockUserMessage;
+      mockChannel.messages.fetch = vi
+        .fn()
+        // Initial fetch: no thread yet.
+        .mockResolvedValueOnce(mockUserMessage)
+        // Refetch after 160004: thread now exists.
+        .mockResolvedValueOnce({
+          startThread: vi.fn(),
+          hasThread: true,
+          thread: mockThread,
+        });
+
+      const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+        chatId: 'mapped-chat',
+        signal: controller.signal,
+      });
+
+      await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+      subscribeCallbacks.onData([
+        {
+          kind: 'turn',
+          event: {
+            type: 'started',
+            turnId: 'turn-1',
+            rootMessageId: 'msg-1',
+            externalRef: 'inbound-1',
+          },
+        },
+      ]);
+
+      await vi.advanceTimersByTimeAsync(1500);
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(mockUserMessage.startThread).toHaveBeenCalled();
+      expect(mockChannel.messages.fetch).toHaveBeenCalledTimes(2);
+      expect(mockThread.send).toHaveBeenCalled();
+
+      controller.abort();
+      vi.useRealTimers();
+      await forwarderPromise;
+    });
+
+    it('routes the final agent reply top-level, not into the thread', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      recordInbound({ messageId: 'inbound-1', channelId: 'channel-123' });
+
+      const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+        chatId: 'mapped-chat',
+        signal: controller.signal,
+      });
+
+      await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+      subscribeCallbacks.onData([
+        {
+          kind: 'turn',
+          event: {
+            type: 'started',
+            turnId: 'turn-1',
+            rootMessageId: 'msg-1',
+            externalRef: 'inbound-1',
+          },
+        },
+        {
+          kind: 'message',
+          message: {
+            id: 'msg-final',
+            role: 'agent',
+            content: 'Final reply',
+            timestamp: '',
+            turnId: 'turn-1',
+          },
+        },
+      ]);
+
+      await vi.advanceTimersByTimeAsync(1500);
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(mockChannel.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: 'Final reply',
+          allowedMentions: { parse: [] },
+        })
+      );
+      // The thread itself doesn't carry the agent reply.
+      const threadBody = mockThread.send.mock.calls.map((c) => c[0]?.content as string).join('\n');
+      expect(threadBody).not.toContain('Final reply');
+
+      controller.abort();
+      vi.useRealTimers();
+      await forwarderPromise;
+    });
   });
 });
