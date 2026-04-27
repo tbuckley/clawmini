@@ -3,6 +3,7 @@
   "version": "0.0.6",
   "type": "module",
   "workspaces": [
+    ".",
     "web"
   ],
   "repository": {

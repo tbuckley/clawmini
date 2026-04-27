@@ -281,12 +281,23 @@ describe('E2E Auto-update: agent overlay (`extends`)', () => {
     expect(overlay.skillsDir).toBe('.gemini/skills/');
   });
 
-  it('existing agent without extends is unchanged after up', async () => {
-    // Legacy-shape agent written by hand (no extends).
+  it('agents add --fork records skill SHAs in installed-files.json', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw', '--fork']);
+    const installed = JSON.parse(
+      fs.readFileSync(env.getAgentPath('bob', 'installed-files.json'), 'utf8')
+    );
+    expect(installed.files['.gemini/skills/skill-creator/SKILL.md']).toBeTruthy();
+    expect(typeof installed.files['.gemini/skills/skill-creator/SKILL.md'].sha).toBe('string');
+  });
+
+  it('existing agent without extends is unchanged after up when skillsDir is null', async () => {
+    // skillsDir: null is the explicit opt-out from the universal skill-track
+    // refresh — without it, `up` installs skills into the agent's workdir.
     fs.mkdirSync(path.join(env.e2eDir, 'legacy'), { recursive: true });
     env.writeAgentSettings('legacy', {
       directory: './legacy',
       commands: { new: 'echo legacy' },
+      skillsDir: null,
     });
     const before = JSON.stringify(env.getAgentSettings('legacy'));
 
@@ -294,6 +305,32 @@ describe('E2E Auto-update: agent overlay (`extends`)', () => {
     expect(code).toBe(0);
     const after = JSON.stringify(env.getAgentSettings('legacy'));
     expect(after).toBe(before);
+    // Confirms the workdir wasn't seeded with skills either.
+    expect(fs.existsSync(path.join(env.e2eDir, 'legacy', '.agents'))).toBe(false);
+  }, 30000);
+
+  it('hand-written agent without extends gets skills installed on up', async () => {
+    fs.mkdirSync(path.join(env.e2eDir, 'legacy'), { recursive: true });
+    env.writeAgentSettings('legacy', {
+      directory: './legacy',
+      commands: { new: 'echo legacy' },
+    });
+
+    const { code } = await env.up();
+    expect(code).toBe(0);
+    const skill = path.join(
+      env.e2eDir,
+      'legacy',
+      '.agents',
+      'skills',
+      'skill-creator',
+      'SKILL.md'
+    );
+    expect(fs.existsSync(skill)).toBe(true);
+    const installed = JSON.parse(
+      fs.readFileSync(env.getAgentPath('legacy', 'installed-files.json'), 'utf8')
+    );
+    expect(installed.files['.agents/skills/skill-creator/SKILL.md']).toBeTruthy();
   }, 30000);
 
   it('template.json and settings.json are not copied into the agent workdir', async () => {
@@ -641,5 +678,64 @@ describe('E2E Auto-update: --dry-run', () => {
     // Neither file mutated.
     expect(fs.readFileSync(bobGemini, 'utf8')).toBe('bob edit\n');
     expect(fs.readFileSync(aliceGemini, 'utf8')).toBe('alice edit\n');
+  });
+
+  it('up --dry-run reports skill file changes for an extends-template agent', async () => {
+    await env.runCli(['agents', 'add', 'bob', '--template', 'gemini-claw']);
+    const skill = path.join(
+      env.e2eDir,
+      'bob',
+      '.gemini',
+      'skills',
+      'skill-creator',
+      'SKILL.md'
+    );
+    fs.writeFileSync(skill, 'edited skill\n');
+
+    const { stdout, code } = await env.runCli(['up', '--dry-run']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('[bob] diverged .gemini/skills/skill-creator/SKILL.md');
+    // Nothing written back.
+    expect(fs.readFileSync(skill, 'utf8')).toBe('edited skill\n');
+  });
+
+  it('up --dry-run reports skill file changes for a custom (non-extends) agent', async () => {
+    // Forked agents have no `extends`, but skills are still tracked: dry-run
+    // must report skill plan actions for them just like extends agents.
+    await env.runCli(['agents', 'add', 'custom', '--template', 'gemini-claw', '--fork']);
+    const overlay = env.getAgentSettings('custom');
+    expect(overlay.extends).toBeUndefined();
+    const skill = path.join(
+      env.e2eDir,
+      'custom',
+      '.gemini',
+      'skills',
+      'skill-creator',
+      'SKILL.md'
+    );
+    expect(fs.existsSync(skill)).toBe(true);
+    fs.writeFileSync(skill, 'edited skill\n');
+
+    const { stdout, code } = await env.runCli(['up', '--dry-run']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('[custom] diverged .gemini/skills/skill-creator/SKILL.md');
+    expect(fs.readFileSync(skill, 'utf8')).toBe('edited skill\n');
+  });
+
+  it('up --dry-run skips skill changes for a custom agent with skillsDir: null', async () => {
+    await env.runCli(['agents', 'add', 'custom', '--template', 'gemini-claw', '--fork']);
+    const skillsDir = path.join(env.e2eDir, 'custom', '.gemini', 'skills');
+    expect(fs.existsSync(skillsDir)).toBe(true);
+    // User opts out and removes the installed skills.
+    env.updateAgentSettings('custom', { skillsDir: null });
+    fs.rmSync(skillsDir, { recursive: true, force: true });
+
+    const { stdout, code } = await env.runCli(['up', '--dry-run']);
+    expect(code).toBe(0);
+    expect(stdout).not.toContain('[custom]');
+    expect(stdout).not.toContain('skill-creator');
+    expect(stdout).toContain('Dry run: no agents to refresh.');
+    // And the skills directory remains absent — dry-run wrote nothing.
+    expect(fs.existsSync(skillsDir)).toBe(false);
   });
 });

@@ -795,15 +795,29 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
       .replace(/• (?:\d+m)?\d+[ms]/g, '• Δs')
       .replace(/\/clawmini-e2e-google-chat-threads-[^/\s"]+/g, '/CLAWMINI_DIR');
 
-    expect(normalized).toMatchInlineSnapshot(`
-      "• Δs  ▶️ Started processing…
-      • Δs  👉 multi-a: echo A
-      • Δs  👈 multi-a: [DEBUG] echo A: \`\`\` A \`\`\`
-      • Δs  ✅ multi-a
-      • Δs  👉 multi-b: echo B
-      • Δs  👈 multi-b: [DEBUG] echo B: \`\`\` B \`\`\`
-      • Δs  ✅ multi-b"
-    `);
+    // Both subagents are spawned with `--async`, so they run in parallel and
+    // their events can interleave under load. Assert each lifecycle is
+    // present and per-subagent order is preserved (👉 → 👈 → ✅), without
+    // pinning the relative order between the two.
+    const indexOf = (needle: string): number => {
+      const i = normalized.indexOf(needle);
+      expect(i, `expected log to contain ${JSON.stringify(needle)}`).toBeGreaterThanOrEqual(0);
+      return i;
+    };
+    const startedIdx = indexOf('▶️ Started processing…');
+    const aPromptIdx = indexOf('👉 multi-a: echo A');
+    const aReplyIdx = indexOf('👈 multi-a: [DEBUG] echo A: ``` A ```');
+    const aDoneIdx = indexOf('✅ multi-a');
+    const bPromptIdx = indexOf('👉 multi-b: echo B');
+    const bReplyIdx = indexOf('👈 multi-b: [DEBUG] echo B: ``` B ```');
+    const bDoneIdx = indexOf('✅ multi-b');
+
+    expect(startedIdx).toBeLessThan(aPromptIdx);
+    expect(startedIdx).toBeLessThan(bPromptIdx);
+    expect(aPromptIdx).toBeLessThan(aReplyIdx);
+    expect(aReplyIdx).toBeLessThan(aDoneIdx);
+    expect(bPromptIdx).toBeLessThan(bReplyIdx);
+    expect(bReplyIdx).toBeLessThan(bDoneIdx);
   }, 120000);
 
   it('snapshots the interleaved create/update transcript for a successful turn', async () => {

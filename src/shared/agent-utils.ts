@@ -4,7 +4,6 @@ import {
   applyTemplateToAgent,
   readChatSettings,
   writeChatSettings,
-  copyAgentSkills,
   refreshAgentSkills,
   getAgent,
 } from './workspace.js';
@@ -27,10 +26,6 @@ export async function createAgentWithChat(
     const resolved = await getAgent(agentId, startDir);
     if (resolved?.skillsDir === null) {
       console.log(`Skipping skills for agent ${agentId} (skillsDir is null).`);
-    } else if (opts.fork || !template) {
-      // Fork mode (or untemplated agents) keeps the legacy bulk-copy flow.
-      await copyAgentSkills(agentId, startDir);
-      console.log(`Copied skills to agent ${agentId}.`);
     } else if (resolved) {
       await refreshAgentSkills(agentId, resolved, startDir, { firstInstall: true });
       console.log(`Installed skills for agent ${agentId}.`);
