@@ -1011,6 +1011,104 @@ describe('Daemon to Discord Forwarder', () => {
       await forwarderPromise;
     });
 
+    it('reuses an existing thread when the user message already has one', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      recordInbound({ messageId: 'inbound-1', channelId: 'channel-123' });
+
+      mockUserMessage = {
+        startThread: vi.fn(),
+        hasThread: true,
+        thread: mockThread,
+      } as unknown as typeof mockUserMessage;
+      mockChannel.messages.fetch = vi.fn().mockResolvedValue(mockUserMessage);
+
+      const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+        chatId: 'mapped-chat',
+        signal: controller.signal,
+      });
+
+      await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+      subscribeCallbacks.onData([
+        {
+          kind: 'turn',
+          event: {
+            type: 'started',
+            turnId: 'turn-1',
+            rootMessageId: 'msg-1',
+            externalRef: 'inbound-1',
+          },
+        },
+      ]);
+
+      await vi.advanceTimersByTimeAsync(1500);
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(mockUserMessage.startThread).not.toHaveBeenCalled();
+      expect(mockThread.send).toHaveBeenCalled();
+
+      controller.abort();
+      vi.useRealTimers();
+      await forwarderPromise;
+    });
+
+    it('recovers when startThread races with another caller (160004)', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      recordInbound({ messageId: 'inbound-1', channelId: 'channel-123' });
+
+      const raceErr: Error & { code?: number } = new Error(
+        'A thread has already been created for this message'
+      );
+      raceErr.code = 160004;
+      mockUserMessage = {
+        startThread: vi.fn().mockRejectedValue(raceErr),
+        hasThread: false,
+        thread: null,
+      } as unknown as typeof mockUserMessage;
+      mockChannel.messages.fetch = vi
+        .fn()
+        // Initial fetch: no thread yet.
+        .mockResolvedValueOnce(mockUserMessage)
+        // Refetch after 160004: thread now exists.
+        .mockResolvedValueOnce({
+          startThread: vi.fn(),
+          hasThread: true,
+          thread: mockThread,
+        });
+
+      const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+        chatId: 'mapped-chat',
+        signal: controller.signal,
+      });
+
+      await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+      subscribeCallbacks.onData([
+        {
+          kind: 'turn',
+          event: {
+            type: 'started',
+            turnId: 'turn-1',
+            rootMessageId: 'msg-1',
+            externalRef: 'inbound-1',
+          },
+        },
+      ]);
+
+      await vi.advanceTimersByTimeAsync(1500);
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(mockUserMessage.startThread).toHaveBeenCalled();
+      expect(mockChannel.messages.fetch).toHaveBeenCalledTimes(2);
+      expect(mockThread.send).toHaveBeenCalled();
+
+      controller.abort();
+      vi.useRealTimers();
+      await forwarderPromise;
+    });
+
     it('routes the final agent reply top-level, not into the thread', async () => {
       vi.useFakeTimers();
       const controller = new AbortController();

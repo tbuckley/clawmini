@@ -203,6 +203,13 @@ export async function startDaemonToDiscordForwarder(
       console.warn(`Failed to fetch user message ${inbound.messageId} for turn anchor:`, err);
       return undefined;
     }
+    // Discord allows only one thread per message. The same inbound can anchor
+    // multiple turns (e.g. a follow-up turn fanned out from the original
+    // request), so reuse an existing thread rather than failing the second
+    // turn's activity log.
+    if (userMessage.hasThread && userMessage.thread) {
+      return userMessage.thread as ThreadChannel;
+    }
     try {
       return await userMessage.startThread({
         name: 'Activity log',
@@ -212,6 +219,23 @@ export async function startDaemonToDiscordForwarder(
         autoArchiveDuration: 1440,
       });
     } catch (err) {
+      // Race: another turn for the same inbound created the thread between
+      // our `hasThread` check and `startThread`. Discord returns 160004
+      // (THREAD_ALREADY_CREATED_FOR_MESSAGE). Re-fetch and reuse.
+      const code = (err as { code?: number })?.code;
+      if (code === 160004) {
+        try {
+          const refreshed = await guildChannel.messages.fetch(inbound.messageId);
+          if (refreshed.hasThread && refreshed.thread) {
+            return refreshed.thread as ThreadChannel;
+          }
+        } catch (refetchErr) {
+          console.warn(
+            `Failed to refetch user message ${inbound.messageId} after thread-exists race:`,
+            refetchErr
+          );
+        }
+      }
       console.warn(`Failed to start thread on message ${inbound.messageId}:`, err);
       return undefined;
     }
