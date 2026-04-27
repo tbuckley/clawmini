@@ -62,7 +62,7 @@ describe('/restart adapter delivery e2e', () => {
     await env.sendMessage('/restart', { noWait: true });
 
     const ack = await sub1.waitForMessage(
-      isSystemReplyContaining('Restarting clawmini daemon'),
+      isSystemReplyContaining('Restarting clawmini...'),
       15000
     );
     expect(ack.id).toBeTruthy();

@@ -95,11 +95,12 @@ describe('/restart router e2e', () => {
     const lines = readChatLog(chatLog);
     expect(
       lines.some(
-        (l) => typeof l.content === 'string' && l.content.includes('Restarting clawmini daemon')
+        (l) => typeof l.content === 'string' && l.content.includes('Restarting clawmini...')
       )
     ).toBe(true);
 
-    // Supervisor pid must be unchanged — only the daemon child was replaced.
+    // Supervisor pid must be unchanged — only the child processes (daemon
+    // plus any adapters) were bounced.
     expect(fs.existsSync(pidPath)).toBe(true);
     expect(readPid(pidPath)).toBe(supervisorPidBefore);
 

@@ -55,6 +55,11 @@ export class Supervisor {
   private logFds = new Map<ServiceName, number>();
   private shuttingDown = false;
   private restarting = new Set<ServiceName>();
+  // Services that have ever been started in this supervisor's lifetime. Used
+  // by restartAll() to know what to bring back after a stopAllChildren().
+  // We don't remove entries when a service stops — a crash-and-restart of an
+  // adapter shouldn't drop it from the "originally enabled" set.
+  private enabledServices = new Set<ServiceName>();
   private readonly logDir: string;
 
   constructor(logDir: string) {
@@ -63,6 +68,7 @@ export class Supervisor {
   }
 
   async startService(service: ServiceName): Promise<void> {
+    this.enabledServices.add(service);
     const { command, args } = resolveServiceCommand(service);
     const logPath = path.join(this.logDir, `${service}.log`);
     const logFd = fs.openSync(logPath, 'a');
@@ -175,6 +181,39 @@ export class Supervisor {
       }
     }
     this.logFds.clear();
+  }
+
+  /**
+   * Bounce every service that has ever been started under this supervisor.
+   * Daemon goes down with the adapters, then comes back first so the
+   * adapters can re-establish their tRPC subscriptions to the new daemon.
+   *
+   * This is what `/restart` and the `/upgrade` failure recovery paths call:
+   * just bouncing the daemon would leave adapter-discord (and any other
+   * adapter) holding a dead subscription, so outbound messages would never
+   * reach the chat. The user-visible symptom was "I send /restart and then
+   * the daemon's reply never shows up in Discord."
+   */
+  async restartAll(): Promise<void> {
+    if (this.shuttingDown) return;
+    // Suppress the daemon's unexpected-exit guard while we tear it down.
+    this.restarting.add('daemon');
+    try {
+      await this.stopAllChildren();
+      // Wait for the exit handlers to drain bookkeeping.
+      await new Promise((r) => setImmediate(r));
+
+      if (this.enabledServices.has('daemon')) {
+        await this.startService('daemon');
+        await this.waitForDaemonSocket();
+      }
+      for (const name of this.enabledServices) {
+        if (name === 'daemon') continue;
+        await this.startService(name);
+      }
+    } finally {
+      this.restarting.delete('daemon');
+    }
   }
 
   /**

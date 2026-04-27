@@ -28,7 +28,7 @@ export async function slashRestart(state: RouterState): Promise<RouterState> {
     return stop(state, `Restart aborted: ${res.error ?? 'unknown error'}.`);
   }
 
-  return stop(state, 'Restarting clawmini daemon...');
+  return stop(state, 'Restarting clawmini...');
 }
 
 function stop(state: RouterState, reply: string): RouterState {

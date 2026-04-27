@@ -28,7 +28,7 @@ describe('slashRestart', () => {
     const state = { ...baseState, message: '/restart' };
     const result = await slashRestart(state);
     expect(result.action).toBe('stop');
-    expect(result.reply).toBe('Restarting clawmini daemon...');
+    expect(result.reply).toBe('Restarting clawmini...');
     expect(result.message).toBe('');
     expect(sendControlRequest).toHaveBeenCalledWith({
       action: 'restart',

@@ -36,7 +36,12 @@ export function startSupervisorControl(supervisor: Supervisor): void {
         });
       }
       setTimeout(() => {
-        void supervisor.restartService('daemon').catch((err) => {
+        // restartAll instead of restartService('daemon'): adapters hold
+        // tRPC subscriptions to the daemon and won't reconnect on their
+        // own when the daemon process dies, so outbound replies wouldn't
+        // make it back to the chat. Bouncing the adapters forces them to
+        // re-subscribe to the new daemon.
+        void supervisor.restartAll().catch((err) => {
           process.stderr.write(
             `[supervisor] /restart failed: ${err instanceof Error ? err.message : String(err)}\n`
           );
@@ -127,11 +132,12 @@ export async function runUpgrade(
         requestedVersion: version,
         reason: installErr,
       });
-      // The daemon is still running (we never stopped it). Restart it so it
-      // drains the upgrade-failed message into the chat.
-      await supervisor.restartService('daemon').catch((err) => {
+      // The daemon is still running (we never stopped it). Bounce the whole
+      // stack so the new daemon drains the failure message AND adapters
+      // re-subscribe to it.
+      await supervisor.restartAll().catch((err) => {
         process.stderr.write(
-          `[supervisor] additionally failed to restart daemon to surface the failure: ${err instanceof Error ? err.message : String(err)}\n`
+          `[supervisor] additionally failed to restart services to surface the failure: ${err instanceof Error ? err.message : String(err)}\n`
         );
       });
     }
@@ -152,7 +158,7 @@ export async function runUpgrade(
         requestedVersion: version,
         reason,
       });
-      await supervisor.restartService('daemon').catch(() => {});
+      await supervisor.restartAll().catch(() => {});
     }
     return;
   }
@@ -207,14 +213,13 @@ export async function runUpgrade(
         reason: 'replacement supervisor failed to spawn',
       });
     }
-    // Bring the daemon back so the failure message gets drained and the user
-    // isn't left without a running clawmini.
+    // Bring the whole stack back (daemon + adapters + web) so the failure
+    // message is drained AND adapters can deliver it to the chat.
     try {
-      await supervisor.startService('daemon');
-      await supervisor.waitForDaemonSocket();
+      await supervisor.restartAll();
     } catch (err) {
       process.stderr.write(
-        `[supervisor] additionally failed to restart daemon after spawn failure: ${err instanceof Error ? err.message : String(err)}\n`
+        `[supervisor] additionally failed to restart services after spawn failure: ${err instanceof Error ? err.message : String(err)}\n`
       );
     }
     return;
