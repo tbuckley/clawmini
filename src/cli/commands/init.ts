@@ -1,12 +1,29 @@
 import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isValidAgentId, enableEnvironment } from '../../shared/workspace.js';
 import { setDefaultChatId } from '../../shared/chats.js';
 import { type Agent } from '../../shared/config.js';
 import { createAgentWithChat } from '../../shared/agent-utils.js';
 import { handleError } from '../utils.js';
 import { installBuiltinPolicies } from '../builtin-policies.js';
+
+function readBackupGitignoreTemplate(): string | null {
+  let currentDir = path.dirname(fileURLToPath(import.meta.url));
+  while (
+    currentDir !== path.parse(currentDir).root &&
+    !fs.existsSync(path.join(currentDir, 'package.json'))
+  ) {
+    currentDir = path.dirname(currentDir);
+  }
+  const templatePath = path.join(currentDir, 'docs', 'backups', 'clawmini.gitignore');
+  try {
+    return fs.readFileSync(templatePath, 'utf8');
+  } catch {
+    return null;
+  }
+}
 
 export const initCmd = new Command('init')
   .description('Initialize a new .clawmini settings folder')
@@ -47,6 +64,17 @@ export const initCmd = new Command('init')
 
     fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2));
     console.log('Initialized .clawmini/settings.json');
+
+    const gitignoreTemplate = readBackupGitignoreTemplate();
+    if (gitignoreTemplate) {
+      const gitignorePath = path.join(dirPath, '.gitignore');
+      if (!fs.existsSync(gitignorePath)) {
+        fs.writeFileSync(gitignorePath, gitignoreTemplate);
+        console.log('Initialized .clawmini/.gitignore');
+      }
+    } else {
+      console.warn('Warning: backup .gitignore template not found; skipping .clawmini/.gitignore');
+    }
 
     await installBuiltinPolicies(dirPath);
 

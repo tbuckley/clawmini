@@ -1,0 +1,69 @@
+# Allow-list `.gitignore` for a Clawmini workspace's `.clawmini/` directory.
+#
+# Installed automatically by `clawmini init`, and also available as a
+# template at <clawmini>/docs/backups/clawmini.gitignore for retrofitting
+# an existing workspace.
+#
+# Everything is ignored by default; the entries below opt specific paths
+# back in. New unknown files therefore stay out of the backup until a
+# human reviews them. See the Clawmini `docs/guides/backups.md` for the
+# rationale and `docs/backups/SPEC.md` for the full tradeoff analysis.
+
+# default: ignore everything
+*
+
+# re-include known-safe config
+!.gitignore
+!settings.json
+!policies.json
+!policy-scripts/
+!policy-scripts/**
+!commands/
+!commands/**
+!templates/
+!templates/**
+
+# chat *metadata* only — NOT transcripts (chat.jsonl is excluded)
+!chats/
+chats/*
+!chats/*/
+!chats/*/settings.json
+
+# agents: settings + manifest only — no sessions, no tmp
+# WARNING: review settings.json for inline `env` secrets before committing.
+!agents/
+agents/*
+!agents/*/
+!agents/*/settings.json
+!agents/*/installed-files.json
+
+# environments: env.json only
+# WARNING: review env.json for inline `env` secrets before committing.
+!environments/
+environments/*
+!environments/*/
+!environments/*/env.json
+
+# adapters: state only, and only for adapters known not to hold creds.
+# - discord/state.json is sync metadata (safe).
+# - discord/config.json holds the bot token (excluded).
+# - google-chat/config.json holds the OAuth client secret (excluded).
+# - google-chat/state.json holds live OAuth tokens (excluded).
+!adapters/
+adapters/*
+!adapters/discord/
+adapters/discord/*
+!adapters/discord/state.json
+
+# Everything below stays ignored by default. Listed here for clarity:
+#   chats/*/chat.jsonl       - full transcripts (private content)
+#   adapters/*/config.json   - credentials
+#   adapters/google-chat/state.json - OAuth tokens
+#   agents/*/sessions/       - per-session state (may contain env secrets)
+#   agents/*/tmp/            - command stdout/stderr captures
+#   tmp/                     - policy requests, file snapshots, attachments
+#   logs/                    - service logs
+#   daemon.log               - daemon stderr
+#   daemon.sock, server.sock - Unix sockets (not real files)
+#   supervisor.pid           - process metadata
+#   *.tmp                    - atomic-write scratch files
