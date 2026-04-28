@@ -87,6 +87,15 @@ describe('E2E Requests Tests (Lite)', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Request created successfully.');
     expect(stdout).toContain('Request ID:');
+    // Guidance for the agent: explain the request is queued, how the result
+    // arrives, that polling is forbidden, and what to do next. Normalize
+    // whitespace so assertions don't depend on where console.log wraps.
+    const flat = stdout.replace(/\s+/g, ' ');
+    expect(flat).toContain('has not run yet');
+    expect(flat).toContain('queued for user approval');
+    expect(flat).toContain('new user message in this chat');
+    expect(flat).toContain('do not poll');
+    expect(flat).toContain('end your turn');
 
     const requestsDir = path.join(env.e2eDir, '.clawmini', 'tmp', 'requests');
     const files = (await fsPromises.readdir(requestsDir)).filter((f) => f.endsWith('.json'));
@@ -107,6 +116,10 @@ describe('E2E Requests Tests (Lite)', () => {
     expect(stderr).toBe('');
     expect(code).toBe(0);
     expect(stdout.trim()).toBe('autoresult extra-auto');
+    // Guidance text is only for queued requests — auto-approved policies
+    // run synchronously and must not include it.
+    expect(stdout).not.toContain('has not run yet');
+    expect(stdout).not.toContain('do not poll');
   });
 
   it('should interpolate {{placeholder}} in policy args with snapshot path', async () => {
