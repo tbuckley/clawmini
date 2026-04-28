@@ -319,6 +319,12 @@ program
       } else {
         console.log(`Request created successfully.`);
         console.log(`Request ID: ${request.id}`);
+        console.log('');
+        console.log('This request has not run yet — it is queued for user approval. When the');
+        console.log('user approves (or rejects) it, the result will arrive as a new user');
+        console.log('message in this chat; do not poll. Finish any unrelated work that does');
+        console.log('not depend on this request, then end your turn with a brief message');
+        console.log('explaining you are blocked on this request.');
       }
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
