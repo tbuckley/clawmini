@@ -1163,5 +1163,235 @@ describe('Daemon to Discord Forwarder', () => {
       vi.useRealTimers();
       await forwarderPromise;
     });
+
+    describe('visibility.jobs: header', () => {
+      const headerConfig = {
+        botToken: 't',
+        authorizedUserId: 'user-123',
+        chatId: 'mapped-chat',
+        maxAttachmentSizeMB: 25,
+        requireMention: false,
+        visibility: { threads: true, jobs: 'header' as const },
+      };
+
+      it("posts a terse '🕐 jobId' header and threads the activity log on it", async () => {
+        vi.useFakeTimers();
+        const controller = new AbortController();
+
+        const cronHeaderMessage = {
+          startThread: vi.fn().mockResolvedValue(mockThread),
+        };
+        mockChannel.send = vi.fn().mockResolvedValue(cronHeaderMessage);
+
+        const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+          chatId: 'mapped-chat',
+          signal: controller.signal,
+          discordConfig: headerConfig,
+        });
+
+        await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+        // Cron message arrives BEFORE turnStarted (typical daemon ordering).
+        subscribeCallbacks.onData([
+          {
+            kind: 'message',
+            message: {
+              id: 'cron-msg-1',
+              role: 'system',
+              event: 'cron',
+              content: 'run scheduled task',
+              jobId: 'nightly-deploy',
+              timestamp: '',
+              turnId: 'turn-1',
+            },
+          },
+          {
+            kind: 'turn',
+            event: { type: 'started', turnId: 'turn-1', rootMessageId: 'cron-msg-1' },
+          },
+          {
+            kind: 'message',
+            message: {
+              id: 'msg-2',
+              role: 'tool',
+              name: 'Read',
+              payload: { file_path: '/some/path.ts' },
+              timestamp: '',
+              turnId: 'turn-1',
+            },
+          },
+        ]);
+
+        await vi.runOnlyPendingTimersAsync();
+        await vi.advanceTimersByTimeAsync(1500);
+        await vi.runOnlyPendingTimersAsync();
+
+        // Header lands top-level with a terse `🕐 <jobId>` body.
+        expect(mockChannel.send).toHaveBeenCalledWith(
+          expect.objectContaining({ content: '🕐 nightly-deploy' })
+        );
+        // Thread is opened on the header itself.
+        expect(cronHeaderMessage.startThread).toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'Activity log' })
+        );
+        // The tool call lands inside that thread.
+        const threadBody = [
+          ...mockThread.send.mock.calls.map((c) => c[0]?.content as string),
+          ...mockLogMessage.edit.mock.calls.map((c) => c[0]?.content as string),
+        ].join('\n');
+        expect(threadBody).toContain('/some/path.ts');
+
+        controller.abort();
+        vi.useRealTimers();
+        await forwarderPromise;
+      });
+
+      it('handles turnStarted arriving BEFORE the cron header', async () => {
+        vi.useFakeTimers();
+        const controller = new AbortController();
+
+        const cronHeaderMessage = {
+          startThread: vi.fn().mockResolvedValue(mockThread),
+        };
+        mockChannel.send = vi.fn().mockResolvedValue(cronHeaderMessage);
+
+        const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+          chatId: 'mapped-chat',
+          signal: controller.signal,
+          discordConfig: headerConfig,
+        });
+
+        await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+        subscribeCallbacks.onData([
+          {
+            kind: 'turn',
+            event: { type: 'started', turnId: 'turn-1', rootMessageId: 'cron-msg-1' },
+          },
+          // Tool call before the header — should accrue in the unanchored
+          // buffer and flush once the header opens the thread.
+          {
+            kind: 'message',
+            message: {
+              id: 'msg-2',
+              role: 'tool',
+              name: 'Read',
+              payload: { file_path: '/early.ts' },
+              timestamp: '',
+              turnId: 'turn-1',
+            },
+          },
+          {
+            kind: 'message',
+            message: {
+              id: 'cron-msg-1',
+              role: 'system',
+              event: 'cron',
+              content: 'run scheduled task',
+              jobId: 'late-cron',
+              timestamp: '',
+              turnId: 'turn-1',
+            },
+          },
+        ]);
+
+        await vi.runOnlyPendingTimersAsync();
+        await vi.advanceTimersByTimeAsync(1500);
+        await vi.runOnlyPendingTimersAsync();
+
+        expect(cronHeaderMessage.startThread).toHaveBeenCalled();
+        const threadBody = [
+          ...mockThread.send.mock.calls.map((c) => c[0]?.content as string),
+          ...mockLogMessage.edit.mock.calls.map((c) => c[0]?.content as string),
+        ].join('\n');
+        expect(threadBody).toContain('/early.ts');
+
+        controller.abort();
+        vi.useRealTimers();
+        await forwarderPromise;
+      });
+
+      it("falls back to 'scheduled' when jobId is missing", async () => {
+        vi.useFakeTimers();
+        const controller = new AbortController();
+
+        const cronHeaderMessage = {
+          startThread: vi.fn().mockResolvedValue(mockThread),
+        };
+        mockChannel.send = vi.fn().mockResolvedValue(cronHeaderMessage);
+
+        const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+          chatId: 'mapped-chat',
+          signal: controller.signal,
+          discordConfig: headerConfig,
+        });
+
+        await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+        subscribeCallbacks.onData([
+          {
+            kind: 'message',
+            message: {
+              id: 'cron-msg-2',
+              role: 'system',
+              event: 'cron',
+              content: 'no jobId here',
+              timestamp: '',
+              turnId: 'turn-2',
+            },
+          },
+        ]);
+
+        await vi.advanceTimersByTimeAsync(1500);
+        await vi.runOnlyPendingTimersAsync();
+
+        expect(mockChannel.send).toHaveBeenCalledWith(
+          expect.objectContaining({ content: '🕐 scheduled' })
+        );
+
+        controller.abort();
+        vi.useRealTimers();
+        await forwarderPromise;
+      });
+
+      it("does NOT post a header when jobs mode is 'silent' (default)", async () => {
+        vi.useFakeTimers();
+        const controller = new AbortController();
+
+        const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+          chatId: 'mapped-chat',
+          signal: controller.signal,
+          // No discordConfig → jobsMode defaults to 'silent'.
+        });
+
+        await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+        subscribeCallbacks.onData([
+          {
+            kind: 'message',
+            message: {
+              id: 'cron-msg-3',
+              role: 'system',
+              event: 'cron',
+              content: 'run',
+              jobId: 'job-x',
+              timestamp: '',
+              turnId: 'turn-3',
+            },
+          },
+        ]);
+
+        await vi.advanceTimersByTimeAsync(1500);
+        await vi.runOnlyPendingTimersAsync();
+
+        // No top-level header in silent mode.
+        const sent = (mockChannel.send as import('vitest').Mock).mock.calls;
+        expect(sent).toHaveLength(0);
+
+        controller.abort();
+        vi.useRealTimers();
+        await forwarderPromise;
+      });
+    });
   });
 });
