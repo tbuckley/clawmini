@@ -10,14 +10,25 @@ export interface TurnLogBufferOptions {
   maxToolPreview: number;
   maxLogMessageChars: number;
   editDebounceMs: number;
+  /**
+   * Total attempts (including the first) for a single transport call before
+   * giving up on this flush. Failures don't abort the turn — entries stay in
+   * the buffer and the next flush retries — but capping per-flush attempts
+   * keeps a stuck call from blocking the flush chain forever.
+   */
+  maxAttempts?: number;
+  /**
+   * Initial backoff between attempts. Doubles each retry (capped at ~5s).
+   */
+  retryBaseDelayMs?: number;
 }
 
 export interface TurnLogBufferDeps<TAnchor> {
   /**
    * Posts a new threaded message under `anchor` and returns the new message's
    * id (whatever the transport uses to address it later for editing). Throws
-   * on failure; the buffer treats the *initial* post failure as an
-   * unrecoverable per-turn abort.
+   * on failure; the buffer retries with backoff and, if all attempts fail,
+   * keeps the entries queued for a later flush rather than aborting.
    */
   postThreaded: (anchor: TAnchor, text: string) => Promise<string | undefined>;
   /** Edits a previously-posted threaded message by id. Throws on failure. */
@@ -62,21 +73,74 @@ interface Ctx<TAnchor> {
   editTimer: NodeJS.Timeout | null;
   flushChain: Promise<void>;
   /**
-   * Once the thread-log post fails, the whole turn's activity log is
-   * abandoned: subsequent appends drop silently rather than trying to post
-   * anything else. Matches the user-level expectation that if the thread
-   * never opened, we simply stop logging for that turn.
+   * Tracks how many flush attempts in a row failed. Used only for log-line
+   * throttling so a totally-broken anchor doesn't spam stderr; the buffer
+   * still retries every flush.
    */
-  aborted: boolean;
+  consecutiveFailures: number;
 }
+
+const DEFAULT_MAX_ATTEMPTS = 4;
+const DEFAULT_RETRY_BASE_DELAY_MS = 500;
+const MAX_BACKOFF_MS = 5_000;
 
 export function createTurnLogBuffer<TAnchor>(
   deps: TurnLogBufferDeps<TAnchor>
 ): TurnLogBuffer<TAnchor> {
   const { options, threadsEnabled, postThreaded, editThreaded, isMissingMessageError } = deps;
+  const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  const retryBaseDelayMs = options.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
   const ctxs = new Map<string, Ctx<TAnchor>>();
 
-  const engaged = (ctx: Ctx<TAnchor>) => threadsEnabled && !ctx.threadsDisabled && !ctx.aborted;
+  const engaged = (ctx: Ctx<TAnchor>) => threadsEnabled && !ctx.threadsDisabled;
+
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  /**
+   * Best-effort post-or-edit with bounded retries. Returns true if the
+   * message landed, false if every attempt failed. Never throws and never
+   * aborts the turn — the buffer keeps retrying on subsequent flushes.
+   */
+  const sendOnce = async (ctx: Ctx<TAnchor>, text: string): Promise<boolean> => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        if (!ctx.activityLogMessageId) {
+          const id = await postThreaded(ctx.anchor!, text);
+          if (id) ctx.activityLogMessageId = id;
+          return true;
+        }
+        try {
+          await editThreaded(ctx.anchor!, ctx.activityLogMessageId, text);
+          return true;
+        } catch (err) {
+          if (isMissingMessageError(err)) {
+            // The activity-log message is gone (user deleted it, transport
+            // returned a "not found" code). Drop the id and let the next
+            // attempt of this same loop post a fresh message.
+            ctx.activityLogMessageId = undefined;
+            continue;
+          }
+          throw err;
+        }
+      } catch (err) {
+        const isLast = attempt === maxAttempts - 1;
+        if (isLast) {
+          // Throttle the warning so a wedged anchor doesn't spam stderr —
+          // log on the first failure, then once every few failures.
+          if (ctx.consecutiveFailures % 5 === 0) {
+            console.warn(
+              `Turn-log send failed after ${maxAttempts} attempts for turn ${ctx.turnId}; will retry on next flush.`,
+              err
+            );
+          }
+          return false;
+        }
+        const delay = Math.min(retryBaseDelayMs * 2 ** attempt, MAX_BACKOFF_MS);
+        await sleep(delay);
+      }
+    }
+    return false;
+  };
 
   const runFlush = async (ctx: Ctx<TAnchor>): Promise<void> => {
     if (!engaged(ctx)) {
@@ -86,75 +150,55 @@ export function createTurnLogBuffer<TAnchor>(
     if (ctx.anchor === undefined) return;
     if (ctx.entries.length === 0) return;
 
-    let result = condenseTurnLog(ctx.entries, { maxChars: options.maxLogMessageChars });
+    // Loop because a single flush can rollover multiple times when the
+    // backlog is large relative to maxLogMessageChars.
+    while (ctx.entries.length > 0) {
+      // Snapshot what we're about to flush. Anything appended *during* the
+      // await stays in ctx.entries beyond the snapshot index and is preserved
+      // across rollover (see the carry math below).
+      const snapshotCount = ctx.entries.length;
+      const snapshot = ctx.entries.slice(0, snapshotCount);
+      const result = condenseTurnLog(snapshot, { maxChars: options.maxLogMessageChars });
 
-    const send = async (): Promise<void> => {
       const text = result.kind === 'fits' ? result.text : result.finalText;
-      if (!ctx.activityLogMessageId) {
-        try {
-          const id = await postThreaded(ctx.anchor!, text);
-          if (id) ctx.activityLogMessageId = id;
-        } catch (err) {
-          console.error(
-            `Failed to open thread-log for turn ${ctx.turnId}; dropping further thread-log events for this turn.`,
-            err
-          );
-          ctx.aborted = true;
-          ctx.entries = [];
-        }
+      const ok = await sendOnce(ctx, text);
+
+      if (!ok) {
+        ctx.consecutiveFailures += 1;
+        // Keep entries; next flush will retry. Bail out of the rollover loop
+        // so we don't burn through retry budget on every iteration of a
+        // problem that needs caller-side backoff (rate limits, etc.).
         return;
       }
-      try {
-        await editThreaded(ctx.anchor!, ctx.activityLogMessageId, text);
-      } catch (err) {
-        if (isMissingMessageError(err)) {
-          // The activity-log message is gone (user deleted it, transport
-          // returned a "not found" code). Open a fresh log message on the
-          // next event rather than retrying the edit.
-          console.warn('Log message missing on edit — opening a fresh log message.');
-          ctx.activityLogMessageId = undefined;
-          try {
-            const id = await postThreaded(ctx.anchor!, text);
-            if (id) ctx.activityLogMessageId = id;
-          } catch (innerErr) {
-            console.error('Failed to re-open log message after missing edit:', innerErr);
-            ctx.activityLogMessageId = undefined;
-          }
-        } else {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          try {
-            await editThreaded(ctx.anchor!, ctx.activityLogMessageId, text);
-          } catch (retryErr) {
-            console.warn('Edit failed twice — finalizing log message.', retryErr);
-            ctx.activityLogMessageId = undefined;
-          }
-        }
+      ctx.consecutiveFailures = 0;
+
+      if (result.kind === 'fits') {
+        // The message now reflects `snapshot`; whatever came in during the
+        // await is still queued in ctx.entries past `snapshotCount`. Don't
+        // touch entries — the next flush re-condenses everything (snapshot +
+        // appended-during-await) and edits the message in place.
+        return;
       }
-    };
 
-    await send();
-
-    // On rollover, the finalized message is sealed; carry-over entries seed a
-    // brand-new activity-log message. A single flush can rollover multiple
-    // times (tight budget with several entries), so loop until the carry fits
-    // or is empty.
-    while (!ctx.aborted && result.kind === 'rollover') {
-      const prevLen = ctx.entries.length;
-      ctx.entries = result.carryEntries.slice();
+      // Rollover: the message we just sent is sealed; the next iteration
+      // posts a fresh message. Carry the leftover from condense PLUS anything
+      // that was appended during the await — the prior implementation
+      // overwrote ctx.entries with carryEntries and silently dropped those
+      // concurrent appends.
+      const appendedDuringAwait = ctx.entries.slice(snapshotCount);
+      ctx.entries = [...result.carryEntries, ...appendedDuringAwait];
       ctx.activityLogMessageId = undefined;
-      if (ctx.entries.length === 0) break;
+
       // Degenerate case: a single entry's rendered line is itself larger
-      // than the per-message budget. Drop the stuck head so we can make
-      // progress rather than spinning the flush loop forever.
-      if (ctx.entries.length >= prevLen) {
+      // than the per-message budget. condenseTurnLog already truncates and
+      // returns the rest as carry, but if the carry hasn't shrunk relative
+      // to the snapshot we drop the head to make progress.
+      if (result.carryEntries.length >= snapshot.length) {
         console.warn(
           `Turn-log entry larger than maxLogMessageChars — dropping head for turn ${ctx.turnId}`
         );
         ctx.entries = ctx.entries.slice(1);
-        if (ctx.entries.length === 0) break;
       }
-      result = condenseTurnLog(ctx.entries, { maxChars: options.maxLogMessageChars });
-      await send();
     }
   };
 
@@ -187,7 +231,7 @@ export function createTurnLogBuffer<TAnchor>(
         entries: threadsEnabled && !params.threadsDisabled ? [buildTurnStartEntry()] : [],
         editTimer: null,
         flushChain: Promise.resolve(),
-        aborted: false,
+        consecutiveFailures: 0,
       };
       ctxs.set(params.turnId, ctx);
       // If the anchor is known at start (inbound-user turn, or proactive turn

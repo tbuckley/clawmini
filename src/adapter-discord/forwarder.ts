@@ -138,8 +138,10 @@ export async function startDaemonToDiscordForwarder(
     messageId: string,
     text: string
   ): Promise<void> => {
-    const msg = await anchor.messages.fetch(messageId);
-    await msg.edit({ content: text || '​', ...NO_MENTIONS });
+    // Use MessageManager#edit(id, options) instead of fetch+edit so each edit
+    // is a single REST call. Doubling per-edit traffic was the main driver of
+    // hitting Discord's 5-edits-per-5-sec channel rate limit on busy turns.
+    await anchor.messages.edit(messageId, { content: text || '​', ...NO_MENTIONS });
   };
 
   // Discord returns 10008 (Unknown Message) when an activity-log message has

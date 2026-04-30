@@ -105,6 +105,10 @@ export async function handleDiscordInteraction(
           ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
           : config.chatId);
 
+      // Anchor the resulting turn's activity-log thread on the policy card
+      // itself: the user clicked the buttons there, so it's the natural
+      // place to surface what the agent does next. DM-only flows fall back
+      // to no thread (DMs can't host one); the forwarder skips silently.
       await processDiscordMessage(
         `/approve ${policyId}`,
         interaction.user,
@@ -116,7 +120,7 @@ export async function handleDiscordInteraction(
         config,
         trpc,
         filteringConfig,
-        { explicitChatId: targetChatId, mentionsBot: true }
+        { explicitChatId: targetChatId, mentionsBot: true, messageId: interaction.message.id }
       );
     } else if (
       interaction.customId.startsWith('reject_') ||
@@ -182,6 +186,11 @@ export async function handleDiscordInteraction(
           ? currentState.channelChatMap?.[interaction.channelId]?.chatId || config.chatId
           : config.chatId);
 
+      // Modal can be triggered from a message (button) or directly. Only the
+      // former gives us a `message` to anchor on; direct submissions get no
+      // activity log (matches the prior, message-less behavior).
+      const anchorMessageId = interaction.isFromMessage() ? interaction.message?.id : undefined;
+
       await processDiscordMessage(
         command,
         interaction.user,
@@ -193,7 +202,11 @@ export async function handleDiscordInteraction(
         config,
         trpc,
         filteringConfig,
-        { explicitChatId: targetChatId, mentionsBot: true }
+        {
+          explicitChatId: targetChatId,
+          mentionsBot: true,
+          ...(anchorMessageId ? { messageId: anchorMessageId } : {}),
+        }
       );
     }
   }

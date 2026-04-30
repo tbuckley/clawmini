@@ -760,7 +760,7 @@ describe('Daemon to Discord Forwarder', () => {
     let mockThread: {
       id: string;
       send: import('vitest').Mock;
-      messages: { fetch: import('vitest').Mock };
+      messages: { fetch: import('vitest').Mock; edit: import('vitest').Mock };
     };
     let mockLogMessage: { id: string; edit: import('vitest').Mock };
 
@@ -776,6 +776,9 @@ describe('Daemon to Discord Forwarder', () => {
         send: vi.fn().mockResolvedValue({ id: 'log-msg-1' }),
         messages: {
           fetch: vi.fn().mockResolvedValue(mockLogMessage),
+          edit: vi.fn().mockImplementation(async (_id: string, opts: { content: string }) => {
+            mockLogMessage.edit(opts);
+          }),
         },
       };
       mockUserMessage = {
