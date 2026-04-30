@@ -67,8 +67,9 @@ clawmini-lite.js request send-email --file body_txt=./report.txt -- --to admin@e
 
 ### What Happens Next
 
-When you submit a request, the CLI immediately returns a **Request ID** without blocking.
-The request is sent to the user's chat interface for review.
+When you submit a request, the CLI usually returns a **Request ID** without blocking. **The request has not run yet** — it is queued for the user to review, and the underlying command will only execute once the user approves it.
+
+When the user approves (or rejects) the request, the result will arrive as a **new user message in this chat**. **Do not poll** — do not run `requests show`, re-invoke the request, or otherwise loop checking for status. Finish any unrelated work that does not depend on this request, then end your turn with a brief message explaining you are blocked on this request.
 
 - **If Approved:** The policy executes securely, and the STDOUT/STDERR results will be automatically sent back to you in the chat.
 - **If Rejected:** The user may provide a reason for the rejection, allowing you to correct your request and try again.
@@ -79,7 +80,7 @@ The built-in `manage-policies` policy lets you add, update, or remove policies. 
 
 The script has three subcommands: `add`, `update`, `remove`.
 
-**Important Note for Large Outputs:** If a policy or command produces massive output (like raw API JSON responses), it will overwhelm your context window. In these cases, it is strongly recommended to register a custom policy script that uses tools like `jq` to parse, filter, and condense the data *before* it is returned to you.
+**Important Note for Large Outputs:** If a policy or command produces massive output (like raw API JSON responses), it will overwhelm your context window. In these cases, it is strongly recommended to register a custom policy script that uses tools like `jq` to parse, filter, and condense the data _before_ it is returned to you.
 
 ### Adding a New Policy (`add`)
 
@@ -102,6 +103,7 @@ If neither flag is set, both default to `false`. Prefer the safe default; only r
 
 2. **A custom script wrapper:**
    First, write your complex logic to a file (e.g., `./script.sh`). **Note: The script file path MUST be inside your allowed workspace directory or use relative paths.**
+
    ```bash
    clawmini-lite.js request manage-policies --file script=./script.sh -- add --name custom-action --description "Run a custom deployment script" --script-file "{{script}}"
    ```
