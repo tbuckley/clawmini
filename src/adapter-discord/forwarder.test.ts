@@ -1164,6 +1164,86 @@ describe('Daemon to Discord Forwarder', () => {
       await forwarderPromise;
     });
 
+    it('anchors an unanchored proactive turn on the agent’s first top-level reply', async () => {
+      // Covers the case where `turnStarted` arrives without an `externalRef`
+      // (e.g. a slash-command-typed `/approve` whose post-approval feedback
+      // turn has no policy card to anchor on, or any non-cron proactive turn
+      // in the default 'silent' jobs mode). Tool calls accrue in the
+      // unanchored buffer; the agent's eventual top-level reply opens the
+      // Activity-log thread on itself and the buffer flushes into it.
+      vi.useFakeTimers();
+      const controller = new AbortController();
+
+      const topLevelMessage = {
+        id: 'agent-reply-1',
+        startThread: vi.fn().mockResolvedValue(mockThread),
+      };
+      mockChannel.send = vi.fn().mockResolvedValue(topLevelMessage);
+
+      const forwarderPromise = startDaemonToDiscordForwarder(mockClient, mockTrpc, 'user-123', {
+        chatId: 'mapped-chat',
+        signal: controller.signal,
+      });
+
+      await vi.waitFor(() => expect(subscribeCallbacks).toBeTruthy());
+
+      subscribeCallbacks.onData([
+        // No externalRef — proactive turn with nothing to anchor on yet.
+        {
+          kind: 'turn',
+          event: { type: 'started', turnId: 'turn-anchor-late', rootMessageId: 'root-msg-late' },
+        },
+        // Tool call before the agent reply — must accrue and survive until
+        // the anchor is wired in by the top-level post.
+        {
+          kind: 'message',
+          message: {
+            id: 'msg-tool',
+            role: 'tool',
+            name: 'Read',
+            payload: { file_path: '/work/early.ts' },
+            timestamp: '',
+            turnId: 'turn-anchor-late',
+          },
+        },
+        // Agent's top-level reply — should open the Activity-log thread on
+        // itself and flush the accumulated tool call into it.
+        {
+          kind: 'message',
+          message: {
+            id: 'agent-reply-1',
+            role: 'agent',
+            content: 'All done.',
+            timestamp: '',
+            turnId: 'turn-anchor-late',
+          },
+        },
+      ]);
+
+      await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(1500);
+      await vi.runOnlyPendingTimersAsync();
+
+      // Top-level reply landed.
+      expect(mockChannel.send).toHaveBeenCalledWith(
+        expect.objectContaining({ content: 'All done.' })
+      );
+      // Thread opened on the reply, not on a user message.
+      expect(topLevelMessage.startThread).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Activity log' })
+      );
+      // Tool call lands inside the thread, not dropped.
+      const threadBody = [
+        ...mockThread.send.mock.calls.map((c) => c[0]?.content as string),
+        ...mockLogMessage.edit.mock.calls.map((c) => c[0]?.content as string),
+      ].join('\n');
+      expect(threadBody).toContain('/work/early.ts');
+
+      controller.abort();
+      vi.useRealTimers();
+      await forwarderPromise;
+    });
+
     describe('visibility.jobs: header', () => {
       const headerConfig = {
         botToken: 't',
