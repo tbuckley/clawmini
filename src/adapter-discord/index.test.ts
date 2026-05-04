@@ -672,6 +672,8 @@ describe('Discord Adapter Entry Point', () => {
         isChatInputCommand: () => false,
         user: { id: 'user-123' },
         customId: 'approve_123',
+        channelId: 'channel-xyz',
+        message: { id: 'policy-card-1' },
         update: vi.fn(),
         followUp: vi.fn(),
       };
@@ -689,6 +691,7 @@ describe('Discord Adapter Entry Point', () => {
           chatId: 'default',
           adapter: 'discord',
           noWait: true,
+          externalRef: 'policy-card-1',
         },
       });
     });

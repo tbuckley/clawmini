@@ -113,9 +113,27 @@ export async function startDaemonToDiscordForwarder(
   const config = options.config ?? {};
   const threadLogOpts = resolveThreadLogOpts(options.discordConfig);
   const threadsGloballyEnabled = options.discordConfig?.visibility?.threads !== false;
+  const jobsMode: 'silent' | 'header' = options.discordConfig?.visibility?.jobs ?? 'silent';
 
   const activeSubscriptions = new Map<string, { unsubscribe: () => void }>();
   const activeTypingSubscriptions = new Map<string, { unsubscribe: () => void }>();
+  /**
+   * When a proactive turn (cron in 'header' mode) posts a top-level header
+   * before its `turnStarted` event arrives, we cache the resulting thread by
+   * the daemon message id (= the future turn's rootMessageId). `handleTurn-
+   * Started` then anchors the buffer on it. LRU-bounded so a daemon that
+   * spews crons can't grow this map indefinitely.
+   */
+  const proactiveAnchors = new Map<string, ThreadChannel>();
+  const MAX_PROACTIVE_ANCHORS = 64;
+  const recordProactiveAnchor = (daemonMessageId: string, thread: ThreadChannel) => {
+    while (proactiveAnchors.size >= MAX_PROACTIVE_ANCHORS) {
+      const oldest = proactiveAnchors.keys().next().value;
+      if (!oldest) break;
+      proactiveAnchors.delete(oldest);
+    }
+    proactiveAnchors.set(daemonMessageId, thread);
+  };
   let currentLastSyncedMessageIds = (await readDiscordState()).lastSyncedMessageIds || {};
 
   const saveLastMessageId = async (chatId: string, id: string) => {
@@ -138,8 +156,10 @@ export async function startDaemonToDiscordForwarder(
     messageId: string,
     text: string
   ): Promise<void> => {
-    const msg = await anchor.messages.fetch(messageId);
-    await msg.edit({ content: text || '​', ...NO_MENTIONS });
+    // Use MessageManager#edit(id, options) instead of fetch+edit so each edit
+    // is a single REST call. Doubling per-edit traffic was the main driver of
+    // hitting Discord's 5-edits-per-5-sec channel rate limit on busy turns.
+    await anchor.messages.edit(messageId, { content: text || '​', ...NO_MENTIONS });
   };
 
   // Discord returns 10008 (Unknown Message) when an activity-log message has
@@ -241,18 +261,37 @@ export async function startDaemonToDiscordForwarder(
     }
   };
 
-  const handleTurnStarted = async (chatId: string, turnId: string, externalRef?: string) => {
+  const handleTurnStarted = async (
+    chatId: string,
+    turnId: string,
+    rootMessageId: string,
+    externalRef?: string
+  ) => {
     // Single source of truth for "is the activity log on for this turn":
     // global kill switch OR per-channel opt-out. The buffer's `engaged()`
     // and `collapseDestination`'s `threadsDisabledFor()` both consult the
     // ctx flag set here, so we don't have to re-derive it later.
     const threadsDisabled = !threadsGloballyEnabled || (await channelThreadsDisabled(chatId));
-    // Skip the API roundtrip when we already know the log is off.
-    const anchor = threadsDisabled ? undefined : await openThreadForTurn(externalRef);
-    // No anchor and threads enabled: proactive turn (cron, subagent, CLI),
-    // DM-only flow, or thread creation failed. Skip start entirely so the
-    // buffer doesn't accrue entries it can never flush.
-    if (!anchor && !threadsDisabled) return;
+    let anchor: ThreadChannel | undefined;
+    if (!threadsDisabled) {
+      // Skip the API roundtrip when we already know the log is off.
+      anchor = await openThreadForTurn(externalRef);
+      if (!anchor) {
+        // Proactive turn (no inbound externalRef, or DM/race). If the cron
+        // header for this turn already landed, its thread is cached by
+        // rootMessageId — pick it up.
+        const cached = proactiveAnchors.get(rootMessageId);
+        if (cached) {
+          proactiveAnchors.delete(rootMessageId);
+          anchor = cached;
+        }
+      }
+    }
+    // Always start the buffer, even unanchored. Subsequent events can supply
+    // the anchor via `assignAnchor`: a cron header in 'header' mode, or the
+    // turn's first top-level post (the agent's reply, a policy-card-less
+    // /approve feedback turn, etc.) opening a thread on itself. If no anchor
+    // ever arrives the buffer's entries are dropped silently on `end`.
     turnLog.start({ turnId, threadsDisabled, anchorThread: anchor });
   };
 
@@ -308,6 +347,44 @@ export async function startDaemonToDiscordForwarder(
     return true;
   };
 
+  /**
+   * Open an Activity-log thread on a top-level message and wire it to the
+   * turn-log buffer. Used both by `postCronHeader` (where the cron message
+   * arrives before `turnStarted` and the anchor is cached by rootMessageId)
+   * and by `sendTopLevel` (where `turnStarted` has already landed and the
+   * buffer is waiting unanchored). DMs, threads, and disabled channels are
+   * no-ops — the message still lands but no activity log is attached.
+   */
+  const wireAnchorFromMessage = async (
+    chatId: string,
+    sent: Message,
+    dest: AnyTextChannel,
+    message: ChatMessage
+  ): Promise<void> => {
+    if (dest.isDMBased() || dest.isThread()) return;
+    if (!threadsGloballyEnabled || (await channelThreadsDisabled(chatId))) return;
+
+    let thread: ThreadChannel;
+    try {
+      thread = await sent.startThread({ name: 'Activity log', autoArchiveDuration: 1440 });
+    } catch (err) {
+      console.warn('Failed to start activity-log thread on top-level message:', err);
+      return;
+    }
+
+    if (message.turnId && turnLog.has(message.turnId)) {
+      if (!turnLog.isAnchored(message.turnId)) {
+        turnLog.assignAnchor(message.turnId, thread);
+      }
+    } else {
+      // Cron-header race: the cron message arrives before `turnStarted`, so
+      // the buffer doesn't exist yet. Stash by daemon message id (which the
+      // daemon emits as the future turn's `rootMessageId`) for
+      // `handleTurnStarted` to pick up.
+      recordProactiveAnchor(message.id, thread);
+    }
+  };
+
   const sendTopLevel = async (chatId: string, message: ChatMessage): Promise<void> => {
     if ('level' in message && (message as { level?: string }).level === 'verbose') return;
 
@@ -323,8 +400,10 @@ export async function startDaemonToDiscordForwarder(
 
     if (!hasContent && !hasFiles) return;
 
+    let dest: AnyTextChannel | undefined;
+    let firstSent: Message | undefined;
     try {
-      const dm = await resolveDiscordDestination(client, discordUserId, chatId);
+      dest = await resolveDiscordDestination(client, discordUserId, chatId);
       const formattedContent = formatMessage(message);
 
       if (formattedContent && formattedContent.length > 2000) {
@@ -338,22 +417,73 @@ export async function startDaemonToDiscordForwarder(
           if (i === chunks.length - 1 && hasFiles) {
             chunkOptions.files = absoluteFiles;
           }
-          await dm.send(chunkOptions);
+          const sent = (await dest.send(chunkOptions)) as Message;
+          if (i === 0) firstSent = sent;
         }
       } else {
         const optionsMsg: MessageCreateOptions = { ...NO_MENTIONS };
         if (formattedContent) optionsMsg.content = formattedContent;
         if (hasFiles) optionsMsg.files = absoluteFiles;
-        await dm.send(optionsMsg);
+        firstSent = (await dest.send(optionsMsg)) as Message;
       }
     } catch (error) {
       console.error(`Failed to send message to Discord user ${discordUserId}:`, error);
       throw error;
     }
+
+    // If this top-level post belongs to a turn whose activity-log buffer is
+    // still waiting for an anchor (proactive cron in 'silent' mode, agent
+    // reply on a /approve turn typed as a slash command, subagent runs, etc),
+    // open the Activity-log thread on the first chunk and flush. Skipped
+    // when the turn is already anchored, when the destination can't host a
+    // thread (DM/thread), or when threads are disabled.
+    if (
+      firstSent &&
+      dest &&
+      message.turnId &&
+      turnLog.has(message.turnId) &&
+      !turnLog.isAnchored(message.turnId)
+    ) {
+      await wireAnchorFromMessage(chatId, firstSent, dest, message);
+    }
+  };
+
+  const postCronHeader = async (chatId: string, message: ChatMessage): Promise<void> => {
+    if (message.role !== 'system' || message.event !== 'cron') return;
+    const label = message.jobId ?? 'scheduled';
+    const text = `🕐 ${label}`;
+    let dest: AnyTextChannel;
+    try {
+      dest = await resolveDiscordDestination(client, discordUserId, chatId);
+    } catch (err) {
+      console.warn(`Failed to resolve destination for cron header (chat ${chatId}):`, err);
+      return;
+    }
+    let sent: Message;
+    try {
+      sent = (await dest.send({ content: text, ...NO_MENTIONS })) as Message;
+    } catch (err) {
+      console.warn(`Failed to post cron header for chat ${chatId}:`, err);
+      return;
+    }
+    await wireAnchorFromMessage(chatId, sent, dest, message);
   };
 
   const handleMessageForChat = async (chatId: string, message: ChatMessage): Promise<void> => {
     const routed = routeMessage(message, config);
+
+    // 'header' mode: cron system messages route to drop by default; promote
+    // them to a terse top-level header so the user can see scheduled work
+    // even when the agent stays silent. The header doubles as the thread
+    // anchor for the resulting turn's activity log.
+    const isCronHeader =
+      jobsMode === 'header' && message.role === 'system' && message.event === 'cron';
+
+    if (isCronHeader) {
+      await postCronHeader(chatId, message);
+      return;
+    }
+
     const effective = collapseDestination(routed, message.turnId);
 
     if (effective.kind === 'drop') return;
@@ -449,7 +579,12 @@ export async function startDaemonToDiscordForwarder(
                     // the chain — every subsequent batch would silently no-op.
                     try {
                       if (item.event.type === 'started') {
-                        await handleTurnStarted(chatId, item.event.turnId, item.event.externalRef);
+                        await handleTurnStarted(
+                          chatId,
+                          item.event.turnId,
+                          item.event.rootMessageId,
+                          item.event.externalRef
+                        );
                       } else {
                         await handleTurnEnded(item.event.turnId);
                       }

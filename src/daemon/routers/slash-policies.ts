@@ -110,6 +110,11 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
         sessionId: targetSessionId,
         ...(req.subagentId ? { subagentId: req.subagentId } : {}),
         env: state.env || {},
+        // Forward externalRef so the resulting `policy_approved` turn anchors
+        // its activity log on the same inbound (e.g. the Discord policy card)
+        // that drove the /approve. Otherwise emitTurnStarted fires with no
+        // anchor and the adapter has nothing to thread on.
+        ...(state.externalRef ? { externalRef: state.externalRef } : {}),
       },
       undefined,
       getWorkspaceRoot(),
@@ -165,6 +170,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
         sessionId: targetSessionId,
         ...(req.subagentId ? { subagentId: req.subagentId } : {}),
         env: state.env || {},
+        ...(state.externalRef ? { externalRef: state.externalRef } : {}),
       },
       undefined,
       getWorkspaceRoot(),
