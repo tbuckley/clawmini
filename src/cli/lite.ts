@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable max-lines */
 
 import { Command } from 'commander';
 import { createTRPCClient, httpLink } from '@trpc/client';
@@ -85,6 +86,42 @@ program
       const client = getClient();
       await client.logToolMessage.mutate({ name, payload: parsedPayload });
       console.log('Tool message appended.');
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('history')
+  .description('Print the user-visible thread history (oldest-first)')
+  .option('--limit <n>', 'Maximum number of messages to return (default 20, max 200)', (v) =>
+    parseInt(v, 10)
+  )
+  .option('--before <id>', 'Cursor: oldestId from a previous response')
+  .option('--json', 'Print the JSON envelope as a single line')
+  .action(async (options) => {
+    try {
+      const client = getClient();
+      const input: { limit?: number; before?: string } = {};
+      if (options.limit !== undefined) input.limit = options.limit;
+      if (options.before !== undefined) input.before = options.before;
+      const envelope = await client.getThreadHistory.query(input);
+
+      if (options.json) {
+        process.stdout.write(JSON.stringify(envelope) + '\n');
+        return;
+      }
+
+      for (const msg of envelope.messages) {
+        const tag = msg.role === 'user' ? '[USER]' : '[AGENT]';
+        process.stdout.write(`${tag} ${msg.content}\n`);
+      }
+      if (envelope.hasMore) {
+        process.stdout.write('---\n');
+        process.stdout.write(`hasMore: true\n`);
+        process.stdout.write(`oldestId: ${envelope.oldestId ?? ''}\n`);
+      }
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
       process.exit(1);

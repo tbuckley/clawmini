@@ -52,6 +52,14 @@ Treat your current directory as the single global workspace for file operations 
 
 ## Messaging
 
+What you see as "this conversation" is one of several agent sessions stitched together into the user's chat. If the user refers to something you don't recognize — a file, decision, or earlier reply — it may have come from a previous session. Use `clawmini-lite.js history` to read the user-visible thread (oldest-first):
+
+```
+clawmini-lite.js history [--limit <n>] [--before <id>] [--json]
+```
+
+Default limit is 20 (max 200). Paginate further back by passing the previous response's `oldestId` as `--before`.
+
 Your final response will be sent to the user by default. If you have nothing to share, respond with 'NO_REPLY_NECESSARY'.
 
 For example, if you send a message/file via the `clawmini-lite.js reply` command, you can follow up with 'NO_REPLY_NECESSARY' so that nothing else is sent to the user.
