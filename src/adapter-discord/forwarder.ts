@@ -10,7 +10,14 @@ import type {
   StageChannel,
   Message,
 } from 'discord.js';
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Colors } from 'discord.js';
+import {
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  Colors,
+  MessageFlags,
+} from 'discord.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { getTRPCClient } from './client.js';
@@ -62,6 +69,12 @@ function resolveThreadLogOpts(config?: DiscordConfig): ThreadLogOptions {
 // arbitrary text; without this, an `@everyone` substring in (e.g.) a shell
 // command echoed into the activity log would page the entire channel.
 const NO_MENTIONS = { allowedMentions: { parse: [] as [] } } as const;
+
+// Marks a send as a Discord "silent message": delivered without push or
+// in-app notification sound (the same effect as `@silent` in the client).
+// Applied to high-volume / low-signal bot output — threaded turn-log lines
+// and the cron-job header — so they don't ping the user every few seconds.
+const SILENT = { flags: MessageFlags.SuppressNotifications } as const;
 
 async function resolveDiscordDestination(
   client: Client,
@@ -147,7 +160,7 @@ export async function startDaemonToDiscordForwarder(
   };
 
   const postThreaded = async (anchor: ThreadChannel, text: string): Promise<string | undefined> => {
-    const sent = await anchor.send({ content: text || '​', ...NO_MENTIONS });
+    const sent = await anchor.send({ content: text || '​', ...NO_MENTIONS, ...SILENT });
     return sent.id;
   };
 
@@ -461,7 +474,7 @@ export async function startDaemonToDiscordForwarder(
     }
     let sent: Message;
     try {
-      sent = (await dest.send({ content: text, ...NO_MENTIONS })) as Message;
+      sent = (await dest.send({ content: text, ...NO_MENTIONS, ...SILENT })) as Message;
     } catch (err) {
       console.warn(`Failed to post cron header for chat ${chatId}:`, err);
       return;

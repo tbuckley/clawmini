@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MessageFlags } from 'discord.js';
 import { startDaemonToDiscordForwarder } from './forwarder.js';
 import { readDiscordState, updateDiscordState } from './state.js';
 import { recordInbound, _resetInboundCacheForTests } from './inbound-cache.js';
@@ -1306,20 +1307,27 @@ describe('Daemon to Discord Forwarder', () => {
         await vi.advanceTimersByTimeAsync(1500);
         await vi.runOnlyPendingTimersAsync();
 
-        // Header lands top-level with a terse `🕐 <jobId>` body.
+        // Header lands top-level with a terse `🕐 <jobId>` body, and is
+        // marked SuppressNotifications so it doesn't ping the user.
         expect(mockChannel.send).toHaveBeenCalledWith(
-          expect.objectContaining({ content: '🕐 nightly-deploy' })
+          expect.objectContaining({
+            content: '🕐 nightly-deploy',
+            flags: MessageFlags.SuppressNotifications,
+          })
         );
         // Thread is opened on the header itself.
         expect(cronHeaderMessage.startThread).toHaveBeenCalledWith(
           expect.objectContaining({ name: 'Activity log' })
         );
-        // The tool call lands inside that thread.
+        // The tool call lands inside that thread, also as a silent post.
         const threadBody = [
           ...mockThread.send.mock.calls.map((c) => c[0]?.content as string),
           ...mockLogMessage.edit.mock.calls.map((c) => c[0]?.content as string),
         ].join('\n');
         expect(threadBody).toContain('/some/path.ts');
+        for (const [opts] of mockThread.send.mock.calls) {
+          expect(opts).toMatchObject({ flags: MessageFlags.SuppressNotifications });
+        }
 
         controller.abort();
         vi.useRealTimers();

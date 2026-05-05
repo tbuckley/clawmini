@@ -71,6 +71,9 @@ vi.mock('discord.js', () => {
     Partials: {
       Channel: 1,
     },
+    MessageFlags: {
+      SuppressNotifications: 4096,
+    },
   };
 });
 
