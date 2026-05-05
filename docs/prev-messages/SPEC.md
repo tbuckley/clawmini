@@ -209,8 +209,10 @@ projection is easier to reason about and easier to evolve.
 
 - `src/daemon/api/agent-router.ts` — add `getThreadHistory` procedure, wire
   it into `agentRouter`.
-- `src/cli/lite.ts` — add the `history` command using the existing
-  `getClient()` helper.
+- `src/cli/history-command.ts` — new file: the `history` command, registered
+  on the lite program via `registerHistoryCommand` (mirrors
+  `subagent-commands.ts`). Kept out of `lite.ts` to stay under `max-lines`.
+- `src/cli/lite.ts` — call `registerHistoryCommand(program, getClient)`.
 - `src/shared/chats.ts` — no behavior change expected; the existing
   `getMessages(id, limit, startDir, predicate, before)` already covers what
   we need. Verify the `hasMore` computation doesn't need a small helper.
@@ -222,9 +224,15 @@ projection is easier to reason about and easier to evolve.
   should reduce `--limit`. If this turns out to bite us in practice, add a
   `--max-content-length` flag in a follow-up rather than baking truncation
   into the wire format now.
-- **Files / attachments.** We pass `files` through unchanged (paths relative
-  to the workspace, the same form they have on disk). The agent can read
-  them via its normal sandboxed filesystem access if needed.
+- **Files / attachments.** Agent-logged messages persist `files` as
+  workspace-relative host paths (`validateLogFile` in `router-utils.ts`).
+  Inside a VM-style sandbox the agent's cwd corresponds to `agentDir` on the
+  host (the env's `baseDir` ↔ `agentDir` — see `policy-utils.ts`), so
+  workspace-relative paths only resolve when `agentDir === workspaceRoot`.
+  Before returning we re-relativize each `f` to
+  `path.relative(agentDir, path.resolve(workspaceRoot, f))` so the agent can
+  read them with its normal filesystem access regardless of where its agent
+  dir sits relative to the workspace root.
 - **Ordering with `displayRole`.** A `system` message with
   `displayRole: 'agent'` is sorted in jsonl append order along with everything
   else, which is what the user sees in their UI, so we get this for free.

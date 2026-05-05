@@ -364,6 +364,32 @@ describe('E2E Lite History', () => {
     expect(sessions.has('session-B')).toBe(true);
   }, 30000);
 
+  it('returns files re-relativized against the caller agent dir', async () => {
+    // Files are persisted as workspace-relative host paths but the agent's
+    // cwd corresponds to `agentDir` (mapped to `baseDir` inside a VM-style
+    // sandbox). The endpoint must translate so the returned paths resolve
+    // from the agent's perspective. With debug-agent's agentDir defaulting
+    // to `<workspaceRoot>/debug-agent`:
+    //   stored 'debug-agent/foo.txt'   -> returned 'foo.txt'
+    //   stored 'shared/bar.txt'        -> returned '../shared/bar.txt'
+    const creds = await env.getAgentCredentialsForChat('hist-files');
+    const chatFile = env.getChatPath('hist-files', 'chat.jsonl');
+    fs.writeFileSync(chatFile, '');
+
+    env.appendRawChatLine('hist-files', {
+      id: 'files-agent-1',
+      role: 'agent',
+      content: 'reply with files',
+      files: ['debug-agent/foo.txt', 'shared/bar.txt'],
+      timestamp: new Date().toISOString(),
+      sessionId: 'sess',
+    });
+
+    const envelope = await fetchHistory(creds);
+    expect(envelope.messages.length).toBe(1);
+    expect(envelope.messages[0]!.files).toEqual(['foo.txt', '../shared/bar.txt']);
+  }, 30000);
+
   it('returns empty messages and no footer for a chat with no visible traffic', async () => {
     const creds = await env.getAgentCredentialsForChat('hist-empty');
     // getAgentCredentialsForChat seeded a user message + command_log. Truncate
