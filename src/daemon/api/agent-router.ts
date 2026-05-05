@@ -19,6 +19,7 @@ import {
   addCronJobShared,
   deleteCronJobShared,
 } from './router-utils.js';
+import { getThreadHistory } from './agent-history-endpoint.js';
 
 export const logMessage = apiProcedure
   .input(
@@ -247,6 +248,7 @@ export const agentRouter = router({
   createPolicyRequest,
   readPolicyScript,
   fetchPendingMessages,
+  getThreadHistory,
   ping,
   subagentSpawn,
   subagentSend,
