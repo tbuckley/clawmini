@@ -921,7 +921,7 @@ describe('Daemon to Discord Forwarder', () => {
           chatId: 'mapped-chat',
           maxAttachmentSizeMB: 25,
           requireMention: false,
-          visibility: { threads: false },
+          visibility: { threads: false, jobs: 'silent' },
         },
       });
 

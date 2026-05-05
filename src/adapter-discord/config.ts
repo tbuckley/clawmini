@@ -18,7 +18,7 @@ export const ThreadVisibilitySchema = z.object({
   // reply, the run is invisible. `header` posts a terse `🕐 <jobId>` top-
   // level message and threads the activity log on it, making scheduled work
   // visible even when the agent stays silent.
-  jobs: z.enum(['silent', 'header']).default('silent').optional(),
+  jobs: z.enum(['silent', 'header']).default('silent'),
 });
 
 export const DiscordConfigSchema = z.looseObject({
