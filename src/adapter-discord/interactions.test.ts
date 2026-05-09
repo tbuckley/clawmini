@@ -27,6 +27,9 @@ describe('handleDiscordInteraction', () => {
       user: { id: 'user-1' },
       customId: '',
       channelId: 'channel-1',
+      // The button-bearing message itself; used as the externalRef anchor for
+      // the activity-log thread on the resulting approve/reject turn.
+      message: { id: 'policy-card-msg-1' },
       update: vi.fn().mockResolvedValue({}),
       followUp: vi.fn().mockResolvedValue({}),
       reply: vi.fn().mockResolvedValue({}),
@@ -70,6 +73,37 @@ describe('handleDiscordInteraction', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           chatId: 'mapped-chat',
+        }),
+      })
+    );
+  });
+
+  it('passes the policy-card message id as externalRef when approving via button', async () => {
+    mockInteraction.customId = 'approve|policy-1|explicit-chat';
+    await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
+
+    expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          externalRef: 'policy-card-msg-1',
+        }),
+      })
+    );
+  });
+
+  it('passes the policy-card message id as externalRef when rejecting via modal-from-button', async () => {
+    mockInteraction.isButton.mockReturnValue(false);
+    mockInteraction.isModalSubmit.mockReturnValue(true);
+    mockInteraction.isFromMessage = vi.fn().mockReturnValue(true);
+    mockInteraction.fields = { getTextInputValue: vi.fn().mockReturnValue('') };
+    mockInteraction.customId = 'modal_reject|policy-1|explicit-chat';
+
+    await handleDiscordInteraction(mockInteraction, config, mockTrpc, { filters: {} });
+
+    expect(mockTrpc.sendMessage.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          externalRef: 'policy-card-msg-1',
         }),
       })
     );
