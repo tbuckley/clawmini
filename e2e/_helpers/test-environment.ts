@@ -26,11 +26,8 @@ export type {
   ToolMessage,
 };
 
-export function commandWith(
-  text: string
-): (msg: ChatMessage) => msg is CommandLogMessage {
-  return (msg): msg is CommandLogMessage =>
-    msg.role === 'command' && msg.stdout.includes(text);
+export function commandWith(text: string): (msg: ChatMessage) => msg is CommandLogMessage {
+  return (msg): msg is CommandLogMessage => msg.role === 'command' && msg.stdout.includes(text);
 }
 
 export function commandMatching(
@@ -43,18 +40,16 @@ export function agentReply(): (msg: ChatMessage) => msg is AgentReplyMessage {
   return (msg): msg is AgentReplyMessage => msg.role === 'agent';
 }
 
-export function agentReplyWith(
-  text: string
-): (msg: ChatMessage) => msg is AgentReplyMessage {
-  return (msg): msg is AgentReplyMessage =>
-    msg.role === 'agent' && msg.content === text;
+export function agentReplyWith(text: string): (msg: ChatMessage) => msg is AgentReplyMessage {
+  return (msg): msg is AgentReplyMessage => msg.role === 'agent' && msg.content === text;
 }
 
 export function policyWith(
   status?: PolicyRequestMessage['status']
 ): (msg: ChatMessage) => msg is PolicyRequestMessage {
   return (msg): msg is PolicyRequestMessage =>
-    msg.role === 'policy' && (status === undefined || (msg as PolicyRequestMessage).status === status);
+    msg.role === 'policy' &&
+    (status === undefined || (msg as PolicyRequestMessage).status === status);
 }
 
 export async function findFreePort(): Promise<number> {
@@ -80,7 +75,10 @@ export interface ChatSubscription {
     predicate: (msg: ChatMessage) => msg is T,
     timeoutMs?: number
   ): Promise<T>;
-  waitForMessage(predicate: (msg: ChatMessage) => boolean, timeoutMs?: number): Promise<ChatMessage>;
+  waitForMessage(
+    predicate: (msg: ChatMessage) => boolean,
+    timeoutMs?: number
+  ): Promise<ChatMessage>;
   disconnect(): Promise<void>;
 }
 
@@ -375,12 +373,7 @@ export class TestEnvironment {
   }
 
   public getSessionSettings(agentId: string, sessionId: string): Record<string, unknown> {
-    const sessionSettingsPath = this.getAgentPath(
-      agentId,
-      'sessions',
-      sessionId,
-      'settings.json'
-    );
+    const sessionSettingsPath = this.getAgentPath(agentId, 'sessions', sessionId, 'settings.json');
     if (fs.existsSync(sessionSettingsPath)) {
       return JSON.parse(fs.readFileSync(sessionSettingsPath, 'utf8'));
     }
@@ -427,13 +420,41 @@ export class TestEnvironment {
     }
   }
 
+  // Like getAgentCredentials but for an arbitrary chatId. The daemon scopes
+  // tokens to a single chat, so tests that need to drive lite against a
+  // non-`__creds__` chat must obtain credentials specifically for that chat.
+  // Result is not cached — each call boots a fresh debug-agent session and
+  // captures its env.
+  public async getAgentCredentialsForChat(chatId: string): Promise<{ url: string; token: string }> {
+    if (chatId === '__creds__') return this.getAgentCredentials();
+    await this.runCli(['chats', 'add', chatId]);
+    this.writeChatSettings(chatId, { defaultAgent: 'debug-agent' });
+    const chat = await this.connect(chatId);
+    try {
+      await this.sendMessage('echo "URL=$CLAW_API_URL" && echo "TOKEN=$CLAW_API_TOKEN"', {
+        chat: chatId,
+        agent: 'debug-agent',
+      });
+      const log = await chat.waitForMessage((m): m is CommandLogMessage => m.role === 'command');
+      const url = log.stdout.match(/^URL=(.+)$/m)![1]!.trim();
+      const token = log.stdout.match(/^TOKEN=(.+)$/m)![1]!.trim();
+      return { url, token };
+    } finally {
+      await chat.disconnect();
+    }
+  }
+
   // Spawns the exported clawmini-lite.js with CLAW_API_URL/CLAW_API_TOKEN
   // populated from the debug-agent. Fetches credentials lazily on first call.
   public async runLite(
     args: string[],
-    opts: { cwd?: string; env?: Record<string, string> } = {}
+    opts: {
+      cwd?: string;
+      env?: Record<string, string>;
+      creds?: { url: string; token: string };
+    } = {}
   ): Promise<{ stdout: string; stderr: string; code: number | null }> {
-    const { url, token } = await this.getAgentCredentials();
+    const { url, token } = opts.creds ?? (await this.getAgentCredentials());
     const litePath = path.resolve(this.e2eDir, 'clawmini-lite.js');
     return new Promise((resolve) => {
       const p = spawn('node', [litePath, ...args], {
@@ -451,6 +472,19 @@ export class TestEnvironment {
       p.stderr.on('data', (d) => (stderr += d.toString()));
       p.on('close', (code) => resolve({ stdout, stderr, code }));
     });
+  }
+
+  // Append a raw JSONL line to a chat's chat.jsonl. Used by tests that need to
+  // seed messages the daemon would not normally produce — e.g. SystemMessages
+  // with arbitrary `displayRole`, or messages tagged with a `subagentId`. The
+  // chat directory is created if missing.
+  public appendRawChatLine(chatId: string, message: Record<string, unknown>) {
+    const chatFile = this.getChatPath(chatId, 'chat.jsonl');
+    const chatDir = path.dirname(chatFile);
+    if (!fs.existsSync(chatDir)) {
+      fs.mkdirSync(chatDir, { recursive: true });
+    }
+    fs.appendFileSync(chatFile, JSON.stringify(message) + '\n');
   }
 
   public writePolicies(policies: unknown) {
@@ -536,10 +570,7 @@ function deepMerge(
       typeof tgtVal === 'object' &&
       !Array.isArray(tgtVal)
     ) {
-      result[key] = deepMerge(
-        tgtVal as Record<string, unknown>,
-        srcVal as Record<string, unknown>
-      );
+      result[key] = deepMerge(tgtVal as Record<string, unknown>, srcVal as Record<string, unknown>);
     } else {
       result[key] = srcVal;
     }

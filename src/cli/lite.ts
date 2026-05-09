@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { createTRPCClient, httpLink } from '@trpc/client';
 import type { AgentRouter as AppRouter, AgentCronJobInput } from '../daemon/api/index.js';
 import { registerSubagentCommands } from './subagent-commands.js';
+import { registerHistoryCommand } from './history-command.js';
 
 /**
  * clawmini-lite - A standalone client
@@ -90,6 +91,8 @@ program
       process.exit(1);
     }
   });
+
+registerHistoryCommand(program, getClient);
 
 program
   .command('fetch-pending')
