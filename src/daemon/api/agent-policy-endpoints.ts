@@ -7,14 +7,15 @@ import { apiProcedure } from './trpc.js';
 import { getWorkspaceRoot, readPoliciesForPath, getClawminiDir } from '../../shared/workspace.js';
 import { pathIsInsideDir } from '../../shared/utils/fs.js';
 import { resolveAgentDir } from './router-utils.js';
-import { PolicyRequestService } from '../policy-request-service.js';
-import { RequestStore } from '../request-store.js';
+import { DelegationManager } from '../delegation-manager.js';
+import { DelegationStore } from '../delegation-store.js';
 import {
   executeSafe,
   generateRequestPreview,
   executeRequest,
   resolveRequestCwd,
   truncateLargeOutput,
+  createSnapshot,
 } from '../policy-utils.js';
 import { appendMessage, type PolicyRequestMessage } from '../chats.js';
 
@@ -170,18 +171,20 @@ export const createPolicyRequest = apiProcedure
       // (policy-utils.ts), which realpath-resolves the cwd before comparing —
       // so it covers encoded separators, symlinks, etc.
       cwd: z.string().optional(),
+      delivery: z.enum(['notify', 'manual']).optional(),
     })
   )
   .mutation(async ({ input, ctx }) => {
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const workspaceRoot = getWorkspaceRoot(process.cwd());
     const snapshotDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'snapshots');
-    const store = new RequestStore(process.cwd());
+    const store = new DelegationStore();
+    const manager = new DelegationManager(store);
     const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
-    const service = new PolicyRequestService(store, agentDir, snapshotDir);
 
     const chatId = ctx.tokenPayload.chatId;
     const agentId = ctx.tokenPayload.agentId;
+    const delivery = input.delivery ?? (ctx.tokenPayload.subagentId ? 'manual' : 'notify');
 
     const config = await readPoliciesForPath(agentDir, workspaceRoot);
     const policy = config?.policies?.[input.commandName];
@@ -195,18 +198,25 @@ export const createPolicyRequest = apiProcedure
 
     const isAutoApprove = !!policy.autoApprove;
 
-    const request = await service.createRequest(
-      input.commandName,
-      input.args,
-      input.fileMappings,
+    const snapshotMappings: Record<string, string> = {};
+    for (const [key, requestedPath] of Object.entries(input.fileMappings)) {
+      snapshotMappings[key] = await createSnapshot(requestedPath, agentDir, snapshotDir);
+    }
+
+    const request = await manager.createPolicy({
       chatId,
       agentId,
-      isAutoApprove,
-      ctx.tokenPayload.subagentId,
-      input.cwd
-    );
+      ...(ctx.tokenPayload.subagentId ? { parentId: ctx.tokenPayload.subagentId } : {}),
+      commandName: input.commandName,
+      args: input.args,
+      fileMappings: snapshotMappings,
+      ...(input.cwd ? { cwd: input.cwd } : {}),
+      delivery,
+    });
 
     if (isAutoApprove) {
+      await manager.approve(chatId, request.id);
+
       const hostCwd = await resolveRequestCwd(request.cwd, agentId, workspaceRoot);
 
       const result = await executeRequest(request, policy, hostCwd);
@@ -218,7 +228,11 @@ export const createPolicyRequest = apiProcedure
         agentId
       );
 
-      request.executionResult = { stdout, stderr, exitCode };
+      await manager.markResolved(chatId, request.id, exitCode === 0 ? 'completed' : 'failed', {
+        stdout,
+        stderr,
+        exitCode,
+      });
 
       const logMsg: PolicyRequestMessage = {
         id: randomUUID(),

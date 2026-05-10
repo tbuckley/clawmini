@@ -123,8 +123,9 @@ describe('Policy Flows E2E', () => {
       );
       expect(sanitize(actorNotif.content, reqId)).toBe(expectedActorContent);
 
-      const reqPath = path.resolve(env.e2eDir, `.clawmini/tmp/requests/${reqId}.json`);
-      expect(fs.existsSync(reqPath)).toBe(false);
+      const reqPath = path.resolve(env.e2eDir, `.clawmini/tmp/delegations/${chatId}/${reqId}.json`);
+      const fileContent = JSON.parse(fs.readFileSync(reqPath, 'utf8'));
+      expect(fileContent.state).toBe(event === 'policy_approved' ? 'completed' : 'rejected');
     },
     15000
   );
@@ -185,8 +186,9 @@ describe('Policy Flows E2E', () => {
     );
     expect(agentMsg.content).toContain('command looked suspicious');
 
-    const reqPath = path.resolve(env.e2eDir, `.clawmini/tmp/requests/${reqId}.json`);
-    expect(fs.existsSync(reqPath)).toBe(false);
+    const reqPath = path.resolve(env.e2eDir, `.clawmini/tmp/delegations/chat-reject-reason/${reqId}.json`);
+    const fileContent = JSON.parse(fs.readFileSync(reqPath, 'utf8'));
+    expect(fileContent.state).toBe('rejected');
   }, 15000);
 
   describe('validation branches', () => {
@@ -228,7 +230,7 @@ describe('Policy Flows E2E', () => {
           m.role === 'system' &&
           m.event === 'router' &&
           typeof m.content === 'string' &&
-          m.content.includes('Request belongs to a different chat')
+          m.content.includes('Delegation not found')
       );
     }, 15000);
 
@@ -260,7 +262,7 @@ describe('Policy Flows E2E', () => {
           m.role === 'system' &&
           m.event === 'router' &&
           typeof m.content === 'string' &&
-          m.content.includes(`Request not found: ${reqId}`)
+          m.content.includes(`Delegation is not pending: ${reqId}`) || m.content.includes(`Delegation not found: ${reqId}`)
       );
     }, 15000);
 

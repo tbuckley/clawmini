@@ -20,7 +20,7 @@ import { SettingsSchema } from '../shared/config.js';
 import { validateToken, getApiContext } from './auth.js';
 import path from 'node:path';
 import { exportLiteToEnvironment } from '../shared/lite.js';
-import { RequestStore } from './request-store.js';
+
 import { drainPendingReplies } from './pending-replies.js';
 import { getClawminiVersion } from '../shared/version.js';
 
@@ -169,10 +169,7 @@ export async function initDaemon() {
   await cleanOrphanedSubagents();
 
   try {
-    const removed = await new RequestStore(getWorkspaceRoot()).cleanupCompleted();
-    if (removed > 0) {
-      console.log(`Cleaned up ${removed} completed policy request file(s).`);
-    }
+    // Removed RequestStore cleanup for now, will implement wipeAll in Ticket 11
   } catch (err) {
     console.warn('Failed to clean completed policy requests:', err);
   }
