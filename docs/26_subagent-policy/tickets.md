@@ -1,7 +1,7 @@
 # Tickets: Unified Delegation (Subagent Policy V2)
 
 ## Ticket 1: Introduce `Delegation` schema and `DelegationStore`
-**Status:** Not Started
+**Status:** Complete
 
 **Description:**
 Implement the unified data models and file-system persistence layer that will replace both `RequestStore` (policy requests) and `ChatSettings.subagents`.
