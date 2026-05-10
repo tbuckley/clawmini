@@ -11,3 +11,9 @@
 - Implemented core operations: `createPolicy`, `createSubagent`, `sendToSubagent`, `approve`, `reject`, `markResolved`, `get`, `list`, `delete`.
 - Successfully validated exactOptionalPropertyTypes compilation for `parentId` and `cwd` with conditional assignments.
 - Tests passed perfectly.
+
+## Ticket 3
+- Added `DAEMON_EVENT_DELEGATION_RESOLVED` and `DelegationResolvedEvent` to `src/daemon/events.ts`.
+- Updated `DelegationManager.markResolved` and `DelegationManager.reject` in `src/daemon/delegation-manager.ts` to emit the new event upon delegation resolution.
+- Added test coverage in `src/daemon/delegation-manager.test.ts` using `vi.mock` to assert the event payload is correctly formatted and emitted.
+- Pre-existing E2E test failures for `clawmini serve` remain unchanged as expected.

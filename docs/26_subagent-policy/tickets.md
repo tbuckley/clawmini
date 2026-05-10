@@ -30,7 +30,7 @@ Implement the central controller for delegations. This acts as the cross-kind ow
 ---
 
 ## Ticket 3: Add `DAEMON_EVENT_DELEGATION_RESOLVED`
-**Status:** Not Started
+**Status:** Complete
 
 **Description:**
 Introduce the new daemon event used to signal completion of either a policy request or a subagent.

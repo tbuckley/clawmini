@@ -3,12 +3,16 @@ import { DelegationManager } from './delegation-manager.js';
 import { DelegationStore } from './delegation-store.js';
 import type { Delegation } from '../shared/delegations.js';
 
+vi.mock('./events.js', () => ({ emitDelegationResolved: vi.fn() }));
+import { emitDelegationResolved } from './events.js';
+
 describe('DelegationManager', () => {
   let store: DelegationStore;
   let manager: DelegationManager;
   let mockStoreData: Record<string, Record<string, Delegation>>;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     mockStoreData = {};
 
     store = {
@@ -156,6 +160,11 @@ describe('DelegationManager', () => {
       expect(rejected.state).toBe('rejected');
       expect(rejected.rejectionReason).toBe('no thanks');
       expect(rejected.resolvedAt).toBeDefined();
+      expect(emitDelegationResolved).toHaveBeenCalledWith({
+        chatId: 'chat-1',
+        delegationId: 'abc',
+        state: 'rejected',
+      });
     });
   });
 
@@ -180,6 +189,12 @@ describe('DelegationManager', () => {
       if (resolved.kind === 'policy') {
         expect(resolved.executionResult?.stdout).toBe('out');
       }
+
+      expect(emitDelegationResolved).toHaveBeenCalledWith({
+        chatId: 'chat-1',
+        delegationId: 'abc',
+        state: 'completed',
+      });
     });
   });
 

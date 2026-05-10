@@ -6,6 +6,7 @@ import type {
   DeliveryMode,
 } from '../shared/delegations.js';
 import crypto from 'node:crypto';
+import { emitDelegationResolved } from './events.js';
 
 export class DelegationManager {
   constructor(private store: DelegationStore) {}
@@ -111,6 +112,7 @@ export class DelegationManager {
       delegation.rejectionReason = reason;
     }
     await this.store.save(delegation);
+    emitDelegationResolved({ chatId, delegationId: id, state: 'rejected' });
     return delegation;
   }
 
@@ -132,6 +134,7 @@ export class DelegationManager {
     }
 
     await this.store.save(delegation);
+    emitDelegationResolved({ chatId, delegationId: id, state });
     return delegation;
   }
 

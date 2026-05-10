@@ -7,6 +7,13 @@ export const DAEMON_EVENT_MESSAGE_APPENDED = 'message-appended';
 export const DAEMON_EVENT_TYPING = 'typing';
 export const DAEMON_EVENT_TURN_STARTED = 'turn-started';
 export const DAEMON_EVENT_TURN_ENDED = 'turn-ended';
+export const DAEMON_EVENT_DELEGATION_RESOLVED = 'delegation-resolved';
+
+export interface DelegationResolvedEvent {
+  chatId: string;
+  delegationId: string;
+  state: 'completed' | 'failed' | 'rejected';
+}
 /**
  * Unified event carrying both `ChatMessage` appends and turn lifecycle
  * events so a single `waitForMessages` subscription can interleave them
@@ -77,4 +84,8 @@ export function emitTurnEnded(event: TurnEndedEvent) {
     item: { kind: 'turn', event: lifecycle },
   };
   daemonEvents.emit(DAEMON_EVENT_CHAT_STREAM, envelope);
+}
+
+export function emitDelegationResolved(event: DelegationResolvedEvent) {
+  daemonEvents.emit(DAEMON_EVENT_DELEGATION_RESOLVED, event);
 }
