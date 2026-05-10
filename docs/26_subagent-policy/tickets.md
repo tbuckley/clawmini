@@ -15,7 +15,7 @@ Implement the unified data models and file-system persistence layer that will re
 ---
 
 ## Ticket 2: Add `DelegationManager` (Lifecycle & Event Foundation)
-**Status:** Not Started
+**Status:** Complete
 
 **Description:**
 Implement the central controller for delegations. This acts as the cross-kind owner of lifecycle, events, subscriptions, and notify-suppression.
