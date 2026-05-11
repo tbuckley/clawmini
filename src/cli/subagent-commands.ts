@@ -1,7 +1,6 @@
 import { Command } from 'commander';
 import type { createTRPCClient } from '@trpc/client';
 import type { AgentRouter as AppRouter } from '../daemon/api/index.js';
-import type { SubagentTracker } from '../shared/config.js';
 
 export function registerSubagentCommands(
   program: Command,
@@ -153,7 +152,7 @@ export function registerSubagentCommands(
           return;
         }
 
-        for (const sub of subagents as SubagentTracker[]) {
+        for (const sub of subagents as any[]) {
           console.log(`\n=== Subagent: ${sub.id || 'N/A'} ===`);
           console.log(`  Agent:      ${sub.agentId || 'N/A'}`);
           console.log(`  Status:     ${sub.status || 'N/A'}`);

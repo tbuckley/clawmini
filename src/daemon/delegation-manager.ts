@@ -149,4 +149,19 @@ export class DelegationManager {
   async delete(chatId: string, id: string): Promise<void> {
     return this.store.delete(chatId, id);
   }
+
+  async assertVisibleTo(
+    chatId: string,
+    id: string,
+    callerSubagentId: string | undefined
+  ): Promise<Delegation> {
+    const delegation = await this.get(chatId, id);
+    if (!delegation) {
+      throw new Error(`Delegation ${id} not found`);
+    }
+    if (delegation.parentId !== callerSubagentId) {
+      throw new Error(`Delegation ${id} is not visible to the caller`);
+    }
+    return delegation;
+  }
 }

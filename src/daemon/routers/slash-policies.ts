@@ -14,10 +14,16 @@ import { executeDirectMessage } from '../message.js';
 // request may have been created in an earlier session (session-timeout, /new),
 // so we always consult the chat's *current* session for that agent/subagent.
 async function resolveTargetSessionId(chatId: string, req: Delegation): Promise<string> {
-  const chatSettings = await readChatSettings(chatId);
   if (req.parentId) {
-    return chatSettings?.subagents?.[req.parentId]?.sessionId ?? 'default';
+    const store = new DelegationStore();
+    const manager = new DelegationManager(store);
+    const parent = await manager.get(chatId, req.parentId);
+    if (parent?.kind === 'subagent') {
+      return parent.sessionId;
+    }
+    return 'default';
   }
+  const chatSettings = await readChatSettings(chatId);
   return chatSettings?.sessions?.[req.agentId] ?? 'default';
 }
 

@@ -45,7 +45,7 @@ Introduce the new daemon event used to signal completion of either a policy requ
 ---
 
 ## Ticket 4: Migrate Policy-Request RPCs and Handlers
-**Status:** Not Started
+**Status:** Complete
 
 **Description:**
 Switch policy requests to use the new `DelegationManager` instead of `RequestStore`.
@@ -61,7 +61,7 @@ Switch policy requests to use the new `DelegationManager` instead of `RequestSto
 ---
 
 ## Ticket 5: Migrate Subagent RPCs
-**Status:** Not Started
+**Status:** Complete
 
 **Description:**
 Switch subagents to use the new `DelegationManager` instead of `ChatSettings.subagents`.
