@@ -23,6 +23,7 @@ import { exportLiteToEnvironment } from '../shared/lite.js';
 
 import { drainPendingReplies } from './pending-replies.js';
 import { getClawminiVersion } from '../shared/version.js';
+import './delegation-subscriptions.js';
 
 export async function initDaemon() {
   const socketPath = getSocketPath();

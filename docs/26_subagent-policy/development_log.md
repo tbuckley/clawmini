@@ -26,3 +26,9 @@
 - Removed `src/daemon/request-store.ts`, `src/daemon/policy-request-service.ts`, and their tests.
 - Fixed E2E tests checking for `tmp/requests` transitioning them to `tmp/delegations`, and skipped `startup-cleanup.test.ts` pending Ticket 11 (wipe on daemon start).
 \n## Ticket 5\n- Removed ChatSettings.subagents and SubagentTrackerSchema from src/shared/config.ts.\n- Implemented manager.assertVisibleTo in DelegationManager.\n- Migrated executeSubagent, getSubagentDepth, and checkSubagentStatus to use DelegationManager.\n- Updated subagentSpawn, subagentSend, subagentStop, subagentDelete, subagentList, and subagentTail RPCs in src/daemon/api/subagent-router.ts to utilize DelegationManager and handle the new delivery mode logic.\n- Rewrote the wait loop in waitForSubagentStatus to live in subagent-utils.ts to prevent exceeding linter max-lines.\n- Ensured all linter, type checks, and imports were correctly aligned.
+
+## Ticket 6
+- Implemented `wait()` and `unsubscribe()` in `DelegationManager`.
+- Created `DAEMON_EVENT_DELEGATION_SUBSCRIPTION_FIRED` and a listener to wake up waiting parent agents.
+- Added `delegationWait`, `delegationList`, `delegationUnsubscribe` to tRPC surface via `delegation-router.ts`.
+- Updated `subagentWait` to use `manager.wait` and fixed E2E test failures related to TRPC errors and strict TypeScript checks.

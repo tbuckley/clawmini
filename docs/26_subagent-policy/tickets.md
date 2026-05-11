@@ -78,7 +78,7 @@ Switch subagents to use the new `DelegationManager` instead of `ChatSettings.sub
 ---
 
 ## Ticket 6: Implement Unified Wait API
-**Status:** Not Started
+**Status:** Complete
 
 **Description:**
 Expose the unified wait functionality on the agent-facing tRPC surface.

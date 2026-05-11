@@ -236,6 +236,8 @@ import {
   subagentTail,
 } from './subagent-router.js';
 
+import { delegationWait, delegationList, delegationUnsubscribe } from './delegation-router.js';
+
 export const agentRouter = router({
   logMessage,
   logReplyMessage,
@@ -257,6 +259,9 @@ export const agentRouter = router({
   subagentDelete,
   subagentList,
   subagentTail,
+  delegationWait,
+  delegationList,
+  delegationUnsubscribe,
 });
 
 export type AgentRouter = typeof agentRouter;

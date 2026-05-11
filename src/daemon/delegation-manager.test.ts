@@ -3,7 +3,15 @@ import { DelegationManager } from './delegation-manager.js';
 import { DelegationStore } from './delegation-store.js';
 import type { Delegation } from '../shared/delegations.js';
 
-vi.mock('./events.js', () => ({ emitDelegationResolved: vi.fn() }));
+vi.mock('./events.js', () => ({
+  emitDelegationResolved: vi.fn(),
+  emitDelegationSubscriptionFired: vi.fn(),
+  DAEMON_EVENT_DELEGATION_RESOLVED: 'delegation-resolved',
+  daemonEvents: {
+    on: vi.fn(),
+    emit: vi.fn(),
+  },
+}));
 import { emitDelegationResolved } from './events.js';
 
 describe('DelegationManager', () => {

@@ -4,7 +4,7 @@ import { getWorkspaceRoot } from '../../shared/workspace.js';
 import { apiProcedure } from './trpc.js';
 import { createChatLogger } from '../agent/chat-logger.js';
 import { createAgentSession } from '../agent/agent-session.js';
-import { executeSubagent, getSubagentDepth, waitForSubagentStatus } from './subagent-utils.js';
+import { executeSubagent, getSubagentDepth } from './subagent-utils.js';
 import { incrementSubagent, decrementSubagent } from '../agent/turn-registry.js';
 import { DelegationManager } from '../delegation-manager.js';
 import { DelegationStore } from '../delegation-store.js';
@@ -153,7 +153,40 @@ export const subagentWait = apiProcedure
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
 
-    return waitForSubagentStatus(chatId, input.subagentId, ctx.tokenPayload.subagentId, signal);
+    const store = new DelegationStore();
+    const manager = new DelegationManager(store);
+
+    let result;
+    try {
+      result = await manager.wait({
+        chatId,
+        ids: [input.subagentId],
+        mode: 'any',
+        returnMode: 'sync',
+        ...(ctx.tokenPayload.subagentId ? { callerSubagentId: ctx.tokenPayload.subagentId } : {}),
+        ...(signal ? { signal } : {}),
+      });
+    } catch (err) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    if (result.type === 'sync' && result.resolved.length > 0) {
+      const sub = result.resolved[0] as SubagentDelegation;
+      let outputContent: string | undefined;
+      if (sub.state === 'completed') {
+        const logger = createChatLogger(chatId, sub.id);
+        const lastLogMessage = await logger.findLastMessage((m) => m.role === 'agent');
+        if (lastLogMessage && 'content' in lastLogMessage) {
+          outputContent = lastLogMessage.content;
+        }
+      }
+      return { status: sub.state, output: outputContent };
+    }
+
+    return { status: 'active', output: undefined };
   });
 
 export const subagentStop = apiProcedure

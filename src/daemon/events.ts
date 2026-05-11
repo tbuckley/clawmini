@@ -8,11 +8,22 @@ export const DAEMON_EVENT_TYPING = 'typing';
 export const DAEMON_EVENT_TURN_STARTED = 'turn-started';
 export const DAEMON_EVENT_TURN_ENDED = 'turn-ended';
 export const DAEMON_EVENT_DELEGATION_RESOLVED = 'delegation-resolved';
+export const DAEMON_EVENT_DELEGATION_SUBSCRIPTION_FIRED = 'delegation-subscription-fired';
 
 export interface DelegationResolvedEvent {
   chatId: string;
   delegationId: string;
   state: 'completed' | 'failed' | 'rejected';
+}
+
+export interface DelegationSubscriptionFiredEvent {
+  chatId: string;
+  subscriptionId: string;
+  resolvedIds: string[];
+  callerAgentId?: string;
+  callerSubagentId?: string;
+  callerSessionId?: string;
+  callerTurnId?: string;
 }
 /**
  * Unified event carrying both `ChatMessage` appends and turn lifecycle
@@ -88,4 +99,8 @@ export function emitTurnEnded(event: TurnEndedEvent) {
 
 export function emitDelegationResolved(event: DelegationResolvedEvent) {
   daemonEvents.emit(DAEMON_EVENT_DELEGATION_RESOLVED, event);
+}
+
+export function emitDelegationSubscriptionFired(event: DelegationSubscriptionFiredEvent) {
+  daemonEvents.emit(DAEMON_EVENT_DELEGATION_SUBSCRIPTION_FIRED, event);
 }

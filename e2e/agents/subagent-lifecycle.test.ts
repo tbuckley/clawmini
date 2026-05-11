@@ -133,7 +133,7 @@ describe('E2E Subagent Lifecycle', () => {
     ).toBe(false);
   }, 30000);
 
-  it('delete removes the subagent tracker from chat settings', async () => {
+  it('delete removes the subagent tracker from the manager', async () => {
     await env.addChat('delete-chat', 'debug-agent');
     chat = await env.connect('delete-chat');
 
@@ -145,10 +145,13 @@ describe('E2E Subagent Lifecycle', () => {
       commandMatching((m) => !!m.subagentId && m.stdout.includes('delete-me'))
     );
 
-    let settings = env.getChatSettings('delete-chat') as {
-      subagents?: Record<string, unknown>;
-    };
-    expect(settings.subagents?.['del-sub']).toBeTruthy();
+    const listRes1 = await env.runCli(['subagents', 'list', '--json'], {
+      CLAW_CHAT_ID: 'delete-chat',
+      CLAW_AGENT_ID: 'debug-agent',
+    });
+    const parsed1 = JSON.parse(listRes1.stdout);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(parsed1.subagents.some((s: any) => s.id === 'del-sub')).toBeTruthy();
 
     await env.sendMessage('clawmini-lite.js subagents delete del-sub', {
       chat: 'delete-chat',
@@ -156,14 +159,21 @@ describe('E2E Subagent Lifecycle', () => {
     });
     await chat.waitForMessage(commandWith('Subagent del-sub deleted'));
 
+    let isDeleted = false;
     for (let i = 0; i < 50; i++) {
-      settings = env.getChatSettings('delete-chat') as {
-        subagents?: Record<string, unknown>;
-      };
-      if (!settings.subagents?.['del-sub']) break;
+      const listRes2 = await env.runCli(['subagents', 'list', '--json'], {
+        CLAW_CHAT_ID: 'delete-chat',
+        CLAW_AGENT_ID: 'debug-agent',
+      });
+      const parsed2 = JSON.parse(listRes2.stdout);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (!parsed2.subagents.some((s: any) => s.id === 'del-sub')) {
+        isDeleted = true;
+        break;
+      }
       await new Promise((r) => setTimeout(r, 100));
     }
-    expect(settings.subagents?.['del-sub']).toBeUndefined();
+    expect(isDeleted).toBe(true);
   }, 30000);
 
   it('list returns all subagents spawned by the current agent', async () => {

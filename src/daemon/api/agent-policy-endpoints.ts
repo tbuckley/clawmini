@@ -251,7 +251,8 @@ export const createPolicyRequest = apiProcedure
       };
 
       await appendMessage(chatId, logMsg);
-      return request;
+      const updatedRequest = await manager.get(chatId, request.id);
+      return updatedRequest || request;
     }
 
     const previewContent = await generateRequestPreview(request);
