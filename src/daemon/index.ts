@@ -21,6 +21,7 @@ import { validateToken, getApiContext } from './auth.js';
 import path from 'node:path';
 import { exportLiteToEnvironment } from '../shared/lite.js';
 import { RequestStore } from './request-store.js';
+import { delegationManager } from './delegation-manager.js';
 import { drainPendingReplies } from './pending-replies.js';
 import { getClawminiVersion } from '../shared/version.js';
 
@@ -175,6 +176,16 @@ export async function initDaemon() {
     }
   } catch (err) {
     console.warn('Failed to clean completed policy requests:', err);
+  }
+
+  // Wipe the unified delegations tree on daemon start. Additive alongside the
+  // legacy cleanup paths above (those remain authoritative until Tickets 2/3
+  // migrate RPCs onto the manager). Per spec §5.6 "Lifecycle invariants":
+  // restart is treated as a clean slate for delegations.
+  try {
+    await delegationManager.wipeAll();
+  } catch (err) {
+    console.warn('Failed to wipe delegations tree:', err);
   }
 
   await runHooks('up');

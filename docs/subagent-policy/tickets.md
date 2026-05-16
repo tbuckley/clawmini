@@ -103,7 +103,7 @@ No e2e tests in this ticket — nothing user-visible yet.
 
 ---
 
-## Ticket 1 — `DelegationManager` scaffolding (no consumers yet)
+## Ticket 1 — `DelegationManager` scaffolding (no consumers yet) — COMPLETE
 
 **Goal.** Stand up the cross-kind manager + new daemon event. Still no RPC
 migration — existing policy/subagent code paths are untouched.

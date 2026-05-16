@@ -125,6 +125,26 @@ export class DelegationStore {
     }
   }
 
+  // Locate a delegation by id alone by walking the chat-id subdirs. Used by
+  // `DelegationManager.approve` / `reject` / `markResolved`, which the spec
+  // addresses by id only (§5.6 "Module shape"). Returns null when no chat
+  // dir contains the id. Linear in the number of chat dirs; if a future
+  // workload makes that hot, the manager can keep a (chatId → ids) cache.
+  async findById(id: string): Promise<Delegation | null> {
+    let chatDirs: string[];
+    try {
+      chatDirs = await fs.readdir(this.baseDir);
+    } catch (err: unknown) {
+      if (isENOENT(err)) return null;
+      throw err;
+    }
+    for (const chatId of chatDirs) {
+      const record = await this.load(chatId, id);
+      if (record) return record;
+    }
+    return null;
+  }
+
   // Generate a unique id for `chatId`. 3-char `[0-9a-z]` by default; grows to
   // 4+ chars when the chat directory already contains every 3-char id we
   // happen to roll. Mirrors the collision-grow idiom from `request-store.ts`
