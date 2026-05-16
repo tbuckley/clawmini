@@ -20,7 +20,6 @@ import { SettingsSchema } from '../shared/config.js';
 import { validateToken, getApiContext } from './auth.js';
 import path from 'node:path';
 import { exportLiteToEnvironment } from '../shared/lite.js';
-import { RequestStore } from './request-store.js';
 import { delegationManager } from './delegation-manager.js';
 import { drainPendingReplies } from './pending-replies.js';
 import { getClawminiVersion } from '../shared/version.js';
@@ -169,19 +168,12 @@ export async function initDaemon() {
   };
   await cleanOrphanedSubagents();
 
-  try {
-    const removed = await new RequestStore(getWorkspaceRoot()).cleanupCompleted();
-    if (removed > 0) {
-      console.log(`Cleaned up ${removed} completed policy request file(s).`);
-    }
-  } catch (err) {
-    console.warn('Failed to clean completed policy requests:', err);
-  }
-
-  // Wipe the unified delegations tree on daemon start. Additive alongside the
-  // legacy cleanup paths above (those remain authoritative until Tickets 2/3
-  // migrate RPCs onto the manager). Per spec §5.6 "Lifecycle invariants":
-  // restart is treated as a clean slate for delegations.
+  // Wipe the unified delegations tree on daemon start. Ticket 2 migrated the
+  // policy code path onto this store; the legacy `RequestStore.cleanupCompleted`
+  // call is gone. The subagent legacy path (ChatSettings.subagents) is still
+  // cleaned above via `cleanOrphanedSubagents` until Ticket 3 / 8 migrate it.
+  // Per spec §5.6 "Lifecycle invariants": restart is treated as a clean slate
+  // for delegations.
   try {
     await delegationManager.wipeAll();
   } catch (err) {

@@ -27,27 +27,51 @@ vi.mock('../../shared/workspace.js', () => ({
   }),
 }));
 
-vi.mock('../policy-request-service.js', () => {
+vi.mock('../delegation-manager.js', () => {
   return {
-    PolicyRequestService: class {
-      async createRequest() {
-        return {
-          id: 'REQ-123',
-          commandName: 'test-cmd',
-          args: ['arg1', 'arg2'],
-          fileMappings: {
-            file1: '/mock/.clawmini/tmp/snapshots/file1.txt',
-            file2: '/mock/.clawmini/tmp/snapshots/file2.txt',
-          },
-          state: 'Pending',
-          createdAt: Date.now(),
-          chatId: 'chat-1',
-          agentId: 'agent-1',
-        };
-      }
+    delegationManager: {
+      createPolicy: vi.fn(async (input: any) => ({
+        id: 'REQ-123',
+        kind: 'policy',
+        state: input.autoApprove ? 'running' : 'pending',
+        delivery: 'notify',
+        chatId: input.chatId,
+        agentId: input.agentId,
+        createdAt: new Date().toISOString(),
+        commandName: input.commandName,
+        args: input.args,
+        fileMappings: input.fileMappings,
+        ...(input.cwd ? { cwd: input.cwd } : {}),
+        ...(input.parentId ? { parentId: input.parentId } : {}),
+      })),
+      markResolved: vi.fn(async () => undefined),
     },
   };
 });
+
+vi.mock('../policy-utils.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../policy-utils.js')>();
+  return {
+    ...actual,
+    // Preserve which file each mapping points at so `generateRequestPreview`
+    // can read distinct contents per slot in the preview-format test below.
+    createSnapshot: vi.fn(
+      async (requestedPath: string) =>
+        `/mock/.clawmini/tmp/snapshots/${requestedPath.split('/').pop()}`
+    ),
+    resolveRequestCwd: vi.fn(async () => '/mock/workspace'),
+    truncateLargeOutput: vi.fn(async (stdout: string, stderr: string) => ({ stdout, stderr })),
+  };
+});
+
+vi.mock('../policy-request-service.js', () => ({
+  executePolicyDelegation: vi.fn(async () => ({
+    stdout: 'auto-approved stdout',
+    stderr: '',
+    exitCode: 0,
+    commandStr: 'echo auto',
+  })),
+}));
 
 const { mockReadFile } = vi.hoisted(() => {
   return { mockReadFile: vi.fn() };
@@ -139,7 +163,11 @@ describe('createPolicyRequest preview message', () => {
     });
 
     expect(result.id).toBe('REQ-123');
-    expect(result.executionResult).toBeDefined();
+    expect(result.executionResult).toEqual({
+      stdout: 'auto-approved stdout',
+      stderr: '',
+      exitCode: 0,
+    });
 
     expect(chats.appendMessage).toHaveBeenCalledTimes(1);
     const callArgs = vi.mocked(chats.appendMessage).mock.calls[0]!;

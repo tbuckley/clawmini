@@ -195,3 +195,85 @@ patterns that worked, etc.
 - For event assertions, `daemonEvents.on(...)` in the test and
   `daemonEvents.removeAllListeners(DAEMON_EVENT_DELEGATION_RESOLVED)`
   in `afterEach` to isolate runs.
+
+### Ticket 2 status (done)
+
+- `src/daemon/api/agent-policy-endpoints.ts` — `createPolicyRequest`
+  now snapshots files itself (via `createSnapshot` from
+  `policy-utils.ts`), then calls `delegationManager.createPolicy({...})`.
+  Auto-approve path runs `executePolicyDelegation`, calls
+  `manager.markResolved({state:'completed', executionResult})`, and
+  returns `{id, executionResult}` — the lite CLI still keys off
+  `request.executionResult` / `request.id`. Non-auto-approve path
+  returns `{id}`. `delivery` is hard-coded to `'notify'` (Ticket 7).
+- `src/daemon/policy-request-service.ts` — reduced to a pure executor
+  named **`executePolicyDelegation(delegation, policy, cwd?)`**
+  (named export, no class). It just shells out to `executeRequest` in
+  `policy-utils.ts` (the latter still takes a `PolicyRequest`-shaped
+  object — easier than touching its signature). No file I/O.
+- `src/daemon/routers/slash-policies.ts` — `/approve` calls
+  `manager.approve(id, 'user')` then runs the script + `markResolved`;
+  `/reject` calls `manager.reject(id, reason)` (no script). `/pending`
+  filters via `manager.list({chatId, kind:'policy', state:'pending'})`.
+  The post-approve "fresh turn carrying output" still goes through
+  `executeDirectMessage` — that flow didn't change.
+- `src/daemon/request-store.ts` and its test, plus the old
+  `policy-request-service.test.ts`, are **deleted**. The
+  `PolicyRequest` type in `src/shared/policies.ts` is still around
+  (Ticket 8 will remove it).
+- `src/daemon/index.ts` — the legacy `RequestStore.cleanupCompleted`
+  call is gone; `delegationManager.wipeAll()` now owns the policy
+  startup wipe. `cleanOrphanedSubagents` (for the legacy
+  `ChatSettings.subagents` tracker) is still there until Tickets 3/8.
+
+### Ticket 2 behavior changes (important for Ticket 3+)
+
+- **Records are retained on resolve.** This is the headline change:
+  the legacy `RequestStore.delete` removed the file on approve/reject.
+  The new `DelegationManager` writes the terminal state and keeps the
+  file. `delegations show <id>` (Ticket 6) and the agent-side wakeup
+  in Ticket 5 both depend on this retention.
+- **Per-chat lookup, not cross-chat.** `delegationManager.get(id,
+  chatId)` only looks inside that chat's directory — a /approve on a
+  foreign id now returns "Request not found", not the old "Request
+  belongs to a different chat". The security guarantee is preserved
+  (no cross-chat access), only the error string changed. See
+  `e2e/policies/slash-policies.test.ts` — the test was updated.
+- **Already-resolved /approve is now "Request is not pending"**
+  (previously "Request not found", because the file used to be
+  deleted). Same test was updated.
+- **`generateRequestPreview` now takes a structural object**
+  (`{id, commandName, args, fileMappings}`) so it can accept either a
+  legacy `PolicyRequest` or a `PolicyDelegation` without
+  conditionals. Touched only that one signature; no other consumers.
+- **`createPolicyRequest` tRPC return shape** narrowed to
+  `{id, executionResult?}` (used to return the full `PolicyRequest`).
+  The only consumer is `src/cli/lite.ts:307` which reads exactly those
+  two fields — verified.
+
+### Where the policy "preview" message comes from
+
+- `src/daemon/api/agent-policy-endpoints.ts` builds the
+  `PolicyRequestMessage` (role:`policy`, displayRole:`agent` for
+  pending; nothing for auto-approve) and appends it with
+  `appendMessage` from `src/daemon/chats.ts`. The preview *body*
+  comes from `generateRequestPreview` in `policy-utils.ts`. The
+  message's `requestId` field is the delegation id — Ticket 6's
+  `delegations show <id>` should accept it directly.
+
+### Gotchas while implementing Ticket 2
+
+- `tryRealpath` in `policy-utils.ts` swallows ENOENT only for
+  unresolved leaves — be careful if you change paths where the leaf
+  may not exist yet (e.g. agent tmp dirs created lazily).
+- `executePolicyDelegation` calls `executeRequest`, which uses
+  `policy.args` + `request.args` (in that order) — keep that
+  ordering when you rebuild a `PolicyRequest`-shaped object inside
+  the executor.
+- `state.chatId` is always populated in the slash-policies router
+  state, so `delegationManager.get(id, state.chatId)` is safe; no
+  fallback needed.
+- The e2e test in `e2e/policies/delegation-manager-policy.test.ts`
+  needs an agent dir for `runLite` even when calling an
+  auto-approved policy — running from `env.e2eDir` exits 1 because
+  the policy resolves `policy.command` against a non-agent cwd.

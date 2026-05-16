@@ -1,48 +1,64 @@
 import { randomUUID } from 'node:crypto';
 import type { RouterState } from './types.js';
-import { RequestStore } from '../request-store.js';
+import { delegationManager } from '../delegation-manager.js';
 import { readChatSettings, readPoliciesForPath, getWorkspaceRoot } from '../../shared/workspace.js';
 import { resolveAgentDir } from '../api/router-utils.js';
-import { executeRequest, resolveRequestCwd, truncateLargeOutput } from '../policy-utils.js';
+import { resolveRequestCwd, truncateLargeOutput } from '../policy-utils.js';
+import { executePolicyDelegation } from '../policy-request-service.js';
 import { appendMessage } from '../chats.js';
 import type { SystemMessage } from '../../shared/chats.js';
-import type { PolicyRequest } from '../../shared/policies.js';
+import type { PolicyDelegation } from '../../shared/delegations.js';
 import { executeDirectMessage } from '../message.js';
 
 // Resolve which session the approval/rejection should be replayed on. The
 // request may have been created in an earlier session (session-timeout, /new),
 // so we always consult the chat's *current* session for that agent/subagent.
-async function resolveTargetSessionId(chatId: string, req: PolicyRequest): Promise<string> {
+async function resolveTargetSessionId(
+  chatId: string,
+  delegation: PolicyDelegation
+): Promise<string> {
   const chatSettings = await readChatSettings(chatId);
-  if (req.subagentId) {
-    return chatSettings?.subagents?.[req.subagentId]?.sessionId ?? 'default';
+  if (delegation.parentId) {
+    return chatSettings?.subagents?.[delegation.parentId]?.sessionId ?? 'default';
   }
-  return chatSettings?.sessions?.[req.agentId] ?? 'default';
+  return chatSettings?.sessions?.[delegation.agentId] ?? 'default';
 }
 
-async function loadAndValidateRequest(id: string, state: RouterState) {
-  const store = new RequestStore(getWorkspaceRoot());
-  const req = await store.load(id);
-  if (!req) return { error: { ...state, message: '', reply: `Request not found: ${id}` } };
-  if (req.chatId && req.chatId !== state.chatId)
+async function loadAndValidatePolicyDelegation(id: string, state: RouterState) {
+  const record = await delegationManager.get(id, state.chatId);
+  if (!record || record.kind !== 'policy') {
+    return { error: { ...state, message: '', reply: `Request not found: ${id}` } };
+  }
+  // Cross-chat guard is implicit (we loaded via state.chatId), but mirror the
+  // legacy error text so existing tests/observability stay stable.
+  if (record.chatId !== state.chatId) {
     return {
-      error: { ...state, message: '', reply: `Request belongs to a different chat: ${req.chatId}` },
+      error: {
+        ...state,
+        message: '',
+        reply: `Request belongs to a different chat: ${record.chatId}`,
+      },
     };
-  if (req.state !== 'Pending')
+  }
+  if (record.state !== 'pending') {
     return { error: { ...state, message: '', reply: `Request is not pending: ${id}` } };
-  return { req, store };
+  }
+  return { delegation: record };
 }
 
 export async function slashPolicies(state: RouterState): Promise<RouterState> {
   const message = state.message.trim();
 
   if (message === '/pending') {
-    const store = new RequestStore(getWorkspaceRoot());
-    const requests = await store.list();
-    const pending = requests.filter((r) => r.state === 'Pending');
+    const pending = await delegationManager.list({
+      chatId: state.chatId,
+      kind: 'policy',
+      state: 'pending',
+    });
 
     let reply = `Pending Requests (${pending.length}):\n`;
     for (const req of pending) {
+      if (req.kind !== 'policy') continue;
       reply += `- ID: ${req.id} | Command: ${req.commandName} ${req.args.join(' ')}\n`;
     }
 
@@ -57,34 +73,40 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
   if (approveMatch) {
     const id = approveMatch[1];
     if (!id) return state;
-    const { req, store, error } = await loadAndValidateRequest(id, state);
+    const { delegation, error } = await loadAndValidatePolicyDelegation(id, state);
     if (error) return error;
-    if (!req || !store) return state; // Should not happen if error is undefined
+    if (!delegation) return state; // Should not happen if error is undefined
 
     const workspaceRoot = getWorkspaceRoot();
-    const agentDir = await resolveAgentDir(req.agentId, workspaceRoot);
+    const agentDir = await resolveAgentDir(delegation.agentId, workspaceRoot);
     const config = await readPoliciesForPath(agentDir, workspaceRoot);
-    const policy = config?.policies?.[req.commandName];
+    const policy = config?.policies?.[delegation.commandName];
     if (!policy) {
-      return { ...state, message: '', reply: `Policy not found: ${req.commandName}` };
+      return { ...state, message: '', reply: `Policy not found: ${delegation.commandName}` };
     }
 
-    const hostCwd = await resolveRequestCwd(req.cwd, state.agentId, workspaceRoot);
+    // pending → running
+    await delegationManager.approve(delegation.id, 'user');
 
-    const result = await executeRequest(req, policy, hostCwd);
+    const hostCwd = await resolveRequestCwd(delegation.cwd, state.agentId, workspaceRoot);
+
+    const result = await executePolicyDelegation(delegation, policy, hostCwd);
     const { exitCode } = result;
     const { stdout, stderr } = await truncateLargeOutput(
       result.stdout,
       result.stderr,
-      req.id,
+      delegation.id,
       state.agentId
     );
 
-    await store.delete(req.id);
+    await delegationManager.markResolved(delegation.id, {
+      state: 'completed',
+      executionResult: { stdout, stderr, exitCode },
+    });
 
     const agentMessage = `Request ${id} approved.\n\n${wrapInHtml('stdout', stdout)}\n\n${wrapInHtml('stderr', stderr)}\n\nExit Code: ${exitCode}`;
 
-    const targetSessionId = await resolveTargetSessionId(state.chatId, req);
+    const targetSessionId = await resolveTargetSessionId(state.chatId, delegation);
 
     const userNotificationMsg: SystemMessage = {
       id: randomUUID(),
@@ -92,7 +114,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       role: 'system',
       event: 'policy_approved',
       displayRole: 'agent',
-      content: `Request ${id} (\`${req.commandName}\`) approved.`,
+      content: `Request ${id} (\`${delegation.commandName}\`) approved.`,
       timestamp: new Date().toISOString(),
       // Explicitly omitted subagentId to show in main chat
       sessionId: state.sessionId,
@@ -106,9 +128,9 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
         messageId: randomUUID(),
         message: agentMessage,
         chatId: state.chatId,
-        agentId: req.agentId,
+        agentId: delegation.agentId,
         sessionId: targetSessionId,
-        ...(req.subagentId ? { subagentId: req.subagentId } : {}),
+        ...(delegation.parentId ? { subagentId: delegation.parentId } : {}),
         env: state.env || {},
         // Forward externalRef so the resulting `policy_approved` turn anchors
         // its activity log on the same inbound (e.g. the Discord policy card)
@@ -120,7 +142,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       getWorkspaceRoot(),
       true, // noWait
       agentMessage,
-      req.subagentId,
+      delegation.parentId,
       'policy_approved',
       'user'
     );
@@ -136,15 +158,15 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
     const id = rejectMatch[1];
     if (!id) return state;
     const reason = rejectMatch[2] || 'No reason provided';
-    const { req, store, error } = await loadAndValidateRequest(id, state);
+    const { delegation, error } = await loadAndValidatePolicyDelegation(id, state);
     if (error) return error;
-    if (!req || !store) return state; // Should not happen if error is undefined
+    if (!delegation) return state; // Should not happen if error is undefined
 
-    await store.delete(req.id);
+    await delegationManager.reject(delegation.id, reason);
 
     const agentMessage = `Request ${id} rejected. Reason: ${reason}`;
 
-    const targetSessionId = await resolveTargetSessionId(state.chatId, req);
+    const targetSessionId = await resolveTargetSessionId(state.chatId, delegation);
 
     const userNotificationMsg: SystemMessage = {
       id: randomUUID(),
@@ -152,7 +174,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       role: 'system',
       event: 'policy_rejected',
       displayRole: 'agent',
-      content: `Request ${id} (\`${req.commandName}\`) rejected. Reason: ${reason}`,
+      content: `Request ${id} (\`${delegation.commandName}\`) rejected. Reason: ${reason}`,
       timestamp: new Date().toISOString(),
       // Explicitly omitted subagentId to show in main chat
       sessionId: state.sessionId,
@@ -166,9 +188,9 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
         messageId: randomUUID(),
         message: agentMessage,
         chatId: state.chatId,
-        agentId: req.agentId,
+        agentId: delegation.agentId,
         sessionId: targetSessionId,
-        ...(req.subagentId ? { subagentId: req.subagentId } : {}),
+        ...(delegation.parentId ? { subagentId: delegation.parentId } : {}),
         env: state.env || {},
         ...(state.externalRef ? { externalRef: state.externalRef } : {}),
       },
@@ -176,7 +198,7 @@ export async function slashPolicies(state: RouterState): Promise<RouterState> {
       getWorkspaceRoot(),
       true, // noWait
       agentMessage,
-      req.subagentId,
+      delegation.parentId,
       'policy_rejected',
       'user'
     );

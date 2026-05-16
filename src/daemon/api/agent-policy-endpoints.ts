@@ -7,12 +7,12 @@ import { apiProcedure } from './trpc.js';
 import { getWorkspaceRoot, readPoliciesForPath, getClawminiDir } from '../../shared/workspace.js';
 import { pathIsInsideDir } from '../../shared/utils/fs.js';
 import { resolveAgentDir } from './router-utils.js';
-import { PolicyRequestService } from '../policy-request-service.js';
-import { RequestStore } from '../request-store.js';
+import { executePolicyDelegation } from '../policy-request-service.js';
+import { delegationManager } from '../delegation-manager.js';
 import {
   executeSafe,
   generateRequestPreview,
-  executeRequest,
+  createSnapshot,
   resolveRequestCwd,
   truncateLargeOutput,
 } from '../policy-utils.js';
@@ -176,9 +176,7 @@ export const createPolicyRequest = apiProcedure
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const workspaceRoot = getWorkspaceRoot(process.cwd());
     const snapshotDir = path.join(getClawminiDir(process.cwd()), 'tmp', 'snapshots');
-    const store = new RequestStore(process.cwd());
     const agentDir = await resolveAgentDir(ctx.tokenPayload?.agentId, workspaceRoot);
-    const service = new PolicyRequestService(store, agentDir, snapshotDir);
 
     const chatId = ctx.tokenPayload.chatId;
     const agentId = ctx.tokenPayload.agentId;
@@ -195,37 +193,54 @@ export const createPolicyRequest = apiProcedure
 
     const isAutoApprove = !!policy.autoApprove;
 
-    const request = await service.createRequest(
-      input.commandName,
-      input.args,
-      input.fileMappings,
+    // Snapshot the input files *before* creating the delegation, so a partial
+    // snapshot failure doesn't leave a half-baked record on disk. Mirrors the
+    // pre-Ticket-2 `PolicyRequestService.createRequest` ordering.
+    const snapshotMappings: Record<string, string> = {};
+    for (const [key, requestedPath] of Object.entries(input.fileMappings)) {
+      snapshotMappings[key] = await createSnapshot(requestedPath, agentDir, snapshotDir);
+    }
+
+    const delegation = await delegationManager.createPolicy({
       chatId,
       agentId,
-      isAutoApprove,
-      ctx.tokenPayload.subagentId,
-      input.cwd
-    );
+      commandName: input.commandName,
+      args: input.args,
+      fileMappings: snapshotMappings,
+      ...(input.cwd ? { cwd: input.cwd } : {}),
+      ...(ctx.tokenPayload.subagentId ? { parentId: ctx.tokenPayload.subagentId } : {}),
+      // Ticket 7 will surface `delivery` at the CLI; for now policies always
+      // notify on resolution (today's behavior).
+      delivery: 'notify',
+      autoApprove: isAutoApprove,
+    });
 
     if (isAutoApprove) {
-      const hostCwd = await resolveRequestCwd(request.cwd, agentId, workspaceRoot);
+      const hostCwd = await resolveRequestCwd(delegation.cwd, agentId, workspaceRoot);
 
-      const result = await executeRequest(request, policy, hostCwd);
+      const result = await executePolicyDelegation(delegation, policy, hostCwd);
       const { exitCode, commandStr } = result;
       const { stdout, stderr } = await truncateLargeOutput(
         result.stdout,
         result.stderr,
-        request.id,
+        delegation.id,
         agentId
       );
 
-      request.executionResult = { stdout, stderr, exitCode };
+      // Retain the resolved record on disk (the legacy `RequestStore.delete`
+      // removed it here; the new unified store keeps it so observers can
+      // read the executionResult after the fact).
+      await delegationManager.markResolved(delegation.id, {
+        state: 'completed',
+        executionResult: { stdout, stderr, exitCode },
+      });
 
       const logMsg: PolicyRequestMessage = {
         id: randomUUID(),
         // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
         messageId: randomUUID(),
         role: 'policy',
-        requestId: request.id,
+        requestId: delegation.id,
         commandName: input.commandName,
         args: input.args,
         status: 'approved',
@@ -237,17 +252,25 @@ export const createPolicyRequest = apiProcedure
       };
 
       await appendMessage(chatId, logMsg);
-      return request;
+
+      // Preserve the legacy return shape callers (the lite CLI) depend on:
+      // `request.id` + `request.executionResult`. Returning the delegation
+      // record-plus-result here matches the old `PolicyRequest` consumer
+      // (lite.ts writes stdout/stderr and exits using `executionResult`).
+      return {
+        id: delegation.id,
+        executionResult: { stdout, stderr, exitCode },
+      };
     }
 
-    const previewContent = await generateRequestPreview(request);
+    const previewContent = await generateRequestPreview(delegation);
 
     const logMsg: PolicyRequestMessage = {
       id: randomUUID(),
       // TODO: we should store the message ID in the CLAW_API_TOKEN, and extract it here
       messageId: randomUUID(),
       role: 'policy',
-      requestId: request.id,
+      requestId: delegation.id,
       commandName: input.commandName,
       args: input.args,
       status: 'pending',
@@ -259,5 +282,5 @@ export const createPolicyRequest = apiProcedure
     };
 
     await appendMessage(chatId, logMsg);
-    return request;
+    return { id: delegation.id };
   });

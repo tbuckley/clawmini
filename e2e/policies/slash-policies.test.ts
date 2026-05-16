@@ -123,8 +123,24 @@ describe('Policy Flows E2E', () => {
       );
       expect(sanitize(actorNotif.content, reqId)).toBe(expectedActorContent);
 
-      const reqPath = path.resolve(env.e2eDir, `.clawmini/tmp/requests/${reqId}.json`);
-      expect(fs.existsSync(reqPath)).toBe(false);
+      // Ticket 2 behavior change: the resolved record is retained on disk
+      // under `.clawmini/tmp/delegations/<chatId>/<id>.json`. Legacy
+      // `RequestStore.delete` removed it on resolve; the new unified store
+      // keeps it so observers can read the executionResult / rejectionReason.
+      const reqPath = path.resolve(
+        env.e2eDir,
+        `.clawmini/tmp/delegations/${chatId}/${reqId}.json`
+      );
+      expect(fs.existsSync(reqPath)).toBe(true);
+      const record = JSON.parse(fs.readFileSync(reqPath, 'utf8'));
+      expect(record.kind).toBe('policy');
+      if (action === 'approve') {
+        expect(record.state).toBe('completed');
+        expect(record.executionResult).toBeDefined();
+      } else {
+        expect(record.state).toBe('rejected');
+        expect(record.rejectionReason).toBe('No reason provided');
+      }
     },
     15000
   );
@@ -156,7 +172,7 @@ describe('Policy Flows E2E', () => {
     expect(reply.content).toContain(`- ID: ${reqId} | Command: test-cmd`);
   }, 15000);
 
-  it('should include a custom reason in /reject notifications and delete the request file', async () => {
+  it('should include a custom reason in /reject notifications and retain the rejected delegation record', async () => {
     await env.addChat('chat-reject-reason');
     chat = await env.connect('chat-reject-reason');
 
@@ -185,8 +201,16 @@ describe('Policy Flows E2E', () => {
     );
     expect(agentMsg.content).toContain('command looked suspicious');
 
-    const reqPath = path.resolve(env.e2eDir, `.clawmini/tmp/requests/${reqId}.json`);
-    expect(fs.existsSync(reqPath)).toBe(false);
+    // Rejected delegations are retained (Ticket 2). Verify the rejectionReason
+    // was persisted along with the state transition.
+    const reqPath = path.resolve(
+      env.e2eDir,
+      `.clawmini/tmp/delegations/chat-reject-reason/${reqId}.json`
+    );
+    expect(fs.existsSync(reqPath)).toBe(true);
+    const record = JSON.parse(fs.readFileSync(reqPath, 'utf8'));
+    expect(record.state).toBe('rejected');
+    expect(record.rejectionReason).toBe('command looked suspicious');
   }, 15000);
 
   describe('validation branches', () => {
@@ -223,12 +247,17 @@ describe('Policy Flows E2E', () => {
 
       await env.sendMessage(`/approve ${reqId}`, { chat: 'chat-intruder' });
 
+      // Ticket 2: delegation records are keyed by chatId on disk, so an
+      // attempt to /approve a foreign request simply fails to find it in
+      // *this* chat — the legacy cross-chat error string is gone, but the
+      // security guarantee (no cross-chat access) is preserved by the
+      // per-chat lookup.
       await secondChat.waitForMessage(
         (m): m is SystemMessage =>
           m.role === 'system' &&
           m.event === 'router' &&
           typeof m.content === 'string' &&
-          m.content.includes('Request belongs to a different chat')
+          m.content.includes(`Request not found: ${reqId}`)
       );
     }, 15000);
 
@@ -254,13 +283,15 @@ describe('Policy Flows E2E', () => {
 
       await env.sendMessage(`/approve ${reqId}`, { chat: 'chat-double-approve' });
 
-      // Approved requests are deleted, so the second /approve sees the request as gone.
+      // Ticket 2: approved delegations are retained on disk in state
+      // 'completed'. The second /approve sees the record but refuses because
+      // it is no longer pending.
       await chat.waitForMessage(
         (m): m is SystemMessage =>
           m.role === 'system' &&
           m.event === 'router' &&
           typeof m.content === 'string' &&
-          m.content.includes(`Request not found: ${reqId}`)
+          m.content.includes(`Request is not pending: ${reqId}`)
       );
     }, 15000);
 

@@ -1,18 +1,28 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { slashPolicies } from './slash-policies.js';
-import { RequestStore } from '../request-store.js';
+import { delegationManager } from '../delegation-manager.js';
 import { readPoliciesForPath, getWorkspaceRoot } from '../../shared/workspace.js';
 import { resolveAgentDir } from '../api/router-utils.js';
-import { executeRequest, truncateLargeOutput } from '../policy-utils.js';
+import { truncateLargeOutput } from '../policy-utils.js';
+import { executePolicyDelegation } from '../policy-request-service.js';
 import { appendMessage } from '../chats.js';
 import { executeDirectMessage } from '../message.js';
-import type { PolicyRequest } from '../../shared/policies.js';
+import type { PolicyDelegation } from '../../shared/delegations.js';
 
-vi.mock('../request-store.js');
+vi.mock('../delegation-manager.js', () => ({
+  delegationManager: {
+    get: vi.fn(),
+    list: vi.fn(),
+    approve: vi.fn(),
+    reject: vi.fn(),
+    markResolved: vi.fn(),
+  },
+}));
 vi.mock('../../shared/workspace.js');
 vi.mock('../api/router-utils.js');
 vi.mock('../policy-utils.js');
+vi.mock('../policy-request-service.js');
 vi.mock('../chats.js');
 vi.mock('../message.js');
 vi.mock('node:crypto', async (importOriginal) => {
@@ -27,24 +37,22 @@ vi.mock('node:crypto', async (importOriginal) => {
   };
 });
 
+const makeDelegation = (overrides: Partial<PolicyDelegation> = {}): PolicyDelegation => ({
+  id: 'req-1',
+  kind: 'policy',
+  state: 'pending',
+  delivery: 'notify',
+  chatId: 'chat-1',
+  agentId: 'agent-1',
+  createdAt: new Date().toISOString(),
+  commandName: 'test-cmd',
+  args: ['world'],
+  fileMappings: {},
+  ...overrides,
+});
+
 describe('slashPolicies', () => {
-  let mockStore: any;
-
   beforeEach(() => {
-    mockStore = {
-      list: vi.fn(),
-      load: vi.fn(),
-      save: vi.fn(),
-      delete: vi.fn(),
-    };
-    vi.mocked(RequestStore).mockImplementation(function (this: any) {
-      this.list = mockStore.list;
-      this.load = mockStore.load;
-      this.save = mockStore.save;
-      this.delete = mockStore.delete;
-      return this;
-    } as any);
-
     vi.mocked(appendMessage).mockResolvedValue(undefined);
     vi.mocked(getWorkspaceRoot).mockReturnValue('/mock/workspace');
     vi.mocked(resolveAgentDir).mockResolvedValue('/mock/workspace/agent-1');
@@ -56,7 +64,7 @@ describe('slashPolicies', () => {
         },
       },
     });
-    vi.mocked(executeRequest).mockResolvedValue({
+    vi.mocked(executePolicyDelegation).mockResolvedValue({
       stdout: 'hello world',
       stderr: '',
       exitCode: 0,
@@ -79,47 +87,35 @@ describe('slashPolicies', () => {
   });
 
   it('should list pending requests on /pending', async () => {
-    const pendingReq: PolicyRequest = {
-      id: 'req-1',
-      commandName: 'test-cmd',
-      args: ['world'],
-      fileMappings: {},
-      state: 'Pending',
-      createdAt: Date.now(),
-      chatId: 'chat-1',
-      agentId: 'agent-1',
-    };
-    const approvedReq: PolicyRequest = { ...pendingReq, id: 'req-2', state: 'Approved' };
-    mockStore.list.mockResolvedValue([pendingReq, approvedReq]);
+    const pendingReq = makeDelegation({ id: 'req-1', state: 'pending' });
+    vi.mocked(delegationManager.list).mockResolvedValue([pendingReq]);
 
     const state = { message: '/pending', messageId: 'mock-msg-id', chatId: 'chat-1' };
     const result = await slashPolicies(state);
 
+    expect(delegationManager.list).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      kind: 'policy',
+      state: 'pending',
+    });
     expect(result.action).toBe('stop');
     expect(result.reply).toContain('Pending Requests (1):');
     expect(result.reply).toContain('- ID: req-1 | Command: test-cmd world');
-    expect(result.reply).not.toContain('req-2');
   });
 
   it('should approve a pending request on /approve, execute it, and inject feedback', async () => {
-    const pendingReq: PolicyRequest = {
-      id: 'req-1',
-      commandName: 'test-cmd',
-      args: ['world'],
-      fileMappings: {},
-      state: 'Pending',
-      createdAt: Date.now(),
-      chatId: 'chat-1',
-      agentId: 'agent-1',
-    };
-    mockStore.load.mockResolvedValue(pendingReq);
+    const pendingReq = makeDelegation();
+    vi.mocked(delegationManager.get).mockResolvedValue(pendingReq);
 
     const state = { message: '/approve req-1', messageId: 'mock-msg-id', chatId: 'chat-1' };
     const result = await slashPolicies(state);
 
-    expect(mockStore.save).not.toHaveBeenCalled();
-    expect(mockStore.delete).toHaveBeenCalledWith('req-1');
-    expect(executeRequest).toHaveBeenCalledWith(pendingReq, expect.any(Object), undefined);
+    expect(delegationManager.approve).toHaveBeenCalledWith('req-1', 'user');
+    expect(executePolicyDelegation).toHaveBeenCalledWith(pendingReq, expect.any(Object), undefined);
+    expect(delegationManager.markResolved).toHaveBeenCalledWith('req-1', {
+      state: 'completed',
+      executionResult: { stdout: 'hello world', stderr: '', exitCode: 0 },
+    });
     expect(appendMessage).toHaveBeenCalledWith(
       'chat-1',
       expect.objectContaining({
@@ -135,17 +131,8 @@ describe('slashPolicies', () => {
   });
 
   it('should reject a pending request on /reject with reason and inject feedback', async () => {
-    const pendingReq: PolicyRequest = {
-      id: 'req-1',
-      commandName: 'test-cmd',
-      args: [],
-      fileMappings: {},
-      state: 'Pending',
-      createdAt: Date.now(),
-      chatId: 'chat-1',
-      agentId: 'agent-1',
-    };
-    mockStore.load.mockResolvedValue(pendingReq);
+    const pendingReq = makeDelegation({ args: [] });
+    vi.mocked(delegationManager.get).mockResolvedValue(pendingReq);
 
     const state = {
       message: '/reject req-1 Not allowed',
@@ -154,8 +141,8 @@ describe('slashPolicies', () => {
     };
     const result = await slashPolicies(state);
 
-    expect(mockStore.save).not.toHaveBeenCalled();
-    expect(mockStore.delete).toHaveBeenCalledWith('req-1');
+    expect(delegationManager.reject).toHaveBeenCalledWith('req-1', 'Not allowed');
+    expect(delegationManager.markResolved).not.toHaveBeenCalled();
     expect(appendMessage).toHaveBeenCalledTimes(1);
     expect(appendMessage).toHaveBeenCalledWith(
       'chat-1',
@@ -172,17 +159,8 @@ describe('slashPolicies', () => {
   });
 
   it('forwards externalRef into the post-approval executeDirectMessage call', async () => {
-    const pendingReq: PolicyRequest = {
-      id: 'req-1',
-      commandName: 'test-cmd',
-      args: [],
-      fileMappings: {},
-      state: 'Pending',
-      createdAt: Date.now(),
-      chatId: 'chat-1',
-      agentId: 'agent-1',
-    };
-    mockStore.load.mockResolvedValue(pendingReq);
+    const pendingReq = makeDelegation({ args: [] });
+    vi.mocked(delegationManager.get).mockResolvedValue(pendingReq);
 
     const state = {
       message: '/approve req-1',
@@ -206,17 +184,8 @@ describe('slashPolicies', () => {
   });
 
   it('forwards externalRef into the post-rejection executeDirectMessage call', async () => {
-    const pendingReq: PolicyRequest = {
-      id: 'req-1',
-      commandName: 'test-cmd',
-      args: [],
-      fileMappings: {},
-      state: 'Pending',
-      createdAt: Date.now(),
-      chatId: 'chat-1',
-      agentId: 'agent-1',
-    };
-    mockStore.load.mockResolvedValue(pendingReq);
+    const pendingReq = makeDelegation({ args: [] });
+    vi.mocked(delegationManager.get).mockResolvedValue(pendingReq);
 
     const state = {
       message: '/reject req-1 nope',
@@ -240,12 +209,12 @@ describe('slashPolicies', () => {
   });
 
   it('should not act if request is not found', async () => {
-    mockStore.load.mockResolvedValue(null);
+    vi.mocked(delegationManager.get).mockResolvedValue(null);
 
     const state = { message: '/approve req-1', messageId: 'mock-msg-id', chatId: 'chat-1' };
     const result = await slashPolicies(state);
 
-    expect(mockStore.save).not.toHaveBeenCalled();
+    expect(delegationManager.approve).not.toHaveBeenCalled();
     expect(appendMessage).not.toHaveBeenCalled();
     expect(result.action).toBeUndefined();
     expect(result.message).toBe('');

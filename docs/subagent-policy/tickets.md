@@ -170,7 +170,7 @@ No e2e tests — manager not exposed yet.
 
 ---
 
-## Ticket 2 — Migrate policy-request RPCs onto the manager
+## Ticket 2 — Migrate policy-request RPCs onto the manager — COMPLETE
 
 **Goal.** Replace `RequestStore` reads/writes inside policy RPCs and
 `slash-policies.ts` with `DelegationManager`. Behavior is preserved 1:1:

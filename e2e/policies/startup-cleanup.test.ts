@@ -2,25 +2,31 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { TestEnvironment } from '../_helpers/test-environment.js';
-import type { PolicyRequest, RequestState } from '../../src/shared/policies.js';
 
-describe('Policy Startup Cleanup E2E', () => {
+// Ticket 2 moved the policy store onto the unified `tmp/delegations/` tree.
+// Per spec §5.6 "Lifecycle invariants", the daemon wipes the entire tree on
+// startup — this regression check makes sure that wipe runs.
+describe('Delegation Startup Wipe E2E', () => {
   let env: TestEnvironment;
-  let requestsDir: string;
+  let delegationsDir: string;
+  const chatId = 'some-chat';
 
-  const makeRequest = (id: string, state: RequestState): PolicyRequest => ({
-    id,
-    commandName: 'test-cmd',
-    args: [],
-    fileMappings: {},
-    state,
-    createdAt: Date.now(),
-    chatId: 'some-chat',
-    agentId: 'some-agent',
-  });
-
-  const writeRequest = (req: PolicyRequest) => {
-    fs.writeFileSync(path.join(requestsDir, `${req.id}.json`), JSON.stringify(req, null, 2));
+  const writeDelegation = (id: string, state: 'pending' | 'completed' | 'rejected') => {
+    const chatDir = path.join(delegationsDir, chatId);
+    fs.mkdirSync(chatDir, { recursive: true });
+    const record = {
+      id,
+      kind: 'policy' as const,
+      state,
+      delivery: 'notify' as const,
+      chatId,
+      agentId: 'some-agent',
+      createdAt: new Date().toISOString(),
+      commandName: 'test-cmd',
+      args: [] as string[],
+      fileMappings: {},
+    };
+    fs.writeFileSync(path.join(chatDir, `${id}.json`), JSON.stringify(record, null, 2));
   };
 
   beforeAll(async () => {
@@ -28,21 +34,21 @@ describe('Policy Startup Cleanup E2E', () => {
     await env.setup();
     await env.init();
 
-    requestsDir = path.resolve(env.e2eDir, '.clawmini/tmp/requests');
-    fs.mkdirSync(requestsDir, { recursive: true });
+    delegationsDir = path.resolve(env.e2eDir, '.clawmini/tmp/delegations');
 
-    writeRequest(makeRequest('PENDING1', 'Pending'));
-    writeRequest(makeRequest('APPROVED1', 'Approved'));
-    writeRequest(makeRequest('REJECTED1', 'Rejected'));
+    // Seed a mix of states; all should be wiped on daemon start.
+    writeDelegation('pen', 'pending');
+    writeDelegation('com', 'completed');
+    writeDelegation('rej', 'rejected');
 
     await env.up();
   }, 30000);
 
   afterAll(() => env.teardown(), 30000);
 
-  it('deletes completed request files on startup and keeps pending ones', () => {
-    expect(fs.existsSync(path.join(requestsDir, 'PENDING1.json'))).toBe(true);
-    expect(fs.existsSync(path.join(requestsDir, 'APPROVED1.json'))).toBe(false);
-    expect(fs.existsSync(path.join(requestsDir, 'REJECTED1.json'))).toBe(false);
+  it('wipes the entire delegations tree on daemon startup', () => {
+    expect(fs.existsSync(path.join(delegationsDir, chatId, 'pen.json'))).toBe(false);
+    expect(fs.existsSync(path.join(delegationsDir, chatId, 'com.json'))).toBe(false);
+    expect(fs.existsSync(path.join(delegationsDir, chatId, 'rej.json'))).toBe(false);
   });
 });

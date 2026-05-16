@@ -270,7 +270,16 @@ export async function truncateLargeOutput(
   return { stdout, stderr };
 }
 
-export async function generateRequestPreview(request: PolicyRequest): Promise<string> {
+// Accepts any record carrying the four preview-relevant fields. The original
+// caller is `PolicyRequest`; `createPolicyRequest` now passes a structural
+// subset of `PolicyDelegation` (same fields). Kept loose so callers don't have
+// to depend on the legacy `PolicyRequest` type just to generate the preview.
+export async function generateRequestPreview(request: {
+  id: string;
+  commandName: string;
+  args: string[];
+  fileMappings: Record<string, string>;
+}): Promise<string> {
   let previewContent = `Sandbox Policy Request: ${request.commandName}\n`;
   previewContent += `ID: ${request.id}\n`;
   if (request.args.length > 0) {
