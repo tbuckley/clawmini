@@ -418,3 +418,182 @@ patterns that worked, etc.
   `_store: DelegationStore | null` for that reason — the lazy-init
   getter rebuilds on next access if you null it. Future tests
   hitting the manager singleton should follow the same idiom.
+
+### Ticket 4 status (done)
+
+- `src/shared/approvals.ts` — `SubagentRule`,
+  `BUILTIN_SUBAGENT_RULES` (`[{from:'$self', to:'$self',
+  autoApprove:true}]`), pure `evaluateSubagentApproval(...)` (returns
+  `boolean | null` — `null` = no match), and the convenience
+  `resolveSubagentApproval(...)` which appends the built-in tail and
+  defaults a no-match to `false`. Unit-tested in
+  `src/shared/approvals.test.ts`.
+- `src/shared/policies.ts` — `PolicyConfig` and `PolicyConfigFile`
+  now have an optional `subagents?: SubagentRule[]`. The user-facing
+  schema lives under a top-level `subagents` array in
+  `.clawmini/policies.json`. A `policies.json` that defines ONLY
+  `subagents` (no `policies` map) is still valid — `readPoliciesFile`
+  surfaces an empty policies map so `resolvePolicies` can still merge
+  built-ins.
+- `src/shared/workspace.ts` — `readPoliciesForPath` keeps the
+  `subagents` field across env overlays (env overlays only override
+  the `policies` map). New helper `getAgentPath(agentId, startDir)`
+  returns the workspace-relative path for an agent (used as
+  `fromPath`/`toPath` in rule evaluation). Falls back to `agentId`
+  when the agent has no `directory` field; returns `'.'` for
+  `undefined`/`'default'`.
+- `src/daemon/api/subagent-approval.ts` — two helpers used by
+  spawn/send: `resolveSubagentEdgeAutoApprove(callerAgentId,
+  targetAgentId, workspaceRoot)` reads `policies.json` via
+  `readPoliciesForPath` and returns
+  `{fromPath, toPath, autoApprove}`; `appendSubagentApprovalPreview`
+  writes the `role: 'policy'`-style chat message that mirrors the
+  policy-preview rendering (see `SubagentApprovalMessage` below).
+- `src/daemon/api/subagent-creation.ts` — split out from
+  `subagent-router.ts` to keep both files under `max-lines: 300`.
+  Holds `subagentSpawn` and `subagentSend`. The router re-exports
+  them so the tRPC barrel doesn't change shape. Shared helpers
+  (`resolveDelivery`, `assertVisibleSubagent`, `MAX_SUBAGENT_DEPTH`)
+  live in `src/daemon/api/subagent-shared.ts`.
+- `src/daemon/delegation-manager.ts` —
+  `sendToSubagent(id, chatId, prompt, {autoApprove})` is now
+  implemented (was a stub). It updates `prompt` and flips the record
+  to `'running'` (auto-approve) or `'pending'` (gated). NOT_FOUND
+  for missing records is thrown as a plain `Error & {code:
+  'NOT_FOUND'}` to match `assertVisibleTo`.
+- `src/daemon/routers/slash-policies.ts` — `/approve` and `/reject`
+  now dispatch by `delegation.kind`. The subagent approve path
+  reconstructs a minimal `parentTokenPayload` from the delegation
+  record (agentId = `delegation.agentId`, subagentId =
+  `delegation.parentId`, sessionId = `resolveTargetSessionId(...)`),
+  fires `executeSubagent` (no `await` — same fire-and-forget pattern
+  as `subagentSpawn`), and returns `Subagent <id> approved.` as the
+  reply. The subagent reject path just calls
+  `manager.reject(id, reason)` and replies `Subagent <id> rejected.
+  Reason: ...`. Refactored into separate `handlePolicy{Approve,
+  Reject}` / `handleSubagent{Approve, Reject}` helpers — the
+  per-kind logic differs enough that one body would have been hard
+  to read.
+- `src/shared/chats.ts` — new `SubagentApprovalMessage` type with
+  `role: 'policy'` + `kind: 'subagent'` discriminator. Shares the
+  policy role so existing chat adapters (`turn-log.ts`,
+  `subagent-commands.ts` tail, `messages.ts` tail) render it the
+  same way. The pre-existing `PolicyRequestMessage` got an optional
+  `kind?: 'policy'` discriminator for symmetry — readers should
+  treat missing `kind` as `'policy'` (back-compat with logs written
+  before Ticket 4).
+
+### Where the subagent approval rules are read
+
+- **Source of truth:** `.clawmini/policies.json` top-level
+  `subagents` array. Resolved via `readPoliciesForPath(agentDir,
+  workspaceRoot)`, where `agentDir` is the spawner agent's directory
+  (i.e. the same lookup `createPolicyRequest` uses for policies).
+- **Built-ins are appended at evaluation time**, NOT merged into
+  `readPoliciesForPath`'s return. `resolveSubagentApproval` does
+  `[...userRules, ...BUILTIN_SUBAGENT_RULES]`. This is so a user
+  rule placed first can deny self-clone via
+  `{from: '$self', to: '$self', autoApprove: false}` — first-match-wins.
+
+### `$self` and prefix matching semantics
+
+- **`$self`** on `from` matches when the candidate's `fromPath` ==
+  itself (always true — `from` describes the spawner). On `to` it
+  matches when `toPath === fromPath`. So `$self → $self` only
+  matches a self-clone edge, and `$self → *` matches when the
+  spawner does anything (rarely useful).
+- **Prefix matching is path-aware:** `'agents/coding'` matches
+  `'agents/coding/coder-1'` (separator boundary) but NOT
+  `'agents/coding-extra'` (cross-component substring). We enforce
+  this by requiring the next char after the prefix to be `'/'`.
+- **Trailing slash is tolerated** so `'agents/coding/'` and
+  `'agents/coding'` behave identically — useful for hand-written
+  policies.
+
+### Approval-preview rendering
+
+- Subagent preview message: `role: 'policy'`, `kind: 'subagent'`,
+  fields `{fromAgent, toAgent, operation: 'spawn' | 'send',
+  status: 'pending'}` plus a human-readable `content` body that
+  ends with `Use /approve <id> or /reject <id> [reason]`. Drop-in
+  for any reader that switches on `role === 'policy'`; readers that
+  need the structured fields should branch on
+  `'commandName' in msg` (true for `PolicyRequestMessage`).
+- `messages.ts` tail (CLI `messages list`) and
+  `subagent-commands.ts` tail (CLI `subagents tail`) both handle
+  the new shape — they render
+  `[POLICY] <operation> <fromAgent> → <toAgent>` for subagent
+  approvals.
+
+### Agent-path resolution (Ticket 4 → Ticket 6+)
+
+- The rule list keys on workspace-relative agent paths. We compute
+  this via `getAgentPath(agentId, startDir)`:
+  - If the agent has a `directory` field in its overlay, that's the
+    path (normalised: leading `./` stripped, backslashes → forward).
+  - Else: the path is the agent id (matches the
+    `resolveAgentWorkDir` fallback).
+  - `undefined` / `'default'` → `'.'` (workspace root).
+- Tests that need multi-segment paths (e.g. `agents/coding/coder-1`)
+  must set `directory` in the agent overlay AND pre-create the
+  working directory — `TestEnvironment.writeAgentSettings` bypasses
+  `ensureAgentWorkDir` so the daemon's `cd` into the agent dir on
+  spawn requires the directory to already exist on disk. Custom
+  agents also need to inherit the `PATH` env from `debug-agent`
+  (`setupSubagentEnv` only sets PATH on debug-agent) so
+  `clawmini-lite.js` is reachable inside their command shell.
+
+### Pending-on-spawn / pending-on-send dispatch
+
+- `subagentSpawn` returns
+  `{id, depth, isAsync, delivery, state, requiresApproval}` —
+  `state` is `'pending'` when an approval is needed, `'running'`
+  otherwise. `subagentSend` returns
+  `{success, delivery, state, requiresApproval}`.
+- The CLI does not (yet) surface `requiresApproval` to stdout;
+  Ticket 6/7 may want to print a hint. For now tests that drive
+  through the lite CLI inspect the on-disk record's `state`
+  directly (helpers in `TestEnvironment.readDelegation`).
+- The slash-approve handler calls `executeSubagent` directly. It
+  does NOT route through `incrementSubagent` because the parent
+  turn that originally spawned has long since exited; the
+  fire-and-forget pattern uses `void executeSubagent(...)`. The
+  notification still threads back through the parent's session via
+  `resolveTargetSessionId(chatId, delegation)`.
+
+### Existing-test fallout
+
+- `e2e/agents/subagent-lifecycle.test.ts` has one test (`spawn
+  --agent <other> routes the subagent through a different agent`)
+  that crosses agent boundaries without writing rules. Added a
+  `subagents: [{from:'*', to:'*', autoApprove:true}]` policies file
+  to keep its routing assertion intact — that test isn't about
+  approvals.
+- All other existing subagent e2e tests are self-clone or stay
+  within `debug-agent → debug-agent`, so the built-in
+  `$self → $self` rule covers them and no fixture changes are
+  needed.
+
+### Gotchas while implementing Ticket 4
+
+- **`PolicyRequestMessage` had no discriminator**, so the new
+  `SubagentApprovalMessage` could only be distinguished structurally
+  (`'commandName' in msg`). Added an optional `kind?: 'policy'` to
+  `PolicyRequestMessage` for symmetry but kept it optional so the
+  parser still accepts pre-Ticket-4 chat logs.
+- **`exactOptionalPropertyTypes: true` strikes again** in the
+  preview helper — the ctx type has to be `sessionId: string |
+  undefined` (not `sessionId?: string`) because the call sites
+  pass `sessionId: ctx.tokenPayload.sessionId` which is
+  `string | undefined`.
+- **File-size limits:** `subagent-router.ts` was already hovering
+  near the 300-line cap. I had to extract spawn/send into
+  `subagent-creation.ts` AND the approval helpers into
+  `subagent-approval.ts`. Shared assert/delivery helpers moved to
+  `subagent-shared.ts`. Future endpoints that need to touch
+  spawn/send should land in `subagent-creation.ts`, not the router.
+- **The `delegation-manager.test.ts` stub test** for
+  `sendToSubagent` had to be rewritten — it used to assert
+  `not-implemented`; now it asserts the implemented behavior
+  (auto-approve flips to running, no-approve flips to pending,
+  unknown id throws NOT_FOUND).

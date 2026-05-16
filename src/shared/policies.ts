@@ -1,3 +1,5 @@
+import type { SubagentRule } from './approvals.js';
+
 export interface PolicyDefinition {
   description?: string;
   command: string;
@@ -7,14 +9,21 @@ export interface PolicyDefinition {
 }
 
 // Resolved policy config: built-ins merged in, `false` overrides stripped.
-// This is what every consumer should see.
+// This is what every consumer should see. The `subagents` rule list is the
+// **user** rules only — built-in rules (e.g. `$self → $self`) are appended at
+// evaluation time inside `resolveSubagentApproval` (`src/shared/approvals.ts`).
 export interface PolicyConfig {
   policies: Record<string, PolicyDefinition>;
+  subagents?: SubagentRule[];
 }
 
 // On-disk shape: `false` opts a built-in out, a definition opts in / overrides.
 export interface PolicyConfigFile {
   policies: Record<string, PolicyDefinition | false>;
+  // Ordered list of approval rules for subagent spawn/send. Ticket 4 (§4).
+  // First-match-wins; the built-in `$self → $self` rule is appended at
+  // evaluation time, so users only need to include carve-outs here.
+  subagents?: SubagentRule[];
 }
 
 export const BUILTIN_POLICY_SCRIPTS_DIR = '.clawmini/policy-scripts';

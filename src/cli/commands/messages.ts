@@ -92,7 +92,15 @@ messagesCmd
           } else if (msg.role === 'agent' || msg.displayRole === 'agent') {
             console.log(`[AGENT] ${msg.content.trim()}`);
           } else if (msg.role === 'policy') {
-            console.log(`[POLICY] ${msg.commandName} ${msg.args.join(' ')}`);
+            // PolicyRequestMessage carries commandName/args; the Ticket 4
+            // SubagentApprovalMessage shares the policy role but renders
+            // its content body directly (fromAgent/toAgent live on the
+            // record, not the chat-tail line).
+            if ('commandName' in msg) {
+              console.log(`[POLICY] ${msg.commandName} ${msg.args.join(' ')}`);
+            } else {
+              console.log(`[POLICY] ${msg.operation} ${msg.fromAgent} → ${msg.toAgent}`);
+            }
           } else if (msg.role === 'tool') {
             console.log(`[TOOL] ${msg.name}`);
           } else if (msg.role === 'system') {

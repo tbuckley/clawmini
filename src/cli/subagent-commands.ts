@@ -202,7 +202,11 @@ export function registerSubagentCommands(
             } else if (msg.role === 'agent' || msg.displayRole === 'agent') {
               console.log(`[AGENT] ${msg.content.trim()}`);
             } else if (msg.role === 'policy') {
-              console.log(`[POLICY] ${msg.commandName} ${msg.args.join(' ')}`);
+              if ('commandName' in msg) {
+                console.log(`[POLICY] ${msg.commandName} ${msg.args.join(' ')}`);
+              } else {
+                console.log(`[POLICY] ${msg.operation} ${msg.fromAgent} → ${msg.toAgent}`);
+              }
             } else if (msg.role === 'tool') {
               console.log(`[TOOL] ${msg.name}`);
             } else if (msg.role === 'system') {

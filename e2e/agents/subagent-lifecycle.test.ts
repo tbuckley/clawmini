@@ -524,6 +524,19 @@ describe('E2E Subagent Lifecycle', () => {
         getSessionId: 'node -e "console.log(Math.random().toString(36).slice(2, 10))"',
       },
     });
+    // Ticket 4 (§4): cross-agent spawns now require an approval rule. This
+    // test exercises routing, not approvals, so we open the edge with a
+    // `*` rule. The approval semantics themselves are covered by
+    // `subagent-approval.test.ts`.
+    const policiesPath = env.getClawminiPath('policies.json');
+    const fs = await import('node:fs');
+    fs.writeFileSync(
+      policiesPath,
+      JSON.stringify({
+        policies: {},
+        subagents: [{ from: '*', to: '*', autoApprove: true }],
+      })
+    );
 
     await env.sendMessage(
       'clawmini-lite.js subagents spawn --id alt-sub --agent alt-agent --async "echo alt-output"',

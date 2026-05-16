@@ -1,194 +1,19 @@
 import { z } from 'zod';
-import { randomUUID } from 'node:crypto';
 import { TRPCError } from '@trpc/server';
-import { getWorkspaceRoot } from '../../shared/workspace.js';
 import { apiProcedure } from './trpc.js';
 import { createChatLogger } from '../agent/chat-logger.js';
 import { createAgentSession } from '../agent/agent-session.js';
-import { executeSubagent, getSubagentDepth } from './subagent-utils.js';
-import { incrementSubagent, decrementSubagent } from '../agent/turn-registry.js';
 import { delegationManager } from '../delegation-manager.js';
-import type { SubagentDelegation, DeliveryMode } from '../../shared/delegations.js';
+import { assertVisibleSubagent } from './subagent-shared.js';
+import type { SubagentDelegation } from '../../shared/delegations.js';
 
-const MAX_SUBAGENT_DEPTH = 2;
+// `subagentSpawn` and `subagentSend` live in `subagent-creation.ts` because
+// they share approval-gating helpers and would push this file over the
+// `max-lines: 300` ESLint rule. The router barrel (`api/index.ts`) imports
+// them from there. The remaining endpoints (wait/stop/delete/list/tail) live
+// here.
 
-// Map the legacy boolean `async` flag to the new `delivery` mode. Spec §3.3:
-//   true  → 'notify'  (today's async — wakeup notification on resolve)
-//   false → 'manual'  (today's sync wait — caller polls subagentWait)
-// `async` survives one release as a deprecated alias (see §8 step 5).
-function resolveDelivery(
-  delivery: DeliveryMode | undefined,
-  asyncFlag: boolean | undefined,
-  depth: number
-): DeliveryMode {
-  if (delivery !== undefined) return delivery;
-  if (asyncFlag !== undefined) return asyncFlag ? 'notify' : 'manual';
-  // Default: root agents (depth 0) get 'notify' (today's async-by-default),
-  // subagents (depth ≥ 1) get 'manual' (today's sync-by-default).
-  return depth === 0 ? 'notify' : 'manual';
-}
-
-// Convert the manager's `assertVisibleTo` errors into TRPCError so the wire
-// surface matches the legacy `assertSubagentAccess` (NOT_FOUND / FORBIDDEN).
-async function assertVisibleSubagent(
-  callerSubagentId: string | undefined,
-  id: string,
-  chatId: string
-): Promise<SubagentDelegation> {
-  try {
-    return await delegationManager.assertVisibleTo(callerSubagentId, id, chatId);
-  } catch (err: unknown) {
-    const code = (err as { code?: string }).code;
-    const message = err instanceof Error ? err.message : String(err);
-    if (code === 'NOT_FOUND') {
-      throw new TRPCError({ code: 'NOT_FOUND', message });
-    }
-    if (code === 'FORBIDDEN') {
-      throw new TRPCError({ code: 'FORBIDDEN', message });
-    }
-    throw err;
-  }
-}
-
-export const subagentSpawn = apiProcedure
-  .input(
-    z.object({
-      subagentId: z.string().optional(),
-      targetAgentId: z.string().optional(),
-      prompt: z.string(),
-      // `async` is a deprecated alias for `delivery` — see resolveDelivery.
-      async: z.boolean().optional(),
-      delivery: z.enum(['notify', 'manual']).optional(),
-    })
-  )
-  .mutation(async ({ input, ctx }) => {
-    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
-    const chatId = ctx.tokenPayload.chatId;
-    const parentAgentId = ctx.tokenPayload.agentId;
-    const parentId = ctx.tokenPayload.subagentId;
-    const parentTurnId = ctx.tokenPayload.turnId;
-
-    // `subagentId` (CLI --id) is still accepted as a back-compat shim so
-    // tests and tooling that pin a known id keep working. When omitted, the
-    // delegation store mints a 3-char alphanum id (Ticket 3 spec, §5.6).
-    const sessionId = randomUUID();
-    const targetAgentId = input.targetAgentId || parentAgentId;
-
-    // Compute depth via the new delegation graph (no more ChatSettings map).
-    const depth = await getSubagentDepth(chatId, parentId);
-    if (depth >= MAX_SUBAGENT_DEPTH) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Max subagent depth reached' });
-    }
-
-    const delivery = resolveDelivery(input.delivery, input.async, depth);
-
-    // Increment synchronously before any await so a sibling subagent's
-    // completion cannot decrement the parent's counter to zero (firing
-    // turnEnded) during the window before executeSubagent is called.
-    incrementSubagent(parentTurnId);
-    let handedOff = false;
-    try {
-      // Create the delegation record. For Ticket 3 we always autoApprove
-      // (today's behavior is no gating on spawn); Ticket 4 will gate this
-      // behind the `subagents` rule list in policies.json.
-      let created;
-      try {
-        created = await delegationManager.createSubagent({
-          chatId,
-          agentId: parentAgentId,
-          targetAgentId,
-          sessionId,
-          prompt: input.prompt,
-          ...(parentId ? { parentId } : {}),
-          ...(input.subagentId !== undefined ? { id: input.subagentId } : {}),
-          delivery,
-          autoApprove: true,
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('Subagent ID already exists')) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Subagent ID already exists' });
-        }
-        throw err;
-      }
-
-      const workspaceRoot = getWorkspaceRoot(process.cwd());
-      const isAsync = delivery === 'notify';
-
-      handedOff = true;
-      executeSubagent(
-        chatId,
-        created.id,
-        targetAgentId,
-        sessionId,
-        input.prompt,
-        isAsync,
-        ctx.tokenPayload,
-        workspaceRoot
-      );
-
-      return { id: created.id, depth, isAsync, delivery };
-    } finally {
-      if (!handedOff) decrementSubagent(parentTurnId);
-    }
-  });
-
-export const subagentSend = apiProcedure
-  .input(
-    z.object({
-      subagentId: z.string(),
-      prompt: z.string(),
-      // Deprecated alias for `delivery` — see resolveDelivery.
-      async: z.boolean().optional(),
-      delivery: z.enum(['notify', 'manual']).optional(),
-    })
-  )
-  .mutation(async ({ input, ctx }) => {
-    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
-    const chatId = ctx.tokenPayload.chatId;
-    const parentTurnId = ctx.tokenPayload.turnId;
-    const parentId = ctx.tokenPayload.subagentId;
-
-    // Authorize + load via the manager.
-    const sub = await assertVisibleSubagent(parentId, input.subagentId, chatId);
-
-    // For Ticket 3 the send path mirrors today: no approval gating, the
-    // child is woken with the new prompt, status flips back to running.
-    // Ticket 4 will add the approval check via `manager.sendToSubagent`.
-    const depth = await getSubagentDepth(chatId, parentId);
-    const delivery = resolveDelivery(input.delivery, input.async, depth);
-
-    incrementSubagent(parentTurnId);
-    let handedOff = false;
-    try {
-      // Refresh the prompt + flip state back to running. The manager.update
-      // path lets us write both atomically; lifecycle (markResolved) will
-      // fire again on completion.
-      await delegationManager.update(sub.id, chatId, {
-        prompt: input.prompt,
-        state: 'running',
-      });
-
-      const workspaceRoot = getWorkspaceRoot(process.cwd());
-      const isAsync = delivery === 'notify';
-
-      handedOff = true;
-      executeSubagent(
-        chatId,
-        sub.id,
-        sub.targetAgentId,
-        sub.sessionId,
-        input.prompt,
-        isAsync,
-        ctx.tokenPayload,
-        workspaceRoot
-      );
-
-      return { success: true, delivery };
-    } finally {
-      if (!handedOff) decrementSubagent(parentTurnId);
-    }
-  });
+export { subagentSpawn, subagentSend } from './subagent-creation.js';
 
 export const subagentWait = apiProcedure
   .input(z.object({ subagentId: z.string() }))
@@ -313,8 +138,9 @@ export const subagentList = apiProcedure
       if (!isSubagent) {
         filtered = [];
       } else {
-        // 'active' tracker == 'running' delegation. Future approval-gated
-        // pending records aren't blocking yet (Ticket 4 wires that in).
+        // 'active' tracker == 'running' delegation. Approval-gated pending
+        // records (Ticket 4) are not blocking — they cannot run yet so the
+        // caller has nothing to wait on.
         filtered = subagents.filter((s) => s.state === 'running');
       }
     }

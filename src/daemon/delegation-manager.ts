@@ -156,9 +156,32 @@ export class DelegationManager {
     return delegation;
   }
 
-  // Stub — implemented in Ticket 4 (approval gating on send).
-  async sendToSubagent(_id: string, _prompt: string): Promise<void> {
-    throw new Error('not-implemented: DelegationManager.sendToSubagent (Ticket 4)');
+  // Approval-gated send. The router has already resolved the approval
+  // decision (it reads `policies.json` via `readPoliciesForPath`); the
+  // manager itself is policy-agnostic and just persists state.
+  //
+  // On `autoApprove: true` we refresh the prompt and flip state back to
+  // `running` (the caller is expected to drive `executeSubagent` next).
+  // On `autoApprove: false` we refresh the prompt and move to `pending` —
+  // the slash-approve handler later starts the child via the existing
+  // `executeSubagent` path. Either way the prompt on the record is the
+  // latest one the user signed off on.
+  async sendToSubagent(
+    id: string,
+    chatId: string,
+    prompt: string,
+    opts: { autoApprove: boolean }
+  ): Promise<SubagentDelegation> {
+    const record = await this.store.load(chatId, id);
+    if (!record || record.kind !== 'subagent') {
+      const err = new Error('Subagent not found') as Error & { code?: string };
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    const nextState: SubagentDelegation['state'] = opts.autoApprove ? 'running' : 'pending';
+    const updated: SubagentDelegation = { ...record, prompt, state: nextState };
+    await this.store.save(updated);
+    return updated;
   }
 
   // --- lifecycle ---

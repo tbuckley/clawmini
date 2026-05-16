@@ -355,8 +355,54 @@ describe('DelegationManager', () => {
   });
 
   describe('stubs', () => {
-    it('sendToSubagent throws not-implemented', async () => {
-      await expect(manager.sendToSubagent('abc', 'hi')).rejects.toThrow(/not-implemented/);
+    it('sendToSubagent throws NOT_FOUND for an unknown id', async () => {
+      // Ticket 4: sendToSubagent is now an approval-gated update. Calling it
+      // on a missing record throws an Error with `code: 'NOT_FOUND'`
+      // (matching the wire shape of `assertVisibleTo`).
+      try {
+        await manager.sendToSubagent('zzz', 'chat-1', 'hi', { autoApprove: true });
+        throw new Error('expected sendToSubagent to throw');
+      } catch (err: unknown) {
+        const code = (err as { code?: string }).code;
+        expect(code).toBe('NOT_FOUND');
+      }
+    });
+
+    it('sendToSubagent flips state to running on autoApprove=true', async () => {
+      // First create a subagent (autoApprove=true so it lands in 'running')
+      // and resolve it so the next send is exercising the wake path.
+      const created = await manager.createSubagent({
+        chatId: 'chat-send',
+        agentId: 'agent-1',
+        targetAgentId: 'agent-1',
+        sessionId: 'sess-1',
+        prompt: 'first',
+        autoApprove: true,
+      });
+      await manager.markResolved(created.id, { state: 'completed' });
+      const updated = await manager.sendToSubagent(created.id, 'chat-send', 'second', {
+        autoApprove: true,
+      });
+      expect(updated.kind).toBe('subagent');
+      expect(updated.state).toBe('running');
+      expect(updated.prompt).toBe('second');
+    });
+
+    it('sendToSubagent moves to pending on autoApprove=false', async () => {
+      const created = await manager.createSubagent({
+        chatId: 'chat-send-pending',
+        agentId: 'agent-1',
+        targetAgentId: 'agent-1',
+        sessionId: 'sess-2',
+        prompt: 'first',
+        autoApprove: true,
+      });
+      await manager.markResolved(created.id, { state: 'completed' });
+      const updated = await manager.sendToSubagent(created.id, 'chat-send-pending', 'second', {
+        autoApprove: false,
+      });
+      expect(updated.state).toBe('pending');
+      expect(updated.prompt).toBe('second');
     });
 
     it('wait throws not-implemented for subscribe / multi-id / mode=all', async () => {

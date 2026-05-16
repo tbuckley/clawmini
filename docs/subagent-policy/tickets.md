@@ -312,7 +312,7 @@ Existing `e2e/agents/subagent-lifecycle.test.ts`,
 
 ---
 
-## Ticket 4 — Approval gating for subagent spawn / send
+## Ticket 4 — Approval gating for subagent spawn / send — COMPLETE
 
 **Goal.** Add the `subagents` rule list in `policies.json` and gate
 `subagentSpawn` + `subagentSend` on it. Policy `autoApprove` remains
