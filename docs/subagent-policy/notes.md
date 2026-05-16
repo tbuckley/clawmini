@@ -277,3 +277,144 @@ patterns that worked, etc.
   needs an agent dir for `runLite` even when calling an
   auto-approved policy — running from `env.e2eDir` exits 1 because
   the policy resolves `policy.command` against a non-agent cwd.
+
+### Ticket 3 status (done)
+
+- `src/daemon/api/subagent-router.ts` — fully rewritten. All RPCs
+  (`subagentSpawn`, `subagentSend`, `subagentWait`, `subagentStop`,
+  `subagentDelete`, `subagentList`, `subagentTail`) read/write
+  through `delegationManager`. `incrementSubagent` /
+  `decrementSubagent` still live in `turn-registry`. The legacy
+  `assertSubagentAccess(settings, …)` helper is gone — replaced by
+  `delegationManager.assertVisibleTo(callerSubagentId, id, chatId)`.
+- `src/daemon/api/subagent-utils.ts` — `executeSubagent` now flips
+  the delegation state via `markResolved({state:'completed'})` (or
+  `'failed'` on error) instead of writing into
+  `ChatSettings.subagents[id].status`. `getSubagentDepth` walks the
+  delegation `parentId` chain instead of the legacy settings map.
+- `src/daemon/delegation-manager.ts` — added `assertVisibleTo`,
+  `update`, and a single-id sync `wait` implementation. The
+  multi-id / `mode:'all'` / `return:'subscribe'` paths still throw
+  `not-implemented` — Ticket 5 owns those. The wait helper lives in
+  a separate file `src/daemon/delegation-wait.ts` to keep the
+  manager under the per-file line cap (`max-lines: 300`).
+- `src/daemon/routers/slash-policies.ts` — `resolveTargetSessionId`
+  looks up the parent's session via `delegationManager.get(parentId,
+  chatId)` instead of `chatSettings.subagents[parentId]`.
+- `src/daemon/message.ts` — `stopActiveSubagents` lists
+  `state:'running'` subagents via the manager and `markResolved`s
+  each as `failed` with `reason:'Parent agent stopped'`. The
+  `updateChatSettings` import here is gone.
+- `src/daemon/index.ts` — `cleanOrphanedSubagents` is removed.
+  `delegationManager.wipeAll()` is now the only startup cleanup
+  (Ticket 2 already dropped the policy half).
+- `src/shared/config.ts` — `ChatSettings.subagents` and
+  `SubagentTracker` are marked `@deprecated` but kept on the schema
+  for one release so an old `chat-settings.json` still parses. The
+  daemon no longer **writes** that field. Ticket 8 will remove the
+  schema entry entirely.
+
+### DelegationManager API additions in Ticket 3
+
+- **`assertVisibleTo(callerSubagentId, id, chatId)`** — mirrors the
+  legacy `assertSubagentAccess`. Returns the `SubagentDelegation` on
+  match; throws `Error & {code:'NOT_FOUND'}` if no record exists (or
+  the record is a policy) and `Error & {code:'FORBIDDEN'}` if
+  `record.parentId !== callerSubagentId`. The router wraps these in
+  `TRPCError` to preserve the legacy wire codes.
+- **`update(id, chatId, patch)`** — narrow patch helper used by
+  `subagentSend` to refresh `prompt` and flip `state` back to
+  `running`. Patch type is
+  `Partial<Pick<SubagentDelegation, 'prompt' | 'state'>>`. Returns
+  the merged delegation. No event is emitted (we're intentionally
+  not firing DELEGATION_RESOLVED on a non-terminal write).
+- **`wait({ids, mode, return, chatId, timeoutMs})`** — Ticket 3 only
+  implements `ids.length === 1`, `mode === 'any'`, `return ===
+  'sync'`. Any other combination throws `not-implemented` so callers
+  fail fast. Returns `{resolved: Delegation[], pending:
+  Delegation[]}`. Fast-paths already-terminal records; otherwise
+  registers a one-shot listener on `DAEMON_EVENT_DELEGATION_RESOLVED`
+  filtered by `(chatId, id)` with a `timeoutMs` fallback.
+- **`createSubagent({…, id?})`** — accepts an optional caller-supplied
+  id for the back-compat path: the CLI's `subagents spawn --id <x>`
+  still passes through. The router maps the duplicate-id error back
+  to a `TRPCError` `BAD_REQUEST` with the exact legacy text
+  `'Subagent ID already exists'`. When `id` is omitted (no `--id`),
+  the store mints a 3-char alphanum id.
+
+### Subagent lifecycle dispatch (where the run actually happens)
+
+- `subagentSpawn` creates the delegation with `autoApprove:true`
+  (Ticket 4 will flip this when approval gating lands), then
+  immediately calls `executeSubagent(chatId, id, …)`.
+  `executeSubagent` is unchanged in spirit; its terminal block now
+  calls `delegationManager.markResolved` instead of mutating
+  `settings.subagents[id].status`. `markResolved` fires
+  `DAEMON_EVENT_DELEGATION_RESOLVED`, which is what
+  `delegationManager.wait` listens on (subagentWait wrapper).
+- The `subagentStop` path marks the record `failed` *before*
+  calling `session.stop()`. `executeSubagent`'s post-abort
+  `markResolved` guards on `state === 'running'` so it doesn't
+  re-resolve an already-failed record. Net effect: a stopped
+  subagent settles at `state:'failed'` with
+  `rejectionReason:'Stopped by subagentStop'`. (Pre-Ticket-3 it
+  raced and could land at `'completed'` — the
+  `subagent-lifecycle` test's `stop` case was updated.)
+
+### `delivery` & `async` shims (preserved for one release)
+
+- `subagentSpawn` / `subagentSend` accept both `delivery` and the
+  legacy boolean `async`. Resolution order:
+  1. Explicit `delivery: 'notify' | 'manual'` wins.
+  2. Else `async:true → 'notify'`, `async:false → 'manual'`.
+  3. Else default by depth: root agent (depth 0) → `'notify'`,
+     subagent (depth ≥ 1) → `'manual'`. This matches today's
+     "root spawns are async by default, nested spawns are sync".
+- The CLI hasn't been switched to `--delivery` yet — that's Ticket
+  7. Both the CLI and the tRPC layer still accept `--async`.
+
+### Gotchas while implementing Ticket 3
+
+- **The subagent router still honors `--id`.** The spec moves to
+  3-char generated ids, but the existing e2e harness pins ids
+  everywhere (`--id stop-sub`, `--id outer-sub`, etc.). Rather than
+  rewrite every test, we kept the back-compat path: `createSubagent`
+  takes an optional `id`. Ticket 8 can drop the `--id` flag.
+- **Existing tests used `env.getChatSettings(chatId).subagents`** to
+  check status. Those reads now miss because nothing writes that
+  field. `e2e/_helpers/test-environment.ts` got
+  `readDelegation(chatId, id)` / `listDelegations(chatId)` /
+  `findDelegation` helpers, and the legacy callsites in
+  `subagent-lifecycle.test.ts` + `subagent-authorization.test.ts`
+  were ported.
+- **`subagentList` shapes the response** as
+  `{id, agentId, sessionId, createdAt, status, parentId?}` where
+  `status` is derived (`'active'` for `running`, otherwise the
+  terminal state). This keeps the existing CLI `subagents list
+  --json` output stable. The CLI's `SubagentTracker` import is
+  replaced by a local `SubagentSummary` type alias because the
+  shared type is deprecated and Ticket 8 will delete it.
+- **Unit tests `src/daemon/api/subagent-router.test.ts`** were
+  fully rewritten: they used to drive the old `MESSAGE_APPENDED`
+  scrape and read `ChatSettings.subagents`. They now exercise the
+  new `DELEGATION_RESOLVED` listener path + fast-path early-return
+  + listener-leak guard. The `subagent-utils.test.ts` mocks were
+  extended to include `getClawminiDir` (the manager singleton needs
+  it now that we route through it), and a real `DelegationStore`
+  is injected via `(delegationManager as any)._store` in each
+  test's `beforeEach`. The same pattern works for any future
+  unit test that needs the manager.
+- **`getSubagentDepth` is now async** — it walks delegation records
+  on disk. The previous signature was synchronous because the
+  settings map was in memory. Watch for callers that drop the
+  `await` — TypeScript catches most, but the depth check inside
+  `subagentSpawn` matters for security.
+- **The `wait` helper file (`delegation-wait.ts`)** is separate from
+  `delegation-manager.ts` purely because of the `max-lines:300`
+  ESLint rule. Ticket 5 should feel free to fold it back in when
+  it rewrites the wait core for multi-id / subscribe.
+- **`subagent-router.test.ts` resets the singleton's store** by
+  poking `(delegationManager as any)._store`. The manager exposes
+  `_store: DelegationStore | null` for that reason — the lazy-init
+  getter rebuilds on next access if you null it. Future tests
+  hitting the manager singleton should follow the same idiom.

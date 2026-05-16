@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { executeRouterPipeline, resolveRouters } from './routers.js';
 import type { RouterState } from './routers/types.js';
 import { type ChatSettings, type Settings } from '../shared/config.js';
-import { readChatSettings, updateChatSettings, writeChatSettings } from '../shared/workspace.js';
+import { readChatSettings, writeChatSettings } from '../shared/workspace.js';
 import { cronManager, normalizeJob } from './cron.js';
 import type { Message } from './agent/types.js';
 import { createAgentSession } from './agent/agent-session.js';
@@ -10,6 +10,7 @@ import { createChatLogger } from './agent/chat-logger.js';
 import { taskScheduler } from './agent/task-scheduler.js';
 import { emitTurnStarted } from './events.js';
 import { registerTurn, markParentExited } from './agent/turn-registry.js';
+import { delegationManager } from './delegation-manager.js';
 
 export { calculateDelay } from './agent/agent-runner.js';
 
@@ -250,23 +251,28 @@ export async function applyRouterStateUpdates(
   }
 }
 
-async function stopActiveSubagents(chatId: string, cwd: string): Promise<void> {
-  const sessionsToAbort: string[] = [];
-  await updateChatSettings(
+async function stopActiveSubagents(chatId: string, _cwd: string): Promise<void> {
+  // Flip every still-running subagent for this chat to `failed` and abort its
+  // queued tasks. The legacy implementation walked `ChatSettings.subagents`;
+  // post-Ticket 3 the source of truth is the delegation tree.
+  const running = await delegationManager.list({
     chatId,
-    (settings) => {
-      if (settings.subagents) {
-        for (const sub of Object.values(settings.subagents)) {
-          if (sub.status === 'active') {
-            if (sub.sessionId) sessionsToAbort.push(sub.sessionId);
-            sub.status = 'failed';
-          }
-        }
-      }
-      return settings;
-    },
-    cwd
-  );
+    kind: 'subagent',
+    state: 'running',
+  });
+  const sessionsToAbort: string[] = [];
+  for (const sub of running) {
+    if (sub.kind !== 'subagent') continue;
+    if (sub.sessionId) sessionsToAbort.push(sub.sessionId);
+    try {
+      await delegationManager.markResolved(sub.id, {
+        state: 'failed',
+        reason: 'Parent agent stopped',
+      });
+    } catch {
+      // Best-effort: a sibling may have flipped state between list + mark.
+    }
+  }
   for (const sessionId of sessionsToAbort) {
     taskScheduler.abortTasks(sessionId);
   }

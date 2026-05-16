@@ -1,7 +1,18 @@
 import { Command } from 'commander';
 import type { createTRPCClient } from '@trpc/client';
 import type { AgentRouter as AppRouter } from '../daemon/api/index.js';
-import type { SubagentTracker } from '../shared/config.js';
+
+// Shape returned by `subagentList`. Mirrors the legacy `SubagentTracker`
+// fields the CLI displays — `status` is derived from the delegation state
+// ('active' for running, otherwise the terminal state).
+type SubagentSummary = {
+  id: string;
+  agentId?: string;
+  sessionId?: string;
+  createdAt: string;
+  status: string;
+  parentId?: string;
+};
 
 export function registerSubagentCommands(
   program: Command,
@@ -153,7 +164,7 @@ export function registerSubagentCommands(
           return;
         }
 
-        for (const sub of subagents as SubagentTracker[]) {
+        for (const sub of subagents as SubagentSummary[]) {
           console.log(`\n=== Subagent: ${sub.id || 'N/A'} ===`);
           console.log(`  Agent:      ${sub.agentId || 'N/A'}`);
           console.log(`  Status:     ${sub.status || 'N/A'}`);

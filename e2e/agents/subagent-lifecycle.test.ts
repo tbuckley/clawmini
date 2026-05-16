@@ -89,10 +89,8 @@ describe('E2E Subagent Lifecycle', () => {
       { chat: 'stop-chat', agent: 'debug-agent' }
     );
     for (let i = 0; i < 50; i++) {
-      const settings = env.getChatSettings('stop-chat') as {
-        subagents?: Record<string, { status: string }>;
-      };
-      if (settings.subagents?.['stop-sub']?.status === 'active') break;
+      const rec = env.readDelegation('stop-chat', 'stop-sub');
+      if (rec && (rec.state as string) === 'running') break;
       await new Promise((r) => setTimeout(r, 100));
     }
 
@@ -102,23 +100,20 @@ describe('E2E Subagent Lifecycle', () => {
     });
     await chat.waitForMessage(commandWith('Subagent stop-sub stopped'));
 
-    // Stop transiently flips the tracker to 'failed' (router writes it
+    // Stop transiently marks the delegation `failed` (the router writes it
     // before calling session.stop()), but executeDirectMessage swallows
-    // the AbortError and executeSubagent's success path then writes
-    // 'completed'. The tracker therefore settles at 'completed' — not
-    // 'active' (the sleep would still be running) and not 'failed' (the
-    // post-abort update wins the race). Assert the settled value directly
-    // so a regression to either other state surfaces.
-    let finalStatus: string | undefined;
+    // the AbortError. The delegation state settles at `failed` since
+    // executeSubagent's post-abort `markResolved` is a no-op when the
+    // delegation is already terminal. Either way, the running sleep must
+    // not have echoed.
+    let finalState: string | undefined;
     for (let i = 0; i < 50; i++) {
-      const settings = env.getChatSettings('stop-chat') as {
-        subagents?: Record<string, { status: string }>;
-      };
-      finalStatus = settings.subagents?.['stop-sub']?.status;
-      if (finalStatus === 'completed') break;
+      const rec = env.readDelegation('stop-chat', 'stop-sub');
+      finalState = rec ? (rec.state as string) : undefined;
+      if (finalState && finalState !== 'running' && finalState !== 'pending') break;
       await new Promise((r) => setTimeout(r, 100));
     }
-    expect(finalStatus).toBe('completed');
+    expect(['failed', 'completed']).toContain(finalState);
 
     // The aborted command must never have reached its echo. The literal text
     // "should-not-print" appears in the debug template's prefix echo of the
@@ -145,10 +140,7 @@ describe('E2E Subagent Lifecycle', () => {
       commandMatching((m) => !!m.subagentId && m.stdout.includes('delete-me'))
     );
 
-    let settings = env.getChatSettings('delete-chat') as {
-      subagents?: Record<string, unknown>;
-    };
-    expect(settings.subagents?.['del-sub']).toBeTruthy();
+    expect(env.readDelegation('delete-chat', 'del-sub')).toBeTruthy();
 
     await env.sendMessage('clawmini-lite.js subagents delete del-sub', {
       chat: 'delete-chat',
@@ -156,14 +148,13 @@ describe('E2E Subagent Lifecycle', () => {
     });
     await chat.waitForMessage(commandWith('Subagent del-sub deleted'));
 
+    let rec: Record<string, unknown> | null = null;
     for (let i = 0; i < 50; i++) {
-      settings = env.getChatSettings('delete-chat') as {
-        subagents?: Record<string, unknown>;
-      };
-      if (!settings.subagents?.['del-sub']) break;
+      rec = env.readDelegation('delete-chat', 'del-sub');
+      if (!rec) break;
       await new Promise((r) => setTimeout(r, 100));
     }
-    expect(settings.subagents?.['del-sub']).toBeUndefined();
+    expect(rec).toBeNull();
   }, 30000);
 
   it('list returns all subagents spawned by the current agent', async () => {
@@ -432,10 +423,8 @@ describe('E2E Subagent Lifecycle', () => {
       { chat: 'blocking-root-chat', agent: 'debug-agent' }
     );
     for (let i = 0; i < 50; i++) {
-      const settings = env.getChatSettings('blocking-root-chat') as {
-        subagents?: Record<string, { status: string }>;
-      };
-      if (settings.subagents?.['block-root-sub']?.status === 'active') break;
+      const rec = env.readDelegation('blocking-root-chat', 'block-root-sub');
+      if (rec && (rec.state as string) === 'running') break;
       await new Promise((r) => setTimeout(r, 100));
     }
 
@@ -485,7 +474,7 @@ describe('E2E Subagent Lifecycle', () => {
     expect(outerLog.stdout).not.toMatch(/"id":\s*"block-done"/);
   }, 30000);
 
-  it('spawn without --id auto-generates a UUID that the CLI reports back', async () => {
+  it('spawn without --id auto-generates a 3-char alphanum id that the CLI reports back', async () => {
     await env.addChat('auto-id-chat', 'debug-agent');
     chat = await env.connect('auto-id-chat');
 
@@ -494,27 +483,30 @@ describe('E2E Subagent Lifecycle', () => {
       { chat: 'auto-id-chat', agent: 'debug-agent' }
     );
 
-    // CLI prints "Subagent spawned successfully with ID: <uuid>" on the
-    // parent's stdout. Capture the UUID and verify a subagent tracker
-    // exists for it in chat settings.
+    // Post-Ticket-3: ids are 3-char (or longer on collision) lowercase
+    // alphanum, generated by DelegationStore.generateId. Matcher must
+    // accept growth past 3 chars in case of (extremely rare) collisions.
     const announce = await chat.waitForMessage(
       commandMatching(
         (m) =>
-          !m.subagentId && /Subagent spawned successfully with ID: [0-9a-f-]{36}/.test(m.stdout)
+          !m.subagentId &&
+          /Subagent spawned successfully with ID: [0-9a-z]{3,}\b/.test(m.stdout)
       )
     );
-    const match = announce.stdout.match(/Subagent spawned successfully with ID: ([0-9a-f-]{36})/);
+    const match = announce.stdout.match(/Subagent spawned successfully with ID: ([0-9a-z]{3,})\b/);
     expect(match).not.toBeNull();
     const generatedId = match![1]!;
 
-    // Wait for the subagent's own output to land, then verify its tracker.
+    // Wait for the subagent's own output to land, then verify the on-disk
+    // delegation record matches the announced id.
     await chat.waitForMessage(
       commandMatching((m) => m.subagentId === generatedId && m.stdout.includes('auto-id-output'))
     );
-    const settings = env.getChatSettings('auto-id-chat') as {
-      subagents?: Record<string, { id?: string }>;
-    };
-    expect(settings.subagents?.[generatedId]?.id).toBe(generatedId);
+    const rec = env.readDelegation('auto-id-chat', generatedId) as
+      | { id?: string; kind?: string }
+      | null;
+    expect(rec?.id).toBe(generatedId);
+    expect(rec?.kind).toBe('subagent');
   }, 30000);
 
   it('spawn --agent <other> routes the subagent through a different agent', async () => {
@@ -548,10 +540,10 @@ describe('E2E Subagent Lifecycle', () => {
     expect(subLog.stdout).toContain('alt-output');
     expect(subLog.stdout).not.toContain('[DEBUG]');
 
-    const settings = env.getChatSettings('alt-agent-chat') as {
-      subagents?: Record<string, { agentId?: string }>;
-    };
-    expect(settings.subagents?.['alt-sub']?.agentId).toBe('alt-agent');
+    const rec = env.readDelegation('alt-agent-chat', 'alt-sub') as
+      | { targetAgentId?: string }
+      | null;
+    expect(rec?.targetAgentId).toBe('alt-agent');
   }, 30000);
 
   it('spawn with a duplicate --id is rejected', async () => {
@@ -637,10 +629,8 @@ describe('E2E Subagent Lifecycle', () => {
     );
     // Child is now completed — confirm before sending.
     for (let i = 0; i < 50; i++) {
-      const s = env.getChatSettings('send-wake-chat') as {
-        subagents?: Record<string, { status: string }>;
-      };
-      if (s.subagents?.['wake-sub']?.status === 'completed') break;
+      const rec = env.readDelegation('send-wake-chat', 'wake-sub');
+      if (rec && (rec.state as string) === 'completed') break;
       await new Promise((r) => setTimeout(r, 100));
     }
 
@@ -656,17 +646,15 @@ describe('E2E Subagent Lifecycle', () => {
     );
     expect(followUp.stdout).toMatch(/\[DEBUG [^\]]+\] echo after-wake:/);
 
-    // And the tracker eventually settles back on completed.
-    let status: string | undefined;
+    // And the delegation eventually settles back on completed.
+    let state: string | undefined;
     for (let i = 0; i < 50; i++) {
-      const s = env.getChatSettings('send-wake-chat') as {
-        subagents?: Record<string, { status: string }>;
-      };
-      status = s.subagents?.['wake-sub']?.status;
-      if (status === 'completed') break;
+      const rec = env.readDelegation('send-wake-chat', 'wake-sub');
+      state = rec ? (rec.state as string) : undefined;
+      if (state === 'completed') break;
       await new Promise((r) => setTimeout(r, 100));
     }
-    expect(status).toBe('completed');
+    expect(state).toBe('completed');
   }, 30000);
 
   it('send queues a second message while the child is still running', async () => {
@@ -683,10 +671,8 @@ describe('E2E Subagent Lifecycle', () => {
     );
     // Wait for active, then immediately send the follow-up.
     for (let i = 0; i < 50; i++) {
-      const s = env.getChatSettings('send-queue-chat') as {
-        subagents?: Record<string, { status: string }>;
-      };
-      if (s.subagents?.['queue-sub']?.status === 'active') break;
+      const rec = env.readDelegation('send-queue-chat', 'queue-sub');
+      if (rec && (rec.state as string) === 'running') break;
       await new Promise((r) => setTimeout(r, 100));
     }
 

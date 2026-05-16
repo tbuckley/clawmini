@@ -17,10 +17,16 @@ async function resolveTargetSessionId(
   chatId: string,
   delegation: PolicyDelegation
 ): Promise<string> {
-  const chatSettings = await readChatSettings(chatId);
   if (delegation.parentId) {
-    return chatSettings?.subagents?.[delegation.parentId]?.sessionId ?? 'default';
+    // Look up the parent subagent's session via the delegation graph rather
+    // than the legacy `ChatSettings.subagents` map (Ticket 3).
+    const parent = await delegationManager.get(delegation.parentId, chatId);
+    if (parent && parent.kind === 'subagent') {
+      return parent.sessionId;
+    }
+    return 'default';
   }
+  const chatSettings = await readChatSettings(chatId);
   return chatSettings?.sessions?.[delegation.agentId] ?? 'default';
 }
 

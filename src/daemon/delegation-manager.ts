@@ -9,6 +9,7 @@ import {
 } from '../shared/delegations.js';
 import { DelegationStore } from './delegation-store.js';
 import { emitDelegationResolved } from './events.js';
+import { isTerminalState, waitForSingleId } from './delegation-wait.js';
 
 // Cross-kind manager for policy + subagent delegations. The store is the
 // thin file-IO layer; this class owns the state machine, event emission,
@@ -42,6 +43,12 @@ export interface SubagentCreateInput {
   parentId?: string;
   delivery?: DeliveryMode;
   autoApprove?: boolean;
+  // Optional caller-supplied id. When provided we use it verbatim instead of
+  // calling `generateId` — used by the subagent router's back-compat path
+  // that still accepts `--id` from the CLI. Will throw if a record with the
+  // same id already exists in this chat (matching the legacy "Subagent ID
+  // already exists" error).
+  id?: string;
 }
 
 export interface DelegationListFilter {
@@ -81,10 +88,8 @@ interface PendingWaiter {
 export class DelegationManager {
   private _store: DelegationStore | null;
   // Reserved for Ticket 5: in-memory subscription/waiter registries keyed by
-  // chat. Populated by `wait` and consumed by `markResolved`.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // chat. Populated by the full `wait` / `unsubscribe` implementations.
   private subscriptions = new Map<string, PendingSubscription[]>();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private waiters = new Map<string, PendingWaiter[]>();
 
   constructor(store?: DelegationStore) {
@@ -124,7 +129,16 @@ export class DelegationManager {
   }
 
   async createSubagent(input: SubagentCreateInput): Promise<SubagentDelegation> {
-    const id = await this.store.generateId(input.chatId);
+    let id: string;
+    if (input.id !== undefined) {
+      const existing = await this.store.load(input.chatId, input.id);
+      if (existing) {
+        throw new Error('Subagent ID already exists');
+      }
+      id = input.id;
+    } else {
+      id = await this.store.generateId(input.chatId);
+    }
     const delegation: SubagentDelegation = {
       id,
       kind: 'subagent',
@@ -256,17 +270,85 @@ export class DelegationManager {
     await this.store.delete(chatId, id);
   }
 
-  // --- waiting / subscriptions (Ticket 5 fills these in) ---
+  // Update an existing record. Ticket 3 only needs to refresh `prompt` on
+  // `subagentSend` and flip a subagent's `state` back to `running` when a
+  // completed child gets a new message — both writes flow through here so
+  // future tickets can attach event/observer hooks in one place.
+  async update(
+    id: string,
+    chatId: string,
+    patch: Partial<Pick<SubagentDelegation, 'prompt' | 'state'>>
+  ): Promise<Delegation> {
+    const record = await this.store.load(chatId, id);
+    if (!record) {
+      throw new Error(`Delegation not found: ${id}`);
+    }
+    const updated: Delegation = { ...record, ...patch } as Delegation;
+    await this.store.save(updated);
+    return updated;
+  }
 
-  async wait(_opts: {
+  // Mirrors the legacy `assertSubagentAccess`: a caller may only see/touch a
+  // subagent whose `parentId` equals the caller's own subagent id. The root
+  // agent (no subagentId) sees subagents with no `parentId` field.
+  // Throws if the delegation does not exist or is not a child of the caller.
+  async assertVisibleTo(
+    callerSubagentId: string | undefined,
+    id: string,
+    chatId: string
+  ): Promise<SubagentDelegation> {
+    const record = await this.store.load(chatId, id);
+    if (!record || record.kind !== 'subagent') {
+      const err = new Error('Subagent not found') as Error & { code?: string };
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    if (record.parentId !== callerSubagentId) {
+      const err = new Error('Subagent is not a child of the caller') as Error & {
+        code?: string;
+      };
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+    return record;
+  }
+
+  // --- waiting / subscriptions ---
+  //
+  // Ticket 3 only needs the single-id sync case used by `subagentWait`. The
+  // multi-id / `mode: 'all'` / `return: 'subscribe'` paths land in Ticket 5
+  // — we throw for anything else so misuse surfaces immediately.
+  async wait(opts: {
     ids: string[];
     mode: 'any' | 'all';
     return: 'sync' | 'subscribe';
     chatId: string;
-    sessionId: string;
     timeoutMs?: number;
-  }): Promise<unknown> {
-    throw new Error('not-implemented: DelegationManager.wait (Ticket 5)');
+  }): Promise<{ resolved: Delegation[]; pending: Delegation[] }> {
+    if (opts.return !== 'sync') {
+      throw new Error('not-implemented: DelegationManager.wait subscribe mode (Ticket 5)');
+    }
+    if (opts.ids.length !== 1) {
+      throw new Error('not-implemented: DelegationManager.wait multi-id (Ticket 5)');
+    }
+    if (opts.mode !== 'any') {
+      throw new Error('not-implemented: DelegationManager.wait mode=all (Ticket 5)');
+    }
+    const id = opts.ids[0]!;
+    const timeoutMs = opts.timeoutMs ?? 60_000;
+
+    // Fast path: if the record is already terminal, return immediately.
+    const existing = await this.store.load(opts.chatId, id);
+    if (!existing) {
+      return { resolved: [], pending: [] };
+    }
+    if (isTerminalState(existing.state)) {
+      return { resolved: [existing], pending: [] };
+    }
+
+    // Register a one-shot listener on DAEMON_EVENT_DELEGATION_RESOLVED filtered
+    // by (chatId, id). Resolve when the event fires or the timeout elapses.
+    return waitForSingleId(this.store, opts.chatId, id, timeoutMs);
   }
 
   async unsubscribe(_subscriptionId: string): Promise<void> {

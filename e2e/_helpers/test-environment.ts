@@ -372,6 +372,49 @@ export class TestEnvironment {
     return {};
   }
 
+  /**
+   * Read all delegation records for a chat from the on-disk store
+   * (`.clawmini/tmp/delegations/<chatId>/*.json`). Returns an empty array
+   * when the directory does not exist. Used by post-Ticket-3 subagent
+   * tests since the legacy `ChatSettings.subagents` map is no longer
+   * written.
+   */
+  public listDelegations(chatId: string): Array<Record<string, unknown>> {
+    const dir = this.getClawminiPath('tmp', 'delegations', chatId);
+    if (!fs.existsSync(dir)) return [];
+    const records: Array<Record<string, unknown>> = [];
+    for (const entry of fs.readdirSync(dir)) {
+      if (!entry.endsWith('.json')) continue;
+      const full = path.join(dir, entry);
+      try {
+        records.push(JSON.parse(fs.readFileSync(full, 'utf8')));
+      } catch {
+        // Ignore corrupt files in test-helper context.
+      }
+    }
+    return records;
+  }
+
+  /**
+   * Read a single delegation record by id, or `null` if missing.
+   */
+  public readDelegation(chatId: string, id: string): Record<string, unknown> | null {
+    const recPath = this.getClawminiPath('tmp', 'delegations', chatId, `${id}.json`);
+    if (!fs.existsSync(recPath)) return null;
+    return JSON.parse(fs.readFileSync(recPath, 'utf8'));
+  }
+
+  /**
+   * Find the latest delegation record matching `predicate`. Useful for
+   * subagent tests where the id is generated server-side.
+   */
+  public findDelegation(
+    chatId: string,
+    predicate: (rec: Record<string, unknown>) => boolean
+  ): Record<string, unknown> | undefined {
+    return this.listDelegations(chatId).find(predicate);
+  }
+
   public getSessionSettings(agentId: string, sessionId: string): Record<string, unknown> {
     const sessionSettingsPath = this.getAgentPath(agentId, 'sessions', sessionId, 'settings.json');
     if (fs.existsSync(sessionSettingsPath)) {

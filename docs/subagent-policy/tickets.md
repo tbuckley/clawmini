@@ -244,7 +244,7 @@ Add `e2e/policies/delegation-manager-policy.test.ts` (new file):
 
 ---
 
-## Ticket 3 — Migrate subagent RPCs onto the manager
+## Ticket 3 — Migrate subagent RPCs onto the manager — COMPLETE
 
 **Goal.** Replace `ChatSettings.subagents[id]` reads/writes inside the
 subagent router with `DelegationManager`. `subagentSpawn`,

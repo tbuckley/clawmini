@@ -359,20 +359,243 @@ describe('DelegationManager', () => {
       await expect(manager.sendToSubagent('abc', 'hi')).rejects.toThrow(/not-implemented/);
     });
 
-    it('wait throws not-implemented', async () => {
+    it('wait throws not-implemented for subscribe / multi-id / mode=all', async () => {
       await expect(
         manager.wait({
           ids: ['abc'],
           mode: 'any',
+          return: 'subscribe',
+          chatId: 'chat-1',
+        })
+      ).rejects.toThrow(/not-implemented/);
+      await expect(
+        manager.wait({
+          ids: ['a', 'b'],
+          mode: 'any',
           return: 'sync',
           chatId: 'chat-1',
-          sessionId: 'sess-1',
+        })
+      ).rejects.toThrow(/not-implemented/);
+      await expect(
+        manager.wait({
+          ids: ['a'],
+          mode: 'all',
+          return: 'sync',
+          chatId: 'chat-1',
         })
       ).rejects.toThrow(/not-implemented/);
     });
 
     it('unsubscribe throws not-implemented', async () => {
       await expect(manager.unsubscribe('sub-1')).rejects.toThrow(/not-implemented/);
+    });
+  });
+
+  describe('assertVisibleTo', () => {
+    it('returns the subagent when parentId matches the caller', async () => {
+      const created = await manager.createSubagent({
+        chatId: 'chat-1',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 'sess-1',
+        prompt: 'do',
+        parentId: 'parent-sub',
+      });
+      const got = await manager.assertVisibleTo('parent-sub', created.id, 'chat-1');
+      expect(got.id).toBe(created.id);
+    });
+
+    it('returns the subagent when both caller and parent are undefined (root agent)', async () => {
+      const created = await manager.createSubagent({
+        chatId: 'chat-1',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 'sess-1',
+        prompt: 'do',
+      });
+      const got = await manager.assertVisibleTo(undefined, created.id, 'chat-1');
+      expect(got.id).toBe(created.id);
+    });
+
+    it('throws NOT_FOUND when the id does not exist', async () => {
+      await expect(manager.assertVisibleTo(undefined, 'zzz', 'chat-1')).rejects.toThrow(
+        /Subagent not found/
+      );
+    });
+
+    it('throws FORBIDDEN when parentId mismatches the caller', async () => {
+      const created = await manager.createSubagent({
+        chatId: 'chat-1',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 'sess-1',
+        prompt: 'do',
+        parentId: 'parent-a',
+      });
+      await expect(
+        manager.assertVisibleTo('different-parent', created.id, 'chat-1')
+      ).rejects.toThrow(/not a child of the caller/);
+    });
+
+    it('throws NOT_FOUND when the id refers to a policy delegation', async () => {
+      const created = await manager.createPolicy({
+        chatId: 'chat-1',
+        agentId: 'agent-1',
+        commandName: 'echo',
+        args: [],
+        fileMappings: {},
+      });
+      await expect(manager.assertVisibleTo(undefined, created.id, 'chat-1')).rejects.toThrow(
+        /Subagent not found/
+      );
+    });
+  });
+
+  describe('update', () => {
+    it('refreshes the prompt and state in place', async () => {
+      const created = await manager.createSubagent({
+        chatId: 'chat-1',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 'sess-1',
+        prompt: 'first',
+        autoApprove: true,
+      });
+      const updated = await manager.update(created.id, 'chat-1', {
+        prompt: 'second',
+      });
+      expect(updated.kind).toBe('subagent');
+      if (updated.kind !== 'subagent') throw new Error('expected subagent');
+      expect(updated.prompt).toBe('second');
+      const loaded = await store.load('chat-1', created.id);
+      expect(loaded?.kind).toBe('subagent');
+      if (loaded?.kind !== 'subagent') throw new Error('expected subagent');
+      expect(loaded.prompt).toBe('second');
+    });
+  });
+
+  describe('wait (single-id sync)', () => {
+    it('returns immediately when the delegation is already resolved', async () => {
+      const created = await manager.createSubagent({
+        chatId: 'chat-1',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 'sess-1',
+        prompt: 'do',
+        autoApprove: true,
+      });
+      await manager.markResolved(created.id, { state: 'completed' });
+
+      const result = await manager.wait({
+        ids: [created.id],
+        mode: 'any',
+        return: 'sync',
+        chatId: 'chat-1',
+      });
+      expect(result.resolved).toHaveLength(1);
+      expect(result.resolved[0]?.state).toBe('completed');
+      expect(result.pending).toHaveLength(0);
+    });
+
+    it('blocks until DAEMON_EVENT_DELEGATION_RESOLVED fires for the matching id', async () => {
+      const created = await manager.createSubagent({
+        chatId: 'chat-1',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 'sess-1',
+        prompt: 'do',
+        autoApprove: true,
+      });
+
+      const waitPromise = manager.wait({
+        ids: [created.id],
+        mode: 'any',
+        return: 'sync',
+        chatId: 'chat-1',
+        timeoutMs: 5000,
+      });
+
+      // Resolve out-of-band — the wait should pick it up via the event.
+      setTimeout(() => {
+        void manager.markResolved(created.id, { state: 'completed' });
+      }, 10);
+
+      const result = await waitPromise;
+      expect(result.resolved).toHaveLength(1);
+      expect(result.resolved[0]?.id).toBe(created.id);
+      expect(result.resolved[0]?.state).toBe('completed');
+    });
+
+    it('times out and returns the still-pending delegation', async () => {
+      const created = await manager.createSubagent({
+        chatId: 'chat-1',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 'sess-1',
+        prompt: 'do',
+        autoApprove: true,
+      });
+
+      const result = await manager.wait({
+        ids: [created.id],
+        mode: 'any',
+        return: 'sync',
+        chatId: 'chat-1',
+        timeoutMs: 30,
+      });
+      expect(result.resolved).toHaveLength(0);
+      expect(result.pending).toHaveLength(1);
+      expect(result.pending[0]?.id).toBe(created.id);
+      expect(result.pending[0]?.state).toBe('running');
+    });
+
+    it('returns no records when the id is unknown', async () => {
+      const result = await manager.wait({
+        ids: ['ghost'],
+        mode: 'any',
+        return: 'sync',
+        chatId: 'chat-1',
+        timeoutMs: 30,
+      });
+      expect(result.resolved).toEqual([]);
+      expect(result.pending).toEqual([]);
+    });
+
+    it('ignores events for other chats / ids', async () => {
+      const created = await manager.createSubagent({
+        chatId: 'chat-1',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 'sess-1',
+        prompt: 'do',
+        autoApprove: true,
+      });
+      const other = await manager.createSubagent({
+        chatId: 'chat-1',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 'sess-1',
+        prompt: 'do',
+        autoApprove: true,
+      });
+
+      const waitPromise = manager.wait({
+        ids: [created.id],
+        mode: 'any',
+        return: 'sync',
+        chatId: 'chat-1',
+        timeoutMs: 200,
+      });
+
+      // Resolve the *other* id — wait should not fire for it.
+      setTimeout(() => {
+        void manager.markResolved(other.id, { state: 'completed' });
+      }, 10);
+
+      const result = await waitPromise;
+      expect(result.resolved).toEqual([]);
+      expect(result.pending).toHaveLength(1);
+      expect(result.pending[0]?.id).toBe(created.id);
     });
   });
 

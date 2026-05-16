@@ -133,10 +133,8 @@ describe('E2E Subagent Authorization', () => {
       { chat: chatId, agent: 'debug-agent' }
     );
     for (let i = 0; i < 50; i++) {
-      const settings = env.getChatSettings(chatId) as {
-        subagents?: Record<string, { status: string }>;
-      };
-      if (settings.subagents?.['authz-stop-victim']?.status === 'active') break;
+      const rec = env.readDelegation(chatId, 'authz-stop-victim');
+      if (rec && (rec.state as string) === 'running') break;
       await new Promise((r) => setTimeout(r, 100));
     }
 
@@ -148,11 +146,9 @@ describe('E2E Subagent Authorization', () => {
     );
 
     expect(serialized).toMatch(FORBIDDEN_PATTERN);
-    // Victim's status must not have flipped to 'failed' from the stop attempt.
-    const settings = env.getChatSettings(chatId) as {
-      subagents?: Record<string, { status: string }>;
-    };
-    expect(settings.subagents?.['authz-stop-victim']?.status).toBe('active');
+    // Victim's state must not have flipped to 'failed' from the stop attempt.
+    const rec = env.readDelegation(chatId, 'authz-stop-victim') as { state?: string } | null;
+    expect(rec?.state).toBe('running');
   }, 30000);
 
   it('peer subagent cannot delete a sibling', async () => {
@@ -170,11 +166,8 @@ describe('E2E Subagent Authorization', () => {
     );
 
     expect(serialized).toMatch(FORBIDDEN_PATTERN);
-    // Victim tracker must still exist.
-    const settings = env.getChatSettings(chatId) as {
-      subagents?: Record<string, unknown>;
-    };
-    expect(settings.subagents?.['authz-delete-victim']).toBeTruthy();
+    // Victim record must still exist on disk.
+    expect(env.readDelegation(chatId, 'authz-delete-victim')).toBeTruthy();
   }, 30000);
 
   it('parent cannot reach a grandchild via tail/wait/send/stop/delete', async () => {
@@ -190,12 +183,10 @@ describe('E2E Subagent Authorization', () => {
       'clawmini-lite.js subagents spawn --id authz-outer --async "clawmini-lite.js subagents spawn --id authz-inner --async \\"echo inner-done\\" && sleep 2"',
       { chat: chatId, agent: 'debug-agent' }
     );
-    // Wait for inner to land in settings.
+    // Wait for inner to land in the delegation tree.
     for (let i = 0; i < 80; i++) {
-      const s = env.getChatSettings(chatId) as {
-        subagents?: Record<string, { parentId?: string }>;
-      };
-      if (s.subagents?.['authz-inner']?.parentId === 'authz-outer') break;
+      const rec = env.readDelegation(chatId, 'authz-inner') as { parentId?: string } | null;
+      if (rec?.parentId === 'authz-outer') break;
       await new Promise((r) => setTimeout(r, 100));
     }
 

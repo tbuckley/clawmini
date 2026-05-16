@@ -100,6 +100,9 @@ export const RouterConfigSchema = z.union([
 
 export type RouterConfig = z.infer<typeof RouterConfigSchema>;
 
+// @deprecated — kept for one release so an existing `chat-settings.json` from
+// a pre-Ticket 3 daemon still parses. The daemon no longer writes this field;
+// the source of truth is the `DelegationStore`. Will be removed in Ticket 8.
 export const SubagentTrackerSchema = z.looseObject({
   id: z.string(),
   agentId: z.string().optional(),
@@ -109,6 +112,7 @@ export const SubagentTrackerSchema = z.looseObject({
   parentId: z.string().optional(),
 });
 
+/** @deprecated Source of truth is now `DelegationStore` (Ticket 3). */
 export type SubagentTracker = z.infer<typeof SubagentTrackerSchema>;
 
 export const ChatSettingsSchema = z.looseObject({
@@ -116,6 +120,9 @@ export const ChatSettingsSchema = z.looseObject({
   sessions: z.record(z.string(), z.string()).optional(),
   routers: z.array(RouterConfigSchema).optional(),
   jobs: z.array(CronJobSchema).optional(),
+  // @deprecated — see `SubagentTrackerSchema`. Schema field kept for back-compat
+  // with on-disk chat-settings.json from older daemons; not written by the
+  // daemon any more.
   subagents: z.record(z.string(), SubagentTrackerSchema).optional(),
 });
 

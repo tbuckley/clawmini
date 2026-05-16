@@ -12,9 +12,7 @@ import {
   readEnvironment,
   getEnvironmentPath,
   getWorkspaceRoot,
-  updateChatSettings,
 } from '../shared/workspace.js';
-import { listChats } from '../shared/chats.js';
 import { cronManager } from './cron.js';
 import { SettingsSchema } from '../shared/config.js';
 import { validateToken, getApiContext } from './auth.js';
@@ -147,33 +145,12 @@ export async function initDaemon() {
     });
   });
 
-  const cleanOrphanedSubagents = async () => {
-    try {
-      const chats = await listChats();
-      for (const chatId of chats) {
-        await updateChatSettings(chatId, (settings) => {
-          if (settings.subagents) {
-            for (const subagent of Object.values(settings.subagents)) {
-              if (subagent.status === 'active') {
-                subagent.status = 'failed';
-              }
-            }
-          }
-          return settings;
-        });
-      }
-    } catch (err) {
-      console.warn('Failed to clean orphaned subagents:', err);
-    }
-  };
-  await cleanOrphanedSubagents();
-
-  // Wipe the unified delegations tree on daemon start. Ticket 2 migrated the
-  // policy code path onto this store; the legacy `RequestStore.cleanupCompleted`
-  // call is gone. The subagent legacy path (ChatSettings.subagents) is still
-  // cleaned above via `cleanOrphanedSubagents` until Ticket 3 / 8 migrate it.
-  // Per spec §5.6 "Lifecycle invariants": restart is treated as a clean slate
-  // for delegations.
+  // Wipe the unified delegations tree on daemon start (Ticket 1+). Tickets 2
+  // and 3 migrated the policy and subagent code paths onto this single store,
+  // so `wipeAll` is now the only startup cleanup we need — no more
+  // `RequestStore.cleanupCompleted` and no more `cleanOrphanedSubagents`
+  // walk over `ChatSettings.subagents`. Per spec §5.6 "Lifecycle invariants":
+  // restart is treated as a clean slate for delegations.
   try {
     await delegationManager.wipeAll();
   } catch (err) {
