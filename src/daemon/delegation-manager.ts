@@ -9,18 +9,18 @@ import {
 } from '../shared/delegations.js';
 import { DelegationStore } from './delegation-store.js';
 import { emitDelegationResolved } from './events.js';
-import { isTerminalState, waitForSingleId } from './delegation-wait.js';
+import {
+  isTerminalState,
+  waitForIds,
+  buildResolvedRecord,
+  type ResolvedOutcome,
+} from './delegation-wait.js';
+import { ObserverRegistry, type WaitMode } from './delegation-observers.js';
 
 // Cross-kind manager for policy + subagent delegations. The store is the
 // thin file-IO layer; this class owns the state machine, event emission,
-// and (in later tickets) the wait/subscribe coordination. Mirrors the
-// `taskScheduler` / `cronManager` singleton pattern: a module-scope export
-// at the bottom of the file holds the live instance for the daemon.
-//
-// Scope note for Ticket 1: only the creation + lifecycle + observation
-// methods are wired. `wait`, `unsubscribe`, and `sendToSubagent` are stubbed
-// and throw — Ticket 4 fills in `sendToSubagent`, Ticket 5 fills in
-// `wait` + `unsubscribe`.
+// and the wait/subscribe coordination (Ticket 5). Mirrors the
+// `taskScheduler` / `cronManager` singleton pattern.
 
 export interface PolicyCreateInput {
   chatId: string;
@@ -43,11 +43,7 @@ export interface SubagentCreateInput {
   parentId?: string;
   delivery?: DeliveryMode;
   autoApprove?: boolean;
-  // Optional caller-supplied id. When provided we use it verbatim instead of
-  // calling `generateId` — used by the subagent router's back-compat path
-  // that still accepts `--id` from the CLI. Will throw if a record with the
-  // same id already exists in this chat (matching the legacy "Subagent ID
-  // already exists" error).
+  // Optional caller-supplied id. See Ticket 3 notes (`--id` back-compat).
   id?: string;
 }
 
@@ -58,44 +54,37 @@ export interface DelegationListFilter {
   parentId?: string;
 }
 
-// Discriminated outcome for `markResolved`. Mirrors the terminal states in
-// `DelegationState`:
-//   - `completed` carries the policy `executionResult` (omit for subagents).
-//   - `failed` may include a free-form reason for diagnostics.
-//   - `rejected` is reached via `reject(id, reason)` rather than markResolved,
-//     but we accept it here too for symmetry with the spec's `ResolvedOutcome`.
-export type ResolvedOutcome =
-  | { state: 'completed'; executionResult?: { stdout: string; stderr: string; exitCode: number } }
-  | { state: 'failed'; reason?: string }
-  | { state: 'rejected'; reason: string };
-
-// Subscription/waiter maps are populated by Ticket 5. They live here so the
-// state-machine code paths in this ticket compile against a stable shape.
-interface PendingSubscription {
-  subscriptionId: string;
-  chatId: string;
+export interface SyncWaitInput {
   ids: string[];
-  mode: 'any' | 'all';
+  mode: WaitMode;
+  return: 'sync';
+  chatId: string;
+  timeoutMs?: number;
 }
 
-interface PendingWaiter {
-  chatId: string;
+export interface SubscribeWaitInput {
   ids: string[];
-  mode: 'any' | 'all';
-  resolve: (resolved: Delegation[]) => void;
+  mode: WaitMode;
+  return: 'subscribe';
+  chatId: string;
+  originSessionId: string;
+}
+
+export type WaitInput = SyncWaitInput | SubscribeWaitInput;
+
+export interface SyncWaitResult {
+  resolved: Delegation[];
+  pending: Delegation[];
+}
+export interface SubscribeWaitResult {
+  subscriptionId: string;
 }
 
 export class DelegationManager {
   private _store: DelegationStore | null;
-  // Reserved for Ticket 5: in-memory subscription/waiter registries keyed by
-  // chat. Populated by the full `wait` / `unsubscribe` implementations.
-  private subscriptions = new Map<string, PendingSubscription[]>();
-  private waiters = new Map<string, PendingWaiter[]>();
+  private _observers: ObserverRegistry | null = null;
 
   constructor(store?: DelegationStore) {
-    // Defer constructing the default store until first use so that the
-    // module-scope singleton below doesn't read the workspace root at
-    // import time (which would race tests that mock `getWorkspaceRoot`).
     this._store = store ?? null;
   }
 
@@ -104,6 +93,12 @@ export class DelegationManager {
       this._store = new DelegationStore(getWorkspaceRoot());
     }
     return this._store;
+  }
+
+  private get observers(): ObserverRegistry {
+    if (!this._observers) this._observers = new ObserverRegistry(this.store);
+    else this._observers.setStore(this.store);
+    return this._observers;
   }
 
   // --- creation ---
@@ -156,16 +151,6 @@ export class DelegationManager {
     return delegation;
   }
 
-  // Approval-gated send. The router has already resolved the approval
-  // decision (it reads `policies.json` via `readPoliciesForPath`); the
-  // manager itself is policy-agnostic and just persists state.
-  //
-  // On `autoApprove: true` we refresh the prompt and flip state back to
-  // `running` (the caller is expected to drive `executeSubagent` next).
-  // On `autoApprove: false` we refresh the prompt and move to `pending` —
-  // the slash-approve handler later starts the child via the existing
-  // `executeSubagent` path. Either way the prompt on the record is the
-  // latest one the user signed off on.
   async sendToSubagent(
     id: string,
     chatId: string,
@@ -188,9 +173,7 @@ export class DelegationManager {
 
   async approve(id: string, _by: 'user' | 'auto'): Promise<void> {
     const record = await this.findById(id);
-    if (!record) {
-      throw new Error(`Delegation not found: ${id}`);
-    }
+    if (!record) throw new Error(`Delegation not found: ${id}`);
     if (record.state !== 'pending') {
       throw new Error(
         `Cannot approve delegation ${id}: expected state 'pending', got '${record.state}'`
@@ -200,11 +183,9 @@ export class DelegationManager {
     await this.store.save(updated);
   }
 
-  async reject(id: string, reason: string): Promise<void> {
+  async reject(id: string, reason: string): Promise<{ wasCovered: boolean }> {
     const record = await this.findById(id);
-    if (!record) {
-      throw new Error(`Delegation not found: ${id}`);
-    }
+    if (!record) throw new Error(`Delegation not found: ${id}`);
     if (record.state !== 'pending') {
       throw new Error(
         `Cannot reject delegation ${id}: expected state 'pending', got '${record.state}'`
@@ -218,51 +199,27 @@ export class DelegationManager {
       resolvedAt,
     };
     await this.store.save(updated);
+    const { wasCovered } = await this.observers.onResolved(updated.chatId, updated);
     emitDelegationResolved({ chatId: updated.chatId, delegation: updated });
+    return { wasCovered };
   }
 
-  async markResolved(id: string, outcome: ResolvedOutcome): Promise<void> {
+  async markResolved(id: string, outcome: ResolvedOutcome): Promise<{ wasCovered: boolean }> {
     const record = await this.findById(id);
-    if (!record) {
-      throw new Error(`Delegation not found: ${id}`);
-    }
+    if (!record) throw new Error(`Delegation not found: ${id}`);
     if (record.state !== 'running') {
       throw new Error(
         `Cannot resolve delegation ${id}: expected state 'running', got '${record.state}'`
       );
     }
-
-    const resolvedAt = new Date().toISOString();
-    let updated: Delegation;
-    if (outcome.state === 'completed') {
-      if (record.kind === 'policy') {
-        updated = {
-          ...record,
-          state: 'completed',
-          resolvedAt,
-          ...(outcome.executionResult ? { executionResult: outcome.executionResult } : {}),
-        };
-      } else {
-        updated = { ...record, state: 'completed', resolvedAt };
-      }
-    } else if (outcome.state === 'failed') {
-      updated = {
-        ...record,
-        state: 'failed',
-        resolvedAt,
-        ...(outcome.reason ? { rejectionReason: outcome.reason } : {}),
-      };
-    } else {
-      updated = {
-        ...record,
-        state: 'rejected',
-        resolvedAt,
-        rejectionReason: outcome.reason,
-      };
-    }
-
+    const updated = buildResolvedRecord(record, outcome);
     await this.store.save(updated);
+    // Observers run *before* the public event so listeners on the event see
+    // consistent observer state. The boolean lets callers (`executeSubagent`
+    // / `handlePolicyApprove`) suppress their per-id notification.
+    const { wasCovered } = await this.observers.onResolved(updated.chatId, updated);
     emitDelegationResolved({ chatId: updated.chatId, delegation: updated });
+    return { wasCovered };
   }
 
   // --- observation ---
@@ -273,9 +230,6 @@ export class DelegationManager {
 
   async list(filter: DelegationListFilter): Promise<Delegation[]> {
     if (!filter.chatId) {
-      // Spec §5.6 lists delegations per-chat (the store's natural index). A
-      // cross-chat list would require walking every chat dir on disk — out
-      // of scope for Ticket 1, and consumers always have a chatId today.
       throw new Error('DelegationManager.list requires filter.chatId');
     }
     const storeFilter: {
@@ -293,28 +247,18 @@ export class DelegationManager {
     await this.store.delete(chatId, id);
   }
 
-  // Update an existing record. Ticket 3 only needs to refresh `prompt` on
-  // `subagentSend` and flip a subagent's `state` back to `running` when a
-  // completed child gets a new message — both writes flow through here so
-  // future tickets can attach event/observer hooks in one place.
   async update(
     id: string,
     chatId: string,
     patch: Partial<Pick<SubagentDelegation, 'prompt' | 'state'>>
   ): Promise<Delegation> {
     const record = await this.store.load(chatId, id);
-    if (!record) {
-      throw new Error(`Delegation not found: ${id}`);
-    }
+    if (!record) throw new Error(`Delegation not found: ${id}`);
     const updated: Delegation = { ...record, ...patch } as Delegation;
     await this.store.save(updated);
     return updated;
   }
 
-  // Mirrors the legacy `assertSubagentAccess`: a caller may only see/touch a
-  // subagent whose `parentId` equals the caller's own subagent id. The root
-  // agent (no subagentId) sees subagents with no `parentId` field.
-  // Throws if the delegation does not exist or is not a child of the caller.
   async assertVisibleTo(
     callerSubagentId: string | undefined,
     id: string,
@@ -336,71 +280,52 @@ export class DelegationManager {
     return record;
   }
 
-  // --- waiting / subscriptions ---
-  //
-  // Ticket 3 only needs the single-id sync case used by `subagentWait`. The
-  // multi-id / `mode: 'all'` / `return: 'subscribe'` paths land in Ticket 5
-  // — we throw for anything else so misuse surfaces immediately.
-  async wait(opts: {
-    ids: string[];
-    mode: 'any' | 'all';
-    return: 'sync' | 'subscribe';
-    chatId: string;
-    timeoutMs?: number;
-  }): Promise<{ resolved: Delegation[]; pending: Delegation[] }> {
-    if (opts.return !== 'sync') {
-      throw new Error('not-implemented: DelegationManager.wait subscribe mode (Ticket 5)');
-    }
-    if (opts.ids.length !== 1) {
-      throw new Error('not-implemented: DelegationManager.wait multi-id (Ticket 5)');
-    }
-    if (opts.mode !== 'any') {
-      throw new Error('not-implemented: DelegationManager.wait mode=all (Ticket 5)');
-    }
-    const id = opts.ids[0]!;
-    const timeoutMs = opts.timeoutMs ?? 60_000;
-
-    // Fast path: if the record is already terminal, return immediately.
-    const existing = await this.store.load(opts.chatId, id);
-    if (!existing) {
-      return { resolved: [], pending: [] };
-    }
-    if (isTerminalState(existing.state)) {
-      return { resolved: [existing], pending: [] };
-    }
-
-    // Register a one-shot listener on DAEMON_EVENT_DELEGATION_RESOLVED filtered
-    // by (chatId, id). Resolve when the event fires or the timeout elapses.
-    return waitForSingleId(this.store, opts.chatId, id, timeoutMs);
+  // True iff an unfired observer in `chatId` still has `id` as a pending
+  // member. Used by callers that mint their own per-id notifications (today:
+  // `executeSubagent`, policy approve) to short-circuit a redundant wakeup
+  // when the manager's coordination layer is going to fire its own.
+  isCoveredByObserver(chatId: string, id: string): boolean {
+    return this.observers.isCovered(chatId, id);
   }
 
-  async unsubscribe(_subscriptionId: string): Promise<void> {
-    throw new Error('not-implemented: DelegationManager.unsubscribe (Ticket 5)');
+  // --- waiting / subscriptions ---
+
+  async wait(input: SyncWaitInput): Promise<SyncWaitResult>;
+  async wait(input: SubscribeWaitInput): Promise<SubscribeWaitResult>;
+  async wait(input: WaitInput): Promise<SyncWaitResult | SubscribeWaitResult> {
+    if (input.return === 'subscribe') {
+      const id = await this.observers.registerSubscription(
+        input.chatId,
+        input.originSessionId,
+        input.ids,
+        input.mode
+      );
+      return { subscriptionId: id };
+    }
+    return waitForIds(this.store, this.observers, {
+      ids: input.ids,
+      mode: input.mode,
+      chatId: input.chatId,
+      timeoutMs: input.timeoutMs ?? 60_000,
+    });
+  }
+
+  async unsubscribe(subscriptionId: string): Promise<void> {
+    await this.observers.unsubscribe(subscriptionId);
   }
 
   // --- daemon lifecycle ---
 
   async wipeAll(): Promise<void> {
     await this.store.wipeAll();
-    this.subscriptions.clear();
-    this.waiters.clear();
+    this._observers?.clear();
   }
 
-  // Helper: we accept (id, chatId) on the public observation API but the
-  // lifecycle methods are addressed by id alone. The store is per-chat, so
-  // we need to find the chat. For Ticket 1 callers always have chatId in
-  // hand (creation paths), so this stays simple — but the public methods
-  // `approve`/`reject`/`markResolved` take only `id` per spec §5.6, so we
-  // need a lookup. The cheap path: callers create a record (we know its
-  // chat) then immediately resolve it; tests load by walking. Later tickets
-  // can add a (chatId → set of ids) cache if profiling shows it matters.
   private async findById(id: string): Promise<Delegation | null> {
-    // We need to scan chat directories. The store doesn't expose that today,
-    // so we use a small helper here. Mocked tests can override the store.
-    // Implementation: read the base delegation directory, walk chat dirs,
-    // try to load (chatId, id).
     return this.store.findById(id);
   }
 }
 
+export { isTerminalState };
+export type { ResolvedOutcome };
 export const delegationManager = new DelegationManager();

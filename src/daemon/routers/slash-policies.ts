@@ -130,7 +130,7 @@ async function handlePolicyApprove(
     state.agentId
   );
 
-  await delegationManager.markResolved(delegation.id, {
+  const { wasCovered } = await delegationManager.markResolved(delegation.id, {
     state: 'completed',
     executionResult: { stdout, stderr, exitCode },
   });
@@ -153,26 +153,31 @@ async function handlePolicyApprove(
 
   await appendMessage(state.chatId, userNotificationMsg);
 
-  await executeDirectMessage(
-    state.chatId,
-    {
-      messageId: randomUUID(),
-      message: agentMessage,
-      chatId: state.chatId,
-      agentId: delegation.agentId,
-      sessionId: targetSessionId,
-      ...(delegation.parentId ? { subagentId: delegation.parentId } : {}),
-      env: state.env || {},
-      ...(state.externalRef ? { externalRef: state.externalRef } : {}),
-    },
-    undefined,
-    workspaceRoot,
-    true, // noWait
-    agentMessage,
-    delegation.parentId,
-    'policy_approved',
-    'user'
-  );
+  // Suppression (spec §5.2): when an observer (subscription / sync waiter)
+  // is watching this id, the manager owns the wakeup. Skip kicking the
+  // fresh "policy-approved" turn so we don't double-fire.
+  if (!wasCovered && delegation.delivery === 'notify') {
+    await executeDirectMessage(
+      state.chatId,
+      {
+        messageId: randomUUID(),
+        message: agentMessage,
+        chatId: state.chatId,
+        agentId: delegation.agentId,
+        sessionId: targetSessionId,
+        ...(delegation.parentId ? { subagentId: delegation.parentId } : {}),
+        env: state.env || {},
+        ...(state.externalRef ? { externalRef: state.externalRef } : {}),
+      },
+      undefined,
+      workspaceRoot,
+      true, // noWait
+      agentMessage,
+      delegation.parentId,
+      'policy_approved',
+      'user'
+    );
+  }
 
   return {
     ...state,

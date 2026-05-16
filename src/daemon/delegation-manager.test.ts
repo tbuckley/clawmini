@@ -405,35 +405,11 @@ describe('DelegationManager', () => {
       expect(updated.prompt).toBe('second');
     });
 
-    it('wait throws not-implemented for subscribe / multi-id / mode=all', async () => {
-      await expect(
-        manager.wait({
-          ids: ['abc'],
-          mode: 'any',
-          return: 'subscribe',
-          chatId: 'chat-1',
-        })
-      ).rejects.toThrow(/not-implemented/);
-      await expect(
-        manager.wait({
-          ids: ['a', 'b'],
-          mode: 'any',
-          return: 'sync',
-          chatId: 'chat-1',
-        })
-      ).rejects.toThrow(/not-implemented/);
-      await expect(
-        manager.wait({
-          ids: ['a'],
-          mode: 'all',
-          return: 'sync',
-          chatId: 'chat-1',
-        })
-      ).rejects.toThrow(/not-implemented/);
-    });
-
-    it('unsubscribe throws not-implemented', async () => {
-      await expect(manager.unsubscribe('sub-1')).rejects.toThrow(/not-implemented/);
+    it('unsubscribe is a no-op for unknown ids', async () => {
+      // Unknown subscription id: the in-memory record is gone so we can't
+      // find the chat — the call is a no-op (the file, if any, will be
+      // cleared on next daemon boot via wipeAll).
+      await expect(manager.unsubscribe('sub-unknown')).resolves.toBeUndefined();
     });
   });
 
@@ -642,6 +618,144 @@ describe('DelegationManager', () => {
       expect(result.resolved).toEqual([]);
       expect(result.pending).toHaveLength(1);
       expect(result.pending[0]?.id).toBe(created.id);
+    });
+  });
+
+  describe('wait (multi-id / mode=all / subscribe)', () => {
+    it('blocks until ALL resolve when mode=all', async () => {
+      const a = await manager.createSubagent({
+        chatId: 'chat-1',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 's',
+        prompt: 'a',
+        autoApprove: true,
+      });
+      const b = await manager.createSubagent({
+        chatId: 'chat-1',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 's',
+        prompt: 'b',
+        autoApprove: true,
+      });
+
+      const waitPromise = manager.wait({
+        ids: [a.id, b.id],
+        mode: 'all',
+        return: 'sync',
+        chatId: 'chat-1',
+        timeoutMs: 5000,
+      });
+
+      setTimeout(() => {
+        void manager.markResolved(a.id, { state: 'completed' });
+      }, 10);
+      setTimeout(() => {
+        void manager.markResolved(b.id, { state: 'completed' });
+      }, 30);
+
+      const result = await waitPromise;
+      expect(result.resolved).toHaveLength(2);
+      expect(result.pending).toHaveLength(0);
+    });
+
+    it('subscribe returns a subscriptionId immediately and fires later', async () => {
+      const a = await manager.createSubagent({
+        chatId: 'chat-sub',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 's',
+        prompt: 'a',
+        autoApprove: true,
+        delivery: 'manual',
+      });
+
+      const { subscriptionId } = await manager.wait({
+        ids: [a.id],
+        mode: 'all',
+        return: 'subscribe',
+        chatId: 'chat-sub',
+        originSessionId: 'origin-session-1',
+      });
+      expect(subscriptionId).toMatch(/^sub-/);
+
+      // Subscription file is persisted under the chat's subscriptions/ dir.
+      const subFile = path.join(
+        TEST_DIR,
+        'tmp',
+        'delegations',
+        'chat-sub',
+        'subscriptions',
+        `${subscriptionId}.json`
+      );
+      const raw = await fs.readFile(subFile, 'utf8');
+      const parsed = JSON.parse(raw);
+      expect(parsed.originSessionId).toBe('origin-session-1');
+      expect(parsed.ids).toEqual([a.id]);
+
+      // After resolving, the subscription file is deleted.
+      await manager.markResolved(a.id, { state: 'completed' });
+      await expect(fs.access(subFile)).rejects.toThrow();
+    });
+
+    it('markResolved reports wasCovered when an observer is watching', async () => {
+      const a = await manager.createSubagent({
+        chatId: 'chat-cover',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 's',
+        prompt: 'a',
+        autoApprove: true,
+      });
+
+      const { subscriptionId } = await manager.wait({
+        ids: [a.id],
+        mode: 'any',
+        return: 'subscribe',
+        chatId: 'chat-cover',
+        originSessionId: 'origin-session-cover',
+      });
+      expect(subscriptionId).toBeTruthy();
+
+      const { wasCovered } = await manager.markResolved(a.id, { state: 'completed' });
+      expect(wasCovered).toBe(true);
+    });
+
+    it('unsubscribe removes the subscription without firing', async () => {
+      const a = await manager.createSubagent({
+        chatId: 'chat-unsub',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 's',
+        prompt: 'a',
+        autoApprove: true,
+      });
+
+      const { subscriptionId } = await manager.wait({
+        ids: [a.id],
+        mode: 'all',
+        return: 'subscribe',
+        chatId: 'chat-unsub',
+        originSessionId: 'origin-session-unsub',
+      });
+
+      await manager.unsubscribe(subscriptionId);
+
+      // The file is gone.
+      const subFile = path.join(
+        TEST_DIR,
+        'tmp',
+        'delegations',
+        'chat-unsub',
+        'subscriptions',
+        `${subscriptionId}.json`
+      );
+      await expect(fs.access(subFile)).rejects.toThrow();
+
+      // Subsequent resolve is no longer covered (suppression lifted).
+      const { wasCovered } = await manager.markResolved(a.id, { state: 'completed' });
+      expect(wasCovered).toBe(false);
     });
   });
 

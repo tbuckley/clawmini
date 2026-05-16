@@ -16,7 +16,11 @@ vi.mock('../delegation-manager.js', () => ({
     list: vi.fn(),
     approve: vi.fn(),
     reject: vi.fn(),
-    markResolved: vi.fn(),
+    // markResolved now returns `{wasCovered}` so the slash-handler can skip
+    // the fresh-turn kickoff when an observer is covering the id (Ticket 5).
+    // The default mock returns `wasCovered: false` so existing tests keep
+    // their fresh-turn expectations.
+    markResolved: vi.fn().mockResolvedValue({ wasCovered: false }),
   },
 }));
 vi.mock('../../shared/workspace.js');

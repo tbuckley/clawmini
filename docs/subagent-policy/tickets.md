@@ -403,7 +403,7 @@ Add `e2e/agents/subagent-approval.test.ts`:
 
 ---
 
-## Ticket 5 — Notify suppression + the `wait` core
+## Ticket 5 — Notify suppression + the `wait` core — COMPLETE
 
 **Goal.** Implement `DelegationManager.wait` for both `sync` and
 `subscribe`, both `any` and `all` modes, including the

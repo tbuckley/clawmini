@@ -597,3 +597,159 @@ patterns that worked, etc.
   `not-implemented`; now it asserts the implemented behavior
   (auto-approve flips to running, no-approve flips to pending,
   unknown id throws NOT_FOUND).
+
+### Ticket 5 status (done)
+
+- `src/daemon/delegation-observers.ts` — new file. Holds the
+  `ObserverRegistry` class indexed by `chatId`. Owns the in-memory
+  registry of `PendingWaiter` (sync wait) and `PendingSubscription`
+  (return:'subscribe') records. Provides:
+  - `isCovered(chatId, id)` — fast suppression check.
+  - `registerWaiter(waiter)` / `registerSubscription(...)` — add to
+    registry; registerSubscription hydrates members that are already
+    terminal at register time and fires inline if mode is satisfied
+    immediately (lets callers register after some ids already resolved).
+  - `onResolved(chatId, delegation)` — called by `markResolved`/`reject`
+    *before* emitting `DAEMON_EVENT_DELEGATION_RESOLVED`. Returns
+    `{wasCovered}` for the caller's per-id notification check.
+  - `unsubscribe(subscriptionId)` — drops from registry + removes the
+    file from disk. Pending members revert to their declared delivery
+    on next resolve.
+- `src/daemon/delegation-notify.ts` — new file. `appendNotification(
+  chatId, sessionId, body)` writes a `system`-role/`subagent_update`
+  message into the target session via `appendMessage` (mirrors the
+  shape of today's subagent-completion notification but doesn't kick
+  a fresh turn — Ticket 6 will add agent-side handling). Also exports
+  `formatAggregateBody(resolved, mode)` for the subscription wakeup
+  text per spec §6.1 (counts + comma-joined ids by terminal state).
+- `src/daemon/delegation-wait.ts` — generalized from single-id to
+  multi-id. `waitForIds(store, observers, {ids, mode, chatId,
+  timeoutMs})` is the new entry point. Also now exports
+  `ResolvedOutcome` and `buildResolvedRecord(...)` (extracted from the
+  manager to keep `delegation-manager.ts` under the `max-lines: 300`
+  rule).
+- `src/daemon/delegation-manager.ts` — `wait`/`unsubscribe` are now
+  implemented (overloaded signature: sync → `{resolved, pending}`,
+  subscribe → `{subscriptionId}`). `markResolved` and `reject` return
+  `{wasCovered}` so callers can suppress their own per-id notifications.
+  New helper `isCoveredByObserver(chatId, id)` for callers that need a
+  one-shot read without resolving the delegation.
+- `src/daemon/api/delegations-router.ts` — new tRPC endpoints
+  `delegationWait` and `delegationUnsubscribe` mounted on the agent
+  router. Ticket 6 will productize the full router (list, show,
+  delete, plus the `delegations` CLI group). For now, agents drive
+  multi-id wait/subscribe via these two endpoints; the `delegationWait`
+  endpoint captures `ctx.tokenPayload.sessionId` as `originSessionId`
+  so subscriptions are session-stamped at register time.
+- `src/daemon/api/subagent-utils.ts` — `executeSubagent` now reads
+  `{wasCovered}` from `markResolved` and skips the per-id
+  `<notification>` (`executeDirectMessage` call) when an observer is
+  covering the id. The `isAsync && !wasCovered` guard is the
+  suppression invariant for the subagent path.
+- `src/daemon/routers/slash-policies.ts` — `handlePolicyApprove`
+  reads `{wasCovered}` from `markResolved` and additionally checks
+  `delegation.delivery === 'notify'`. Auto-approved policies inline-
+  execute in `createPolicyRequest`; that path is unchanged.
+
+### Suppression invariant (one-paragraph version)
+
+When a delegation resolves, `DelegationManager.markResolved` runs the
+observer registry's `onResolved` BEFORE emitting the public
+`DAEMON_EVENT_DELEGATION_RESOLVED`. Each unfired observer whose
+member list contains the id claims the resolution (marks its `member.
+resolved`), and if its `mode` is now satisfied it fires (sync waiter
+resolves the RPC promise; subscription appends one aggregated
+`<notification>` via `appendNotification` and deletes the on-disk
+subscription file). `onResolved` returns `{wasCovered}`. The caller
+(today: `executeSubagent` for subagents, `handlePolicyApprove` for
+policies) checks `wasCovered` and skips its own per-id `<notification>`
+when true. This is the spec's "exactly one wakeup, not N+1" rule.
+
+### Where subscriptions live (session-stamp survives /new)
+
+A subscription is persisted at
+`.clawmini/tmp/delegations/<chatId>/subscriptions/<subscriptionId>.json`
+with `{subscriptionId, chatId, originSessionId, ids, mode, createdAt}`.
+`originSessionId` is captured at register time from
+`ctx.tokenPayload.sessionId` in the `delegationWait` tRPC handler. When
+the subscription fires, `appendNotification` writes the `<notification>`
+into `originSessionId`, NOT whatever session is current. So `/new` (which
+rotates the session) doesn't strand subscriptions; the notification lands
+in the session that asked for it. Pre-existing behavior: subscriptions
+are wiped on daemon restart via `DelegationStore.wipeAll()` from
+`delegationManager.wipeAll()` — no replay logic.
+
+### Observer indexing & lookup cost
+
+The registry is a `Map<chatId, Set<Observer>>`. Suppression checks
+(`isCovered`) and resolve dispatch (`onResolved`) iterate the chat's
+observers — small (typically 1-2 active fan-outs per chat).
+Unsubscribe walks every chat looking for the subscription id (no
+secondary index by sub id). If profiling shows this is hot we can add
+a `Map<subscriptionId, Observer>` mirror. For now the explicit walk
+keeps the data structure single-source.
+
+### Sync waiter teardown gotcha
+
+The sync wait in `delegation-wait.ts:waitForIds` registers a
+`PendingWaiter` AND sets up a `setTimeout` for `timeoutMs`. If the
+waiter fires via the registry (`mode` satisfied), we clear the timer
+and call `discard()` (returned from `registerWaiter`) to remove the
+waiter from the registry. If the timer fires first, we still call
+`discard()` and resolve with `{resolved, pending}` reflecting the
+disk state at that instant. Both paths route through `settleOnce` so
+double-resolution is impossible — important because `fastPathIfSatisfied`
+can race with the event handler if every id was already terminal at
+register time. The `kind: 'waiter'` discriminator on observers lets
+the registry call the waiter's `resolve` directly without re-loading
+records (registry already collected resolved members during
+`onResolved`).
+
+### Test-only knobs you might need
+
+- The e2e test (`e2e/agents/delegation-wait.test.ts`) drives the
+  daemon via a per-chat agent tRPC client (`createTRPCClient<AgentRouter>`
+  + `httpLink` with the chat's CLAW_API_TOKEN). This is the same
+  pattern used in `policies-context-cwd.test.ts`. We need the
+  agent-side client (not lite CLI) because:
+  - `delegations wait` CLI doesn't exist yet (Ticket 6).
+  - `--delivery manual|notify` flag doesn't exist on the CLI yet
+    (Ticket 7), but the tRPC `subagentSpawn` already accepts
+    `delivery` (since Ticket 3).
+- `env.getAgentCredentialsForChat(chatId)` (existing helper) mints a
+  token scoped to a specific chat — required because tokens are
+  chat-scoped.
+- `readDelegation(chatId, id)` and `getChatPath(chatId, 'chat.jsonl')`
+  on `TestEnvironment` give you the raw on-disk state. The
+  delegation-wait test grep-counts `<notification>` strings out of the
+  chat.jsonl to verify suppression.
+
+### Behavior changes Ticket 6+ should know about
+
+- **`markResolved` / `reject` return `{wasCovered: boolean}`.** All
+  existing callers in `src/` either ignore the return value (still
+  compatible) or, like `slash-policies.ts` and `subagent-utils.ts`,
+  destructure it for suppression. Unit tests that mocked the manager
+  need their mocks to resolve with `{wasCovered: false}` or callers
+  will TypeError. `slash-policies.test.ts` was updated.
+- **`subagentWait` still uses sync mode internally.** Because a sync
+  wait is also an observer, calling `subagents wait` on an `--async`
+  (delivery:notify) subagent now suppresses the per-id notification
+  for the duration the waiter is registered. The wait still returns
+  the subagent's last agent reply as before. After the wait returns,
+  if the subagent had already resolved, the per-id notification is
+  NOT retroactively fired. This matches spec §5.2 and is intentional;
+  the existing lifecycle tests don't assert the notification + wait
+  combo, so they still pass.
+- **The aggregated `<notification>` body shape** is
+  `<notification>\nAll N delegations resolved (mode: 'X').\n
+  completed (n): <ids>\nfailed (m):\n  - <id> (<kind>: <reason>)\n
+  ...\n</notification>`. Includes both kinds — policies and subagents
+  resolve into the same set. Ticket 6's `delegations show <id>`
+  is the recommended drilldown for full per-id output.
+- **The slash-policies handlePolicyApprove path** now gates its
+  `executeDirectMessage` (the "kick fresh turn carrying output") on
+  `!wasCovered && delegation.delivery === 'notify'`. Today every
+  policy has `delivery: 'notify'`, so no behavioral change for
+  uncovered policies. Ticket 7 will add `--delivery manual` to the
+  policy CLI; this guard already handles that case.

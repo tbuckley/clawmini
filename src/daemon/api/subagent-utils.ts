@@ -98,9 +98,15 @@ export async function executeSubagent(
 
       // Terminal: subagent finished its turn. Mark the delegation completed.
       // Guard against races where `subagentStop` flipped us to 'failed' first.
+      // `wasCovered` is true when an unfired observer (sync waiter or
+      // subscription) was watching this id — in that case the manager owns
+      // the wakeup and we suppress the per-id `<notification>` below (Ticket
+      // 5 / spec §5.2 notify-suppression rule).
       const current = await delegationManager.get(subagentId, chatId);
+      let wasCovered = false;
       if (current && current.state === 'running') {
-        await delegationManager.markResolved(subagentId, { state: 'completed' });
+        const outcome = await delegationManager.markResolved(subagentId, { state: 'completed' });
+        wasCovered = outcome.wasCovered;
       }
 
       const logger = createChatLogger(chatId, subagentId, sessionId, parentTurnId);
@@ -110,7 +116,7 @@ export async function executeSubagent(
       // listens on DAEMON_EVENT_DELEGATION_RESOLVED instead.
       await logger.logSubagentStatus({ subagentId, status: 'completed' });
 
-      if (isAsync) {
+      if (isAsync && !wasCovered) {
         const lastLogMessage = await logger.findLastMessage(
           (m) => m.role === 'agent' || m.displayRole === 'agent'
         );
