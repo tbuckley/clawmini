@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import {
   TestEnvironment,
   type ChatSubscription,
+  type CommandLogMessage,
   commandMatching,
   commandWith,
 } from '../_helpers/test-environment.js';
@@ -48,7 +49,7 @@ describe('E2E Subagent Lifecycle', () => {
     expect(followUp.stdout).toMatch(/\[DEBUG [^\]]+\] echo second-msg:/);
   }, 30000);
 
-  it('wait returns the completed subagent output to the caller', async () => {
+  it('delegations wait returns the completed subagent record to the caller', async () => {
     await env.addChat('wait-chat', 'debug-agent');
     chat = await env.connect('wait-chat');
 
@@ -60,20 +61,22 @@ describe('E2E Subagent Lifecycle', () => {
       commandMatching((m) => !!m.subagentId && m.stdout.includes('wait-complete'))
     );
 
-    await env.sendMessage('clawmini-lite.js subagents wait wait-sub', {
+    await env.sendMessage('clawmini-lite.js delegations wait wait-sub', {
       chat: 'wait-chat',
       agent: 'debug-agent',
     });
 
-    // `subagents wait` prints the subagent's last agent reply (the debug
-    // template's full stdout) back to the parent. That output is wrapped by
-    // the parent's own debug invocation in this chat's command log.
+    // `delegations wait` prints `{resolved: [...], pending: [...]}` JSON. The
+    // parent's own debug invocation wraps that around the command log, so
+    // the chat's command_log must contain `"id": "wait-sub"` and the resolved
+    // state.
     const waitLog = await chat.waitForMessage(
       commandMatching(
         (m) =>
           !m.subagentId &&
-          m.stdout.includes('subagents wait wait-sub:') &&
-          m.stdout.includes('wait-complete')
+          m.stdout.includes('delegations wait wait-sub:') &&
+          m.stdout.includes('"id": "wait-sub"') &&
+          m.stdout.includes('"state": "completed"')
       )
     );
     expect(waitLog.exitCode).toBe(0);
@@ -128,7 +131,7 @@ describe('E2E Subagent Lifecycle', () => {
     ).toBe(false);
   }, 30000);
 
-  it('delete removes the subagent tracker from chat settings', async () => {
+  it('delegations delete removes the subagent record from disk', async () => {
     await env.addChat('delete-chat', 'debug-agent');
     chat = await env.connect('delete-chat');
 
@@ -142,11 +145,11 @@ describe('E2E Subagent Lifecycle', () => {
 
     expect(env.readDelegation('delete-chat', 'del-sub')).toBeTruthy();
 
-    await env.sendMessage('clawmini-lite.js subagents delete del-sub', {
+    await env.sendMessage('clawmini-lite.js delegations delete del-sub', {
       chat: 'delete-chat',
       agent: 'debug-agent',
     });
-    await chat.waitForMessage(commandWith('Subagent del-sub deleted'));
+    await chat.waitForMessage(commandWith('Delegation del-sub deleted'));
 
     let rec: Record<string, unknown> | null = null;
     for (let i = 0; i < 50; i++) {
@@ -157,7 +160,7 @@ describe('E2E Subagent Lifecycle', () => {
     expect(rec).toBeNull();
   }, 30000);
 
-  it('list returns all subagents spawned by the current agent', async () => {
+  it('delegations list returns all subagents spawned by the current agent', async () => {
     await env.addChat('list-chat', 'debug-agent');
     chat = await env.connect('list-chat');
 
@@ -177,20 +180,20 @@ describe('E2E Subagent Lifecycle', () => {
       commandMatching((m) => !!m.subagentId && m.stdout.includes('[DEBUG] echo b:'))
     );
 
-    await env.sendMessage('clawmini-lite.js subagents list --json', {
-      chat: 'list-chat',
-      agent: 'debug-agent',
-    });
+    await env.sendMessage(
+      'clawmini-lite.js delegations list --state resolved --kind subagent --json',
+      { chat: 'list-chat', agent: 'debug-agent' }
+    );
     const listLog = await chat.waitForMessage(
       commandMatching(
         (m) =>
           !m.subagentId &&
-          m.stdout.includes('subagents list --json:') &&
+          m.stdout.includes('delegations list --state resolved --kind subagent --json:') &&
           m.stdout.includes('"id": "list-a"') &&
           m.stdout.includes('"id": "list-b"')
       )
     );
-    expect(listLog.stdout).toContain('"status": "completed"');
+    expect(listLog.stdout).toContain('"state": "completed"');
   }, 30000);
 
   it('tail returns the subagent chat log to the caller', async () => {
@@ -228,47 +231,69 @@ describe('E2E Subagent Lifecycle', () => {
     expect(tailLog.stdout).toMatch(/"role":\s*"agent"/);
   }, 30000);
 
-  it('list from a subagent returns only its own children, not peers or parents', async () => {
+  it('delegations list from a subagent returns only its own children, not peers or parents', async () => {
     await env.addChat('nested-list-chat', 'debug-agent');
     chat = await env.connect('nested-list-chat');
 
     // Parent spawns outer-sub. outer-sub itself spawns inner-sub (its child)
-    // and then calls `subagents list --json`. From outer-sub's perspective,
+    // and then calls `delegations list --json`. From outer-sub's perspective,
     // only inner-sub should appear (parentId === outer-sub).
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id outer-sub --async "clawmini-lite.js subagents spawn --id inner-sub --async \\"echo inner-done\\" && sleep 1 && clawmini-lite.js subagents list --json"',
+      'clawmini-lite.js subagents spawn --id outer-sub --async "clawmini-lite.js subagents spawn --id inner-sub --async \\"echo inner-done\\" && sleep 3 && clawmini-lite.js delegations list --state completed --json"',
       { chat: 'nested-list-chat', agent: 'debug-agent' }
     );
 
     // outer-sub's own command log (subagentId=outer-sub) must contain the
-    // JSON output of its own `list` call, showing inner-sub.
-    const outerLog = await chat.waitForMessage(
-      commandMatching(
-        (m) => !!m.subagentId && m.stdout.includes('"id": "inner-sub"')
-      )
-    );
-    expect(outerLog.stdout).toContain('"id": "inner-sub"');
+    // JSON output of its own `list` call, showing inner-sub. We poll the
+    // on-disk delegation record path + the chat buffer because the
+    // command-message stream sometimes lands slightly after the
+    // subscription-event we'd otherwise hook into.
+    let outerLog: CommandLogMessage | undefined;
+    const deadline = Date.now() + 25_000;
+    while (Date.now() < deadline) {
+      outerLog = chat.messageBuffer.find(
+        (m): m is CommandLogMessage =>
+          m.role === 'command' &&
+          !!(m as CommandLogMessage).subagentId &&
+          (m as CommandLogMessage).stdout.includes('"id": "inner-sub"')
+      );
+      if (outerLog) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(outerLog).toBeDefined();
+    expect(outerLog!.stdout).toContain('"id": "inner-sub"');
     // outer-sub is its own parent, not its own child — must not appear in
     // its own list output.
-    expect(outerLog.stdout).not.toMatch(/"id":\s*"outer-sub"/);
+    expect(outerLog!.stdout).not.toMatch(/"id":\s*"outer-sub"/);
 
     // Parent's view: list must include outer-sub (direct child) but not
-    // inner-sub (grandchild — parentId=outer-sub, not undefined).
-    await env.sendMessage('clawmini-lite.js subagents list --json', {
-      chat: 'nested-list-chat',
-      agent: 'debug-agent',
-    });
-    const parentLog = await chat.waitForMessage(
-      commandMatching(
-        (m) =>
-          !m.subagentId &&
-          m.stdout.includes('subagents list --json:') &&
-          m.stdout.includes('"id": "outer-sub"')
-      )
+    // inner-sub (grandchild — parentId=outer-sub, not undefined). We do not
+    // restrict by --state so the snapshot includes outer-sub whether it has
+    // settled or is still running (it briefly stays 'running' while it
+    // processes the inner-sub completion notification turn).
+    await env.sendMessage(
+      'clawmini-lite.js delegations list --kind subagent --json',
+      { chat: 'nested-list-chat', agent: 'debug-agent' }
     );
-    expect(parentLog.stdout).toContain('"id": "outer-sub"');
-    expect(parentLog.stdout).not.toMatch(/"id":\s*"inner-sub"/);
-  }, 30000);
+    let parentLog: CommandLogMessage | undefined;
+    const parentDeadline = Date.now() + 30_000;
+    while (Date.now() < parentDeadline) {
+      parentLog = chat.messageBuffer.find(
+        (m): m is CommandLogMessage =>
+          m.role === 'command' &&
+          !(m as CommandLogMessage).subagentId &&
+          (m as CommandLogMessage).stdout.includes(
+            'delegations list --kind subagent --json:'
+          ) &&
+          (m as CommandLogMessage).stdout.includes('"id": "outer-sub"')
+      );
+      if (parentLog) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(parentLog).toBeDefined();
+    expect(parentLog!.stdout).toContain('"id": "outer-sub"');
+    expect(parentLog!.stdout).not.toMatch(/"id":\s*"inner-sub"/);
+  }, 60000);
 
   it('sync spawn blocks the caller and returns <subagent_output> inline', async () => {
     await env.addChat('sync-chat', 'debug-agent');
@@ -297,29 +322,28 @@ describe('E2E Subagent Lifecycle', () => {
     expect(outerLog.stdout).toContain('</subagent_output>');
   }, 30000);
 
-  it('wait called before subagent finishes blocks until completion', async () => {
+  it('delegations wait called before subagent finishes blocks until completion', async () => {
     await env.addChat('wait-before-chat', 'debug-agent');
     chat = await env.connect('wait-before-chat');
 
     // Chain spawn && wait in the same shell so `wait` is called while the
     // subagent is still sleeping. This exercises the event-iterator path
-    // of subagentWait (not the synchronous early-return hit by the
-    // `wait returns the completed subagent output` test above).
+    // of delegationWait (not the synchronous early-return hit by the
+    // `wait returns the completed subagent record` test above).
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id wait-before-sub --async "sleep 3 && echo slow-done" && clawmini-lite.js subagents wait wait-before-sub',
+      'clawmini-lite.js subagents spawn --id wait-before-sub --async "sleep 3 && echo slow-done" && clawmini-lite.js delegations wait wait-before-sub',
       { chat: 'wait-before-chat', agent: 'debug-agent' }
     );
 
-    // The parent's wrapped stdout contains the wait-returned subagent
-    // output (the debug template's own echo of `sleep 3 && echo slow-done`).
-    // That specific prefix only appears when wait actually returned with
-    // the subagent's agent-role content — it does not appear in the
-    // parent's own debug-echo of the outer command line.
+    // The parent's wrapped stdout contains the JSON wait result — when the
+    // wait blocks until completion, the resolved array will include the id
+    // and the completed state.
     const waitLog = await chat.waitForMessage(
       commandMatching(
         (m) =>
           !m.subagentId &&
-          m.stdout.includes('[DEBUG] sleep 3 && echo slow-done:')
+          m.stdout.includes('"id": "wait-before-sub"') &&
+          m.stdout.includes('"state": "completed"')
       ),
       20000
     );
@@ -378,87 +402,45 @@ describe('E2E Subagent Lifecycle', () => {
     );
   }, 30000);
 
-  it('waiting on two subagents sequentially returns each one\'s output inline', async () => {
+  it('delegations wait <a> <b> --all waits until both subagents resolve', async () => {
     await env.addChat('two-wait-chat', 'debug-agent');
     chat = await env.connect('two-wait-chat');
 
-    // Spawn two async subagents, then wait on each in turn. Each wait
-    // call prints its OWN subagent's last agent-role message via the
-    // CLI's stdout — so the parent's wrapped stdout must contain both
-    // subagents' debug-template echoes, in order.
+    // Spawn two async subagents, then wait on both with --all. The wait
+    // call prints `{resolved: [...], pending: []}` JSON containing both ids.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id two-a --async "echo both-output-a" && clawmini-lite.js subagents spawn --id two-b --async "echo both-output-b" && clawmini-lite.js subagents wait two-a && clawmini-lite.js subagents wait two-b',
+      'clawmini-lite.js subagents spawn --id two-a --async "echo both-output-a" && clawmini-lite.js subagents spawn --id two-b --async "echo both-output-b" && clawmini-lite.js delegations wait two-a two-b --all',
       { chat: 'two-wait-chat', agent: 'debug-agent' }
     );
 
-    // `[DEBUG] echo both-output-a:` only appears inside the subagent's
-    // own log (printed back by wait), not in the parent's outer echo of
-    // the chained command — same logic as the `wait-before` test above.
     const log = await chat.waitForMessage(
       commandMatching(
         (m) =>
           !m.subagentId &&
-          m.stdout.includes('[DEBUG] echo both-output-a:') &&
-          m.stdout.includes('[DEBUG] echo both-output-b:')
+          m.stdout.includes('"id": "two-a"') &&
+          m.stdout.includes('"id": "two-b"') &&
+          m.stdout.includes('"state": "completed"')
       ),
       20000
     );
-    const aIdx = log.stdout.indexOf('[DEBUG] echo both-output-a:');
-    const bIdx = log.stdout.indexOf('[DEBUG] echo both-output-b:');
-    expect(aIdx).toBeGreaterThanOrEqual(0);
-    // wait(a) runs before wait(b), so A's wait output appears first.
-    expect(bIdx).toBeGreaterThan(aIdx);
+    expect(log.exitCode).toBe(0);
   }, 30000);
 
-  it('list --blocking returns empty for the main agent', async () => {
-    await env.addChat('blocking-root-chat', 'debug-agent');
-    chat = await env.connect('blocking-root-chat');
-
-    // Main agent spawns an active subagent, then lists with --blocking.
-    // Per the router, main-agent `--blocking` is always empty — blocking
-    // is meaningful only for subagents deciding whether to wait for their
-    // own children.
-    await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id block-root-sub --async "sleep 2 && echo done"',
-      { chat: 'blocking-root-chat', agent: 'debug-agent' }
-    );
-    for (let i = 0; i < 50; i++) {
-      const rec = env.readDelegation('blocking-root-chat', 'block-root-sub');
-      if (rec && (rec.state as string) === 'running') break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-
-    await env.sendMessage('clawmini-lite.js subagents list --blocking --json', {
-      chat: 'blocking-root-chat',
-      agent: 'debug-agent',
-    });
-    const log = await chat.waitForMessage(
-      commandMatching(
-        (m) => !m.subagentId && m.stdout.includes('subagents list --blocking --json:')
-      )
-    );
-    // Extract the JSON body between the first `[` and last `]` — the CLI
-    // prints "[\n  ...\n]" for an empty or populated array.
-    const jsonStart = log.stdout.indexOf('[', log.stdout.indexOf(':'));
-    const jsonEnd = log.stdout.lastIndexOf(']');
-    const body = log.stdout.slice(jsonStart, jsonEnd + 1).trim();
-    expect(body).toBe('[]');
-  }, 30000);
-
-  it('list --blocking returns only active children when called from a subagent', async () => {
+  it('delegations list --state running --kind subagent from a subagent returns only active children', async () => {
     await env.addChat('blocking-sub-chat', 'debug-agent');
     chat = await env.connect('blocking-sub-chat');
 
     // Outer subagent spawns two children: one instant (will be completed),
-    // one sleeping (will still be active). `list --blocking --json` from
-    // outer must return ONLY block-active, not block-done.
+    // one sleeping (will still be active). `delegations list --state running
+    // --kind subagent` from outer must return ONLY block-active, not
+    // block-done.
     await env.sendMessage(
       [
         'clawmini-lite.js subagents spawn --id block-outer --async',
         '"clawmini-lite.js subagents spawn --id block-done --async \\"echo done-fast\\"',
         '&& clawmini-lite.js subagents spawn --id block-active --async \\"sleep 3 && echo late\\"',
         '&& sleep 1',
-        '&& clawmini-lite.js subagents list --blocking --json"',
+        '&& clawmini-lite.js delegations list --state running --kind subagent --json"',
       ].join(' '),
       { chat: 'blocking-sub-chat', agent: 'debug-agent' }
     );
@@ -759,23 +741,24 @@ describe('E2E Subagent Lifecycle', () => {
     chat = await env.connect('missing-id-chat');
 
     // Each of these CLI calls should hit the router and fail with a
-    // NOT_FOUND error surfaced back to the caller's stderr. We rely on
-    // the serialized message — both 'Subagent not found' and the CLI's
-    // 'Error:' prefix land in the command log.
-    const ops = [
-      'clawmini-lite.js subagents wait ghost',
-      'clawmini-lite.js subagents stop ghost',
-      'clawmini-lite.js subagents delete ghost',
-      'clawmini-lite.js subagents tail ghost --json',
-      "clawmini-lite.js subagents send ghost --async -p 'echo x'",
+    // NOT_FOUND error surfaced back to the caller's stderr.
+    const ops: Array<{ cmd: string; expect: RegExp }> = [
+      { cmd: 'clawmini-lite.js subagents stop ghost', expect: /Subagent not found/ },
+      { cmd: 'clawmini-lite.js subagents tail ghost --json', expect: /Subagent not found/ },
+      {
+        cmd: "clawmini-lite.js subagents send ghost --async -p 'echo x'",
+        expect: /Subagent not found/,
+      },
+      { cmd: 'clawmini-lite.js delegations delete ghost', expect: /Delegation not found/ },
+      { cmd: 'clawmini-lite.js delegations show ghost', expect: /Delegation not found/ },
     ];
     for (const op of ops) {
-      await env.sendMessage(op, { chat: 'missing-id-chat', agent: 'debug-agent' });
+      await env.sendMessage(op.cmd, { chat: 'missing-id-chat', agent: 'debug-agent' });
       const log = await chat.waitForMessage(
-        commandMatching((m) => !m.subagentId && m.stdout.includes(`${op}:`)),
+        commandMatching((m) => !m.subagentId && m.stdout.includes(`${op.cmd}:`)),
         15000
       );
-      expect(JSON.stringify(log)).toMatch(/Subagent not found/);
+      expect(JSON.stringify(log)).toMatch(op.expect);
     }
   }, 60000);
 });

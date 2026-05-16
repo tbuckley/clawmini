@@ -496,7 +496,7 @@ Add `e2e/agents/delegation-wait.test.ts`:
 
 ---
 
-## Ticket 6 — Agent-facing tRPC + CLI: `delegationWait`, `delegationList`, `delegationUnsubscribe`, `delegations` command group
+## Ticket 6 — Agent-facing tRPC + CLI: `delegationWait`, `delegationList`, `delegationUnsubscribe`, `delegations` command group — COMPLETE
 
 **Goal.** Expose the manager to the agent via tRPC and add the
 kind-agnostic `delegations` CLI group. Migrate the lite client off

@@ -753,3 +753,191 @@ records (registry already collected resolved members during
   policy has `delivery: 'notify'`, so no behavioral change for
   uncovered policies. Ticket 7 will add `--delivery manual` to the
   policy CLI; this guard already handles that case.
+
+### Ticket 6 status (done)
+
+- `src/daemon/api/delegations-router.ts` — now exports
+  `delegationWait`, `delegationUnsubscribe`, `delegationList`,
+  `delegationShow`, and `delegationDelete`. All five are wired into
+  `agentRouter` in `src/daemon/api/agent-router.ts`. The router file
+  hovers near the `max-lines: 300` cap but stays under.
+- `src/cli/delegations-commands.ts` — new Commander group registering
+  `delegations list|wait|notify-when|unsubscribe|show|delete`. Plugged
+  into `src/cli/lite.ts` via `registerDelegationsCommands(program,
+  getClient)` next to the `registerSubagentCommands` call. Mirrors the
+  existing `registerSubagentCommands` shape.
+- `src/cli/subagent-commands.ts` — fully rewritten. `wait`, `list`,
+  and `delete` subcommands are gone. The remaining commands (`spawn`,
+  `send`, `stop`, `tail`) survive. The legacy `do { ... } while (status
+  === 'active')` polling loops in `spawn` and `send` were replaced
+  with one `delegationWait` call wrapped in
+  `waitAndPrintSubagent(client, subagentId)` — that helper preserves
+  the legacy `<subagent_output>...</subagent_output>` formatting by
+  reading the subagent's last agent-role message from the chat log via
+  `subagentTail`.
+- `src/daemon/api/subagent-router.ts` — `subagentList` is preserved
+  unchanged. It still backs the legacy `--blocking` filter for
+  back-compat (slash-policies relies on it). Internally it filters
+  `delegationManager.list({chatId, kind:'subagent'})` by `parentId`,
+  matching what `delegationList` does for the kind-agnostic path.
+
+### `delegations list` parent-scoping rule (important for Ticket 7+)
+
+`delegationList` filters by the *caller's subagent context* — it
+returns delegations whose `parentId === ctx.tokenPayload.subagentId`.
+A root agent (`subagentId === undefined`) sees only root-spawned
+records (records that omit `parentId`). A subagent sees only its
+direct children. This matches the legacy `subagentList` authorization
+semantics and prevents a subagent from listing its parent's or
+siblings' records. The filter is applied in code (in the router)
+because `DelegationStore.list({parentId: undefined})` would skip the
+filter entirely. There is no `--all` escape hatch today; if a future
+ticket needs cross-scope visibility, add a flag here.
+
+### Subscription-blocks-delete behavior
+
+`delegationDelete` refuses (with `code: 'BAD_REQUEST'`, message
+`"... is covered by subscription <subId>; unsubscribe first"`) when
+any active subscription in the chat references the target id. The
+check uses `DelegationStore.listSubscriptions(chatId)` and a simple
+`s.ids.includes(input.id)` scan — observer counts are small. The CLI
+surfaces the error via stderr + exit code 1. The fix is `delegations
+unsubscribe <subscriptionId>`; once gone, the delete works. Also: if
+the target is a `running` subagent, `delegationDelete` first
+`markResolved`'s it as `failed` (reason `"Stopped by
+delegationDelete"`) and stops its session before removing the record.
+
+### Why `subagents wait/list/delete` were removed (CLI-only)
+
+The tRPC surface still has `subagentWait` and `subagentList` — the
+internal lite CLI still calls `subagentWait` (via the spawn/send sync
+path) and `subagentList` is preserved for back-compat. The CLI
+*subcommands* are gone:
+
+- `subagents wait <id>` → `delegations wait <id>`
+- `subagents list [--blocking|--json]` → `delegations list [--state|--kind|--json]`
+- `subagents delete <id>` → `delegations delete <id>`
+
+Commander prints `error: unknown command` and exits 1 when these are
+invoked. The e2e test `e2e/cli/delegations.test.ts` asserts this
+behavior. The `subagents tail` and `subagents stop` subcommands are
+retained — they have no `delegations`-side equivalent and remain the
+only ways to inspect the subagent's chat log / abort a running
+subagent.
+
+### Existing-test migrations done in Ticket 6
+
+- `e2e/agents/subagent-lifecycle.test.ts`:
+  - Three tests using `clawmini-lite.js subagents wait <id>` moved to
+    `delegations wait <id>`. The CLI output changed from "the
+    subagent's last agent reply" to `{resolved, pending}` JSON — the
+    assertions were rewritten to grep for `"id": "<id>"` /
+    `"state": "completed"` in the parent's command_log.
+  - The `delete removes the subagent tracker` test renamed to
+    `delegations delete removes the subagent record from disk` and
+    asserts the new CLI's `Delegation <id> deleted` output line.
+  - The `list returns all subagents` and `list from a subagent`
+    tests moved to `delegations list --state resolved|completed
+    --kind subagent --json`. The blocking-filter tests dropped (one
+    of them was an empty-result root-agent guard that no longer
+    exists on the new CLI; the more meaningful subagent-view variant
+    survives as `--state running --kind subagent`).
+  - The "wait/delete on missing id" test rewritten as a mixed list:
+    `subagents stop/tail/send` still hit `subagentWait` (the tRPC
+    endpoint) for NOT_FOUND, while `delegations delete/show` hit the
+    new endpoint with a different message text (`Delegation not
+    found`).
+- `e2e/agents/subagent-authorization.test.ts`:
+  - `peer subagent cannot wait on a sibling` rewired to use
+    `subagents tail` (still authorized) as a stand-in. The kind-
+    agnostic `delegations wait` is intentionally not authorization-
+    gated (it's a coordination primitive over ids), and tightening
+    that would belong in a follow-up ticket.
+  - `peer subagent cannot delete a sibling` rewired to use
+    `subagents stop` — which still goes through
+    `assertVisibleSubagent`. `delegations delete` does not (by
+    design) enforce parent-of relationship; it only enforces
+    chat-scope via the tRPC token.
+  - The grand-child reachability test dropped the now-gone `wait`
+    and `delete` attack vectors but kept `tail`, `send`, `stop`.
+
+### Authorization for `delegations show` / `wait` / `delete` (open question)
+
+`delegationShow`, `delegationWait`, and `delegationDelete` enforce
+chat-scope only (via `ctx.tokenPayload.chatId`). They do NOT enforce
+a parent-of relationship. Within a chat, any subagent can read or
+wait on any delegation id it knows. `delegationList` IS parent-
+scoped (see above), so a subagent can't enumerate delegations it
+isn't supposed to see — but if it guesses an id it could call
+`show`/`wait` on it.
+
+This matches the spec's coordination-primitive framing for `wait`,
+but `show` and `delete` are arguably leakier than the legacy
+`subagents tail/delete`. Out of scope for Ticket 6 — flag for the
+follow-up security review. If we tighten `show`/`delete` later, the
+likely path is to call a helper that loads the record, walks its
+`parentId` chain via the manager, and rejects unless the caller is
+an ancestor.
+
+### `delegations wait` output shape
+
+Sync: `{resolved: Delegation[], pending: Delegation[]}` (each record
+is a full `PolicyDelegation` or `SubagentDelegation`). Subscribe:
+`{subscriptionId: 'sub-<8-char-uuid-prefix>'}` immediately. The
+`delegations notify-when` alias forwards to wait with
+`return:'subscribe'`; default mode is `any`, `--all` switches to
+`all`. Pass `--all` to `wait` for sync-all. `--timeout <seconds>`
+forwards to the tRPC `timeoutMs`. Default is 60 s.
+
+### Commander gotchas observed in Ticket 6
+
+- Variadic positional args (`wait <ids...>`) capture multiple values.
+  The trailing options work normally — `delegations wait a b c
+  --all` is `ids=['a','b','c'], opts={all:true}`.
+- Commander's "unknown command" exit is non-zero by default — no
+  extra config needed for the e2e test #9. Stderr contains either
+  `error: unknown command` or `error: unknown option` depending on
+  the shape, so the test grep is `/(unknown command|unknown
+  option)/i`.
+- `--state` is a single-value option (not variadic). To pass multiple
+  states from the CLI you'd need to extend the parser (today the
+  router accepts `state: 'resolved'` as the synthetic terminal-bucket
+  alias for that exact case).
+
+### `unsubscribe` second-call non-zero exit
+
+`delegationUnsubscribe` now pre-loads
+`store.loadSubscription(chatId, subscriptionId)` and throws
+`TRPCError({code:'NOT_FOUND', ...})` when the subscription file is
+gone. The legacy in-memory `unsubscribe` returned silently. The CLI
+exits 1 on the NOT_FOUND. This is required by the spec §5.5 "a
+second call returns non-zero" — and incidentally also makes
+`delegations unsubscribe <typo>` exit non-zero, which is
+user-friendlier.
+
+### Subagent CLI `waitAndPrintSubagent` helper
+
+`spawn` / `send` (non-async) call this helper after the mutation
+returns. Single `delegationWait.mutate({ids:[id], mode:'any',
+return:'sync', timeoutMs: 60_000})`. If `resolved[0]` is a subagent
+record in `state:'completed'`, the helper then runs
+`subagentTail.query({subagentId})` and pulls the last `role:'agent'`
+message's `content` for the legacy `<subagent_output>...</subagent_
+output>` framing. Other terminal states print `Subagent status:
+<state>` (no body). The polling `do...while` loop is gone — the
+single tRPC `wait` plus a chat-log lookup is enough.
+
+### Test debugging note: predicate races on chat.waitForMessage
+
+While migrating the nested-list lifecycle test I hit a
+non-reproducible issue where `chat.waitForMessage(commandMatching
+(...))` would time out even when `messageBuffer.find(commandMatching
+(...))` matched in the same scope. The buffer dump confirmed the
+matching message was present and the probe returned the right
+record. Switching to a polling loop on `chat.messageBuffer.find(...)`
+(check every 100 ms with a 25-30 s deadline) resolved it reliably.
+The polling form is more verbose but resilient to whatever race was
+happening in the subscription delivery vs `find`-on-existing-buffer
+check inside `waitForMessage`. For new tests that need to assert on
+a specific message in a busy chat, prefer the polling form over
+`waitForMessage`.

@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { createTRPCClient, httpLink } from '@trpc/client';
 import type { AgentRouter as AppRouter, AgentCronJobInput } from '../daemon/api/index.js';
 import { registerSubagentCommands } from './subagent-commands.js';
+import { registerDelegationsCommands } from './delegations-commands.js';
 import { registerHistoryCommand } from './history-command.js';
 
 /**
@@ -336,5 +337,6 @@ program
   });
 
 registerSubagentCommands(program, getClient);
+registerDelegationsCommands(program, getClient);
 
 program.parse(process.argv);

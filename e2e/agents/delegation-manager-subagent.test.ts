@@ -169,26 +169,26 @@ describe('Subagent delegations via DelegationManager (e2e)', () => {
     expect(typeof rec?.resolvedAt).toBe('string');
   }, 30000);
 
-  it('subagentWait returns the completed result via the manager wrapper', async () => {
+  it('delegations wait returns the completed record via the manager wrapper', async () => {
     const chatId = 'chat-wait-wrapper';
     await env.addChat(chatId, 'debug-agent');
     chat = await env.connect(chatId);
 
     // Pair a spawn with an immediate wait so the wait blocks on the
-    // single-id sync path before completion. The CLI `subagents wait` polls
-    // until the wrapped subagentWait reports a terminal status.
+    // single-id sync path before completion. The CLI `delegations wait`
+    // returns once the resolved-set covers the id.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id wait-thin --async "sleep 1 && echo wait-thin-output" && clawmini-lite.js subagents wait wait-thin',
+      'clawmini-lite.js subagents spawn --id wait-thin --async "sleep 1 && echo wait-thin-output" && clawmini-lite.js delegations wait wait-thin',
       { chat: chatId, agent: 'debug-agent' }
     );
 
-    // The parent's outer command_log carries the wait output: the subagent's
-    // last agent-role message (the debug template's echo of the inner sleep).
+    // The parent's outer command_log carries the wait JSON.
     const waitLog = await chat.waitForMessage(
       commandMatching(
         (m) =>
           !m.subagentId &&
-          m.stdout.includes('[DEBUG] sleep 1 && echo wait-thin-output:')
+          m.stdout.includes('"id": "wait-thin"') &&
+          m.stdout.includes('"state": "completed"')
       ),
       20000
     );

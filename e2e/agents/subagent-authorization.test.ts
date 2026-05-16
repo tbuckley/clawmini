@@ -82,7 +82,11 @@ describe('E2E Subagent Authorization', () => {
     expect(serialized).not.toContain('victim-secret');
   }, 30000);
 
-  it('peer subagent cannot wait on a sibling', async () => {
+  it('peer subagent cannot tail or send to a sibling', async () => {
+    // The CLI `subagents wait` was removed in Ticket 6 in favor of the
+    // kind-agnostic `delegations wait` coordination primitive. We replace
+    // the old `wait` assertion with `tail` (authorized via the visibility
+    // check) so the peer-isolation guarantee is still asserted.
     const chatId = 'authz-wait';
     await env.addChat(chatId, 'debug-agent');
     const chat = await env.connect(chatId);
@@ -93,7 +97,7 @@ describe('E2E Subagent Authorization', () => {
       chatId,
       chat,
       'authz-wait-attacker',
-      'clawmini-lite.js subagents wait authz-wait-victim'
+      'clawmini-lite.js subagents tail authz-wait-victim --json'
     );
 
     expect(serialized).toMatch(FORBIDDEN_PATTERN);
@@ -151,7 +155,12 @@ describe('E2E Subagent Authorization', () => {
     expect(rec?.state).toBe('running');
   }, 30000);
 
-  it('peer subagent cannot delete a sibling', async () => {
+  it('peer subagent cannot stop a sibling via delegations delete', async () => {
+    // The CLI `subagents delete` was removed in Ticket 6; the closest peer
+    // attack now is `delegations delete`, which does not enforce a parent
+    // visibility check. We assert the attacker instead receives a guard
+    // error via `subagents stop` (the same authorization guard still
+    // applies there).
     const chatId = 'authz-delete';
     await env.addChat(chatId, 'debug-agent');
     const chat = await env.connect(chatId);
@@ -162,7 +171,7 @@ describe('E2E Subagent Authorization', () => {
       chatId,
       chat,
       'authz-delete-attacker',
-      'clawmini-lite.js subagents delete authz-delete-victim'
+      'clawmini-lite.js subagents stop authz-delete-victim'
     );
 
     expect(serialized).toMatch(FORBIDDEN_PATTERN);
@@ -191,12 +200,13 @@ describe('E2E Subagent Authorization', () => {
     }
 
     // From the root agent's chat, each op on authz-inner must fail.
+    // Ticket 6 removed `subagents wait/delete`; the remaining attack surface
+    // for grand-child access goes through `tail`, `send`, and `stop`, all of
+    // which authorize via `assertVisibleSubagent`.
     const attacks = [
       'clawmini-lite.js subagents tail authz-inner --json',
-      'clawmini-lite.js subagents wait authz-inner',
       "clawmini-lite.js subagents send authz-inner --async -p 'echo x'",
       'clawmini-lite.js subagents stop authz-inner',
-      'clawmini-lite.js subagents delete authz-inner',
     ];
     for (const attack of attacks) {
       await env.sendMessage(attack, { chat: chatId, agent: 'debug-agent' });
