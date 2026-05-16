@@ -86,7 +86,7 @@ describe('Subagent approval gating (e2e)', () => {
     chat = await env.connect(chatId);
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id cross-1 --agent other-agent --async "echo should-not-run-yet"',
+      'clawmini-lite.js subagents spawn --id cross-1 --agent other-agent --delivery notify "echo should-not-run-yet"',
       { chat: chatId, agent: 'debug-agent' }
     );
 
@@ -121,7 +121,7 @@ describe('Subagent approval gating (e2e)', () => {
     chat = await env.connect(chatId);
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id approve-1 --agent other-agent --async "echo approved-then-runs"',
+      'clawmini-lite.js subagents spawn --id approve-1 --agent other-agent --delivery notify "echo approved-then-runs"',
       { chat: chatId, agent: 'debug-agent' }
     );
     await waitForRecord(chatId, 'approve-1', (r) => r.state === 'pending');
@@ -148,7 +148,7 @@ describe('Subagent approval gating (e2e)', () => {
     chat = await env.connect(chatId);
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id reject-1 --agent other-agent --async "echo never-runs"',
+      'clawmini-lite.js subagents spawn --id reject-1 --agent other-agent --delivery notify "echo never-runs"',
       { chat: chatId, agent: 'debug-agent' }
     );
     await waitForRecord(chatId, 'reject-1', (r) => r.state === 'pending');
@@ -178,7 +178,7 @@ describe('Subagent approval gating (e2e)', () => {
 
     // Same agent (debug-agent → debug-agent). No rules in policies.json →
     // built-in `$self → $self` kicks in and the spawn auto-approves.
-    await env.sendMessage('clawmini-lite.js subagents spawn --id self-1 --async "echo self-runs"', {
+    await env.sendMessage('clawmini-lite.js subagents spawn --id self-1 --delivery notify "echo self-runs"', {
       chat: chatId,
       agent: 'debug-agent',
     });
@@ -208,7 +208,7 @@ describe('Subagent approval gating (e2e)', () => {
 
     // Cross-agent edge that would normally be pending now auto-approves.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id star-1 --agent other-agent --async "echo star-runs"',
+      'clawmini-lite.js subagents spawn --id star-1 --agent other-agent --delivery notify "echo star-runs"',
       { chat: chatId, agent: 'debug-agent' }
     );
     await chat.waitForMessage(
@@ -235,7 +235,7 @@ describe('Subagent approval gating (e2e)', () => {
     chat = await env.connect(chatId);
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id self-deny --async "echo self-denied"',
+      'clawmini-lite.js subagents spawn --id self-deny --delivery notify "echo self-denied"',
       { chat: chatId, agent: 'debug-agent' }
     );
     const rec = await waitForRecord(chatId, 'self-deny', (r) => r.state === 'pending');
@@ -260,7 +260,7 @@ describe('Subagent approval gating (e2e)', () => {
     chat = await env.connect(chatId);
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id send-gate --agent other-agent --async "echo send-gate-initial"',
+      'clawmini-lite.js subagents spawn --id send-gate --agent other-agent --delivery notify "echo send-gate-initial"',
       { chat: chatId, agent: 'debug-agent' }
     );
     await chat.waitForMessage(
@@ -274,7 +274,7 @@ describe('Subagent approval gating (e2e)', () => {
     writePoliciesFile({ policies: {}, subagents: [] });
 
     await env.sendMessage(
-      "clawmini-lite.js subagents send send-gate --async -p 'echo send-gate-second'",
+      "clawmini-lite.js subagents send send-gate --delivery notify -p 'echo send-gate-second'",
       { chat: chatId, agent: 'debug-agent' }
     );
 
@@ -344,7 +344,7 @@ describe('Subagent approval gating (e2e)', () => {
     // means writing them through `clawmini-lite.js` from the parent's
     // chat shows the expected stdout under the parent agent's debug echo).
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id prefix-1 --agent coder-2 --async "echo prefix-runs"',
+      'clawmini-lite.js subagents spawn --id prefix-1 --agent coder-2 --delivery notify "echo prefix-runs"',
       { chat: chatId, agent: 'coder-1' }
     );
 

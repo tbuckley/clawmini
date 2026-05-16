@@ -100,30 +100,18 @@ export const RouterConfigSchema = z.union([
 
 export type RouterConfig = z.infer<typeof RouterConfigSchema>;
 
-// @deprecated — kept for one release so an existing `chat-settings.json` from
-// a pre-Ticket 3 daemon still parses. The daemon no longer writes this field;
-// the source of truth is the `DelegationStore`. Will be removed in Ticket 8.
-export const SubagentTrackerSchema = z.looseObject({
-  id: z.string(),
-  agentId: z.string().optional(),
-  sessionId: z.string().optional(),
-  createdAt: z.string(),
-  status: z.enum(['active', 'completed', 'failed']),
-  parentId: z.string().optional(),
-});
-
-/** @deprecated Source of truth is now `DelegationStore` (Ticket 3). */
-export type SubagentTracker = z.infer<typeof SubagentTrackerSchema>;
+// Ticket 8 removed `ChatSettings.subagents` and the matching
+// `SubagentTracker` schema/type. Subagent state lives entirely in the
+// `DelegationStore` (`.clawmini/tmp/delegations/<chatId>/<id>.json`).
+// `ChatSettingsSchema` uses `z.looseObject`, so an old `chat-settings.json`
+// that still carries a `subagents` field will parse without error — the
+// field is simply ignored.
 
 export const ChatSettingsSchema = z.looseObject({
   defaultAgent: z.string().optional(),
   sessions: z.record(z.string(), z.string()).optional(),
   routers: z.array(RouterConfigSchema).optional(),
   jobs: z.array(CronJobSchema).optional(),
-  // @deprecated — see `SubagentTrackerSchema`. Schema field kept for back-compat
-  // with on-disk chat-settings.json from older daemons; not written by the
-  // daemon any more.
-  subagents: z.record(z.string(), SubagentTrackerSchema).optional(),
 });
 
 export type ChatSettings = z.infer<typeof ChatSettingsSchema>;

@@ -25,7 +25,7 @@ describe('E2E Subagents Depth Limit', () => {
     // Three nested spawns: the innermost "echo hi" would run at depth 3,
     // which exceeds the server-side limit.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --async "clawmini-lite.js subagents spawn --async \\"clawmini-lite.js subagents spawn --async \\\\\\"echo hi\\\\\\"\\""',
+      'clawmini-lite.js subagents spawn --delivery notify "clawmini-lite.js subagents spawn --delivery notify \\"clawmini-lite.js subagents spawn --delivery notify \\\\\\"echo hi\\\\\\"\\""',
       { chat: 'chat-limit', agent: 'debug-agent' }
     );
 

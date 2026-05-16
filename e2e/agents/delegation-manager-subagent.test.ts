@@ -32,7 +32,7 @@ describe('Subagent delegations via DelegationManager (e2e)', () => {
 
     // No --id: the daemon mints a 3-char alphanum id via DelegationStore.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --async "sleep 1 && echo spawn-record"',
+      'clawmini-lite.js subagents spawn --delivery notify "sleep 1 && echo spawn-record"',
       { chat: chatId, agent: 'debug-agent' }
     );
 
@@ -86,7 +86,7 @@ describe('Subagent delegations via DelegationManager (e2e)', () => {
     chat = await env.connect(chatId);
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id tail-record --async "echo tail-payload"',
+      'clawmini-lite.js subagents spawn --id tail-record --delivery notify "echo tail-payload"',
       { chat: chatId, agent: 'debug-agent' }
     );
     await chat.waitForMessage(
@@ -115,7 +115,7 @@ describe('Subagent delegations via DelegationManager (e2e)', () => {
     chat = await env.connect(chatId);
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id send-prompt --async "echo first-prompt"',
+      'clawmini-lite.js subagents spawn --id send-prompt --delivery notify "echo first-prompt"',
       { chat: chatId, agent: 'debug-agent' }
     );
     await chat.waitForMessage(
@@ -127,7 +127,7 @@ describe('Subagent delegations via DelegationManager (e2e)', () => {
     expect(before?.prompt).toBe('echo first-prompt');
 
     await env.sendMessage(
-      "clawmini-lite.js subagents send send-prompt --async -p 'echo second-prompt'",
+      "clawmini-lite.js subagents send send-prompt --delivery notify -p 'echo second-prompt'",
       { chat: chatId, agent: 'debug-agent' }
     );
     await chat.waitForMessage(
@@ -150,7 +150,7 @@ describe('Subagent delegations via DelegationManager (e2e)', () => {
     chat = await env.connect(chatId);
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id done-record --async "echo done"',
+      'clawmini-lite.js subagents spawn --id done-record --delivery notify "echo done"',
       { chat: chatId, agent: 'debug-agent' }
     );
     await chat.waitForMessage(
@@ -178,7 +178,7 @@ describe('Subagent delegations via DelegationManager (e2e)', () => {
     // single-id sync path before completion. The CLI `delegations wait`
     // returns once the resolved-set covers the id.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id wait-thin --async "sleep 1 && echo wait-thin-output" && clawmini-lite.js delegations wait wait-thin',
+      'clawmini-lite.js subagents spawn --id wait-thin --delivery notify "sleep 1 && echo wait-thin-output" && clawmini-lite.js delegations wait wait-thin',
       { chat: chatId, agent: 'debug-agent' }
     );
 
@@ -201,7 +201,7 @@ describe('Subagent delegations via DelegationManager (e2e)', () => {
     chat = await env.connect(chatId);
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id stop-failed --async "sleep 30 && echo never"',
+      'clawmini-lite.js subagents spawn --id stop-failed --delivery notify "sleep 30 && echo never"',
       { chat: chatId, agent: 'debug-agent' }
     );
     // Wait for the running state.

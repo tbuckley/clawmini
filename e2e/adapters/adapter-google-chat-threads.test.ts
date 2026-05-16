@@ -27,7 +27,7 @@ import {
  * entry to anchor on.
  */
 const SPAWN_COMMAND = (id: string) =>
-  `clawmini-lite.js subagents spawn --id ${id} --async "echo x"`;
+  `clawmini-lite.js subagents spawn --id ${id} --delivery notify "echo x"`;
 function makeThreadedMessage(opts: {
   space: string;
   messageId: string;
@@ -463,7 +463,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
           space: 'spaces/snap',
           messageId: 'u1',
           threadName: 'spaces/snap/threads/t1',
-          text: 'clawmini-lite.js subagents spawn --id hello-sub --async "sleep 5 && echo hello"',
+          text: 'clawmini-lite.js subagents spawn --id hello-sub --delivery notify "sleep 5 && echo hello"',
         })
       );
 
@@ -617,7 +617,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
           space: 'spaces/roll',
           messageId: 'u1',
           threadName: 'spaces/roll/threads/t1',
-          text: 'clawmini-lite.js subagents spawn --id roll-sub --async "echo roll-output"',
+          text: 'clawmini-lite.js subagents spawn --id roll-sub --delivery notify "echo roll-output"',
         })
       );
       await waitForSubagentComplete(update, create, 'roll-sub');
@@ -688,7 +688,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
           space: 'spaces/deg',
           messageId: 'u1',
           threadName: 'spaces/deg/threads/t1',
-          text: 'clawmini-lite.js subagents spawn --id deg-sub --async "echo hi"',
+          text: 'clawmini-lite.js subagents spawn --id deg-sub --delivery notify "echo hi"',
         })
       );
 
@@ -760,8 +760,8 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
           messageId: 'u1',
           threadName: 'spaces/multi/threads/t1',
           text:
-            'clawmini-lite.js subagents spawn --id multi-a --async "echo A" && ' +
-            'clawmini-lite.js subagents spawn --id multi-b --async "echo B"',
+            'clawmini-lite.js subagents spawn --id multi-a --delivery notify "echo A" && ' +
+            'clawmini-lite.js subagents spawn --id multi-b --delivery notify "echo B"',
         })
       );
 
@@ -795,7 +795,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
       .replace(/• (?:\d+m)?\d+[ms]/g, '• Δs')
       .replace(/\/clawmini-e2e-google-chat-threads-[^/\s"]+/g, '/CLAWMINI_DIR');
 
-    // Both subagents are spawned with `--async`, so they run in parallel and
+    // Both subagents are spawned with `--delivery notify`, so they run in parallel and
     // their events can interleave under load. Assert each lifecycle is
     // present and per-subagent order is preserved (👉 → 👈 → ✅), without
     // pinning the relative order between the two.
@@ -864,7 +864,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
           space: 'spaces/txn',
           messageId: 'u1',
           threadName: 'spaces/txn/threads/t1',
-          text: 'clawmini-lite.js subagents spawn --id txn-sub --async "echo done"',
+          text: 'clawmini-lite.js subagents spawn --id txn-sub --delivery notify "echo done"',
         })
       );
       await waitForSubagentComplete(update, create, 'txn-sub');
@@ -956,7 +956,7 @@ describe('Google Chat Adapter E2E — threaded activity log', () => {
     await env.addChat(opts.chatId, 'debug-agent');
 
     const cronPrompt =
-      'clawmini-lite.js subagents spawn --id cron-sub --async "echo session-ended"';
+      'clawmini-lite.js subagents spawn --id cron-sub --delivery notify "echo session-ended"';
     env.writeChatSettings(opts.chatId, {
       defaultAgent: 'debug-agent',
       routers: [{ use: '@clawmini/session-timeout', with: { timeout: '3s', prompt: cronPrompt } }],

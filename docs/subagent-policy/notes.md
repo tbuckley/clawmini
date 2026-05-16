@@ -1012,6 +1012,99 @@ single tRPC `wait` plus a chat-log lookup is enough.
   4. Drop the `async` branch from `resolveDelivery` in
      `subagent-shared.ts` (just `delivery ?? defaultByDepth`).
 
+### Ticket 8 status (done — final ticket)
+
+What landed:
+
+- **New skill `templates/skills/clawmini-delegations/SKILL.md`** documents the
+  unified mental model (one id space, one lifecycle, two kinds), the fan-out
+  idiom (`--delivery manual` + `delegations notify-when --all`), the
+  suppression rule, and the full `delegations` CLI surface. Cross-links to
+  `clawmini-requests` and `clawmini-subagents`. The template-manifest /
+  walk-templates path picks new skills up automatically — no manifest
+  registration code change needed.
+- **`templates/skills/clawmini-subagents/SKILL.md` rewritten.** All `--async`
+  references are gone; the file now documents `--delivery <manual|notify>`,
+  the approval-gating callout for spawn/send, and one-line pointers to
+  `delegations wait|list|delete` (the legacy `subagents wait|list|delete`
+  subcommand sections are dropped — Ticket 6 already removed them from the
+  CLI).
+- **`templates/skills/clawmini-requests/SKILL.md` updated** to document
+  `--delivery <manual|notify>`. The "What Happens Next" section now covers
+  both the notify path (default; `<notification>` arrives) and the manual
+  path (default for subagent callers; observe explicitly via `delegations
+  wait` / `delegations show`). A one-line note flags that the `subagents`
+  rule list in `policies.json` is user-managed (not reachable through
+  `manage-policies`).
+- **`--async` removed from the CLI.** `src/cli/subagent-commands.ts` no
+  longer accepts `--async` on `spawn` or `send`. The module-scope
+  `asyncDeprecationWarned` flag, `warnAsyncDeprecation()`,
+  `BOTH_FLAGS_WARNING`, and the `async` branch of `resolveCliDelivery` are
+  all gone — the helper is now a minimal `parseDelivery` that only handles
+  `--delivery`.
+- **`--async` removed from the tRPC layer.** `subagentSpawn` and
+  `subagentSend` input schemas drop the `async` z field;
+  `subagent-shared.resolveDelivery` is now
+  `(delivery, depth) => delivery ?? (depth === 0 ? 'notify' : 'manual')`.
+- **`subagentWait` tRPC wrapper deleted.** `src/daemon/api/subagent-router.ts`
+  no longer exports `subagentWait`; the agent router doesn't import or
+  expose it. The CLI's `subagents spawn|send` sync paths already use
+  `delegationWait` directly (Ticket 6), so no callers remained.
+  `src/daemon/api/subagent-router.test.ts` was rewritten to exercise
+  `delegationWait` instead.
+- **`ChatSettings.subagents` + `SubagentTracker` removed from
+  `src/shared/config.ts`.** `ChatSettingsSchema` uses `z.looseObject`, so an
+  old `chat-settings.json` carrying a stale `subagents` field still parses
+  — the field is simply ignored at read time. The
+  `SubagentTrackerSchema`/`SubagentTracker` type are gone entirely. The
+  `DelegationStore` is the only source of truth for subagent state.
+- **`PolicyRequest` / `RequestState` removed from `src/shared/policies.ts`.**
+  `executeRequest` in `policy-utils.ts` now takes a structural
+  `{args, fileMappings}` input (defined as a small local interface
+  `ExecuteRequestInput`). `executePolicyDelegation` passes
+  `{args, fileMappings}` straight from the delegation — no `PolicyRequest`
+  rebuild boilerplate.
+- **Daemon-start cleanup is now just `delegationManager.wipeAll()`.** The
+  legacy `RequestStore.cleanupCompleted` and `cleanOrphanedSubagents` paths
+  were already removed by Tickets 2 / 3; the comment in
+  `src/daemon/index.ts` was tightened to reflect that this is the
+  authoritative single wipe.
+- **E2E tests updated.** Every `--async` use across `e2e/` was rewritten to
+  `--delivery notify`: `subagent-lifecycle`, `session-timeout-subagents`,
+  `subagent-authorization`, `subagent-env`, `subagent-approval`,
+  `subagents-depth`, `delegation-manager-subagent`, `lite-history`,
+  `slash-stop`, `slash-policies`, `policy-approval-anchor`,
+  `adapter-google-chat-threads`. The `delegation-delivery.test.ts` "—
+  `--async` still works but emits a deprecation warning" case was inverted
+  to assert that the flag is now refused (Commander prints
+  `unknown option` and exits non-zero). The matching comments were tidied.
+- **New e2e test** `e2e/cli/skills-delegations.test.ts` asserts (1) `init`
+  exports `clawmini-delegations/SKILL.md` into the agent skills dir; (2) the
+  subagents skill mentions `--delivery` + the `delegations` group + approval
+  callout, and no longer mentions `--async` or the dropped subcommand
+  sections; (3) the requests skill mentions `--delivery` plus
+  `delegations wait` / `delegations show`.
+
+What's gone vs Ticket 7:
+
+- No more `--async` flag anywhere — CLI, tRPC, helper, e2e tests.
+- No more `subagentWait` endpoint.
+- No more `ChatSettings.subagents` schema field.
+- No more `SubagentTracker` type/schema.
+- No more `PolicyRequest` / `RequestState` types.
+
+What's left of the old surface (intentional, documented in skills):
+
+- `subagents spawn|send|stop|tail` still exist. The kind-agnostic
+  observation surface (`wait|list|show|delete|notify-when|unsubscribe`) is
+  all under `delegations`.
+- `subagentList` tRPC endpoint is preserved (Ticket 6 note: still backs
+  the legacy `--blocking` filter for back-compat). It is **not** exposed
+  via the CLI.
+
+Final validation: `npm run validate` clean (128 e2e files, 944 tests, 1
+skipped; web suite 10/10 green).
+
 ### Test debugging note: predicate races on chat.waitForMessage
 
 While migrating the nested-list lifecycle test I hit a

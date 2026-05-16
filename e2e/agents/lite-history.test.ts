@@ -233,7 +233,7 @@ describe('E2E Lite History', () => {
     // Spawn an async subagent whose only job is to call `clawmini-lite history`.
     // The CLI inside the subagent uses CLAW_API_TOKEN with subagentId set.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id hist-test-sub --async "clawmini-lite.js history"',
+      'clawmini-lite.js subagents spawn --id hist-test-sub --delivery notify "clawmini-lite.js history"',
       { chat: 'hist-sub-chat', agent: 'debug-agent' }
     );
 

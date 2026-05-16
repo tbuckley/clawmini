@@ -4,7 +4,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { pathIsInsideDir } from '../shared/utils/fs.js';
-import type { PolicyRequest, PolicyDefinition } from '../shared/policies.js';
+import type { PolicyDefinition } from '../shared/policies.js';
 import { resolveAgentDir } from './api/router-utils.js';
 import {
   getWorkspaceRoot,
@@ -220,8 +220,16 @@ export function executeSafe(
   });
 }
 
+// Structural input — any object carrying `args` and `fileMappings` works.
+// Today's caller is `executePolicyDelegation` (passes a `PolicyDelegation`
+// directly); the legacy `PolicyRequest` type was removed in Ticket 8.
+export interface ExecuteRequestInput {
+  args: string[];
+  fileMappings: Record<string, string>;
+}
+
 export async function executeRequest(
-  request: PolicyRequest,
+  request: ExecuteRequestInput,
   policy: PolicyDefinition,
   cwd?: string
 ): Promise<{ stdout: string; stderr: string; exitCode: number; commandStr: string }> {

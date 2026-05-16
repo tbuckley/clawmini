@@ -229,7 +229,6 @@ export const fetchPendingMessages = apiProcedure.mutation(async ({ ctx }) => {
 import {
   subagentSpawn,
   subagentSend,
-  subagentWait,
   subagentStop,
   subagentDelete,
   subagentList,
@@ -259,7 +258,6 @@ export const agentRouter = router({
   ping,
   subagentSpawn,
   subagentSend,
-  subagentWait,
   subagentStop,
   subagentDelete,
   subagentList,

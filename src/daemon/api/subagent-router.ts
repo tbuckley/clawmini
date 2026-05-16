@@ -10,55 +10,11 @@ import type { SubagentDelegation } from '../../shared/delegations.js';
 // `subagentSpawn` and `subagentSend` live in `subagent-creation.ts` because
 // they share approval-gating helpers and would push this file over the
 // `max-lines: 300` ESLint rule. The router barrel (`api/index.ts`) imports
-// them from there. The remaining endpoints (wait/stop/delete/list/tail) live
-// here.
+// them from there. The remaining endpoints (stop/delete/list/tail) live
+// here. Ticket 8 removed `subagentWait` — callers use the kind-agnostic
+// `delegationWait` instead.
 
 export { subagentSpawn, subagentSend } from './subagent-creation.js';
-
-export const subagentWait = apiProcedure
-  .input(z.object({ subagentId: z.string() }))
-  .mutation(async ({ input, ctx }) => {
-    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
-    const chatId = ctx.tokenPayload.chatId;
-    const callerSubagentId = ctx.tokenPayload.subagentId;
-
-    // Authorize before waiting so an unauthorized caller fails fast (matches
-    // the legacy behavior even though the wait itself is now generic).
-    await assertVisibleSubagent(callerSubagentId, input.subagentId, chatId);
-
-    // Thin wrapper over the manager's wait. Ticket 5 generalises wait to
-    // multi-id / mode=all / subscribe; for now we only need single-id sync.
-    const result = await delegationManager.wait({
-      ids: [input.subagentId],
-      mode: 'any',
-      return: 'sync',
-      chatId,
-      timeoutMs: 60_000,
-    });
-
-    const record = result.resolved[0] ?? result.pending[0];
-    if (!record || record.kind !== 'subagent') {
-      // Either the id vanished (deleted mid-flight) or the wait timed out
-      // without a record. Surface as still-active so the CLI's poll loop
-      // can retry — matches today's timeout return.
-      return { status: 'active' as const, output: undefined };
-    }
-    if (record.state === 'running' || record.state === 'pending') {
-      return { status: 'active' as const, output: undefined };
-    }
-    if (record.state === 'completed') {
-      // Today's CLI expects the subagent's last agent-role message inline.
-      const logger = createChatLogger(chatId, input.subagentId);
-      const lastLogMessage = await logger.findLastMessage((m) => m.role === 'agent');
-      let outputContent: string | undefined;
-      if (lastLogMessage && 'content' in lastLogMessage) {
-        outputContent = lastLogMessage.content;
-      }
-      return { status: 'completed' as const, output: outputContent };
-    }
-    // 'failed' or 'rejected'
-    return { status: record.state, output: undefined };
-  });
 
 export const subagentStop = apiProcedure
   .input(z.object({ subagentId: z.string() }))

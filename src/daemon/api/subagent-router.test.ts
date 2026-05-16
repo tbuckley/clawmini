@@ -25,15 +25,14 @@ vi.mock('../agent/chat-logger.js', () => ({
   })),
 }));
 
-// Ticket 3 rewires `subagentWait` to `DelegationManager.wait` instead of the
-// legacy `DAEMON_EVENT_MESSAGE_APPENDED` scrape. The tests below confirm:
-//   * Wait fires for a delegation that resolves out-of-band.
-//   * The fast-path early-return when the record is already terminal does
-//     not leak any event listeners.
+// Ticket 8 removed the `subagentWait` tRPC wrapper. The kind-agnostic
+// `delegationWait` is now the only wait endpoint; the CLI's `subagents
+// spawn|send` (non-async) call it directly. These tests assert the new
+// wait endpoint still resolves out-of-band and doesn't leak listeners.
 
 const TEST_DIR = path.join(process.cwd(), '.test-subagent-router');
 
-describe('subagentWait (delegation-backed)', () => {
+describe('delegationWait (subagent-backed)', () => {
   beforeEach(async () => {
     vi.mocked(workspace.getClawminiDir).mockReturnValue(TEST_DIR);
     vi.mocked(workspace.getWorkspaceRoot).mockReturnValue(TEST_DIR);
@@ -72,7 +71,12 @@ describe('subagentWait (delegation-backed)', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const caller = agentRouter.createCaller(ctx as any);
 
-    const resultPromise = caller.subagentWait({ subagentId });
+    const resultPromise = caller.delegationWait({
+      ids: [subagentId],
+      mode: 'any',
+      return: 'sync',
+      timeoutMs: 1_000,
+    });
 
     // Resolve out-of-band — the wait should pick it up via the
     // DAEMON_EVENT_DELEGATION_RESOLVED listener.
@@ -81,11 +85,17 @@ describe('subagentWait (delegation-backed)', () => {
     }, 20);
 
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Timeout - event missed')), 1000)
+      setTimeout(() => reject(new Error('Timeout - event missed')), 1500)
     );
 
-    const result = await Promise.race([resultPromise, timeoutPromise]);
-    expect(result).toEqual({ status: 'completed', output: 'Mock output' });
+    const result = (await Promise.race([resultPromise, timeoutPromise])) as {
+      kind: 'sync';
+      resolved: Array<{ id: string; state: string }>;
+      pending: Array<{ id: string }>;
+    };
+    expect(result.kind).toBe('sync');
+    expect(result.resolved[0]?.id).toBe(subagentId);
+    expect(result.resolved[0]?.state).toBe('completed');
   });
 
   it('does not leave any DELEGATION_RESOLVED listeners after an early return', async () => {
@@ -113,8 +123,16 @@ describe('subagentWait (delegation-backed)', () => {
     const initialListeners = daemonEvents.listenerCount(DAEMON_EVENT_DELEGATION_RESOLVED);
     const messageListeners = daemonEvents.listenerCount(DAEMON_EVENT_MESSAGE_APPENDED);
 
-    const result = await caller.subagentWait({ subagentId });
-    expect(result).toEqual({ status: 'completed', output: 'Mock output' });
+    const result = await caller.delegationWait({
+      ids: [subagentId],
+      mode: 'any',
+      return: 'sync',
+      timeoutMs: 1_000,
+    });
+    expect(result.kind).toBe('sync');
+    if (result.kind === 'sync') {
+      expect(result.resolved[0]?.id).toBe(subagentId);
+    }
 
     expect(daemonEvents.listenerCount(DAEMON_EVENT_DELEGATION_RESOLVED)).toBe(initialListeners);
     expect(daemonEvents.listenerCount(DAEMON_EVENT_MESSAGE_APPENDED)).toBe(messageListeners);

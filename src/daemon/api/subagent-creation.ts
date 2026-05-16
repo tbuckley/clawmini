@@ -23,7 +23,6 @@ export const subagentSpawn = apiProcedure
       subagentId: z.string().optional(),
       targetAgentId: z.string().optional(),
       prompt: z.string(),
-      async: z.boolean().optional(),
       delivery: z.enum(['notify', 'manual']).optional(),
     })
   )
@@ -42,7 +41,7 @@ export const subagentSpawn = apiProcedure
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'Max subagent depth reached' });
     }
 
-    const delivery = resolveDelivery(input.delivery, input.async, depth);
+    const delivery = resolveDelivery(input.delivery, depth);
     const workspaceRoot = getWorkspaceRoot(process.cwd());
 
     // Approval gating: spec §4.4. The check fires on every spawn AND every
@@ -132,7 +131,6 @@ export const subagentSend = apiProcedure
     z.object({
       subagentId: z.string(),
       prompt: z.string(),
-      async: z.boolean().optional(),
       delivery: z.enum(['notify', 'manual']).optional(),
     })
   )
@@ -145,7 +143,7 @@ export const subagentSend = apiProcedure
     const sub = await assertVisibleSubagent(parentId, input.subagentId, chatId);
 
     const depth = await getSubagentDepth(chatId, parentId);
-    const delivery = resolveDelivery(input.delivery, input.async, depth);
+    const delivery = resolveDelivery(input.delivery, depth);
     const workspaceRoot = getWorkspaceRoot(process.cwd());
 
     // Same approval edge as spawn (§4.4 — "per-message approval"). Even

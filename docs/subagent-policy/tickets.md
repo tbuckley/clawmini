@@ -610,7 +610,7 @@ Add to `e2e/agents/delegation-delivery.test.ts`:
 
 ---
 
-## Ticket 8 — Skills + final cleanup
+## Ticket 8 — Skills + final cleanup — COMPLETE
 
 **Goal.** Update the skill manifests so agents see the new CLI in their
 context, and remove the deprecated wrappers/aliases.

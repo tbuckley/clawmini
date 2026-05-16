@@ -135,7 +135,7 @@ describe('/stop Router E2E', () => {
     chat = await env.connect('stop-sub-async');
 
     const cmd = `echo $$ > ${tmp}/pid && sleep 5 && touch ${tmp}/leaked`;
-    await env.sendMessage(`clawmini-lite.js subagents spawn --async '${cmd}'`, {
+    await env.sendMessage(`clawmini-lite.js subagents spawn --delivery notify '${cmd}'`, {
       chat: 'stop-sub-async',
       agent: 'debug-agent',
     });
@@ -159,8 +159,9 @@ describe('/stop Router E2E', () => {
     await env.addChat('stop-sub-sync', 'debug-agent');
     chat = await env.connect('stop-sub-sync');
 
-    // No --async flag: the parent's lite invocation blocks on subagentWait,
-    // so use noWait on sendMessage to avoid blocking the test runner too.
+    // No --delivery flag at root: defaults to notify on the server, but
+    // the CLI still sync-waits via delegationWait (subagent-commands.ts).
+    // Use noWait on sendMessage to avoid blocking the test runner too.
     const cmd = `echo $$ > ${tmp}/pid && sleep 5 && touch ${tmp}/leaked`;
     await env.sendMessage(`clawmini-lite.js subagents spawn '${cmd}'`, {
       chat: 'stop-sub-sync',
@@ -182,7 +183,7 @@ describe('/stop Router E2E', () => {
     expect(pidIsAlive(pid)).toBe(false);
 
     // Recovery: a sync spawn can wedge the parent if /stop fails to unblock
-    // the parent's subagentWait poll. A follow-up message proves it didn't.
+    // the parent's delegationWait. A follow-up message proves it didn't.
     await env.sendMessage('echo RECOVERED_SYNC', {
       chat: 'stop-sub-sync',
       agent: 'debug-agent',
@@ -204,10 +205,10 @@ describe('/stop Router E2E', () => {
     const inner = `echo \\$\\$ > ${tmp}/B.pid && sleep 5 && touch ${tmp}/B.leaked`;
     const outer =
       `echo $$ > ${tmp}/A.pid && ` +
-      `clawmini-lite.js subagents spawn --async "${inner}" && ` +
+      `clawmini-lite.js subagents spawn --delivery notify "${inner}" && ` +
       `sleep 5 && touch ${tmp}/A.leaked`;
 
-    await env.sendMessage(`clawmini-lite.js subagents spawn --async '${outer}'`, {
+    await env.sendMessage(`clawmini-lite.js subagents spawn --delivery notify '${outer}'`, {
       chat: 'stop-sub-nested',
       agent: 'debug-agent',
     });

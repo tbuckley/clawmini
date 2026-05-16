@@ -9,19 +9,13 @@ import type { SubagentDelegation, DeliveryMode } from '../../shared/delegations.
 export const MAX_SUBAGENT_DEPTH = 2;
 
 /**
- * Map the legacy boolean `async` flag to the new `delivery` mode. Spec §3.3:
+ * Resolve the `delivery` mode. Spec §3.3:
  *   - explicit `delivery` wins,
- *   - else `async: true → 'notify'`, `async: false → 'manual'`,
  *   - else default by depth (root → 'notify', subagent → 'manual').
- * `async` survives one release as a deprecated alias (see Ticket 8).
+ * Ticket 8 removed the deprecated `async` boolean alias.
  */
-export function resolveDelivery(
-  delivery: DeliveryMode | undefined,
-  asyncFlag: boolean | undefined,
-  depth: number
-): DeliveryMode {
+export function resolveDelivery(delivery: DeliveryMode | undefined, depth: number): DeliveryMode {
   if (delivery !== undefined) return delivery;
-  if (asyncFlag !== undefined) return asyncFlag ? 'notify' : 'manual';
   return depth === 0 ? 'notify' : 'manual';
 }
 

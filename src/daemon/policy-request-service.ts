@@ -23,22 +23,11 @@ export async function executePolicyDelegation(
   policy: PolicyDefinition,
   cwd?: string
 ): Promise<PolicyExecutionResult> {
-  // executeRequest accepts a structural subset (commandName/args/fileMappings),
-  // which PolicyDelegation satisfies. Cast at this single boundary so callers
-  // can keep using the delegation type throughout.
+  // `executeRequest` now takes a structural `{args, fileMappings}` (Ticket 8
+  // dropped the legacy `PolicyRequest` type), which the delegation satisfies
+  // directly — no rebuild needed.
   return executeRequest(
-    {
-      id: delegation.id,
-      commandName: delegation.commandName,
-      args: delegation.args,
-      fileMappings: delegation.fileMappings,
-      ...(delegation.cwd ? { cwd: delegation.cwd } : {}),
-      state: 'Pending',
-      createdAt: Date.parse(delegation.createdAt) || Date.now(),
-      chatId: delegation.chatId,
-      agentId: delegation.agentId,
-      ...(delegation.parentId ? { subagentId: delegation.parentId } : {}),
-    },
+    { args: delegation.args, fileMappings: delegation.fileMappings },
     policy,
     cwd
   );

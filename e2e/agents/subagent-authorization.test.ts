@@ -30,7 +30,7 @@ describe('E2E Subagent Authorization', () => {
     id: string,
     body: string
   ): Promise<void> {
-    await env.sendMessage(`clawmini-lite.js subagents spawn --id ${id} --async "${body}"`, {
+    await env.sendMessage(`clawmini-lite.js subagents spawn --id ${id} --delivery notify "${body}"`, {
       chat: chatId,
       agent: 'debug-agent',
     });
@@ -51,7 +51,7 @@ describe('E2E Subagent Authorization', () => {
     body: string
   ): Promise<string> {
     await env.sendMessage(
-      `clawmini-lite.js subagents spawn --id ${attackerId} --async "${body}"`,
+      `clawmini-lite.js subagents spawn --id ${attackerId} --delivery notify "${body}"`,
       { chat: chatId, agent: 'debug-agent' }
     );
     // Wait for ANY command log from the attacker — we inspect it after.
@@ -114,7 +114,7 @@ describe('E2E Subagent Authorization', () => {
       chatId,
       chat,
       'authz-send-attacker',
-      "clawmini-lite.js subagents send authz-send-victim --async -p 'echo injected'"
+      "clawmini-lite.js subagents send authz-send-victim --delivery notify -p 'echo injected'"
     );
 
     expect(serialized).toMatch(FORBIDDEN_PATTERN);
@@ -133,7 +133,7 @@ describe('E2E Subagent Authorization', () => {
     // Long-running victim so an unauthorized stop would be observable via
     // tracker state.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id authz-stop-victim --async "sleep 5 && echo victim-survived"',
+      'clawmini-lite.js subagents spawn --id authz-stop-victim --delivery notify "sleep 5 && echo victim-survived"',
       { chat: chatId, agent: 'debug-agent' }
     );
     for (let i = 0; i < 50; i++) {
@@ -189,7 +189,7 @@ describe('E2E Subagent Authorization', () => {
 
     // Outer spawns inner and stays alive long enough for us to observe state.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id authz-outer --async "clawmini-lite.js subagents spawn --id authz-inner --async \\"echo inner-done\\" && sleep 2"',
+      'clawmini-lite.js subagents spawn --id authz-outer --delivery notify "clawmini-lite.js subagents spawn --id authz-inner --delivery notify \\"echo inner-done\\" && sleep 2"',
       { chat: chatId, agent: 'debug-agent' }
     );
     // Wait for inner to land in the delegation tree.
@@ -205,7 +205,7 @@ describe('E2E Subagent Authorization', () => {
     // which authorize via `assertVisibleSubagent`.
     const attacks = [
       'clawmini-lite.js subagents tail authz-inner --json',
-      "clawmini-lite.js subagents send authz-inner --async -p 'echo x'",
+      "clawmini-lite.js subagents send authz-inner --delivery notify -p 'echo x'",
       'clawmini-lite.js subagents stop authz-inner',
     ];
     for (const attack of attacks) {
@@ -230,7 +230,7 @@ describe('E2E Subagent Authorization', () => {
     // Outer spawns inner, then tails inner's log — inner.parentId === outer,
     // caller token.subagentId === outer, so access is allowed.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id pos-outer --async "clawmini-lite.js subagents spawn --id pos-inner --async \\"echo inner-visible\\" && sleep 1 && clawmini-lite.js subagents tail pos-inner --json"',
+      'clawmini-lite.js subagents spawn --id pos-outer --delivery notify "clawmini-lite.js subagents spawn --id pos-inner --delivery notify \\"echo inner-visible\\" && sleep 1 && clawmini-lite.js subagents tail pos-inner --json"',
       { chat: chatId, agent: 'debug-agent' }
     );
 

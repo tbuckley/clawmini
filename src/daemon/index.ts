@@ -145,12 +145,11 @@ export async function initDaemon() {
     });
   });
 
-  // Wipe the unified delegations tree on daemon start (Ticket 1+). Tickets 2
-  // and 3 migrated the policy and subagent code paths onto this single store,
-  // so `wipeAll` is now the only startup cleanup we need — no more
-  // `RequestStore.cleanupCompleted` and no more `cleanOrphanedSubagents`
-  // walk over `ChatSettings.subagents`. Per spec §5.6 "Lifecycle invariants":
-  // restart is treated as a clean slate for delegations.
+  // Wipe the unified delegations tree on daemon start. Per spec §5.6
+  // "Lifecycle invariants", restart is a clean slate for delegations —
+  // `delegationManager.wipeAll()` is the **only** startup cleanup since
+  // Ticket 8 (the legacy `RequestStore.cleanupCompleted` and
+  // `cleanOrphanedSubagents` paths are gone — see Tickets 2 and 3).
   try {
     await delegationManager.wipeAll();
   } catch (err) {

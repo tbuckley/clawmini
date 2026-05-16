@@ -60,7 +60,7 @@ describe('Policy approval externalRef anchor (e2e)', () => {
     try {
       // Phase 1: have the agent create a policy request via clawmini-lite,
       // matching the existing slash-policies e2e harness.
-      await env.sendMessage('clawmini-lite.js request echo-policy --async', {
+      await env.sendMessage('clawmini-lite.js request echo-policy --delivery notify', {
         chat: 'chat-anchor',
         agent: 'debug-agent',
       });

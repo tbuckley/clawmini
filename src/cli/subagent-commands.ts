@@ -9,43 +9,18 @@ import type { AgentRouter as AppRouter } from '../daemon/api/index.js';
 // `delegationWait` once and unwrap the subagent's last agent reply for the
 // legacy `<subagent_output>` output.
 //
-// Ticket 7: `--delivery <manual|notify>` is the canonical delivery selector
-// (spec §3.3, §5.5). The legacy `--async` boolean survives one release as a
-// deprecated alias; passing both prefers `--delivery` and prints a warning to
-// stderr. Ticket 8 will remove `--async` entirely.
+// Ticket 7 introduced `--delivery <manual|notify>` as the canonical delivery
+// selector (spec §3.3, §5.5). Ticket 8 removes the deprecated `--async`
+// boolean entirely — `--delivery` is now the only flag.
 
 type DeliveryMode = 'manual' | 'notify';
 
-const ASYNC_DEPRECATION_MESSAGE =
-  '[deprecated] --async will be removed in a future release; use --delivery <manual|notify>.';
-
-let asyncDeprecationWarned = false;
-function warnAsyncDeprecation(): void {
-  if (asyncDeprecationWarned) return;
-  asyncDeprecationWarned = true;
-  process.stderr.write(`${ASYNC_DEPRECATION_MESSAGE}\n`);
-}
-
-const BOTH_FLAGS_WARNING = '[warning] --delivery overrides --async; ignoring --async.\n';
-
-function resolveCliDelivery(opts: {
-  delivery?: string;
-  async?: boolean;
-}): DeliveryMode | undefined {
-  if (opts.delivery !== undefined) {
-    if (opts.delivery !== 'manual' && opts.delivery !== 'notify') {
-      throw new Error(`--delivery must be 'manual' or 'notify' (got '${opts.delivery}')`);
-    }
-    if (opts.async !== undefined) {
-      process.stderr.write(BOTH_FLAGS_WARNING);
-    }
-    return opts.delivery;
+function parseDelivery(value: string | undefined): DeliveryMode | undefined {
+  if (value === undefined) return undefined;
+  if (value !== 'manual' && value !== 'notify') {
+    throw new Error(`--delivery must be 'manual' or 'notify' (got '${value}')`);
   }
-  if (opts.async !== undefined) {
-    warnAsyncDeprecation();
-    return opts.async ? 'notify' : 'manual';
-  }
-  return undefined;
+  return value;
 }
 
 function printManualHint(id: string): void {
@@ -67,11 +42,10 @@ export function registerSubagentCommands(
       '--delivery <mode>',
       "How resolution is delivered: 'notify' (default for root) appends a <notification>; 'manual' (default for subagents) requires `delegations wait`."
     )
-    .option('--async', '[deprecated] Use --delivery notify; will be removed.')
     .action(async (message, options) => {
       try {
         const client = getClient();
-        const delivery = resolveCliDelivery(options);
+        const delivery = parseDelivery(options.delivery);
         const result = await client.subagentSpawn.mutate({
           targetAgentId: options.agent,
           prompt: message,
@@ -106,11 +80,10 @@ export function registerSubagentCommands(
       '--delivery <mode>',
       "How resolution is delivered: 'notify' (default for root) appends a <notification>; 'manual' (default for subagents) requires `delegations wait`."
     )
-    .option('--async', '[deprecated] Use --delivery notify; will be removed.')
     .action(async (subagentId, options) => {
       try {
         const client = getClient();
-        const delivery = resolveCliDelivery(options);
+        const delivery = parseDelivery(options.delivery);
         const result = await client.subagentSend.mutate({
           subagentId,
           prompt: options.prompt,
@@ -122,15 +95,13 @@ export function registerSubagentCommands(
           printManualHint(subagentId);
           return;
         }
-        if (delivery === 'notify' || (delivery === undefined && options.async)) {
+        if (delivery === 'notify') {
           // The mutation already returned; the subagent runs asynchronously
           // and will append its own <notification> on completion. Nothing
           // more to do here.
           return;
         }
-        if (!options.async) {
-          await waitAndPrintSubagent(client, subagentId);
-        }
+        await waitAndPrintSubagent(client, subagentId);
       } catch (err) {
         console.error('Error:', err instanceof Error ? err.message : err);
         process.exit(1);

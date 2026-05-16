@@ -30,7 +30,7 @@ describe('E2E Subagent Lifecycle', () => {
     chat = await env.connect('send-chat');
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id send-sub --async "echo first-msg"',
+      'clawmini-lite.js subagents spawn --id send-sub --delivery notify "echo first-msg"',
       { chat: 'send-chat', agent: 'debug-agent' }
     );
     // First message through the subagent runs via `new` (no SESSION_ID yet).
@@ -38,7 +38,7 @@ describe('E2E Subagent Lifecycle', () => {
       commandMatching((m) => !!m.subagentId && m.stdout.includes('[DEBUG] echo first-msg:'))
     );
 
-    await env.sendMessage('clawmini-lite.js subagents send send-sub --async -p "echo second-msg"', {
+    await env.sendMessage('clawmini-lite.js subagents send send-sub --delivery notify -p "echo second-msg"', {
       chat: 'send-chat',
       agent: 'debug-agent',
     });
@@ -54,7 +54,7 @@ describe('E2E Subagent Lifecycle', () => {
     chat = await env.connect('wait-chat');
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id wait-sub --async "echo wait-complete"',
+      'clawmini-lite.js subagents spawn --id wait-sub --delivery notify "echo wait-complete"',
       { chat: 'wait-chat', agent: 'debug-agent' }
     );
     await chat.waitForMessage(
@@ -88,7 +88,7 @@ describe('E2E Subagent Lifecycle', () => {
 
     // Long-running subagent command so we can stop it mid-flight.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id stop-sub --async "sleep 30 && echo should-not-print"',
+      'clawmini-lite.js subagents spawn --id stop-sub --delivery notify "sleep 30 && echo should-not-print"',
       { chat: 'stop-chat', agent: 'debug-agent' }
     );
     for (let i = 0; i < 50; i++) {
@@ -136,7 +136,7 @@ describe('E2E Subagent Lifecycle', () => {
     chat = await env.connect('delete-chat');
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id del-sub --async "echo delete-me"',
+      'clawmini-lite.js subagents spawn --id del-sub --delivery notify "echo delete-me"',
       { chat: 'delete-chat', agent: 'debug-agent' }
     );
     await chat.waitForMessage(
@@ -164,7 +164,7 @@ describe('E2E Subagent Lifecycle', () => {
     await env.addChat('list-chat', 'debug-agent');
     chat = await env.connect('list-chat');
 
-    await env.sendMessage('clawmini-lite.js subagents spawn --id list-a --async "echo a"', {
+    await env.sendMessage('clawmini-lite.js subagents spawn --id list-a --delivery notify "echo a"', {
       chat: 'list-chat',
       agent: 'debug-agent',
     });
@@ -172,7 +172,7 @@ describe('E2E Subagent Lifecycle', () => {
       commandMatching((m) => !!m.subagentId && m.stdout.includes('[DEBUG] echo a:'))
     );
 
-    await env.sendMessage('clawmini-lite.js subagents spawn --id list-b --async "echo b"', {
+    await env.sendMessage('clawmini-lite.js subagents spawn --id list-b --delivery notify "echo b"', {
       chat: 'list-chat',
       agent: 'debug-agent',
     });
@@ -201,7 +201,7 @@ describe('E2E Subagent Lifecycle', () => {
     chat = await env.connect('tail-chat');
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id tail-sub --async "echo tail-content"',
+      'clawmini-lite.js subagents spawn --id tail-sub --delivery notify "echo tail-content"',
       { chat: 'tail-chat', agent: 'debug-agent' }
     );
     await chat.waitForMessage(
@@ -239,7 +239,7 @@ describe('E2E Subagent Lifecycle', () => {
     // and then calls `delegations list --json`. From outer-sub's perspective,
     // only inner-sub should appear (parentId === outer-sub).
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id outer-sub --async "clawmini-lite.js subagents spawn --id inner-sub --async \\"echo inner-done\\" && sleep 3 && clawmini-lite.js delegations list --state completed --json"',
+      'clawmini-lite.js subagents spawn --id outer-sub --delivery notify "clawmini-lite.js subagents spawn --id inner-sub --delivery notify \\"echo inner-done\\" && sleep 3 && clawmini-lite.js delegations list --state completed --json"',
       { chat: 'nested-list-chat', agent: 'debug-agent' }
     );
 
@@ -305,7 +305,7 @@ describe('E2E Subagent Lifecycle', () => {
     // echo so the test can confirm the result threaded back to sync-outer's
     // stdout.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id sync-outer --async "clawmini-lite.js subagents spawn --id sync-inner --delivery notify \\"echo sync-value\\" && clawmini-lite.js delegations wait sync-inner && clawmini-lite.js subagents tail sync-inner"',
+      'clawmini-lite.js subagents spawn --id sync-outer --delivery notify "clawmini-lite.js subagents spawn --id sync-inner --delivery notify \\"echo sync-value\\" && clawmini-lite.js delegations wait sync-inner && clawmini-lite.js subagents tail sync-inner"',
       { chat: 'sync-chat', agent: 'debug-agent' }
     );
 
@@ -332,7 +332,7 @@ describe('E2E Subagent Lifecycle', () => {
     // of delegationWait (not the synchronous early-return hit by the
     // `wait returns the completed subagent record` test above).
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id wait-before-sub --async "sleep 3 && echo slow-done" && clawmini-lite.js delegations wait wait-before-sub',
+      'clawmini-lite.js subagents spawn --id wait-before-sub --delivery notify "sleep 3 && echo slow-done" && clawmini-lite.js delegations wait wait-before-sub',
       { chat: 'wait-before-chat', agent: 'debug-agent' }
     );
 
@@ -361,7 +361,7 @@ describe('E2E Subagent Lifecycle', () => {
     // executeSubagent injects a <notification> message into the parent's
     // session via executeDirectMessage (subagent-utils.ts:101).
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id notify-busy-sub --async "echo notify-done-early" && sleep 2 && echo parent-still-working',
+      'clawmini-lite.js subagents spawn --id notify-busy-sub --delivery notify "echo notify-done-early" && sleep 2 && echo parent-still-working',
       { chat: 'notify-busy-chat', agent: 'debug-agent' }
     );
 
@@ -383,7 +383,7 @@ describe('E2E Subagent Lifecycle', () => {
     // finishes ~2s later. The async completion path still injects the
     // notification into the parent session.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id notify-idle-sub --async "sleep 2 && echo late-done"',
+      'clawmini-lite.js subagents spawn --id notify-idle-sub --delivery notify "sleep 2 && echo late-done"',
       { chat: 'notify-idle-chat', agent: 'debug-agent' }
     );
     // Confirm parent has returned (spawn CLI prints this line immediately
@@ -410,7 +410,7 @@ describe('E2E Subagent Lifecycle', () => {
     // Spawn two async subagents, then wait on both with --all. The wait
     // call prints `{resolved: [...], pending: []}` JSON containing both ids.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id two-a --async "echo both-output-a" && clawmini-lite.js subagents spawn --id two-b --async "echo both-output-b" && clawmini-lite.js delegations wait two-a two-b --all',
+      'clawmini-lite.js subagents spawn --id two-a --delivery notify "echo both-output-a" && clawmini-lite.js subagents spawn --id two-b --delivery notify "echo both-output-b" && clawmini-lite.js delegations wait two-a two-b --all',
       { chat: 'two-wait-chat', agent: 'debug-agent' }
     );
 
@@ -437,9 +437,9 @@ describe('E2E Subagent Lifecycle', () => {
     // block-done.
     await env.sendMessage(
       [
-        'clawmini-lite.js subagents spawn --id block-outer --async',
-        '"clawmini-lite.js subagents spawn --id block-done --async \\"echo done-fast\\"',
-        '&& clawmini-lite.js subagents spawn --id block-active --async \\"sleep 3 && echo late\\"',
+        'clawmini-lite.js subagents spawn --id block-outer --delivery notify',
+        '"clawmini-lite.js subagents spawn --id block-done --delivery notify \\"echo done-fast\\"',
+        '&& clawmini-lite.js subagents spawn --id block-active --delivery notify \\"sleep 3 && echo late\\"',
         '&& sleep 1',
         '&& clawmini-lite.js delegations list --state running --kind subagent --json"',
       ].join(' '),
@@ -460,7 +460,7 @@ describe('E2E Subagent Lifecycle', () => {
     await env.addChat('auto-id-chat', 'debug-agent');
     chat = await env.connect('auto-id-chat');
 
-    await env.sendMessage('clawmini-lite.js subagents spawn --async "echo auto-id-output"', {
+    await env.sendMessage('clawmini-lite.js subagents spawn --delivery notify "echo auto-id-output"', {
       chat: 'auto-id-chat',
       agent: 'debug-agent',
     });
@@ -521,7 +521,7 @@ describe('E2E Subagent Lifecycle', () => {
     );
 
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id alt-sub --agent alt-agent --async "echo alt-output"',
+      'clawmini-lite.js subagents spawn --id alt-sub --agent alt-agent --delivery notify "echo alt-output"',
       { chat: 'alt-agent-chat', agent: 'debug-agent' }
     );
 
@@ -545,7 +545,7 @@ describe('E2E Subagent Lifecycle', () => {
     await env.addChat('dup-id-chat', 'debug-agent');
     chat = await env.connect('dup-id-chat');
 
-    await env.sendMessage('clawmini-lite.js subagents spawn --id dup-sub --async "echo first"', {
+    await env.sendMessage('clawmini-lite.js subagents spawn --id dup-sub --delivery notify "echo first"', {
       chat: 'dup-id-chat',
       agent: 'debug-agent',
     });
@@ -556,7 +556,7 @@ describe('E2E Subagent Lifecycle', () => {
     // Second spawn with the same id must hit the router's duplicate-id
     // guard (`Subagent ID already exists`). The CLI surfaces the TRPC
     // error via stderr + exit 1, so we match on the serialized message.
-    await env.sendMessage('clawmini-lite.js subagents spawn --id dup-sub --async "echo second"', {
+    await env.sendMessage('clawmini-lite.js subagents spawn --id dup-sub --delivery notify "echo second"', {
       chat: 'dup-id-chat',
       agent: 'debug-agent',
     });
@@ -577,22 +577,23 @@ describe('E2E Subagent Lifecycle', () => {
     ).toBe(false);
   }, 30000);
 
-  it('send without --async blocks the caller and returns <subagent_output>', async () => {
+  it('send without --delivery flag from root agent blocks the caller and returns <subagent_output>', async () => {
     await env.addChat('send-sync-chat', 'debug-agent');
     chat = await env.connect('send-sync-chat');
 
     // Spawn a child and let it complete first so the second `send` is
     // exercising the wake-a-completed-child path, not the initial spawn.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id send-sync-sub --async "echo sync-initial"',
+      'clawmini-lite.js subagents spawn --id send-sync-sub --delivery notify "echo sync-initial"',
       { chat: 'send-sync-chat', agent: 'debug-agent' }
     );
     await chat.waitForMessage(
       commandMatching((m) => m.subagentId === 'send-sync-sub' && m.stdout.includes('sync-initial'))
     );
 
-    // `send` without --async: the CLI polls subagentWait and prints the
-    // subagent's agent-role output wrapped in <subagent_output> tags.
+    // `send` with no explicit --delivery flag: the CLI sync-waits on
+    // delegationWait and prints the subagent's agent-role output wrapped
+    // in <subagent_output> tags.
     await env.sendMessage(
       "clawmini-lite.js subagents send send-sync-sub -p 'echo sync-send-output'",
       { chat: 'send-sync-chat', agent: 'debug-agent' }
@@ -613,7 +614,7 @@ describe('E2E Subagent Lifecycle', () => {
     await env.addChat('send-wake-chat', 'debug-agent');
     chat = await env.connect('send-wake-chat');
 
-    await env.sendMessage('clawmini-lite.js subagents spawn --id wake-sub --async "echo initial"', {
+    await env.sendMessage('clawmini-lite.js subagents spawn --id wake-sub --delivery notify "echo initial"', {
       chat: 'send-wake-chat',
       agent: 'debug-agent',
     });
@@ -627,7 +628,7 @@ describe('E2E Subagent Lifecycle', () => {
       await new Promise((r) => setTimeout(r, 100));
     }
 
-    await env.sendMessage("clawmini-lite.js subagents send wake-sub --async -p 'echo after-wake'", {
+    await env.sendMessage("clawmini-lite.js subagents send wake-sub --delivery notify -p 'echo after-wake'", {
       chat: 'send-wake-chat',
       agent: 'debug-agent',
     });
@@ -659,7 +660,7 @@ describe('E2E Subagent Lifecycle', () => {
     // by `rootChatId:sessionId`, so the second handleMessage call must
     // wait for the first before running.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id queue-sub --async "sleep 2 && echo queued-first"',
+      'clawmini-lite.js subagents spawn --id queue-sub --delivery notify "sleep 2 && echo queued-first"',
       { chat: 'send-queue-chat', agent: 'debug-agent' }
     );
     // Wait for active, then immediately send the follow-up.
@@ -670,7 +671,7 @@ describe('E2E Subagent Lifecycle', () => {
     }
 
     await env.sendMessage(
-      "clawmini-lite.js subagents send queue-sub --async -p 'echo queued-second'",
+      "clawmini-lite.js subagents send queue-sub --delivery notify -p 'echo queued-second'",
       { chat: 'send-queue-chat', agent: 'debug-agent' }
     );
 
@@ -711,7 +712,7 @@ describe('E2E Subagent Lifecycle', () => {
     // result is a fresh command_log (no subagentId) with the [DEBUG …]
     // prefix wrapping the notification text.
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --id wake-parent-sub --async "echo wake-content"',
+      'clawmini-lite.js subagents spawn --id wake-parent-sub --delivery notify "echo wake-content"',
       { chat: 'wake-parent-chat', agent: 'debug-agent' }
     );
     await chat.waitForMessage(
@@ -744,7 +745,7 @@ describe('E2E Subagent Lifecycle', () => {
       { cmd: 'clawmini-lite.js subagents stop ghost', expect: /Subagent not found/ },
       { cmd: 'clawmini-lite.js subagents tail ghost --json', expect: /Subagent not found/ },
       {
-        cmd: "clawmini-lite.js subagents send ghost --async -p 'echo x'",
+        cmd: "clawmini-lite.js subagents send ghost --delivery notify -p 'echo x'",
         expect: /Subagent not found/,
       },
       { cmd: 'clawmini-lite.js delegations delete ghost', expect: /Delegation not found/ },

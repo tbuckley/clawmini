@@ -10,9 +10,8 @@ import {
 
 // Ticket 7: `--delivery <manual|notify>` on `subagents spawn`, `subagents
 // send`, and `request <cmd>`. Verifies the new defaults (spec §3.3: root →
-// notify, subagent → manual), the per-id `<notification>` suppression for
-// `manual`, and that the legacy `--async` boolean still works (with a
-// deprecation warning).
+// notify, subagent → manual) and the per-id `<notification>` suppression
+// for `manual`. (Ticket 8 removed the legacy `--async` boolean alias.)
 
 describe('Delegation delivery flag (e2e)', () => {
   let env: TestEnvironment;
@@ -139,7 +138,7 @@ describe('Delegation delivery flag (e2e)', () => {
     await env.addChat(chatId, 'debug-agent');
     chat = await env.connect(chatId);
 
-    // No --delivery, no --async: should default to notify at depth 0.
+    // No --delivery flag: should default to notify at depth 0.
     await env.sendMessage(
       'clawmini-lite.js subagents spawn --id deliv-default "echo default-root"',
       { chat: chatId, agent: 'debug-agent' }
@@ -255,33 +254,18 @@ describe('Delegation delivery flag (e2e)', () => {
     expect(showLog.exitCode).toBe(0);
   }, 30000);
 
-  it('--async still works but emits a deprecation warning on stderr', async () => {
-    const chatId = 'deliv-async-deprecated';
-    // Run lite directly so we can capture stderr; sendMessage-via-debug-agent
-    // swallows stderr framing. We mint chat-scoped credentials so the spawn
-    // lands in `chatId` (not the credential-bootstrap chat).
+  it('--async flag is no longer accepted (Ticket 8 removed the deprecated alias)', async () => {
+    const chatId = 'deliv-async-removed';
+    // Run lite directly so we can capture stderr; the legacy `--async` flag
+    // is no longer recognised by Commander, so the CLI should exit non-zero
+    // with `unknown option`.
     const creds = await env.getAgentCredentialsForChat(chatId);
-    chat = await env.connect(chatId);
 
     const result = await env.runLite(
-      ['subagents', 'spawn', '--id', 'deliv-async-legacy', '--async', 'echo legacy-async'],
+      ['subagents', 'spawn', '--id', 'deliv-async-gone', '--async', 'echo legacy-async'],
       { creds }
     );
-    expect(result.code).toBe(0);
-    expect(result.stdout).toContain('Subagent spawned successfully with ID: deliv-async-legacy');
-    // Stderr carries the deprecation warning.
-    expect(result.stderr).toContain('--async');
-    expect(result.stderr.toLowerCase()).toContain('deprecat');
-
-    // The legacy --async maps to delivery: notify, so eventually a
-    // <notification> lands.
-    await waitForState(chatId, 'deliv-async-legacy', (r) => r.state === 'completed');
-    const start = Date.now();
-    while (Date.now() - start < 5_000) {
-      if (countNotifications(chatId) >= 1) break;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    const rec = env.readDelegation(chatId, 'deliv-async-legacy') as { delivery?: string } | null;
-    expect(rec?.delivery).toBe('notify');
-  }, 30000);
+    expect(result.code).not.toBe(0);
+    expect(result.stderr.toLowerCase()).toMatch(/unknown option|--async/);
+  }, 15000);
 });

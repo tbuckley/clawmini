@@ -44,23 +44,6 @@ export const BUILTIN_POLICIES: Record<string, PolicyDefinition> = {
   },
 };
 
-export type RequestState = 'Pending' | 'Approved' | 'Rejected';
-
-export interface PolicyRequest {
-  id: string;
-  commandName: string;
-  args: string[];
-  fileMappings: Record<string, string>;
-  cwd?: string;
-  state: RequestState;
-  createdAt: number;
-  rejectionReason?: string;
-  chatId: string;
-  agentId: string;
-  subagentId?: string;
-  executionResult?: {
-    stdout: string;
-    stderr: string;
-    exitCode: number;
-  };
-}
+// Ticket 8 removed the legacy `PolicyRequest` / `RequestState` types. The
+// authoritative shape is now `PolicyDelegation` in
+// `src/shared/delegations.ts`.
