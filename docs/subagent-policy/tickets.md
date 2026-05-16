@@ -19,7 +19,7 @@ Spec section references look like `(§3.2)` — see `spec.html`.
 
 ---
 
-## Ticket 0 — Scaffolding & shared utilities
+## Ticket 0 — Scaffolding & shared utilities — COMPLETE
 
 **Goal.** Land the unified record shape and a thin file-IO `DelegationStore`
 without wiring it to any RPC. Everything below builds on this.
