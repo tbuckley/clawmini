@@ -927,6 +927,91 @@ output>` framing. Other terminal states print `Subagent status:
 <state>` (no body). The polling `do...while` loop is gone — the
 single tRPC `wait` plus a chat-log lookup is enough.
 
+### Ticket 7 status (done)
+
+- `src/cli/subagent-commands.ts` — `subagents spawn` and `subagents send` now
+  surface `--delivery <manual|notify>`. The legacy `--async` boolean stays for
+  one release; passing both prints a stderr warning and `--delivery` wins.
+  First use of `--async` in a process writes a one-shot
+  `[deprecated] --async will be removed ... use --delivery <manual|notify>.`
+  to stderr (`asyncDeprecationWarned` flag at module scope). The CLI's
+  `resolveCliDelivery` is a tiny helper used by both subcommands. After a
+  `--delivery manual` spawn or send the CLI prints
+  `Use 'clawmini-lite.js delegations wait <id>' or 'delegations notify-when <id>'.`
+  to stdout via the shared `printManualHint`.
+- `src/cli/request-command.ts` — new file. Holds the `request <cmd>` registration
+  with the same `--delivery <manual|notify>` flag. Extracted out of `lite.ts`
+  because adding `--delivery` plus the manual hint pushed `lite.ts` past the
+  `max-lines: 300` ESLint cap. The hint here writes to **stderr** (not stdout)
+  because callers commonly pipe the policy's stdout (the executionResult)
+  through to other tooling; contaminating it would break their parsers.
+- `src/cli/lite.ts` — now calls `registerRequestCommand(program, getClient)`
+  alongside the subagent + delegations registrations. The inline `request`
+  block is gone.
+- `src/daemon/api/agent-policy-endpoints.ts` — `createPolicyRequest` accepts
+  an optional `delivery: z.enum(['notify','manual'])` input. Default resolved
+  **server-side** by the presence of `ctx.tokenPayload.subagentId`: root
+  caller → `notify`; subagent caller → `manual`. Explicit `input.delivery`
+  always wins. The previous hard-coded `delivery: 'notify'` is replaced by
+  the new `resolvedDelivery` local. The auto-approved inline path still
+  calls `executePolicyDelegation` then `markResolved`, but the delegation
+  record now carries the correct delivery so any `<notification>` machinery
+  downstream (the slash-approve path, suppression, observers) sees the
+  right value.
+
+### CLI behavioral changes Ticket 8+ should know about
+
+- **No more implicit sync-wait on nested spawn.** Pre-Ticket-7 the CLI's
+  `subagents spawn` without `--async` would sync-wait on the daemon's
+  response then call `delegationWait` to surface the `<subagent_output>`.
+  For a subagent caller (depth 1+) the daemon now defaults to
+  `delivery: manual`, and the CLI returns immediately after printing the
+  hint. The agent observes the result via `clawmini-lite.js delegations
+  wait <id>` (or `notify-when`).
+- **One existing test was updated.** `e2e/agents/subagent-lifecycle.test.ts`
+  "sync spawn blocks the caller and returns `<subagent_output>` inline" was
+  renamed and rewritten to use `--delivery notify` + `delegations wait` +
+  `subagents tail`. The old test was relying on the legacy "no flags →
+  sync wait inside the CLI" behavior that's gone now. Two slash-policies
+  test cases (`subagent /approve`, `subagent /reject`) had their inner
+  `request test-cmd` invocations annotated with `--delivery notify` so the
+  `handlePolicyApprove` / `handlePolicyReject` `executeDirectMessage` path
+  still fires (the approve handler gates on `delegation.delivery === 'notify'`,
+  see Ticket 5).
+- **Hint string format.** `subagents spawn|send`: stdout hint, single line.
+  `request <cmd>`: stderr hint, single line, only on the auto-approved
+  inline path (the queued-for-approval path already prints its own
+  multi-line "queued for user approval" block).
+
+### Depth detection at the daemon boundary
+
+- For subagent spawn/send: `getSubagentDepth(chatId, parentId)` (walks the
+  delegation parent chain) gives the full depth; spec §4 needs this for
+  the MAX_SUBAGENT_DEPTH gate and `resolveDelivery` uses it for the
+  default selection.
+- For policy `request`: we only need the binary root-vs-subagent
+  distinction (spec §3.3 says root → notify, subagent → manual; no
+  per-depth nuance). The cheap signal is
+  `ctx.tokenPayload.subagentId !== undefined`. No need to load any
+  delegation records server-side. The check inlined in
+  `createPolicyRequest` is intentionally simpler than the subagent path.
+
+### `--async` deprecation home
+
+- Lives in `src/cli/subagent-commands.ts` via the module-scope
+  `asyncDeprecationWarned` flag + `warnAsyncDeprecation()` helper. Fires
+  at most once per process. Tests that need to assert the warning text
+  can grep stderr for the substring `--async` + `deprecat` (the test in
+  `e2e/agents/delegation-delivery.test.ts` does this).
+- Ticket 8 should:
+  1. Remove the `--async` option from both subcommands.
+  2. Remove `warnAsyncDeprecation`, `asyncDeprecationWarned`,
+     `BOTH_FLAGS_WARNING`, and the `async` branch of `resolveCliDelivery`.
+  3. Remove the `async` z field from `subagentSpawn` / `subagentSend`
+     inputs (currently surfaces through `subagent-creation.ts`).
+  4. Drop the `async` branch from `resolveDelivery` in
+     `subagent-shared.ts` (just `delivery ?? defaultByDepth`).
+
 ### Test debugging note: predicate races on chat.waitForMessage
 
 While migrating the nested-list lifecycle test I hit a

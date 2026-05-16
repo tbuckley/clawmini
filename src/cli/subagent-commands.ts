@@ -8,6 +8,49 @@ import type { AgentRouter as AppRouter } from '../daemon/api/index.js';
 // `stop`, and `tail`. Sync spawn/send no longer poll — they call
 // `delegationWait` once and unwrap the subagent's last agent reply for the
 // legacy `<subagent_output>` output.
+//
+// Ticket 7: `--delivery <manual|notify>` is the canonical delivery selector
+// (spec §3.3, §5.5). The legacy `--async` boolean survives one release as a
+// deprecated alias; passing both prefers `--delivery` and prints a warning to
+// stderr. Ticket 8 will remove `--async` entirely.
+
+type DeliveryMode = 'manual' | 'notify';
+
+const ASYNC_DEPRECATION_MESSAGE =
+  '[deprecated] --async will be removed in a future release; use --delivery <manual|notify>.';
+
+let asyncDeprecationWarned = false;
+function warnAsyncDeprecation(): void {
+  if (asyncDeprecationWarned) return;
+  asyncDeprecationWarned = true;
+  process.stderr.write(`${ASYNC_DEPRECATION_MESSAGE}\n`);
+}
+
+const BOTH_FLAGS_WARNING = '[warning] --delivery overrides --async; ignoring --async.\n';
+
+function resolveCliDelivery(opts: {
+  delivery?: string;
+  async?: boolean;
+}): DeliveryMode | undefined {
+  if (opts.delivery !== undefined) {
+    if (opts.delivery !== 'manual' && opts.delivery !== 'notify') {
+      throw new Error(`--delivery must be 'manual' or 'notify' (got '${opts.delivery}')`);
+    }
+    if (opts.async !== undefined) {
+      process.stderr.write(BOTH_FLAGS_WARNING);
+    }
+    return opts.delivery;
+  }
+  if (opts.async !== undefined) {
+    warnAsyncDeprecation();
+    return opts.async ? 'notify' : 'manual';
+  }
+  return undefined;
+}
+
+function printManualHint(id: string): void {
+  console.log(`Use 'clawmini-lite.js delegations wait ${id}' or 'delegations notify-when ${id}'.`);
+}
 
 export function registerSubagentCommands(
   program: Command,
@@ -20,18 +63,31 @@ export function registerSubagentCommands(
     .description('Spawn a new subagent')
     .option('-a, --agent <name>', 'Target agent name')
     .option('-i, --id <subagentId>', 'Optional custom ID for the subagent')
-    .option('--async', 'Run asynchronously without blocking')
+    .option(
+      '--delivery <mode>',
+      "How resolution is delivered: 'notify' (default for root) appends a <notification>; 'manual' (default for subagents) requires `delegations wait`."
+    )
+    .option('--async', '[deprecated] Use --delivery notify; will be removed.')
     .action(async (message, options) => {
       try {
         const client = getClient();
+        const delivery = resolveCliDelivery(options);
         const result = await client.subagentSpawn.mutate({
           targetAgentId: options.agent,
           prompt: message,
           subagentId: options.id,
-          async: options.async,
+          ...(delivery !== undefined ? { delivery } : {}),
         });
         console.log(`Subagent spawned successfully with ID: ${result.id}`);
 
+        if (result.delivery === 'manual') {
+          // Per Ticket 7: a manual-delivery spawn returns immediately and the
+          // caller is expected to observe the result via the `delegations`
+          // group. Print a hint so the agent doesn't have to remember the
+          // exact command names.
+          printManualHint(result.id);
+          return;
+        }
         if (!result.isAsync) {
           console.log(`Waiting for subagent ${result.id} to complete...`);
           await waitAndPrintSubagent(client, result.id);
@@ -46,17 +102,32 @@ export function registerSubagentCommands(
     .command('send <subagentId>')
     .description('Send a message to a subagent')
     .requiredOption('-p, --prompt <prompt>', 'Prompt to send')
-    .option('--async', 'Run asynchronously without blocking')
+    .option(
+      '--delivery <mode>',
+      "How resolution is delivered: 'notify' (default for root) appends a <notification>; 'manual' (default for subagents) requires `delegations wait`."
+    )
+    .option('--async', '[deprecated] Use --delivery notify; will be removed.')
     .action(async (subagentId, options) => {
       try {
         const client = getClient();
-        await client.subagentSend.mutate({
+        const delivery = resolveCliDelivery(options);
+        const result = await client.subagentSend.mutate({
           subagentId,
           prompt: options.prompt,
-          async: options.async,
+          ...(delivery !== undefined ? { delivery } : {}),
         });
         console.log(`Message sent to subagent ${subagentId}`);
 
+        if (result.delivery === 'manual') {
+          printManualHint(subagentId);
+          return;
+        }
+        if (delivery === 'notify' || (delivery === undefined && options.async)) {
+          // The mutation already returned; the subagent runs asynchronously
+          // and will append its own <notification> on completion. Nothing
+          // more to do here.
+          return;
+        }
         if (!options.async) {
           await waitAndPrintSubagent(client, subagentId);
         }

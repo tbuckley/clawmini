@@ -51,8 +51,12 @@ describe('Policy Flows E2E', () => {
     {
       label: 'subagent /reject',
       chat: 'chat-reject-sub',
+      // Ticket 7: the inner `request` from a subagent now defaults to
+      // `delivery: manual`; pass `--delivery notify` explicitly so the
+      // /reject path still fires the executeDirectMessage notification this
+      // test asserts on.
       spawn:
-        'clawmini-lite.js subagents spawn --id sub-reject --async "clawmini-lite.js request test-cmd --async"',
+        'clawmini-lite.js subagents spawn --id sub-reject --async "clawmini-lite.js request test-cmd --delivery notify"',
       action: 'reject',
       event: 'policy_rejected',
       subagentId: 'sub-reject',
@@ -62,8 +66,10 @@ describe('Policy Flows E2E', () => {
     {
       label: 'subagent /approve',
       chat: 'chat-approve-sub',
+      // Ticket 7: same as above — inner subagent `request` defaults to
+      // `manual` now; need notify for the executeDirectMessage path.
       spawn:
-        'clawmini-lite.js subagents spawn --id sub-approve --async "clawmini-lite.js request test-cmd"',
+        'clawmini-lite.js subagents spawn --id sub-approve --async "clawmini-lite.js request test-cmd --delivery notify"',
       action: 'approve',
       event: 'policy_approved',
       subagentId: 'sub-approve',

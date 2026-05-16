@@ -559,7 +559,7 @@ Add `e2e/cli/delegations.test.ts`:
 
 ---
 
-## Ticket 7 — `--delivery` flag on `subagents spawn`, `subagents send`, and `request <cmd>`
+## Ticket 7 — `--delivery` flag on `subagents spawn`, `subagents send`, and `request <cmd>` — COMPLETE
 
 **Goal.** Surface the `delivery` field at the CLI. Today's defaults
 preserved.

@@ -170,6 +170,11 @@ export const createPolicyRequest = apiProcedure
       // (policy-utils.ts), which realpath-resolves the cwd before comparing —
       // so it covers encoded separators, symlinks, etc.
       cwd: z.string().optional(),
+      // Ticket 7 (spec §3.3): explicit `delivery` from the CLI wins; otherwise
+      // default by caller depth. Root agent → 'notify' (today's behavior);
+      // subagent → 'manual' (the caller is expected to drive observation
+      // via `delegations wait` / `notify-when`).
+      delivery: z.enum(['notify', 'manual']).optional(),
     })
   )
   .mutation(async ({ input, ctx }) => {
@@ -201,6 +206,15 @@ export const createPolicyRequest = apiProcedure
       snapshotMappings[key] = await createSnapshot(requestedPath, agentDir, snapshotDir);
     }
 
+    // Spec §3.3 defaults: root caller → 'notify'; subagent caller → 'manual'.
+    // Explicit `input.delivery` from the CLI wins. The depth signal is the
+    // presence of `subagentId` on the token payload — set iff the caller is a
+    // subagent. (Full ancestor-walk depth lives in `getSubagentDepth` for the
+    // subagent path; for delivery defaults the binary root-vs-subagent
+    // distinction is all the spec asks for.)
+    const resolvedDelivery: 'notify' | 'manual' =
+      input.delivery ?? (ctx.tokenPayload.subagentId ? 'manual' : 'notify');
+
     const delegation = await delegationManager.createPolicy({
       chatId,
       agentId,
@@ -209,9 +223,7 @@ export const createPolicyRequest = apiProcedure
       fileMappings: snapshotMappings,
       ...(input.cwd ? { cwd: input.cwd } : {}),
       ...(ctx.tokenPayload.subagentId ? { parentId: ctx.tokenPayload.subagentId } : {}),
-      // Ticket 7 will surface `delivery` at the CLI; for now policies always
-      // notify on resolution (today's behavior).
-      delivery: 'notify',
+      delivery: resolvedDelivery,
       autoApprove: isAutoApprove,
     });
 
