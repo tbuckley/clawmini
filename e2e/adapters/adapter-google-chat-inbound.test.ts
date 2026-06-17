@@ -291,7 +291,11 @@ describe('Google Chat Adapter E2E — inbound (Pub/Sub → daemon)', () => {
 
     const fetchMock = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
       new Response(
-        JSON.stringify({ name: 'subscriptions/abc', expireTime: '2026-01-01T00:00:00Z' }),
+        JSON.stringify({
+          name: 'operations/abc',
+          done: true,
+          response: { name: 'subscriptions/abc', expireTime: '2026-01-01T00:00:00Z' },
+        }),
         { status: 200 }
       )
     );

@@ -5,7 +5,7 @@ import { readGoogleChatState } from './state.js';
 import { getTRPCClient, startGoogleChatIngestion } from './client.js';
 import { startDaemonToGoogleChatForwarder } from './forwarder.js';
 import { getUserAuthClient } from './auth.js';
-import { startSubscriptionRenewalCron } from './cron.js';
+import { renewExpiringSubscriptions, startSubscriptionRenewalCron } from './cron.js';
 import type { FilteringConfig } from '../shared/adapters/filtering.js';
 
 export async function main() {
@@ -47,6 +47,12 @@ export async function main() {
   // Start forwarding from daemon to Google Chat API
   startDaemonToGoogleChatForwarder(trpc, config, filteringConfig).catch((error) => {
     console.error('Error in daemon-to-google-chat forwarder:', error);
+  });
+
+  // Sweep subscriptions immediately on startup so we self-heal from anything
+  // that expired or got into a bad state while the adapter was down.
+  renewExpiringSubscriptions(config).catch((err) => {
+    console.error('Error in startup subscription sweep:', err);
   });
 
   // Start background cron for renewing Space Subscriptions

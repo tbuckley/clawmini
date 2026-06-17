@@ -56,6 +56,12 @@ export default defineConfig([
     },
   },
   {
+    files: ['scripts/**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
     files: ['templates/environments/**/*.{js,mjs,cjs}'],
     languageOptions: {
       globals: globals.node,

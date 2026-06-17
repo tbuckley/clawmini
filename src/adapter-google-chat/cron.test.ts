@@ -1,14 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renewExpiringSubscriptions, startSubscriptionRenewalCron } from './cron.js';
 import * as stateApi from './state.js';
-import * as authApi from './auth.js';
+import * as subscriptionsApi from './subscriptions.js';
 import type { GoogleChatState } from './state.js';
 import type { GoogleChatConfig } from './config.js';
-import type { OAuth2Client } from 'google-auth-library';
 
-// Mock dependencies
 vi.mock('./state.js');
-vi.mock('./auth.js');
+vi.mock('./subscriptions.js');
 
 describe('Subscription Renewal Cron', () => {
   const mockConfig: GoogleChatConfig = {
@@ -26,9 +24,6 @@ describe('Subscription Renewal Cron', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.useFakeTimers();
-
-    // Reset global fetch mock
-    global.fetch = vi.fn();
   });
 
   afterEach(() => {
@@ -52,11 +47,10 @@ describe('Subscription Renewal Cron', () => {
 
     await renewExpiringSubscriptions(mockConfig);
 
-    expect(authApi.getUserAuthClient).not.toHaveBeenCalled();
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(subscriptionsApi.createSpaceSubscription).not.toHaveBeenCalled();
   });
 
-  it('renewExpiringSubscriptions should not renew subscriptions expiring in more than 48 hours', async () => {
+  it('should not recreate subscriptions expiring in more than 48 hours', async () => {
     const farFuture = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
     vi.mocked(stateApi.readGoogleChatState).mockResolvedValue({
       channelChatMap: {
@@ -70,74 +64,77 @@ describe('Subscription Renewal Cron', () => {
 
     await renewExpiringSubscriptions(mockConfig);
 
-    expect(authApi.getUserAuthClient).not.toHaveBeenCalled();
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(subscriptionsApi.createSpaceSubscription).not.toHaveBeenCalled();
   });
 
-  it('renewExpiringSubscriptions should renew subscriptions expiring in less than 48 hours', async () => {
+  it('should recreate subscriptions expiring within 48 hours', async () => {
     const nearFuture = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     vi.mocked(stateApi.readGoogleChatState).mockResolvedValue({
       channelChatMap: {
         space1: {
           chatId: 'chat1',
-          subscriptionId: 'subscriptions/123',
+          subscriptionId: 'subscriptions/old',
           expirationDate: nearFuture,
         },
       },
     } as unknown as GoogleChatState);
-
-    vi.mocked(authApi.getUserAuthClient).mockResolvedValue({
-      getAccessToken: vi.fn().mockResolvedValue({ token: 'mock-token' }),
-    } as unknown as OAuth2Client);
-
-    const newExpireTime = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    vi.mocked(global.fetch).mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({ expireTime: newExpireTime }),
-    } as unknown as Response);
+    vi.mocked(subscriptionsApi.createSpaceSubscription).mockResolvedValue({
+      name: 'subscriptions/new',
+      expireTime: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+    });
 
     await renewExpiringSubscriptions(mockConfig);
 
-    expect(authApi.getUserAuthClient).toHaveBeenCalledWith(mockConfig);
-    expect(global.fetch).toHaveBeenCalledWith(
-      'https://workspaceevents.googleapis.com/v1/subscriptions/123?updateMask=ttl',
-      expect.objectContaining({
-        method: 'PATCH',
-        headers: {
-          Authorization: 'Bearer mock-token',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ ttl: '604800s' }),
-      })
-    );
-
+    expect(subscriptionsApi.createSpaceSubscription).toHaveBeenCalledWith('space1', mockConfig);
     expect(stateApi.updateGoogleChatState).toHaveBeenCalled();
   });
 
-  it('renewExpiringSubscriptions should handle fetch errors gracefully', async () => {
+  it('should recreate already-expired subscriptions', async () => {
+    const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    vi.mocked(stateApi.readGoogleChatState).mockResolvedValue({
+      channelChatMap: {
+        space1: {
+          chatId: 'chat1',
+          subscriptionId: 'subscriptions/old',
+          expirationDate: past,
+        },
+      },
+    } as unknown as GoogleChatState);
+    vi.mocked(subscriptionsApi.createSpaceSubscription).mockResolvedValue({
+      name: 'subscriptions/new',
+      expireTime: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+    });
+
+    await renewExpiringSubscriptions(mockConfig);
+
+    expect(subscriptionsApi.createSpaceSubscription).toHaveBeenCalledWith('space1', mockConfig);
+  });
+
+  it('should swallow recreate errors and continue with other entries', async () => {
     const nearFuture = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     vi.mocked(stateApi.readGoogleChatState).mockResolvedValue({
       channelChatMap: {
         space1: {
           chatId: 'chat1',
-          subscriptionId: 'subscriptions/123',
+          subscriptionId: 'subscriptions/a',
+          expirationDate: nearFuture,
+        },
+        space2: {
+          chatId: 'chat2',
+          subscriptionId: 'subscriptions/b',
           expirationDate: nearFuture,
         },
       },
     } as unknown as GoogleChatState);
-
-    vi.mocked(authApi.getUserAuthClient).mockResolvedValue({
-      getAccessToken: vi.fn().mockResolvedValue({ token: 'mock-token' }),
-    } as unknown as OAuth2Client);
-
-    vi.mocked(global.fetch).mockResolvedValue({
-      ok: false,
-      text: vi.fn().mockResolvedValue('Internal Server Error'),
-    } as unknown as Response);
+    vi.mocked(subscriptionsApi.createSpaceSubscription)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce({
+        name: 'subscriptions/b-new',
+        expireTime: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+      });
 
     await renewExpiringSubscriptions(mockConfig);
 
-    expect(global.fetch).toHaveBeenCalled();
-    expect(stateApi.updateGoogleChatState).not.toHaveBeenCalled();
+    expect(subscriptionsApi.createSpaceSubscription).toHaveBeenCalledTimes(2);
   });
 });
