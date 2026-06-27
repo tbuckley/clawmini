@@ -1,12 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { agentRouter } from './agent-router.js';
-import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
-import * as workspace from '../../shared/workspace.js';
+import { daemonEvents, DAEMON_EVENT_DELEGATION_RESOLVED } from '../events.js';
 
-vi.mock('../../shared/workspace.js', () => ({
-  readChatSettings: vi.fn(),
-  updateChatSettings: vi.fn(),
-  getWorkspaceRoot: vi.fn().mockReturnValue('/mock/root'),
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockStoreData: Record<string, any> = {};
+
+vi.mock('../delegation-store.js', () => ({
+  DelegationStore: class {
+    async load(chatId: string, id: string) {
+      return mockStoreData[`${chatId}:${id}`] || null;
+    }
+    async list(chatId: string) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return Object.values(mockStoreData).filter((d: any) => d.chatId === chatId);
+    }
+  },
 }));
 
 vi.mock('../agent/chat-logger.js', () => ({
@@ -18,91 +26,72 @@ vi.mock('../agent/chat-logger.js', () => ({
 describe('subagentWait', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.keys(mockStoreData).forEach((key) => delete mockStoreData[key]);
   });
 
   afterEach(() => {
     daemonEvents.removeAllListeners();
   });
 
-  it('should not miss events if subagent completes immediately after checkSubagentStatus starts', async () => {
-    // We simulate checkSubagentStatus taking some time (e.g. reading from disk).
-    // While it is awaiting, an event is emitted indicating completion.
-    // The wait procedure should still catch the completion.
-
+  it('should return synchronously if delegations are already resolved', async () => {
     const subagentId = 'sub-1';
-    const chatId = 'chat-1';
-
-    let firstCall = true;
-
-    vi.mocked(workspace.readChatSettings).mockImplementation(async (_id: string) => {
-      if (firstCall) {
-        firstCall = false;
-        // Emit the event while the first check is "in flight"
-        // This simulates the race condition where the status is "active" at the exact moment
-        // of reading, but changes immediately after before the event listener would be bound in the buggy code.
-        setTimeout(() => {
-          daemonEvents.emit(DAEMON_EVENT_MESSAGE_APPENDED, {
-            chatId,
-            message: { role: 'subagent_status', status: 'completed', subagentId },
-          });
-        }, 10);
-
-        await new Promise((r) => setTimeout(r, 50));
-        return {
-          subagents: {
-            [subagentId]: { status: 'active', id: subagentId, createdAt: '2023-01-01' },
-          },
-        };
-      } else {
-        return {
-          subagents: {
-            [subagentId]: { status: 'completed', id: subagentId, createdAt: '2023-01-01' },
-          },
-        };
-      }
-    });
+    mockStoreData[`chat-1:${subagentId}`] = {
+      id: subagentId,
+      chatId: 'chat-1',
+      state: 'completed',
+      kind: 'subagent',
+    };
 
     const ctx = {
-      tokenPayload: { chatId, agentId: 'agent', sessionId: 'session' },
-    };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const caller = agentRouter.createCaller(ctx as any);
-
-    const resultPromise = caller.subagentWait({ subagentId });
-
-    // We don't want the test to hang if the bug is present, so we use Promise.race
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Timeout - event missed')), 500)
-    );
-
-    const result = await Promise.race([resultPromise, timeoutPromise]);
-    expect(result).toEqual({ status: 'completed', output: 'Mock output' });
-  });
-
-  it('should clean up the event listener if it returns early due to initial status check', async () => {
-    const subagentId = 'sub-2';
-    const chatId = 'chat-2';
-
-    // Mock an immediate completed status
-    vi.mocked(workspace.readChatSettings).mockResolvedValue({
-      subagents: {
-        [subagentId]: { status: 'completed', id: subagentId, createdAt: '2023-01-01' },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tokenPayload: {
+        chatId: 'chat-1',
+        agentId: 'agent',
+        sessionId: 'session',
+        timestamp: Date.now(),
       },
-    });
-
-    const ctx = {
-      tokenPayload: { chatId, agentId: 'agent', sessionId: 'session' },
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const caller = agentRouter.createCaller(ctx as any);
-
-    const initialListeners = daemonEvents.listenerCount(DAEMON_EVENT_MESSAGE_APPENDED);
 
     const result = await caller.subagentWait({ subagentId });
 
     expect(result).toEqual({ status: 'completed', output: 'Mock output' });
+  });
 
-    const finalListeners = daemonEvents.listenerCount(DAEMON_EVENT_MESSAGE_APPENDED);
-    expect(finalListeners).toBe(initialListeners); // Should not leave any lingering listeners
+  it('should wait synchronously and resolve when event is emitted', async () => {
+    const subagentId = 'sub-2';
+    mockStoreData[`chat-1:${subagentId}`] = {
+      id: subagentId,
+      chatId: 'chat-1',
+      state: 'pending',
+      kind: 'subagent',
+    };
+
+    const ctx = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tokenPayload: {
+        chatId: 'chat-1',
+        agentId: 'agent',
+        sessionId: 'session',
+        timestamp: Date.now(),
+      },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const caller = agentRouter.createCaller(ctx as any);
+
+    const waitPromise = caller.subagentWait({ subagentId });
+
+    setTimeout(() => {
+      mockStoreData[`chat-1:${subagentId}`].state = 'completed';
+      daemonEvents.emit(DAEMON_EVENT_DELEGATION_RESOLVED, {
+        chatId: 'chat-1',
+        delegationId: subagentId,
+        state: 'completed',
+      });
+    }, 10);
+
+    const result = await waitPromise;
+    expect(result).toEqual({ status: 'completed', output: 'Mock output' });
   });
 });

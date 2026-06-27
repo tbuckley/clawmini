@@ -1,0 +1,1715 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unified Delegation: merging policy requests and subagents</title>
+    <style>
+      :root {
+        --bg: #fbfaf7;
+        --panel: #ffffff;
+        --ink: #1a1a1a;
+        --muted: #5a5a5a;
+        --line: #e5e2dc;
+        --line-strong: #cdc8be;
+        --accent: #b54a1a;
+        --accent-soft: #fbe8d8;
+        --policy: #2f6e8f;
+        --policy-soft: #d8e8f0;
+        --subagent: #5d4ea0;
+        --subagent-soft: #e3dcf3;
+        --good: #2c7a3f;
+        --warn: #a06600;
+        --code-bg: #f3efe8;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Helvetica,
+          Arial,
+          sans-serif;
+        font-size: 16px;
+        line-height: 1.55;
+        color: var(--ink);
+        background: var(--bg);
+      }
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 56px 28px 96px;
+      }
+      header.hero {
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 32px;
+        margin-bottom: 32px;
+      }
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 12px;
+        color: var(--accent);
+        font-weight: 600;
+      }
+      h1 {
+        font-size: 40px;
+        line-height: 1.15;
+        margin: 8px 0 16px;
+        letter-spacing: -0.01em;
+      }
+      h2 {
+        font-size: 26px;
+        margin: 56px 0 16px;
+        letter-spacing: -0.01em;
+        border-top: 1px solid var(--line);
+        padding-top: 32px;
+      }
+      h2:first-of-type {
+        border-top: 0;
+        padding-top: 0;
+      }
+      h3 {
+        font-size: 18px;
+        margin: 28px 0 8px;
+      }
+      p {
+        margin: 0 0 14px;
+        max-width: 70ch;
+      }
+      .lede {
+        font-size: 18px;
+        color: var(--muted);
+        max-width: 70ch;
+      }
+      code,
+      pre {
+        font-family:
+          ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+        font-size: 13.5px;
+      }
+      code {
+        background: var(--code-bg);
+        padding: 1px 6px;
+        border-radius: 3px;
+      }
+      pre {
+        background: var(--code-bg);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        line-height: 1.5;
+      }
+      pre code {
+        background: transparent;
+        padding: 0;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 12px 0 24px;
+        font-size: 14.5px;
+      }
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #f3efe8;
+        font-weight: 600;
+      }
+      td code {
+        white-space: nowrap;
+      }
+      ul,
+      ol {
+        padding-left: 22px;
+      }
+      ul li,
+      ol li {
+        margin: 4px 0;
+      }
+      .callout {
+        background: var(--accent-soft);
+        border-left: 4px solid var(--accent);
+        padding: 12px 16px;
+        margin: 18px 0;
+        border-radius: 0 6px 6px 0;
+      }
+      .callout.warn {
+        background: #fff1d8;
+        border-color: var(--warn);
+      }
+      .callout.info {
+        background: #e9f1f6;
+        border-color: var(--policy);
+      }
+      .callout strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .twocol {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px 18px;
+      }
+      .panel h4 {
+        margin: 0 0 10px;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+      .panel.policy {
+        border-color: var(--policy);
+      }
+      .panel.policy h4 {
+        color: var(--policy);
+      }
+      .panel.subagent {
+        border-color: var(--subagent);
+      }
+      .panel.subagent h4 {
+        color: var(--subagent);
+      }
+      .pill {
+        display: inline-block;
+        padding: 1px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        background: var(--code-bg);
+        color: var(--muted);
+      }
+      .pill.policy {
+        background: var(--policy-soft);
+        color: var(--policy);
+      }
+      .pill.subagent {
+        background: var(--subagent-soft);
+        color: var(--subagent);
+      }
+      .pill.good {
+        background: #d9efe0;
+        color: var(--good);
+      }
+      .pill.warn {
+        background: #f6e6c5;
+        color: var(--warn);
+      }
+      .legend {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        font-size: 13px;
+        color: var(--muted);
+        margin: 8px 0 4px;
+      }
+      .legend .swatch {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        vertical-align: -1px;
+        margin-right: 5px;
+      }
+      figure {
+        margin: 18px 0 28px;
+      }
+      figcaption {
+        font-size: 13px;
+        color: var(--muted);
+        text-align: center;
+        margin-top: 6px;
+      }
+      svg {
+        display: block;
+        max-width: 100%;
+        height: auto;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+      details {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px 14px;
+        margin: 10px 0;
+        background: var(--panel);
+      }
+      details summary {
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .toc {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px 22px;
+        background: var(--panel);
+        font-size: 14.5px;
+      }
+      .toc ol {
+        padding-left: 20px;
+        margin: 4px 0;
+      }
+      .small {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      hr {
+        border: 0;
+        border-top: 1px solid var(--line);
+        margin: 32px 0;
+      }
+      .kv {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 6px 16px;
+        font-size: 14.5px;
+        margin: 8px 0 16px;
+      }
+      .kv dt {
+        color: var(--muted);
+      }
+      .kv dd {
+        margin: 0;
+      }
+      @media (max-width: 720px) {
+        .twocol {
+          grid-template-columns: 1fr;
+        }
+        h1 {
+          font-size: 30px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <div class="eyebrow">Proposal · Daemon API</div>
+        <h1>Unified Delegation</h1>
+        <p class="lede">
+          Merge the policy-request framework and the subagent framework into one delegation
+          surface. Both let an agent hand work off and learn the result; today they have different
+          APIs, different defaults, and different completion semantics. This proposal collapses
+          them into a single model with two explicit delivery modes and a single wait/subscribe
+          primitive that supports <em>any</em>- and <em>all</em>-of fan-in.
+        </p>
+        <div class="kv">
+          <dt>Status</dt>
+          <dd>Draft for discussion</dd>
+          <dt>Branch</dt>
+          <dd><code>subagent-policy-v2</code></dd>
+          <dt>Touches</dt>
+          <dd>
+            <code>src/daemon/delegation-{manager,store}.ts</code> (new),
+            <code>src/daemon/api/{subagent,agent-policy}-*</code>,
+            <code>src/daemon/policy-request-service.ts</code>, <code>src/daemon/events.ts</code>,
+            <code>src/shared/{policies,approvals,config,chats,delegations}.ts</code>,
+            <code>src/cli/*</code>, plus tests. Removes:
+            <code>src/daemon/request-store.ts</code>, <code>ChatSettings.subagents</code>.
+          </dd>
+          <dt>Non-goals</dt>
+          <dd>
+            Scheduler/concurrency rework, web-UI rework, message-log unification (those are
+            covered by separate efforts).
+          </dd>
+        </div>
+      </header>
+
+      <nav class="toc">
+        <strong>Contents</strong>
+        <ol>
+          <li><a href="#problem">The two systems today</a></li>
+          <li><a href="#gaps">Gaps and inconsistencies</a></li>
+          <li><a href="#model">Proposed model: one Delegation, two deliveries</a></li>
+          <li><a href="#approval">Auto-approval rules (policies &amp; subagents)</a></li>
+          <li><a href="#api">API surface</a></li>
+          <li><a href="#wait">Waiting and subscriptions</a></li>
+          <li><a href="#walkthroughs">Walkthroughs</a></li>
+          <li><a href="#migration">Migration &amp; backwards compatibility</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="problem">1 · The two systems today</h2>
+      <p>
+        Both frameworks let an agent delegate work and observe the outcome. The shapes are
+        startlingly similar — but the wiring is independent.
+      </p>
+
+      <div class="legend">
+        <span><span class="swatch" style="background: var(--policy)"></span>policy request</span>
+        <span><span class="swatch" style="background: var(--subagent)"></span>subagent</span>
+      </div>
+
+      <div class="twocol">
+        <section class="panel policy">
+          <h4>Policy request</h4>
+          <p class="small">
+            Agent asks the user to approve running a sandbox-escaping shell command.
+          </p>
+          <ul>
+            <li>
+              Created via <code>createPolicyRequest()</code>; daemon writes
+              <code>.clawmini/tmp/requests/&lt;id&gt;.json</code> and appends a
+              <code>role: 'policy'</code> chat message.
+            </li>
+            <li>
+              State: <code>Pending → Approved | Rejected</code>. Resolved by user typing
+              <code>/approve&nbsp;ID</code> or <code>/reject&nbsp;ID</code>.
+            </li>
+            <li>
+              On resolution the request is <strong>deleted from disk</strong>, a
+              <code>system</code> event message is logged, and the daemon kicks a fresh agent turn
+              carrying the script output as the user&rsquo;s next message.
+            </li>
+            <li>
+              <strong>Always async.</strong> The agent has no way to block on the decision; it
+              must finish its turn and let the next turn pick up the result.
+            </li>
+            <li>Auto-approved policies short-circuit: executed inline, never reach <code>Pending</code>.</li>
+          </ul>
+        </section>
+
+        <section class="panel subagent">
+          <h4>Subagent</h4>
+          <p class="small">Agent delegates a self-contained task to another agent process.</p>
+          <ul>
+            <li>
+              Created via <code>subagentSpawn()</code>; daemon writes a <code>SubagentTracker</code>
+              into <code>ChatSettings.subagents[id]</code> and starts an
+              <code>executeSubagent</code> task.
+            </li>
+            <li>State: <code>active → completed | failed</code>.</li>
+            <li>
+              On completion a <code>role: 'subagent_status'</code> message is logged. If the
+              spawn was <code>async</code>, a <code>&lt;notification&gt;</code> message is also
+              appended for the parent.
+            </li>
+            <li>
+              <strong>Sync- or async-able.</strong> <code>async: false</code> + a follow-up
+              <code>subagentWait(id)</code> blocks the parent for up to 60s.
+            </li>
+            <li>
+              Default depends on depth: root agents get <code>async = true</code>, subagents get
+              <code>async = false</code>.
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <figure>
+        <svg viewBox="0 0 920 260" xmlns="http://www.w3.org/2000/svg" role="img"
+             aria-label="Side-by-side flows: policy request and subagent">
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#444" />
+            </marker>
+          </defs>
+          <!-- Policy column -->
+          <g font-family="ui-sans-serif, system-ui" font-size="13">
+            <text x="180" y="24" font-weight="700" fill="#2f6e8f">Policy request</text>
+            <rect x="40" y="40" width="120" height="36" rx="6" fill="#d8e8f0" stroke="#2f6e8f" />
+            <text x="100" y="62" text-anchor="middle">Agent</text>
+            <rect x="240" y="40" width="120" height="36" rx="6" fill="#fff" stroke="#2f6e8f" />
+            <text x="300" y="62" text-anchor="middle">Daemon</text>
+            <rect x="40" y="200" width="120" height="36" rx="6" fill="#fff" stroke="#2f6e8f" />
+            <text x="100" y="222" text-anchor="middle">User</text>
+            <line x1="160" y1="58" x2="240" y2="58" stroke="#444" marker-end="url(#arr)" />
+            <text x="200" y="50" text-anchor="middle" fill="#444">create</text>
+            <line x1="240" y1="76" x2="160" y2="200" stroke="#444" stroke-dasharray="4 3"
+                  marker-end="url(#arr)" />
+            <text x="180" y="146" text-anchor="middle" fill="#666">chat msg</text>
+            <line x1="160" y1="218" x2="240" y2="76" stroke="#444" marker-end="url(#arr)" />
+            <text x="220" y="160" text-anchor="middle" fill="#666">/approve</text>
+            <line x1="240" y1="58" x2="160" y2="58" stroke="#444" marker-end="url(#arr)"
+                  transform="translate(0,90)" />
+            <text x="200" y="142" text-anchor="middle" fill="#444">new turn (output)</text>
+          </g>
+          <!-- Divider -->
+          <line x1="460" y1="20" x2="460" y2="240" stroke="#cdc8be" stroke-dasharray="3 4" />
+          <!-- Subagent column -->
+          <g font-family="ui-sans-serif, system-ui" font-size="13">
+            <text x="640" y="24" font-weight="700" fill="#5d4ea0">Subagent</text>
+            <rect x="500" y="40" width="120" height="36" rx="6" fill="#e3dcf3" stroke="#5d4ea0" />
+            <text x="560" y="62" text-anchor="middle">Parent agent</text>
+            <rect x="700" y="40" width="120" height="36" rx="6" fill="#fff" stroke="#5d4ea0" />
+            <text x="760" y="62" text-anchor="middle">Daemon</text>
+            <rect x="700" y="200" width="120" height="36" rx="6" fill="#e3dcf3" stroke="#5d4ea0" />
+            <text x="760" y="222" text-anchor="middle">Subagent</text>
+            <line x1="620" y1="58" x2="700" y2="58" stroke="#444" marker-end="url(#arr)" />
+            <text x="660" y="50" text-anchor="middle" fill="#444">spawn</text>
+            <line x1="760" y1="76" x2="760" y2="200" stroke="#444" marker-end="url(#arr)" />
+            <text x="780" y="146" fill="#666">execute</text>
+            <line x1="760" y1="200" x2="760" y2="76" stroke="#444" stroke-dasharray="4 3"
+                  marker-end="url(#arr)" transform="translate(20,0)" />
+            <text x="810" y="146" fill="#666">status</text>
+            <line x1="700" y1="58" x2="620" y2="58" stroke="#444" marker-end="url(#arr)"
+                  transform="translate(0,90)" />
+            <text x="660" y="142" text-anchor="middle" fill="#444">notify / wait</text>
+          </g>
+        </svg>
+        <figcaption>The shapes mirror each other: create → external resolver → result back.</figcaption>
+      </figure>
+
+      <h2 id="gaps">2 · Gaps and inconsistencies</h2>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 30%">Capability</th>
+            <th>Policy request</th>
+            <th>Subagent</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Async by default</td>
+            <td><span class="pill good">yes (only mode)</span></td>
+            <td><span class="pill warn">depth-dependent</span></td>
+          </tr>
+          <tr>
+            <td>Block until resolved</td>
+            <td><span class="pill warn">no</span></td>
+            <td><span class="pill good"><code>subagentWait(id)</code></span></td>
+          </tr>
+          <tr>
+            <td>Notify on completion</td>
+            <td><span class="pill good">yes (always — kicks new turn)</span></td>
+            <td><span class="pill good">opt-in via <code>async: true</code></span></td>
+          </tr>
+          <tr>
+            <td>Fire-and-forget (no wakeup)</td>
+            <td><span class="pill warn">no</span></td>
+            <td><span class="pill warn">no</span></td>
+          </tr>
+          <tr>
+            <td>Wait for &ldquo;all of N&rdquo;</td>
+            <td><span class="pill warn">no</span></td>
+            <td><span class="pill warn">no (loop on each id)</span></td>
+          </tr>
+          <tr>
+            <td>State retained after resolution</td>
+            <td><span class="pill warn">no — request file deleted on resolve</span></td>
+            <td><span class="pill good">yes — tracker stays in ChatSettings</span></td>
+          </tr>
+          <tr>
+            <td>Single shared event stream</td>
+            <td><span class="pill warn">no daemon event</span></td>
+            <td><span class="pill good"><code>subagent_status</code> chat message</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2 id="model">3 · Proposed model: one Delegation, two deliveries</h2>
+      <p>
+        Introduce a single concept &mdash; a <strong>Delegation</strong> &mdash; that abstracts both
+        a policy approval and a subagent. Two <code>kind</code>s, one lifecycle, one event stream,
+        one wait API.
+      </p>
+
+      <h3>3.1 The shared lifecycle</h3>
+      <figure>
+        <svg viewBox="0 0 640 220" xmlns="http://www.w3.org/2000/svg" role="img"
+             aria-label="Delegation state machine">
+          <defs>
+            <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#444" />
+            </marker>
+          </defs>
+          <g font-family="ui-sans-serif, system-ui" font-size="13">
+            <!-- top row: pending → running → completed -->
+            <rect x="40"  y="30" width="120" height="44" rx="22" fill="#fbe8d8" stroke="#b54a1a" />
+            <text x="100" y="57" text-anchor="middle" font-weight="600">pending</text>
+            <rect x="220" y="30" width="120" height="44" rx="22" fill="#fff" stroke="#444" />
+            <text x="280" y="57" text-anchor="middle" font-weight="600">running</text>
+            <rect x="400" y="30" width="160" height="44" rx="22" fill="#d9efe0" stroke="#2c7a3f" />
+            <text x="480" y="57" text-anchor="middle" font-weight="600">completed</text>
+
+            <!-- bottom row: rejected (under pending), failed (under running) -->
+            <rect x="40"  y="140" width="120" height="44" rx="22" fill="#f6e6c5" stroke="#a06600" />
+            <text x="100" y="167" text-anchor="middle" font-weight="600">rejected</text>
+            <rect x="220" y="140" width="160" height="44" rx="22" fill="#f4dada" stroke="#a04040" />
+            <text x="300" y="167" text-anchor="middle" font-weight="600">failed</text>
+
+            <!-- transitions -->
+            <line x1="160" y1="52" x2="220" y2="52" stroke="#444" marker-end="url(#arr2)" />
+            <text x="190" y="44" text-anchor="middle" fill="#666">approve / spawn</text>
+
+            <line x1="340" y1="52" x2="400" y2="52" stroke="#444" marker-end="url(#arr2)" />
+            <text x="370" y="44" text-anchor="middle" fill="#666">success</text>
+
+            <line x1="100" y1="74" x2="100" y2="140" stroke="#a06600" marker-end="url(#arr2)" />
+            <text x="108" y="112" fill="#a06600">/reject</text>
+
+            <line x1="280" y1="74" x2="280" y2="140" stroke="#a04040" marker-end="url(#arr2)" />
+            <text x="288" y="112" fill="#a04040">crash / script error</text>
+
+            <text x="40" y="208" fill="#666" font-size="12">
+              Policies use <tspan font-style="italic">pending</tspan> while waiting on the user;
+              subagents skip straight to <tspan font-style="italic">running</tspan>.
+            </text>
+          </g>
+        </svg>
+        <figcaption>One state machine covering both kinds. <code>rejected</code> is reserved for explicit user rejection; <code>failed</code> covers everything else that didn&rsquo;t complete cleanly.</figcaption>
+      </figure>
+
+      <div class="callout info">
+        <strong>What &ldquo;running&rdquo; means for each kind</strong>
+        For <em>subagents</em>, <code>running</code> is the agent loop executing &mdash; seconds to
+        hours, may itself create delegations. For <em>policies</em>, it&rsquo;s the brief window
+        in which the configured shell script runs inside the <code>/approve</code> handler;
+        <code>delivery</code> only governs what happens with the captured output, not whether the
+        script runs.
+      </div>
+
+      <h3>3.2 Two delivery modes</h3>
+      <p>Every delegation declares — at creation time — how its result reaches the parent agent:</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Mode</th>
+            <th>What happens at resolution</th>
+            <th>Use when…</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>notify</code></td>
+            <td>
+              Daemon appends a <code>&lt;notification&gt;…&lt;/notification&gt;</code> message into
+              the parent&rsquo;s chat that wakes the next turn (today&rsquo;s policy-approval
+              behavior, today&rsquo;s subagent <code>async: true</code> behavior).
+            </td>
+            <td>You want fire-and-wakeup semantics.</td>
+          </tr>
+          <tr>
+            <td><code>manual</code></td>
+            <td>
+              No notification, no wakeup. State remains observable via
+              <code>delegations list</code> / <code>delegations show</code>; the parent collects
+              results explicitly via <code>delegationWait</code> when (and if) it cares.
+            </td>
+            <td>
+              Fan-out you&rsquo;ll collect with a subscription, sync block on a single id, or true
+              fire-and-forget — one mode covers all three. The agent decides whether to wait,
+              register a subscription, or just ignore the result.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout info">
+        <strong>Why a per-delegation field, not a per-call argument on wait?</strong>
+        Because notification has to be decided <em>before</em> the result is known. If a parent
+        spawns 100 subagents and exits, the daemon needs to know whether each completing subagent
+        should append a wakeup message or stay quiet.
+      </div>
+
+      <h3>3.3 Defaults that preserve today&rsquo;s behavior</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Caller</th>
+            <th>Today</th>
+            <th>Proposed default</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Root agent · policy request</td>
+            <td>kicks fresh turn on resolve</td>
+            <td><code>delivery: 'notify'</code></td>
+          </tr>
+          <tr>
+            <td>Root agent · subagent spawn</td>
+            <td><code>async: true</code> → notification</td>
+            <td><code>delivery: 'notify'</code></td>
+          </tr>
+          <tr>
+            <td>Subagent (depth ≥ 1) · subagent spawn</td>
+            <td><code>async: false</code> → caller polls <code>subagentWait</code></td>
+            <td><code>delivery: 'manual'</code></td>
+          </tr>
+          <tr>
+            <td>Subagent · policy request</td>
+            <td>kicks fresh turn for the subagent on resolve</td>
+            <td>
+              <code>delivery: 'manual'</code>
+              <span class="small">(changed — see callout below)</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 id="approval-preview">3.4 Auto-approval is part of the model</h3>
+      <p>
+        Both kinds support being created already-approved when their respective rule says so.
+        This is &sect;4 in detail; here it&rsquo;s enough to know that auto-approval is a
+        property of creation, not a separate API. Policies keep their existing per-definition
+        <code>autoApprove</code> flag in <code>policies.json</code>; subagents get a new
+        sibling <code>subagents</code> rule list in the same file. An auto-approved delegation
+        skips the <code>pending</code> state entirely and goes straight to
+        <code>running</code> / <code>completed</code>.
+      </p>
+
+      <h2 id="approval">4 · Auto-approval rules (policies &amp; subagents)</h2>
+      <p>
+        Today policy definitions carry an <code>autoApprove: true</code> flag and subagent spawns
+        are unconditional &mdash; any agent can spawn or send to any other agent without user
+        review. The unified model adds approval gating for subagents while leaving the existing
+        policy shape untouched: <strong>existing <code>policies.json</code> files keep working
+        with no migration</strong>. Two changes:
+      </p>
+      <ul>
+        <li>
+          Policies continue to declare auto-approval per definition, exactly as today
+          (<code>"policies": { "name": { ..., "autoApprove": true } }</code>).
+        </li>
+        <li>
+          A new sibling <code>subagents</code> array in the same file holds spawn/send rules:
+          <code>[{ from, to, autoApprove }]</code>. Absent or empty &rArr; today&rsquo;s
+          permissive behavior is gone, but the built-in <code>$self &rarr; $self</code> rule
+          (below) keeps a subagent able to talk to itself.
+        </li>
+      </ul>
+
+      <h3>4.1 The two rule locations</h3>
+      <p>
+        Both live in the same per-agent <code>policies.json</code> resolved by
+        <code>readPoliciesForPath()</code>; they don&rsquo;t share a schema because they answer
+        different questions.
+      </p>
+      <ul>
+        <li>
+          <strong>Policies:</strong> per-definition <code>autoApprove: boolean</code> on each
+          entry under <code>"policies"</code> &mdash; unchanged from today.
+        </li>
+        <li>
+          <strong>Subagents:</strong> ordered list under <code>"subagents"</code>: each entry is
+          <code>{ from, to, autoApprove }</code>. <code>from</code> is matched against the
+          spawner&rsquo;s agent path and <code>to</code> against the target&rsquo;s. Endpoints
+          are agent directory paths, path prefixes, <code>"*"</code>, or <code>"$self"</code>.
+          The no-match default is <code>false</code>, so an explicit <code>false</code> is only
+          useful as a carve-out within a broader <code>true</code> region (e.g. overriding a
+          built-in).
+        </li>
+      </ul>
+
+      <h3>4.2 Built-in subagent rules and how to disable them</h3>
+      <p>
+        Subagent rule resolution is fed a list with <strong>user rules first, built-ins
+        appended</strong>. Built-ins ship in code (mirroring <code>BUILTIN_POLICIES</code> in
+        <code>src/shared/policies.ts</code>) so users don&rsquo;t need to copy-paste them into
+        every agent&rsquo;s config:
+      </p>
+      <pre><code>// src/shared/approvals.ts
+export const BUILTIN_SUBAGENT_RULES: SubagentRule[] = [
+  { from: '$self', to: '$self', autoApprove: true },
+];</code></pre>
+      <p>
+        Because user rules are evaluated before built-ins and the matcher is
+        <strong>first-match-wins</strong>, opting out of a built-in is just a normal carve-out
+        &mdash; no special opt-out shape required. To disable self-clone auto-approval:
+      </p>
+      <pre><code>// policies.json — opt out of the built-in self-clone rule.
+{
+  "subagents": [
+    { "from": "$self", "to": "$self", "autoApprove": false }
+  ]
+}</code></pre>
+      <p class="small">
+        Policies have no built-ins: a policy is auto-approved iff its definition says so.
+      </p>
+
+      <div class="callout warn">
+        <strong>Why paths, not environment names</strong>
+        The <code>environments</code> map is keyed by directory <em>prefixes</em>: an agent
+        belongs to whichever entry has the most-specific path that contains it, so multiple
+        agents can share an environment without the user wanting them to trust each other.
+        Subagent rules are independent of <code>environments</code> &mdash; they reference
+        agent directory paths directly, and use the same prefix-matching convention so a single
+        rule can cover a folder of agents.
+      </div>
+
+      <h3>4.3 Example config</h3>
+      <pre><code>// policies.json — existing policy shape preserved; new `subagents` list is additive.
+{
+  "policies": {
+    "run-host":        { "command": "...", "args": [] },
+    "manage-policies": { "command": "...", "autoApprove": true }
+  },
+
+  "subagents": [
+    // jeeves can hand work off to any agent under agents/coding/
+    { "from": "agents/jeeves", "to": "agents/coding", "autoApprove": true },
+
+    // coding agents may collaborate amongst themselves
+    { "from": "agents/coding", "to": "agents/coding", "autoApprove": true }
+
+    // anything else (e.g. agents/coding/* → agents/jeeves) still requires /approve;
+    // the built-in `$self → $self` rule is appended after this list.
+  ]
+}</code></pre>
+
+      <h3>4.4 Resolution</h3>
+      <p>On every <code>createPolicyRequest</code>, <code>subagentSpawn</code>, and
+        <code>subagentSend</code>:</p>
+      <ol>
+        <li>
+          <strong>Policy requests:</strong> look up the named definition; use its
+          <code>autoApprove</code> field (default <code>false</code>). No list traversal &mdash;
+          this is exactly today&rsquo;s logic.
+        </li>
+        <li>
+          <strong>Subagent spawn / send:</strong> build the candidate
+          <code>{ fromPath, toPath }</code> where paths are agent directories relative to the
+          workspace root. Resolve the rule list: user rules (in the order written in
+          <code>policies.json</code>) followed by <code>BUILTIN_SUBAGENT_RULES</code>. Walk the
+          list; a rule matches iff its <code>from</code> covers the candidate&rsquo;s
+          <code>fromPath</code> AND its <code>to</code> covers <code>toPath</code>. A field
+          covers a value if it is:
+          <ul>
+            <li>exactly that value, or</li>
+            <li>a parent directory of it (path-prefix match), or</li>
+            <li><code>"*"</code> (any value), or</li>
+            <li><code>"$self"</code> (matches only when the path equals the spawner&rsquo;s).</li>
+          </ul>
+          <strong>First matching rule wins.</strong> Use its <code>autoApprove</code>. Rationale:
+          users read top-to-bottom and expect the first rule they wrote to apply &mdash; no
+          implicit re-sorting by specificity. To carve out an exception, place the more-specific
+          rule before the broader one. No match &rarr; default <code>false</code> (require user
+          approval).
+        </li>
+      </ol>
+
+      <p>
+        The check fires on both <code>subagentSpawn</code> <em>and</em> <code>subagentSend</code>
+        &mdash; sending a follow-up prompt across an agent boundary is just as sensitive as the
+        initial spawn.
+      </p>
+
+      <div class="callout warn">
+        <strong>Why per-message approval, not per-edge</strong>
+        Approval rules govern <em>information flow</em>, not just code execution. A trust
+        boundary between agents isn&rsquo;t only about what runs &mdash; it&rsquo;s about what
+        data crosses. If <code>coder-1</code> is trusted with private source code and
+        <code>jeeves</code> is trusted with network access, an unconstrained channel between them
+        is an exfiltration path: the user approves a single benign-looking spawn and from then on
+        every <code>subagentSend</code> can leak code to the network agent without further
+        review. Gating every <code>subagentSpawn</code> <em>and</em> <code>subagentSend</code>
+        preserves the user&rsquo;s ability to vet what crosses the boundary. Users who consider
+        an edge unconditionally safe can write a rule with <code>autoApprove: true</code> and
+        skip the prompts; absent that, every message is reviewable.
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Caller</th>
+            <th>Target</th>
+            <th>With config above</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>agents/jeeves</code></td>
+            <td><code>agents/jeeves</code></td>
+            <td><span class="pill good">auto-approve (built-in self-clone)</span></td>
+          </tr>
+          <tr>
+            <td><code>agents/jeeves</code></td>
+            <td><code>agents/coding/coder-1</code></td>
+            <td><span class="pill good">auto-approve (jeeves → coding rule, prefix match on <code>to</code>)</span></td>
+          </tr>
+          <tr>
+            <td><code>agents/coding/coder-1</code></td>
+            <td><code>agents/coding/refactor</code></td>
+            <td><span class="pill good">auto-approve (coding → coding rule)</span></td>
+          </tr>
+          <tr>
+            <td><code>agents/coding/coder-1</code></td>
+            <td><code>agents/jeeves</code></td>
+            <td><span class="pill warn">pending — needs <code>/approve</code></span></td>
+          </tr>
+          <tr>
+            <td><code>agents/coding/refactor</code></td>
+            <td><code>agents/coding/coder-2</code> <span class="small">(send)</span></td>
+            <td><span class="pill good">auto-approve (coding → coding rule)</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout info">
+        <strong>What does an approval prompt for a subagent look like?</strong>
+        It mirrors today&rsquo;s policy-request preview: a <code>role: 'policy'</code>-style chat
+        message containing the spawner agent, target agent, the prompt body, and a
+        <code>/approve&nbsp;ID</code> / <code>/reject&nbsp;ID</code> footer. Approval transitions
+        the delegation from <code>pending</code> &rarr; <code>running</code> and the daemon
+        actually starts the subagent. Rejection terminates it without ever running.
+      </div>
+
+      <p class="small">
+        Auto-approved delegations of either kind still emit
+        <code>DAEMON_EVENT_DELEGATION_RESOLVED</code> when they finish, so a subscription that
+        includes them resolves cleanly.
+      </p>
+
+      <h2 id="api">5 · API surface</h2>
+
+      <h3>5.1 Creating a delegation</h3>
+      <p>
+        Each kind keeps its own create endpoint &mdash; the inputs are genuinely different (policy
+        needs <code>commandName</code>+<code>args</code>+<code>fileMappings</code>; subagent needs
+        a prompt and target agent). Both gain the <code>delivery</code> field.
+      </p>
+      <pre><code>// agent-side, via clawmini-lite
+client.createPolicyRequest.mutate({
+  commandName: 'run-host',
+  args: ['ls', '-la'],
+  fileMappings: {},
+  delivery: 'manual',        // NEW — default 'notify' for main agents
+});
+
+client.subagentSpawn.mutate({
+  prompt: 'triage one email',
+  delivery: 'notify',        // NEW — replaces `async`
+});</code></pre>
+
+      <h3>5.2 The unified wait / subscribe</h3>
+      <p>One endpoint, two return modes:</p>
+      <pre><code>client.delegationWait.mutate({
+  ids: ['A1B', 'C2D', 'E3F'],
+  mode: 'all',               // 'any' | 'all'
+  return: 'sync',            // 'sync' = block; 'subscribe' = register, fire later
+  timeoutMs: 60_000,         // only meaningful when return === 'sync'
+});</code></pre>
+      <ul>
+        <li>
+          <code>return: 'sync'</code> blocks the calling RPC until <code>mode</code> is satisfied
+          or <code>timeoutMs</code> elapses. Returns the resolved set + still-pending set.
+        </li>
+        <li>
+          <code>return: 'subscribe'</code> registers a daemon-side <strong>subscription</strong>
+          and returns a <code>subscriptionId</code> immediately. When <code>mode</code> is later
+          satisfied, the daemon appends one <code>&lt;notification&gt;</code> to the chat with the
+          aggregated outputs and discards the subscription.
+        </li>
+        <li>
+          IDs from both kinds may be mixed. <strong>Both kinds use the same short 3-char
+          alphanumeric ID format</strong> (growing to 4+ chars on collision); IDs are unique
+          within a chat across kinds, so <code>delegationWait</code> takes plain <code>id</code>
+          strings and the daemon looks each up in either store.
+        </li>
+      </ul>
+
+      <div class="callout info">
+        <strong>Notification suppression — no double wakeup</strong>
+        While a delegation is covered by an unfired subscription or a pending sync wait, its own
+        <code>delivery: 'notify'</code> behavior is suppressed. The covering observer takes the
+        result inline (<code>sync</code>) or aggregates it into one subscription wakeup
+        (<code>subscribe</code>). When the observer resolves, the underlying delegation is already
+        consumed &mdash; no separate <code>&lt;notification&gt;</code> is emitted for it. This
+        means it&rsquo;s safe to mix <code>notify</code> delegations with a subscription; you will
+        get exactly one wakeup, not N+1.
+      </div>
+
+      <h4 style="margin-top: 18px">Unsubscribing</h4>
+      <pre><code>client.delegationUnsubscribe.mutate({ subscriptionId });</code></pre>
+      <p>
+        Unsubscribing discards a subscription without firing a notification. Member delegations
+        are unaffected and continue running &mdash; if any of them were created with
+        <code>delivery: 'notify'</code>, suppression lifts and they resume normal notify
+        behavior. Use the CLI form <code>delegations unsubscribe &lt;subscriptionId&gt;</code>.
+      </p>
+
+      <p>
+        <code>subagentWait(id)</code> stays as a thin compatibility wrapper around
+        <code>delegationWait({ids: [id], mode: 'any', return: 'sync'})</code> for one release,
+        then is removed.
+      </p>
+
+      <h3>5.3 Valid combinations</h3>
+      <p>
+        Two axes (<code>delivery</code> on creation, <code>{return, mode}</code> on the
+        wait/subscribe observer) cross-product to a small matrix. All combinations are
+        <em>legal</em>; the table flags which are recommended and which are confusing enough to
+        avoid.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th><code>delivery</code></th>
+            <th>Observer</th>
+            <th><code>mode</code></th>
+            <th>Behavior</th>
+            <th>Verdict</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>notify</code></td>
+            <td>(none)</td>
+            <td>n/a</td>
+            <td>One wakeup per delegation as each resolves.</td>
+            <td><span class="pill good">recommended (main-agent default)</span></td>
+          </tr>
+          <tr>
+            <td><code>manual</code></td>
+            <td>any</td>
+            <td>any</td>
+            <td>
+              No wakeup unless an observer is registered. With <code>sync</code> the RPC blocks;
+              with <code>subscribe</code> one aggregated wakeup fires when <code>mode</code> is
+              satisfied. <code>(none)</code> is fire-and-forget &mdash; result observable via
+              <code>delegations list</code> / <code>show</code>.
+            </td>
+            <td><span class="pill good">recommended for fan-in &amp; subagents</span></td>
+          </tr>
+          <tr>
+            <td><code>notify</code></td>
+            <td><code>sync</code></td>
+            <td>any</td>
+            <td>
+              Block; covered ids&rsquo; notify is suppressed for the duration. On timeout,
+              still-pending ids resume notify.
+            </td>
+            <td>
+              <span class="pill warn">works, but unusual</span>
+              <span class="small">— if you&rsquo;re blocking you probably wanted <code>manual</code>.</span>
+            </td>
+          </tr>
+          <tr>
+            <td><code>notify</code></td>
+            <td><code>subscribe</code></td>
+            <td><code>all</code></td>
+            <td>One aggregated wakeup; member notifies suppressed for the subscription&rsquo;s lifetime.</td>
+            <td><span class="pill good">fine — suppression prevents double-wakeup</span></td>
+          </tr>
+          <tr>
+            <td><code>notify</code></td>
+            <td><code>subscribe</code></td>
+            <td><code>any</code></td>
+            <td>
+              Subscription fires on first resolve; survivors <strong>revert</strong> to notify, so
+              N&minus;1 individual wakeups follow.
+            </td>
+            <td>
+              <span class="pill warn">discouraged</span>
+              <span class="small">— for exactly one wakeup, switch members to <code>manual</code>.</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="small">
+        Suppression rule, in one sentence: a delegation covered by an unfired subscription or
+        pending sync wait does not emit its own <code>notify</code>; once the observer resolves
+        or cancels, suppression ends and remaining-pending ids revert to their declared delivery.
+      </p>
+
+      <h3>5.4 Listing &amp; introspection</h3>
+      <pre><code>client.delegationList.query({
+  state: 'pending' | 'running' | 'resolved' | 'all',
+  kind: 'policy' | 'subagent' | undefined,
+});</code></pre>
+      <p>
+        <code>policiesList</code> / <code>subagentList</code> remain as filtered views.
+      </p>
+
+      <h3>5.5 Agent CLI: <code>clawmini-lite</code></h3>
+      <p>
+        Agents talk to the daemon via <code>clawmini-lite</code> on their <code>$PATH</code>; the
+        binary is a thin tRPC client that authenticates with <code>CLAW_API_TOKEN</code>. This is
+        the surface an agent actually sees, so the spec is grounded here.
+      </p>
+
+      <p class="small">
+        Design principle: <strong>kind-specific commands create things; <code>delegations</code>
+        observes and manages them.</strong> If you have an id, reach for <code>delegations</code>
+        regardless of kind.
+      </p>
+
+      <h4 style="margin-top: 22px">Policy commands (kind-specific)</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>Command</th>
+            <th>Purpose &amp; flags</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>requests list</code></td>
+            <td>List policy <em>definitions</em> (not requests). Unchanged.</td>
+          </tr>
+          <tr>
+            <td><code>requests show &lt;name&gt;</code></td>
+            <td>Print one policy definition + its script. Unchanged.</td>
+          </tr>
+          <tr>
+            <td>
+              <code>request &lt;cmd&gt; [-f name=path …] [--delivery&nbsp;manual|notify] -- &lt;args…&gt;</code>
+            </td>
+            <td>
+              Create a policy request. <strong>New</strong> <code>--delivery</code> flag (default
+              <code>'notify'</code> for main agents, <code>'manual'</code> for subagents). Prints
+              the new id and a hint pointing at <code>delegations wait</code> /
+              <code>delegations show</code>; auto-approved policies still execute inline and
+              print stdout/stderr.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4 style="margin-top: 22px">Subagent commands (kind-specific)</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>Command</th>
+            <th>Purpose &amp; flags</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <code>subagents spawn &lt;prompt&gt; [--agent &lt;name&gt;] [--id &lt;id&gt;] [--delivery&nbsp;manual|notify]</code>
+            </td>
+            <td>
+              Create a subagent. <strong>New</strong> <code>--delivery</code> flag replaces
+              <code>--async</code> (kept as deprecated alias for one release). Now also subject to
+              the agent-path approval check &mdash; a denied edge prints
+              <code>state=pending&nbsp;requiresApproval=true</code>. Prints the new id and hints at
+              <code>delegations wait &lt;id&gt;</code> / <code>delegations notify-when &lt;id&gt;</code>.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>subagents send &lt;id&gt; --prompt &lt;p&gt; [--delivery …]</code>
+            </td>
+            <td>
+              Send a follow-up to an existing subagent. <strong>Now also gated</strong> by the
+              same approval rules as <code>spawn</code>.
+            </td>
+          </tr>
+          <tr>
+            <td><code>subagents stop &lt;id&gt;</code></td>
+            <td>Abort a running subagent without removing its record. Unchanged.</td>
+          </tr>
+          <tr>
+            <td><code>subagents tail &lt;id&gt; [-n N] [--json]</code></td>
+            <td>Read a subagent&rsquo;s message history. Unchanged.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="small" style="margin-top: 4px">
+        <code>subagents wait</code>, <code>subagents list</code>, and <code>subagents delete</code>
+        are <strong>removed</strong> &mdash; use <code>delegations wait</code>,
+        <code>delegations list --kind subagent</code>, and <code>delegations delete</code>.
+      </p>
+
+      <h4 style="margin-top: 22px">
+        <code>delegations</code> command group (kind-agnostic) <span class="pill subagent">new</span>
+      </h4>
+      <table>
+        <thead>
+          <tr>
+            <th>Command</th>
+            <th>Purpose &amp; flags</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <code>delegations list [--state&nbsp;pending|running|resolved|all] [--kind&nbsp;policy|subagent] [--json]</code>
+            </td>
+            <td>
+              Cross-kind listing. <code>--state</code> defaults to <code>pending,running</code>;
+              <code>--kind</code> filters; <code>--json</code> emits the raw records.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>delegations wait &lt;id…&gt; [--all] [--timeout&nbsp;&lt;ms&gt;] [--subscribe]</code>
+            </td>
+            <td>
+              The unified wait. Default behavior blocks the RPC (mode <code>'any'</code>,
+              timeout 60&thinsp;000&thinsp;ms). <code>--all</code> waits for every id;
+              <code>--subscribe</code> registers a daemon-side subscription and returns the
+              <code>subscriptionId</code> immediately. Prints a JSON object:
+              <code>{ resolved: [{ id, kind, state, … }], pending: [...] }</code>.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>delegations notify-when &lt;id…&gt; [--all]</code>
+            </td>
+            <td>
+              Convenience alias for <code>delegations wait … --subscribe</code>. Returns the
+              <code>subscriptionId</code> immediately; the daemon will append one
+              <code>&lt;notification&gt;</code> chat message to the originating session when the
+              condition is met. Persists across <code>/new</code>; cleared on daemon restart.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>delegations unsubscribe &lt;subscriptionId&gt;</code>
+            </td>
+            <td>
+              Discard a registered subscription without firing. Members continue running and
+              revert to their declared <code>delivery</code>.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>delegations show &lt;id&gt;</code>
+            </td>
+            <td>
+              Print a single delegation&rsquo;s record (state, delivery, output if resolved).
+              Works for either kind.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>delegations delete &lt;id…&gt;</code>
+            </td>
+            <td>
+              Remove a delegation record (subagent: also stops if running). Replaces
+              <code>subagents delete</code>; works for resolved policy requests too. Refuses
+              while a subscription still covers the id; unsubscribe first.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="small" style="margin-top: 12px">
+        Flag conventions across the new surface: <code>--all</code> sets <code>mode: 'all'</code>
+        (default <code>'any'</code>); <code>--subscribe</code> sets <code>return: 'subscribe'</code>
+        (default <code>'sync'</code>); <code>--delivery</code> takes
+        <code>manual</code>&thinsp;|&thinsp;<code>notify</code>.
+      </p>
+
+      <details>
+        <summary>User-facing slash commands (for context)</summary>
+        <p>
+          Existing slash commands extend cleanly to the unified id space &mdash; no new user
+          commands are introduced.
+        </p>
+        <ul>
+          <li>
+            <code>/pending</code> &mdash; lists pending policy requests <em>and</em> pending
+            subagent approvals together.
+          </li>
+          <li>
+            <code>/approve&nbsp;&lt;id&gt;</code> /
+            <code>/reject&nbsp;&lt;id&gt;&nbsp;[reason]</code> &mdash; works for both kinds; the
+            daemon dispatches based on the id&rsquo;s store.
+          </li>
+        </ul>
+      </details>
+
+      <h3>5.6 Storage and events</h3>
+      <p>
+        Both kinds share one on-disk store and one owning module &mdash; the daemon-side
+        <code>DelegationManager</code>. The two pre-existing stores
+        (<code>RequestStore</code> for policy requests, <code>ChatSettings.subagents</code> for
+        subagent trackers) are <strong>removed</strong>.
+      </p>
+
+      <h4 style="margin-top: 18px">Unified record</h4>
+      <pre><code>// src/shared/delegations.ts
+export type DelegationKind  = 'policy' | 'subagent';
+export type DelegationState = 'pending' | 'running' | 'completed' | 'rejected' | 'failed';
+export type DeliveryMode    = 'notify' | 'manual';
+
+interface DelegationBase {
+  id: string;                 // 3-char alphanum, unique per chat
+  kind: DelegationKind;
+  state: DelegationState;
+  delivery: DeliveryMode;
+  chatId: string;
+  agentId: string;            // creator's agent
+  parentId?: string;          // creator's subagent id, if any
+  createdAt: string;
+  resolvedAt?: string;
+  rejectionReason?: string;
+}
+
+export interface PolicyDelegation extends DelegationBase {
+  kind: 'policy';
+  commandName: string;
+  args: string[];
+  fileMappings: Record&lt;string, string&gt;;
+  cwd?: string;
+  executionResult?: { stdout: string; stderr: string; exitCode: number };
+}
+
+export interface SubagentDelegation extends DelegationBase {
+  kind: 'subagent';
+  targetAgentId: string;
+  sessionId: string;
+  prompt: string;             // last prompt sent; refreshed on `subagentSend`
+}
+
+export type Delegation = PolicyDelegation | SubagentDelegation;</code></pre>
+
+      <h4 style="margin-top: 18px">Layout on disk</h4>
+      <pre><code>.clawmini/tmp/delegations/&lt;chatId&gt;/&lt;id&gt;.json           // one file per delegation
+.clawmini/tmp/delegations/&lt;chatId&gt;/subscriptions/&lt;subscriptionId&gt;.json</code></pre>
+      <p class="small">
+        Per-chat directories make listing cheap and align IDs to their natural visibility scope.
+        The <code>parentId</code> field replaces today&rsquo;s
+        <code>SubagentTracker.parentId</code> for parent/child access checks &mdash; the manager
+        exposes <code>assertVisibleTo(callerSubagentId, id)</code> so cross-kind authorization
+        keeps the same semantics today&rsquo;s <code>subagent-router.ts</code> enforces.
+      </p>
+
+      <h4 style="margin-top: 18px">Module shape</h4>
+      <p>
+        Persistence is a thin file-IO layer (<code>DelegationStore</code>); cross-kind
+        coordination lives on <code>DelegationManager</code>:
+      </p>
+      <pre><code>// src/daemon/delegation-manager.ts
+class DelegationManager {
+  // --- creation (called by kind-specific RPCs, not by agents directly) ---
+  createPolicy(input: PolicyCreate):     Promise&lt;PolicyDelegation&gt;;
+  createSubagent(input: SubagentCreate): Promise&lt;SubagentDelegation&gt;;
+  sendToSubagent(id: string, prompt: string): Promise&lt;void&gt;;   // approval-gated
+
+  // --- lifecycle, called by /approve and /reject handlers ---
+  approve(id: string, by: 'user' | 'auto'): Promise&lt;void&gt;;      // pending → running
+  reject(id: string, reason: string):       Promise&lt;void&gt;;      // pending → rejected
+  markResolved(id: string, outcome: ResolvedOutcome): Promise&lt;void&gt;; // emits DELEGATION_RESOLVED
+
+  // --- observation ---
+  get(id):    Promise&lt;Delegation | null&gt;;
+  list(filter: { chatId; kind?; state?; parentId? }): Promise&lt;Delegation[]&gt;;
+  delete(id): Promise&lt;void&gt;;
+
+  // --- waiting / subscriptions ---
+  wait(opts: { ids; mode; return: 'sync' | 'subscribe'; timeoutMs?; chatId; sessionId; });
+  unsubscribe(subscriptionId: string): Promise&lt;void&gt;;
+
+  // --- daemon lifecycle ---
+  wipeAll(): Promise&lt;void&gt;;            // called on daemon start
+}</code></pre>
+      <p class="small">
+        What stays where: per-kind <em>execution</em> (running a policy script;
+        spawning/managing a subagent process) remains in <code>PolicyRequestService</code> and
+        <code>executeSubagent</code>; the manager dispatches into them on
+        <code>approve()</code>. Approval rule evaluation is a pure function in
+        <code>src/shared/approvals.ts</code>. <code>/approve</code> and <code>/reject</code>
+        stay in <code>slash-policies.ts</code> as the user-facing signal &mdash; the handler
+        loads the delegation by id and calls <code>manager.approve</code> /
+        <code>manager.reject</code>, regardless of kind.
+      </p>
+
+      <h4 style="margin-top: 18px">Lifecycle invariants</h4>
+      <ul>
+        <li>
+          <strong>Records are retained on resolve.</strong> A delegation transitions to
+          <code>completed</code>/<code>rejected</code>/<code>failed</code> with
+          <code>resolvedAt</code> and (for policies) <code>executionResult</code> persisted, so a
+          subscription registered after the fact can still observe them.
+        </li>
+        <li>
+          <strong>Daemon startup wipes everything.</strong> Today active subagents pile up across
+          restarts and completed policy requests are GC&rsquo;d in a separate code path. The new
+          behavior is <code>manager.wipeAll()</code>: <strong>delete the entire
+          <code>.clawmini/tmp/delegations/</code> tree on daemon start</strong>, treating restart
+          as a clean slate. Trade-off: a fan-out in flight when the daemon restarts is gone; the
+          agent will need to reissue. This is intentional &mdash; the alternative (zombie
+          clutter) is the worse UX today.
+        </li>
+        <li>
+          <strong>New daemon event</strong> <code>DAEMON_EVENT_DELEGATION_RESOLVED</code> fires
+          on policy approval/rejection and on subagent terminal status. The wait/subscribe path
+          listens on this single event instead of scraping
+          <code>DAEMON_EVENT_MESSAGE_APPENDED</code>.
+        </li>
+      </ul>
+
+      <h2 id="wait">6 · Waiting and subscriptions</h2>
+
+      <div class="callout info">
+        <strong>Subscription binding: chat-scoped, session-stamped</strong>
+        A subscription is registered against a <em>chat</em>, not a session or a turn. If the user
+        runs <code>/new</code> between fan-out and fan-in, the subscription still fires &mdash; and
+        the notification message is delivered into the <strong>session that registered it</strong>
+        (recorded at register time as <code>originSessionId</code>), not whatever session is
+        current. This preserves the agent&rsquo;s view that &ldquo;the work I started has come
+        back to me.&rdquo;
+      </div>
+
+      <h3>6.1 Notification payload (when <code>return: 'subscribe'</code> fires)</h3>
+      <p>
+        Compact by default &mdash; a single <code>&lt;notification&gt;</code> message containing
+        the per-id status table and pointers to where full output lives. The full output of each
+        delegation is already addressable via <code>subagents tail &lt;id&gt;</code> and the chat
+        log, so we don&rsquo;t inline it.
+      </p>
+      <pre><code>&lt;notification&gt;
+All 100 delegations resolved (mode: 'all').
+✓ 97 completed: A1B, A2C, A3D, A4E, ... (97 total)
+✗ 3 failed:
+   - QF7  (subagent: timeout after 30 min)
+   - QG2  (subagent: script-error, exit 137)
+   - X9P  (policy: rejected — &quot;not safe to run&quot;)
+Use `subagents tail &lt;id&gt;` or `requests show &lt;id&gt;` for full output.
+&lt;/notification&gt;</code></pre>
+      <p class="small">
+        If a different aggregation shape turns out useful (e.g. the agent literally wants the
+        100 outputs concatenated), we can add a <code>payload: 'summary' | 'full'</code> field to
+        the wait call later &mdash; not in v1.
+      </p>
+
+      <div class="twocol">
+        <section class="panel">
+          <h4>Synchronous block</h4>
+          <pre><code>// Block this RPC until a single delegation resolves
+const r = await client.delegationWait.mutate({
+  ids: ['A1B'],
+  mode: 'any',
+  return: 'sync',
+  timeoutMs: 30_000,
+});
+// r.resolved[0].output.exitCode === 0</code></pre>
+          <p class="small">
+            Replaces the <code>do { … } while (status === 'active')</code> polling loop in
+            <code>cli/subagent-commands.ts</code>.
+          </p>
+        </section>
+
+        <section class="panel">
+          <h4>Subscription (one wakeup for many)</h4>
+          <pre><code>// Spawn 100 subagents, then register a single subscription
+const ids = [];
+for (const item of inbox) {
+  const r = await client.subagentSpawn.mutate({
+    prompt: `triage ${item.id}`,
+    delivery: 'manual',
+  });
+  ids.push(r.id);
+}
+await client.delegationWait.mutate({
+  ids,
+  mode: 'all',
+  return: 'subscribe',     // register, return immediately
+});
+// agent exits; gets one wakeup when the last one finishes</code></pre>
+        </section>
+      </div>
+
+      <h2 id="walkthroughs">7 · Walkthroughs</h2>
+
+      <h3>7.1 Sync wait on one subagent</h3>
+      <figure>
+        <svg viewBox="0 0 880 240" xmlns="http://www.w3.org/2000/svg" role="img"
+             aria-label="Sync subagent wait sequence diagram">
+          <defs>
+            <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#444" />
+            </marker>
+          </defs>
+          <g font-family="ui-sans-serif, system-ui" font-size="13">
+            <!-- Lanes -->
+            <rect x="60" y="20" width="140" height="30" rx="6" fill="#e3dcf3" stroke="#5d4ea0" />
+            <text x="130" y="40" text-anchor="middle" font-weight="600">Parent agent</text>
+            <rect x="370" y="20" width="140" height="30" rx="6" fill="#fff" stroke="#444" />
+            <text x="440" y="40" text-anchor="middle" font-weight="600">Daemon</text>
+            <rect x="680" y="20" width="140" height="30" rx="6" fill="#e3dcf3" stroke="#5d4ea0" />
+            <text x="750" y="40" text-anchor="middle" font-weight="600">Subagent</text>
+            <line x1="130" y1="50" x2="130" y2="220" stroke="#cdc8be" stroke-dasharray="3 3" />
+            <line x1="440" y1="50" x2="440" y2="220" stroke="#cdc8be" stroke-dasharray="3 3" />
+            <line x1="750" y1="50" x2="750" y2="220" stroke="#cdc8be" stroke-dasharray="3 3" />
+            <!-- Steps -->
+            <line x1="130" y1="80" x2="440" y2="80" stroke="#444" marker-end="url(#arr3)" />
+            <text x="285" y="74" text-anchor="middle">spawn(prompt, delivery: 'manual')</text>
+            <line x1="440" y1="100" x2="750" y2="100" stroke="#444" marker-end="url(#arr3)" />
+            <text x="595" y="94" text-anchor="middle">execute</text>
+            <line x1="130" y1="130" x2="440" y2="130" stroke="#444" marker-end="url(#arr3)" />
+            <text x="285" y="124" text-anchor="middle">delegationWait(ids:[id], 'sync')</text>
+            <text x="285" y="146" text-anchor="middle" fill="#5d4ea0">⟨RPC blocked⟩</text>
+            <line x1="750" y1="180" x2="440" y2="180" stroke="#444" stroke-dasharray="4 3"
+                  marker-end="url(#arr3)" />
+            <text x="595" y="174" text-anchor="middle">resolved</text>
+            <line x1="440" y1="210" x2="130" y2="210" stroke="#444" marker-end="url(#arr3)" />
+            <text x="285" y="204" text-anchor="middle">{ resolved: [{ output }] }</text>
+          </g>
+        </svg>
+      </figure>
+
+      <h3>7.2 Single policy with auto-wakeup</h3>
+      <p>
+        Behaves identically to today: agent calls <code>createPolicyRequest</code> with default
+        <code>delivery: 'notify'</code>, the user types <code>/approve&nbsp;ID</code>, and the
+        daemon kicks a fresh turn carrying the script output.
+      </p>
+
+      <h3>7.3 Fan-out with a single subscription</h3>
+      <figure>
+        <svg viewBox="0 0 880 280" xmlns="http://www.w3.org/2000/svg" role="img"
+             aria-label="Fan-out with subscription">
+          <defs>
+            <marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#444" />
+            </marker>
+          </defs>
+          <g font-family="ui-sans-serif, system-ui" font-size="13">
+            <rect x="40" y="20" width="140" height="30" rx="6" fill="#e3dcf3" stroke="#5d4ea0" />
+            <text x="110" y="40" text-anchor="middle" font-weight="600">Parent agent</text>
+            <rect x="370" y="20" width="140" height="30" rx="6" fill="#fff" stroke="#444" />
+            <text x="440" y="40" text-anchor="middle" font-weight="600">Daemon</text>
+            <rect x="680" y="20" width="160" height="30" rx="6" fill="#e3dcf3" stroke="#5d4ea0" />
+            <text x="760" y="40" text-anchor="middle" font-weight="600">Subagents (×100)</text>
+
+            <line x1="110" y1="50" x2="110" y2="270" stroke="#cdc8be" stroke-dasharray="3 3" />
+            <line x1="440" y1="50" x2="440" y2="270" stroke="#cdc8be" stroke-dasharray="3 3" />
+            <line x1="760" y1="50" x2="760" y2="270" stroke="#cdc8be" stroke-dasharray="3 3" />
+
+            <line x1="110" y1="80" x2="440" y2="80" stroke="#444" marker-end="url(#arr4)" />
+            <text x="275" y="74" text-anchor="middle">100 × spawn(delivery:'manual')</text>
+            <line x1="440" y1="100" x2="760" y2="100" stroke="#444" marker-end="url(#arr4)" />
+            <text x="600" y="94" text-anchor="middle">fan out</text>
+
+            <line x1="110" y1="130" x2="440" y2="130" stroke="#444" marker-end="url(#arr4)" />
+            <text x="275" y="124" text-anchor="middle">delegationWait(ids, mode:'all', 'subscribe')</text>
+            <line x1="440" y1="150" x2="110" y2="150" stroke="#444" marker-end="url(#arr4)" />
+            <text x="275" y="144" text-anchor="middle">{ subscription registered }</text>
+            <text x="110" y="170" text-anchor="middle" fill="#5d4ea0">⟨agent exits turn⟩</text>
+
+            <line x1="760" y1="200" x2="440" y2="200" stroke="#444" stroke-dasharray="4 3"
+                  marker-end="url(#arr4)" />
+            <text x="600" y="194" text-anchor="middle">…99 more resolveds…</text>
+            <line x1="440" y1="240" x2="110" y2="240" stroke="#444" marker-end="url(#arr4)" />
+            <text x="275" y="234" text-anchor="middle">⟨notification⟩ all 100 done</text>
+          </g>
+        </svg>
+        <figcaption>The subscription collapses N events into 1 wakeup, even across days.</figcaption>
+      </figure>
+
+      <h3>7.4 Fan-out with mixed kinds</h3>
+      <p>
+        Spawn three subagents to do research, plus a policy request to fetch a URL. Wake when
+        everything is back:
+      </p>
+      <pre><code>const subIds = await Promise.all(prompts.map(p =>
+  client.subagentSpawn.mutate({ prompt: p, delivery: 'manual' }).then(r => r.id)
+));
+const polId = (await client.createPolicyRequest.mutate({
+  commandName: 'curl-allowlisted', args: [url], fileMappings: {}, delivery: 'manual',
+})).id;
+
+await client.delegationWait.mutate({
+  ids: [...subIds, polId],
+  mode: 'all',
+  return: 'subscribe',
+});</code></pre>
+
+      <h3>7.5 Cross-agent subagent spawn (requires approval)</h3>
+      <p>
+        Spawner is <code>agents/coding/coder-1</code>; target is <code>agents/jeeves</code>; the
+        configured rules don&rsquo;t permit that edge. The spawn enters <code>pending</code> and
+        the user gets a prompt that looks like a policy approval card.
+      </p>
+      <pre><code>// Inside subagent in agents/coding/coder-1
+await client.subagentSpawn.mutate({
+  targetAgentId: 'jeeves',
+  prompt: 'send the user a Slack note that the build is green',
+  delivery: 'manual',
+});
+// → returns { id: 'A1B', state: 'pending', requiresApproval: true }
+// → chat shows: "Subagent spawn approval: agents/coding/coder-1 → agents/jeeves
+//                Prompt: send the user a Slack note ...
+//                Use /approve A1B or /reject A1B [reason]"
+
+await client.delegationWait.mutate({
+  ids: ['A1B'],
+  mode: 'any',
+  return: 'sync',
+  timeoutMs: 60_000,
+});
+// → blocks until the user approves AND the subagent finishes.
+//   On approval the delegation transitions pending → running.</code></pre>
+
+      <h2 id="migration">8 · Migration &amp; backwards compatibility</h2>
+      <p class="small">
+        Migration is mostly additive at the wire-protocol layer (new fields, deprecated aliases)
+        and a hard cut at the persistence layer (one new store replaces two old ones, daemon-start
+        wipe absorbs any in-flight data). Steps below are roughly the order they should land.
+      </p>
+      <ol>
+        <li>
+          <strong>Introduce the unified <code>Delegation</code> schema and
+          <code>DelegationStore</code>.</strong> Add <code>src/shared/delegations.ts</code>
+          (types) and <code>src/daemon/delegation-store.ts</code> (per-chat file IO under
+          <code>.clawmini/tmp/delegations/&lt;chatId&gt;/</code>). The store replaces both
+          <code>RequestStore</code> and <code>ChatSettings.subagents</code>.
+        </li>
+        <li>
+          <strong>Add <code>DelegationManager</code></strong> as the cross-kind owner of
+          lifecycle, events, subscriptions, notify-suppression, and the daemon-start wipe.
+          Per-kind execution stays in <code>PolicyRequestService</code> and
+          <code>executeSubagent</code>; the manager dispatches into them on
+          <code>approve()</code>.
+        </li>
+        <li>
+          <strong>Add <code>DAEMON_EVENT_DELEGATION_RESOLVED</code></strong> emitted by
+          <code>manager.markResolved</code> for both kinds; the wait/subscribe path listens on
+          this single event instead of scraping <code>DAEMON_EVENT_MESSAGE_APPENDED</code>.
+        </li>
+        <li>
+          <strong>Migrate the policy-request RPCs.</strong>
+          <code>createPolicyRequest</code> now writes via <code>manager.createPolicy()</code> and
+          accepts <code>delivery</code> (default <code>'notify'</code> for main agents,
+          <code>'manual'</code> for subagents); resolved requests transition state in place
+          (instead of <code>store.delete</code>) so a subscription registered after the fact can
+          observe them. <code>slash-policies.ts</code> calls <code>manager.approve()</code> /
+          <code>manager.reject()</code>; the policy script execution path inside
+          <code>/approve</code> moves under <code>manager.approve()</code> &rarr; per-kind
+          dispatch.
+        </li>
+        <li>
+          <strong>Migrate the subagent RPCs.</strong> <code>subagentSpawn</code>,
+          <code>subagentSend</code>, <code>subagentStop</code>, <code>subagentList</code>,
+          <code>subagentTail</code> all read/write through the manager. Drop
+          <code>ChatSettings.subagents</code>. <code>spawn</code>/<code>send</code> take
+          <code>delivery</code> with the same defaults; boolean <code>async</code> stays as a
+          deprecated alias for one release (<code>true → 'notify'</code>,
+          <code>false → 'manual'</code>). The parent/child access check
+          (<code>assertSubagentAccess</code>) becomes
+          <code>manager.assertVisibleTo(callerSubagentId, id)</code> &mdash; same semantics,
+          single source of truth. Subagent IDs become 3-char alphanumeric (today they&rsquo;re
+          UUIDs); the daemon-start wipe absorbs the change with no in-flight migration.
+        </li>
+        <li>
+          <strong>Implement the unified wait API.</strong> Add
+          <code>delegationWait</code>, <code>delegationList</code>,
+          <code>delegationUnsubscribe</code> on the agent-facing tRPC surface, all backed by
+          the manager. <code>subagentWait</code> stays as a thin wrapper around
+          <code>manager.wait({ids: [id], mode: 'any', return: 'sync'})</code> for one release.
+        </li>
+        <li>
+          <strong>Implement notify suppression.</strong> When a delegation is covered by a
+          pending sync wait or an unfired subscription, the manager suppresses its own
+          <code>notify</code> at <code>markResolved</code> time; when the observer resolves or
+          cancels, suppression lifts for any still-pending members.
+        </li>
+        <li>
+          <strong>Add subagent approval rules.</strong> Keep the per-policy
+          <code>autoApprove</code> field on <code>PolicyDefinition</code> exactly as today
+          &mdash; existing <code>policies.json</code> files keep working unchanged. Add an
+          optional <code>subagents</code> array to <code>policies.json</code> (per-agent, same
+          resolution as policy definitions). Add <code>src/shared/approvals.ts</code>:
+          <code>SubagentRule</code> type, <code>BUILTIN_SUBAGENT_RULES</code> (containing the
+          <code>$self → $self</code> rule), and a pure
+          <code>evaluateSubagentApproval(candidate, rules)</code> matcher. The resolved list
+          is <code>[...userRules, ...BUILTIN_SUBAGENT_RULES]</code>; first-match-wins lets
+          users override built-ins by listing their override first. Approval gating fires from
+          <code>manager.createPolicy</code> (reads the named definition&rsquo;s
+          <code>autoApprove</code>), <code>manager.createSubagent</code>, and
+          <code>manager.sendToSubagent</code> (run the subagent matcher).
+        </li>
+        <li>
+          <strong>Update <code>cli/subagent-commands.ts</code></strong> to call
+          <code>delegationWait</code>; drop the polling loop. Remove
+          <code>subagents wait</code> / <code>subagents list</code> /
+          <code>subagents delete</code>. Add new <code>cli/delegations-commands.ts</code> for
+          the <code>delegations {list, wait, notify-when, unsubscribe, show, delete}</code>
+          group; register it from <code>cli/lite.ts</code>. Update
+          <code>subagents spawn</code> and <code>request &lt;cmd&gt;</code> output to print a
+          hint pointing at <code>delegations wait</code> /
+          <code>delegations notify-when</code>.
+        </li>
+        <li>
+          <strong>Update built-in skills under <code>templates/skills/</code>.</strong> The
+          CLI surface that agents see through skills changes alongside the migration; the
+          skill files have to land in the same release as the CLI changes or agents will
+          read stale guidance.
+          <ul>
+            <li>
+              <code>clawmini-requests/SKILL.md</code>: document the new
+              <code>--delivery&nbsp;manual|notify</code> flag on <code>request &lt;cmd&gt;</code>
+              (default <code>'notify'</code> for main agents, <code>'manual'</code> for
+              subagents). Revise the &ldquo;What Happens Next&rdquo; section: today it tells
+              the agent &ldquo;do not poll&rdquo; because there was no observation path.
+              Now there is &mdash; point at <code>delegations wait &lt;id&gt;</code> /
+              <code>delegations show &lt;id&gt;</code> as the explicit alternatives to
+              wait-for-wakeup. The <code>manage-policies</code> section is unchanged
+              (per-definition <code>autoApprove</code> is preserved); add one line noting
+              that the new <code>subagents</code> rule list in <code>policies.json</code> is
+              user-managed and not reachable through <code>manage-policies</code>.
+            </li>
+            <li>
+              <code>clawmini-subagents/SKILL.md</code>: replace <code>--async</code> with
+              <code>--delivery</code> (mention the deprecated alias for one release); drop
+              the <code>subagents wait</code> / <code>list</code> / <code>delete</code>
+              sections entirely and replace them with one-line pointers to the
+              <code>delegations</code> equivalents. Add an approval-gating callout: both
+              <code>spawn</code> and <code>send</code> can now return
+              <code>state=pending&nbsp;requiresApproval=true</code>, and the built-in
+              <code>$self&nbsp;&rarr;&nbsp;$self</code> rule keeps self-cloning frictionless.
+              Update the spawn-output description to mention that the printed id is usable
+              with <code>delegations wait</code> / <code>delegations notify-when</code>.
+            </li>
+            <li>
+              <code>clawmini-jobs/SKILL.md</code>: no change &mdash; jobs are out of scope
+              for this proposal.
+            </li>
+            <li>
+              <strong>New</strong> <code>clawmini-delegations/SKILL.md</code>: introduces the
+              kind-agnostic <code>delegations&nbsp;{list,&nbsp;wait,&nbsp;notify-when,&nbsp;unsubscribe,&nbsp;show,&nbsp;delete}</code>
+              group. The skill should lead with the mental model (one id space, one
+              lifecycle, two kinds &mdash; if you have an id, reach for
+              <code>delegations</code> regardless of kind), then cover the fan-out idiom
+              (<code>--delivery&nbsp;manual</code> on creation +
+              <code>delegations notify-when --all</code> for one aggregated wakeup) and the
+              suppression rule (mixing <code>notify</code> delegations under a subscription
+              still produces exactly one wakeup, not N+1). Cross-link to
+              <code>clawmini-requests</code> and <code>clawmini-subagents</code> as the
+              creation surfaces.
+            </li>
+          </ul>
+        </li>
+        <li>
+          <strong>Daemon-start wipe.</strong> Replace today&rsquo;s &ldquo;mark active
+          subagents failed&rdquo; + &ldquo;GC completed policy requests&rdquo; with
+          <code>manager.wipeAll()</code>: delete the entire
+          <code>.clawmini/tmp/delegations/</code> tree.
+        </li>
+        <li>
+          <strong>Tests.</strong> Extend <code>policy-request.test.ts</code>,
+          <code>slash-policies.test.ts</code>, <code>subagent-router.test.ts</code> against the
+          manager-backed paths. New test files for <code>delegation-store</code>,
+          <code>delegation-manager</code> (lifecycle, events, suppression),
+          <code>delegationWait</code> (any/all, sync/subscribe, mixed kinds, unsubscribe,
+          session-stamped notification), and <code>approvals</code> (rule evaluation,
+          built-in override by placement).
+        </li>
+      </ol>
+
+    </main>
+  </body>
+</html>

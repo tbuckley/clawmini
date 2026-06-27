@@ -97,7 +97,7 @@ describe('E2E Requests Tests (Lite)', () => {
     expect(flat).toContain('do not poll');
     expect(flat).toContain('end your turn');
 
-    const requestsDir = path.join(env.e2eDir, '.clawmini', 'tmp', 'requests');
+    const requestsDir = path.join(env.e2eDir, '.clawmini', 'tmp', 'delegations', 'default-chat');
     const files = (await fsPromises.readdir(requestsDir)).filter((f) => f.endsWith('.json'));
     expect(files.length).toBe(1);
 

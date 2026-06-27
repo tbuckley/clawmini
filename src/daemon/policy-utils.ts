@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { pathIsInsideDir } from '../shared/utils/fs.js';
 import type { PolicyRequest, PolicyDefinition } from '../shared/policies.js';
+import type { PolicyDelegation } from '../shared/delegations.js';
 import { resolveAgentDir } from './api/router-utils.js';
 import {
   getWorkspaceRoot,
@@ -221,7 +222,7 @@ export function executeSafe(
 }
 
 export async function executeRequest(
-  request: PolicyRequest,
+  request: PolicyRequest | PolicyDelegation,
   policy: PolicyDefinition,
   cwd?: string
 ): Promise<{ stdout: string; stderr: string; exitCode: number; commandStr: string }> {
@@ -270,7 +271,9 @@ export async function truncateLargeOutput(
   return { stdout, stderr };
 }
 
-export async function generateRequestPreview(request: PolicyRequest): Promise<string> {
+export async function generateRequestPreview(
+  request: PolicyRequest | PolicyDelegation
+): Promise<string> {
   let previewContent = `Sandbox Policy Request: ${request.commandName}\n`;
   previewContent += `ID: ${request.id}\n`;
   if (request.args.length > 0) {

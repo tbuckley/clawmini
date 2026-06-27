@@ -10,7 +10,7 @@ import {
 // enforces `sub.parentId === ctx.tokenPayload.subagentId` on every mutation
 // and query; these tests probe each endpoint via the lite CLI.
 
-const FORBIDDEN_PATTERN = /not a child of the caller|Subagent not found/i;
+const FORBIDDEN_PATTERN = /not visible to the caller|Delegation .* not found|not a child of the caller|Subagent not found/i;
 
 describe('E2E Subagent Authorization', () => {
   let env: TestEnvironment;

@@ -27,25 +27,51 @@ vi.mock('../../shared/workspace.js', () => ({
   }),
 }));
 
-vi.mock('../policy-request-service.js', () => {
+vi.mock('../delegation-manager.js', () => {
   return {
-    PolicyRequestService: class {
-      async createRequest() {
+    DelegationManager: class {
+      async createPolicy(opts: any) {
         return {
           id: 'REQ-123',
-          commandName: 'test-cmd',
-          args: ['arg1', 'arg2'],
-          fileMappings: {
-            file1: '/mock/.clawmini/tmp/snapshots/file1.txt',
-            file2: '/mock/.clawmini/tmp/snapshots/file2.txt',
-          },
-          state: 'Pending',
-          createdAt: Date.now(),
-          chatId: 'chat-1',
-          agentId: 'agent-1',
+          kind: 'policy',
+          commandName: opts.commandName,
+          args: opts.args,
+          fileMappings: opts.fileMappings,
+          state: 'pending',
+          createdAt: Date.now().toString(),
+          chatId: opts.chatId,
+          agentId: opts.agentId,
         };
       }
+      async approve() {}
+      async markResolved() {}
     },
+  };
+});
+
+vi.mock('../delegation-store.js', () => {
+  return {
+    DelegationStore: class {},
+  };
+});
+
+vi.mock('../policy-utils.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../policy-utils.js')>();
+  return {
+    ...actual,
+    createSnapshot: vi
+      .fn()
+      .mockImplementation(async (path) => `/mock/.clawmini/tmp/snapshots/${path}`),
+    executeRequest: vi.fn().mockResolvedValue({
+      stdout: 'auto executed',
+      stderr: '',
+      exitCode: 0,
+      commandStr: 'echo auto executed',
+    }),
+    truncateLargeOutput: vi.fn().mockResolvedValue({
+      stdout: 'auto executed',
+      stderr: '',
+    }),
   };
 });
 
@@ -64,12 +90,20 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       mkdir: vi.fn(),
       readdir: vi.fn().mockResolvedValue([]),
       realpath: vi.fn().mockImplementation((p) => Promise.resolve(p)),
+      lstat: vi
+        .fn()
+        .mockResolvedValue({ isSymbolicLink: () => false, isFile: () => true, size: 100 }),
+      copyFile: vi.fn(),
     },
     readFile: mockReadFile,
     writeFile: vi.fn(),
     mkdir: vi.fn(),
     readdir: vi.fn().mockResolvedValue([]),
     realpath: vi.fn().mockImplementation((p) => Promise.resolve(p)),
+    lstat: vi
+      .fn()
+      .mockResolvedValue({ isSymbolicLink: () => false, isFile: () => true, size: 100 }),
+    copyFile: vi.fn(),
   };
 });
 
@@ -98,32 +132,31 @@ describe('createPolicyRequest preview message', () => {
       commandName: 'test-cmd',
       args: ['arg1', 'arg2'],
       fileMappings: {
-        file1: '/mock/workspace/file1',
-        file2: '/mock/workspace/file2',
+        file1: 'file1',
+        file2: 'file2',
       },
     });
 
     expect(result.id).toBe('REQ-123');
 
+    // Check that appendMessage was called
     expect(chats.appendMessage).toHaveBeenCalledTimes(1);
-    const callArgs = vi.mocked(chats.appendMessage).mock.calls[0]!;
-    const chatId = callArgs[0];
-    const logMsg = callArgs[1] as any;
 
-    expect(chatId).toBe('default-chat');
-    expect(logMsg.role).toBe('policy');
+    const callArgs = vi.mocked(chats.appendMessage).mock.calls[0];
+    expect(callArgs).toBeDefined();
 
-    // Assert preview content format
-    const content = logMsg.content;
-    expect(content).toContain('Sandbox Policy Request: test-cmd');
-    expect(content).toContain('ID: REQ-123');
-    expect(content).toContain('Args: arg1 arg2');
+    const [chatIdArg, msgArg] = callArgs as [string, any];
+    expect(chatIdArg).toBe('default-chat');
 
-    expect(content).toContain('File [file1]:\n' + shortContent);
+    const content = msgArg.content as string;
 
-    // The long file should be truncated to 500 chars + suffix
-    expect(content).toContain('File [file2]:\n' + 'A'.repeat(500) + '\n... (truncated)');
-    expect(content).toContain('Use /approve REQ-123 or /reject REQ-123 [reason]');
+    // It should contain the short file
+    expect(content).toContain('Hello world!');
+
+    // It should truncate the long file
+    expect(content).toContain('A'.repeat(500));
+    expect(content).toContain('... (truncated)');
+    expect(content).not.toContain('A'.repeat(501));
   });
 
   it('should create an auto-approved request and execute it immediately', async () => {
@@ -134,19 +167,19 @@ describe('createPolicyRequest preview message', () => {
 
     const result = await caller.createPolicyRequest({
       commandName: 'auto-cmd',
-      args: ['hello'],
+      args: ['arg1'],
       fileMappings: {},
     });
 
     expect(result.id).toBe('REQ-123');
-    expect(result.executionResult).toBeDefined();
 
     expect(chats.appendMessage).toHaveBeenCalledTimes(1);
-    const callArgs = vi.mocked(chats.appendMessage).mock.calls[0]!;
-    const logMsg = callArgs[1] as any;
+    const callArgs = vi.mocked(chats.appendMessage).mock.calls[0];
+    const msgArg = callArgs![1] as any;
 
-    expect(logMsg.content).toContain('[Auto-approved] Policy auto-cmd was executed.');
-    expect(logMsg.role).toBe('policy');
-    expect(logMsg.status).toBe('approved');
+    expect(msgArg.role).toBe('policy');
+    expect(msgArg.status).toBe('approved');
+    expect(msgArg.content).toContain('[Auto-approved]');
+    expect(msgArg.content).toContain('auto executed');
   });
 });

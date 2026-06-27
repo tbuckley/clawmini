@@ -32,7 +32,7 @@ const cases: Array<[string, boolean]> = [
   ['daemon.sock', true],
   ['supervisor.pid', true],
   ['logs/web.log', true],
-  ['tmp/requests/r.json', true],
+  ['tmp/delegations/default-chat/r.json', true],
   ['tmp/snapshots/x.txt', true],
   ['settings.json.1234.deadbeef.tmp', true],
 ];

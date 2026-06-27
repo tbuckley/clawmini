@@ -1,19 +1,114 @@
 import { randomUUID } from 'node:crypto';
-import { updateChatSettings, readChatSettings } from '../../shared/workspace.js';
+import { readChatSettings } from '../../shared/workspace.js';
 import { executeDirectMessage, applyRouterStateUpdates } from '../message.js';
 import { executeRouterPipeline, resolveRouters } from '../routers.js';
 import type { RouterState } from '../routers/types.js';
 import { createChatLogger } from '../agent/chat-logger.js';
-import type { ChatSettings } from '../../shared/config.js';
 import { taskScheduler } from '../agent/task-scheduler.js';
 import { decrementSubagent } from '../agent/turn-registry.js';
+import { DelegationManager } from '../delegation-manager.js';
+import { DelegationStore } from '../delegation-store.js';
 
-export function getSubagentDepth(settings: ChatSettings, parentId: string | undefined): number {
+export async function checkSubagentStatus(
+  chatId: string,
+  subagentId: string,
+  callerSubagentId: string | undefined
+) {
+  const store = new DelegationStore();
+  const manager = new DelegationManager(store);
+
+  let sub;
+  try {
+    sub = await manager.assertVisibleTo(chatId, subagentId, callerSubagentId);
+  } catch {
+    return null; // Not found or forbidden
+  }
+
+  if (sub.state === 'completed' || sub.state === 'failed') {
+    let outputContent: string | undefined;
+    if (sub.state === 'completed') {
+      const logger = createChatLogger(chatId, subagentId);
+      const lastLogMessage = await logger.findLastMessage((m) => m.role === 'agent');
+      if (lastLogMessage && 'content' in lastLogMessage) {
+        outputContent = lastLogMessage.content;
+      }
+    }
+    return { status: sub.state, output: outputContent };
+  }
+  return null;
+}
+
+import { on } from 'node:events';
+import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
+
+export async function waitForSubagentStatus(
+  chatId: string,
+  subagentId: string,
+  callerSubagentId: string | undefined,
+  signal?: AbortSignal
+) {
+  const ac = new AbortController();
+  const timeout = setTimeout(() => ac.abort(), 60000);
+
+  const onAbort = () => {
+    clearTimeout(timeout);
+    ac.abort();
+  };
+  if (signal) {
+    signal.addEventListener('abort', onAbort);
+  }
+
+  const eventIterator = on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, {
+    signal: ac.signal,
+  });
+
+  try {
+    const initialStatus = await checkSubagentStatus(chatId, subagentId, callerSubagentId);
+    if (initialStatus) {
+      clearTimeout(timeout);
+      if (signal) signal.removeEventListener('abort', onAbort);
+      return initialStatus;
+    }
+
+    for await (const [event] of eventIterator) {
+      if (event.chatId === chatId && event.message?.subagentId === subagentId) {
+        const msg = event.message;
+        if (msg.role === 'subagent_status') {
+          const status = await checkSubagentStatus(chatId, subagentId, callerSubagentId);
+          if (status) {
+            clearTimeout(timeout);
+            if (signal) signal.removeEventListener('abort', onAbort);
+            return status;
+          }
+        }
+      }
+    }
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'name' in err && err.name === 'AbortError') {
+      return { status: 'active' as const, output: undefined };
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+    if (signal) signal.removeEventListener('abort', onAbort);
+    ac.abort();
+  }
+
+  return { status: 'active' as const, output: undefined };
+}
+export async function getSubagentDepth(
+  chatId: string,
+  parentId: string | undefined
+): Promise<number> {
+  const store = new DelegationStore();
+  const manager = new DelegationManager(store);
   let depth = 0;
   let currentParentId = parentId;
-  while (currentParentId && settings.subagents?.[currentParentId]) {
+  while (currentParentId) {
+    const delegation = await manager.get(chatId, currentParentId);
+    if (!delegation) break;
     depth++;
-    currentParentId = settings.subagents[currentParentId]?.parentId;
+    currentParentId = delegation.parentId;
   }
   return depth;
 }
@@ -86,12 +181,9 @@ export async function executeSubagent(
       }
 
       // Update status
-      await updateChatSettings(chatId, (finalSettings) => {
-        if (finalSettings.subagents?.[subagentId]) {
-          finalSettings.subagents[subagentId]!.status = 'completed';
-        }
-        return finalSettings;
-      });
+      const store = new DelegationStore();
+      const manager = new DelegationManager(store);
+      await manager.markResolved(chatId, subagentId, 'completed');
 
       const logger = createChatLogger(chatId, subagentId, sessionId, parentTurnId);
 
@@ -141,12 +233,9 @@ export async function executeSubagent(
       }
     } catch {
       // TODO: Wrap this in a safe try-catch to prevent unhandled promise rejections crashing the daemon if disk errors occur
-      await updateChatSettings(chatId, (errSettings) => {
-        if (errSettings.subagents?.[subagentId]) {
-          errSettings.subagents[subagentId]!.status = 'failed';
-        }
-        return errSettings;
-      });
+      const store = new DelegationStore();
+      const manager = new DelegationManager(store);
+      await manager.markResolved(chatId, subagentId, 'failed').catch(() => {});
       const logger = createChatLogger(chatId, subagentId, sessionId, parentTurnId);
       await logger.logSubagentStatus({ subagentId, status: 'failed' });
     }

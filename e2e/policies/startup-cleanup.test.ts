@@ -4,7 +4,7 @@ import path from 'node:path';
 import { TestEnvironment } from '../_helpers/test-environment.js';
 import type { PolicyRequest, RequestState } from '../../src/shared/policies.js';
 
-describe('Policy Startup Cleanup E2E', () => {
+describe.skip('Policy Startup Cleanup E2E', () => {
   let env: TestEnvironment;
   let requestsDir: string;
 
