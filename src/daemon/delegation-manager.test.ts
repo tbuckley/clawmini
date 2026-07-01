@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs/promises';
 import path from 'path';
-import { DelegationManager } from './delegation-manager.js';
+import { DelegationManager, isTerminalState } from './delegation-manager.js';
 import { DelegationStore } from './delegation-store.js';
 import { daemonEvents, DAEMON_EVENT_DELEGATION_RESOLVED } from './events.js';
 import type { DelegationResolvedEvent } from './events.js';
@@ -493,6 +493,61 @@ describe('DelegationManager', () => {
       expect(loaded?.kind).toBe('subagent');
       if (loaded?.kind !== 'subagent') throw new Error('expected subagent');
       expect(loaded.prompt).toBe('second');
+    });
+  });
+
+  describe('concurrent transitions', () => {
+    it('serializes competing markResolved calls to a single winner', async () => {
+      const created = await manager.createSubagent({
+        chatId: 'chat-1',
+        agentId: 'agent-1',
+        targetAgentId: 'helper',
+        sessionId: 'sess-1',
+        prompt: 'do',
+        autoApprove: true,
+      });
+
+      const resolvedEvents: DelegationResolvedEvent[] = [];
+      daemonEvents.on(DAEMON_EVENT_DELEGATION_RESOLVED, (e: DelegationResolvedEvent) =>
+        resolvedEvents.push(e)
+      );
+
+      // Fire two terminal transitions at once. The per-id lock must let exactly
+      // one observe state==='running'; the other sees the already-terminal
+      // record and rejects — so we never double-resolve or double-emit.
+      const results = await Promise.allSettled([
+        manager.markResolved(created.id, { state: 'completed' }),
+        manager.markResolved(created.id, { state: 'failed', reason: 'race' }),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter((r) => r.status === 'rejected');
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(resolvedEvents).toHaveLength(1);
+
+      const loaded = await store.load('chat-1', created.id);
+      expect(loaded && isTerminalState(loaded.state)).toBe(true);
+    });
+
+    it('assigns distinct ids to concurrent creates in the same chat', async () => {
+      const created = await Promise.all(
+        Array.from({ length: 12 }, (_, i) =>
+          manager.createSubagent({
+            chatId: 'chat-1',
+            agentId: 'agent-1',
+            targetAgentId: 'helper',
+            sessionId: `sess-${i}`,
+            prompt: 'do',
+            autoApprove: true,
+          })
+        )
+      );
+      const ids = new Set(created.map((d) => d.id));
+      expect(ids.size).toBe(created.length);
+      // Every record persisted (none clobbered by a colliding id).
+      const listed = await manager.list({ chatId: 'chat-1', kind: 'subagent' });
+      expect(listed).toHaveLength(created.length);
     });
   });
 

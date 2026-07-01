@@ -16,6 +16,7 @@ import {
   type ResolvedOutcome,
 } from './delegation-wait.js';
 import { ObserverRegistry, type WaitMode } from './delegation-observers.js';
+import { KeyedMutex } from './keyed-mutex.js';
 
 // Cross-kind manager for policy + subagent delegations. The store is the
 // thin file-IO layer; this class owns the state machine, event emission,
@@ -83,6 +84,12 @@ export interface SubscribeWaitResult {
 export class DelegationManager {
   private _store: DelegationStore | null;
   private _observers: ObserverRegistry | null = null;
+  // Serializes mutating operations so load → mutate → save sequences cannot
+  // interleave within the daemon. Creation locks per-chat (id generation is a
+  // check-then-write against the chat dir); every other transition locks
+  // per-id so concurrent approve/reject/resolve/send/delete on the same
+  // delegation run one at a time.
+  private readonly locks = new KeyedMutex();
 
   constructor(store?: DelegationStore) {
     this._store = store ?? null;
@@ -104,51 +111,55 @@ export class DelegationManager {
   // --- creation ---
 
   async createPolicy(input: PolicyCreateInput): Promise<PolicyDelegation> {
-    const id = await this.store.generateId(input.chatId);
-    const delegation: PolicyDelegation = {
-      id,
-      kind: 'policy',
-      state: input.autoApprove ? 'running' : 'pending',
-      delivery: input.delivery ?? 'notify',
-      chatId: input.chatId,
-      agentId: input.agentId,
-      ...(input.parentId ? { parentId: input.parentId } : {}),
-      createdAt: new Date().toISOString(),
-      commandName: input.commandName,
-      args: input.args,
-      fileMappings: input.fileMappings,
-      ...(input.cwd ? { cwd: input.cwd } : {}),
-    };
-    await this.store.save(delegation);
-    return delegation;
+    return this.locks.run(`chat:${input.chatId}`, async () => {
+      const id = await this.store.generateId(input.chatId);
+      const delegation: PolicyDelegation = {
+        id,
+        kind: 'policy',
+        state: input.autoApprove ? 'running' : 'pending',
+        delivery: input.delivery ?? 'notify',
+        chatId: input.chatId,
+        agentId: input.agentId,
+        ...(input.parentId ? { parentId: input.parentId } : {}),
+        createdAt: new Date().toISOString(),
+        commandName: input.commandName,
+        args: input.args,
+        fileMappings: input.fileMappings,
+        ...(input.cwd ? { cwd: input.cwd } : {}),
+      };
+      await this.store.save(delegation);
+      return delegation;
+    });
   }
 
   async createSubagent(input: SubagentCreateInput): Promise<SubagentDelegation> {
-    let id: string;
-    if (input.id !== undefined) {
-      const existing = await this.store.load(input.chatId, input.id);
-      if (existing) {
-        throw new Error('Subagent ID already exists');
+    return this.locks.run(`chat:${input.chatId}`, async () => {
+      let id: string;
+      if (input.id !== undefined) {
+        const existing = await this.store.load(input.chatId, input.id);
+        if (existing) {
+          throw new Error('Subagent ID already exists');
+        }
+        id = input.id;
+      } else {
+        id = await this.store.generateId(input.chatId);
       }
-      id = input.id;
-    } else {
-      id = await this.store.generateId(input.chatId);
-    }
-    const delegation: SubagentDelegation = {
-      id,
-      kind: 'subagent',
-      state: input.autoApprove ? 'running' : 'pending',
-      delivery: input.delivery ?? 'notify',
-      chatId: input.chatId,
-      agentId: input.agentId,
-      ...(input.parentId ? { parentId: input.parentId } : {}),
-      createdAt: new Date().toISOString(),
-      targetAgentId: input.targetAgentId,
-      sessionId: input.sessionId,
-      prompt: input.prompt,
-    };
-    await this.store.save(delegation);
-    return delegation;
+      const delegation: SubagentDelegation = {
+        id,
+        kind: 'subagent',
+        state: input.autoApprove ? 'running' : 'pending',
+        delivery: input.delivery ?? 'notify',
+        chatId: input.chatId,
+        agentId: input.agentId,
+        ...(input.parentId ? { parentId: input.parentId } : {}),
+        createdAt: new Date().toISOString(),
+        targetAgentId: input.targetAgentId,
+        sessionId: input.sessionId,
+        prompt: input.prompt,
+      };
+      await this.store.save(delegation);
+      return delegation;
+    });
   }
 
   async sendToSubagent(
@@ -157,69 +168,77 @@ export class DelegationManager {
     prompt: string,
     opts: { autoApprove: boolean }
   ): Promise<SubagentDelegation> {
-    const record = await this.store.load(chatId, id);
-    if (!record || record.kind !== 'subagent') {
-      const err = new Error('Subagent not found') as Error & { code?: string };
-      err.code = 'NOT_FOUND';
-      throw err;
-    }
-    const nextState: SubagentDelegation['state'] = opts.autoApprove ? 'running' : 'pending';
-    const updated: SubagentDelegation = { ...record, prompt, state: nextState };
-    await this.store.save(updated);
-    return updated;
+    return this.locks.run(`id:${id}`, async () => {
+      const record = await this.store.load(chatId, id);
+      if (!record || record.kind !== 'subagent') {
+        const err = new Error('Subagent not found') as Error & { code?: string };
+        err.code = 'NOT_FOUND';
+        throw err;
+      }
+      const nextState: SubagentDelegation['state'] = opts.autoApprove ? 'running' : 'pending';
+      const updated: SubagentDelegation = { ...record, prompt, state: nextState };
+      await this.store.save(updated);
+      return updated;
+    });
   }
 
   // --- lifecycle ---
 
   async approve(id: string, _by: 'user' | 'auto'): Promise<void> {
-    const record = await this.findById(id);
-    if (!record) throw new Error(`Delegation not found: ${id}`);
-    if (record.state !== 'pending') {
-      throw new Error(
-        `Cannot approve delegation ${id}: expected state 'pending', got '${record.state}'`
-      );
-    }
-    const updated: Delegation = { ...record, state: 'running' };
-    await this.store.save(updated);
+    return this.locks.run(`id:${id}`, async () => {
+      const record = await this.findById(id);
+      if (!record) throw new Error(`Delegation not found: ${id}`);
+      if (record.state !== 'pending') {
+        throw new Error(
+          `Cannot approve delegation ${id}: expected state 'pending', got '${record.state}'`
+        );
+      }
+      const updated: Delegation = { ...record, state: 'running' };
+      await this.store.save(updated);
+    });
   }
 
   async reject(id: string, reason: string): Promise<{ wasCovered: boolean }> {
-    const record = await this.findById(id);
-    if (!record) throw new Error(`Delegation not found: ${id}`);
-    if (record.state !== 'pending') {
-      throw new Error(
-        `Cannot reject delegation ${id}: expected state 'pending', got '${record.state}'`
-      );
-    }
-    const resolvedAt = new Date().toISOString();
-    const updated: Delegation = {
-      ...record,
-      state: 'rejected',
-      rejectionReason: reason,
-      resolvedAt,
-    };
-    await this.store.save(updated);
-    const { wasCovered } = await this.observers.onResolved(updated.chatId, updated);
-    emitDelegationResolved({ chatId: updated.chatId, delegation: updated });
-    return { wasCovered };
+    return this.locks.run(`id:${id}`, async () => {
+      const record = await this.findById(id);
+      if (!record) throw new Error(`Delegation not found: ${id}`);
+      if (record.state !== 'pending') {
+        throw new Error(
+          `Cannot reject delegation ${id}: expected state 'pending', got '${record.state}'`
+        );
+      }
+      const resolvedAt = new Date().toISOString();
+      const updated: Delegation = {
+        ...record,
+        state: 'rejected',
+        rejectionReason: reason,
+        resolvedAt,
+      };
+      await this.store.save(updated);
+      const { wasCovered } = await this.observers.onResolved(updated.chatId, updated);
+      emitDelegationResolved({ chatId: updated.chatId, delegation: updated });
+      return { wasCovered };
+    });
   }
 
   async markResolved(id: string, outcome: ResolvedOutcome): Promise<{ wasCovered: boolean }> {
-    const record = await this.findById(id);
-    if (!record) throw new Error(`Delegation not found: ${id}`);
-    if (record.state !== 'running') {
-      throw new Error(
-        `Cannot resolve delegation ${id}: expected state 'running', got '${record.state}'`
-      );
-    }
-    const updated = buildResolvedRecord(record, outcome);
-    await this.store.save(updated);
-    // Observers run *before* the public event so listeners on the event see
-    // consistent observer state. The boolean lets callers (`executeSubagent`
-    // / `handlePolicyApprove`) suppress their per-id notification.
-    const { wasCovered } = await this.observers.onResolved(updated.chatId, updated);
-    emitDelegationResolved({ chatId: updated.chatId, delegation: updated });
-    return { wasCovered };
+    return this.locks.run(`id:${id}`, async () => {
+      const record = await this.findById(id);
+      if (!record) throw new Error(`Delegation not found: ${id}`);
+      if (record.state !== 'running') {
+        throw new Error(
+          `Cannot resolve delegation ${id}: expected state 'running', got '${record.state}'`
+        );
+      }
+      const updated = buildResolvedRecord(record, outcome);
+      await this.store.save(updated);
+      // Observers run *before* the public event so listeners on the event see
+      // consistent observer state. The boolean lets callers (`executeSubagent`
+      // / `handlePolicyApprove`) suppress their per-id notification.
+      const { wasCovered } = await this.observers.onResolved(updated.chatId, updated);
+      emitDelegationResolved({ chatId: updated.chatId, delegation: updated });
+      return { wasCovered };
+    });
   }
 
   // --- observation ---
@@ -244,19 +263,26 @@ export class DelegationManager {
   }
 
   async delete(id: string, chatId: string): Promise<void> {
-    await this.store.delete(chatId, id);
+    await this.locks.run(`id:${id}`, () => this.store.delete(chatId, id));
   }
 
+  // Patch mutable, non-state-machine fields on a delegation. Deliberately
+  // limited to `prompt`: state transitions must go through
+  // approve/reject/markResolved so observers and the resolved event always
+  // fire. Accepting `state` here would let callers move a delegation to a
+  // terminal state while waiters/subscriptions silently miss the wakeup.
   async update(
     id: string,
     chatId: string,
-    patch: Partial<Pick<SubagentDelegation, 'prompt' | 'state'>>
+    patch: Partial<Pick<SubagentDelegation, 'prompt'>>
   ): Promise<Delegation> {
-    const record = await this.store.load(chatId, id);
-    if (!record) throw new Error(`Delegation not found: ${id}`);
-    const updated: Delegation = { ...record, ...patch } as Delegation;
-    await this.store.save(updated);
-    return updated;
+    return this.locks.run(`id:${id}`, async () => {
+      const record = await this.store.load(chatId, id);
+      if (!record) throw new Error(`Delegation not found: ${id}`);
+      const updated: Delegation = { ...record, ...patch } as Delegation;
+      await this.store.save(updated);
+      return updated;
+    });
   }
 
   async assertVisibleTo(

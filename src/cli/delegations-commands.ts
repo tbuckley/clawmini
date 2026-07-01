@@ -66,14 +66,23 @@ export function registerDelegationsCommands(
     .description(
       'List delegations. Default returns pending + running. Use --state to filter and --kind to scope.'
     )
-    .option('-s, --state <state>', 'Filter by state (e.g. pending, running, resolved, failed)')
+    .option(
+      '-s, --state <state>',
+      'Filter by state; comma-separated for multiple (e.g. pending,running,resolved,failed)'
+    )
     .option('-k, --kind <kind>', 'Filter by kind (policy or subagent)')
     .option('--json', 'Output raw JSON records')
     .action(async (options: { state?: string; kind?: string; json?: boolean }) => {
       try {
         const client = getClient();
+        // `--state` accepts a single value or a comma-separated list
+        // (e.g. `--state completed,failed`) for parity with the endpoint's
+        // array input. Empty entries are dropped.
         const stateFilter: DelegationStateFilter[] = options.state
-          ? [options.state as DelegationStateFilter]
+          ? (options.state
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean) as DelegationStateFilter[])
           : ['pending', 'running'];
 
         const input: {

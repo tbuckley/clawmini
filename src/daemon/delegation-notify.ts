@@ -35,14 +35,25 @@ export async function appendNotification(
 
 // Spec §6.1: compact, summary-style payload. Layout follows the example in
 // the spec — counts + comma-joined IDs by terminal state, no per-id inline
-// output. The first line carries the mode for downstream readers.
-export function formatAggregateBody(resolved: Delegation[], mode: 'any' | 'all'): string {
+// output. The first line carries the mode for downstream readers. For
+// `mode: 'any'` the observer can fire before every member resolves, so the
+// summary reports the resolved fraction and lists the still-pending ids.
+export function formatAggregateBody(
+  resolved: Delegation[],
+  mode: 'any' | 'all',
+  pendingIds: string[] = []
+): string {
   const completed = resolved.filter((d) => d.state === 'completed');
   const failed = resolved.filter((d) => d.state === 'failed');
   const rejected = resolved.filter((d) => d.state === 'rejected');
 
   const lines: string[] = ['<notification>'];
-  lines.push(`All ${resolved.length} delegations resolved (mode: '${mode}').`);
+  const total = resolved.length + pendingIds.length;
+  const header =
+    pendingIds.length > 0
+      ? `${resolved.length} of ${total} delegations resolved (mode: '${mode}').`
+      : `All ${resolved.length} delegations resolved (mode: '${mode}').`;
+  lines.push(header);
   if (completed.length > 0) {
     lines.push(`completed (${completed.length}): ${completed.map((d) => d.id).join(', ')}`);
   }
@@ -57,6 +68,9 @@ export function formatAggregateBody(resolved: Delegation[], mode: 'any' | 'all')
     for (const d of rejected) {
       lines.push(`  - ${d.id} (${d.kind}${d.rejectionReason ? `: ${d.rejectionReason}` : ''})`);
     }
+  }
+  if (pendingIds.length > 0) {
+    lines.push(`still pending (${pendingIds.length}): ${pendingIds.join(', ')}`);
   }
   lines.push('</notification>');
   return lines.join('\n');

@@ -125,12 +125,6 @@ export async function executeSubagent(
           outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;
         }
 
-        console.log(
-          'Notifying parent',
-          chatId,
-          parentTokenPayload?.agentId,
-          parentTokenPayload?.subagentId
-        );
         // TODO: We need to overhaul the log system in general, and should not try to do it in this PR.
         // Currently, if the parent is the root agent, this notification is logged as a normal user message
         // and appears in the chat UI, violating the PRD requirement to hide orchestration.

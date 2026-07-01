@@ -131,15 +131,19 @@ export class ObserverRegistry {
     const resolved = sub.members
       .filter((m): m is Required<PendingMember> => !!m.resolved)
       .map((m) => m.resolved);
-    const body = formatAggregateBody(resolved, sub.mode);
+    const pendingIds = sub.members.filter((m) => !m.resolved).map((m) => m.id);
+    const body = formatAggregateBody(resolved, sub.mode, pendingIds);
     await appendNotification(sub.chatId, sub.originSessionId, body);
     await this.store.deleteSubscription(sub.chatId, sub.subscriptionId);
   }
 
-  // Lift suppression for any still-pending members. Spec §5.2: unsubscribe
-  // discards the subscription without firing — pending members revert to
-  // their declared delivery on subsequent resolution. We simply drop the
-  // subscription from the live registry; the file is removed from disk.
+  // Spec §5.2: unsubscribe discards the subscription without waiting for the
+  // remaining members. Still-pending members revert to their declared
+  // delivery on subsequent resolution (dropping the subscription un-suppresses
+  // them). But members that already resolved *while covered* had their per-id
+  // notification suppressed on the expectation the aggregate would fire — if
+  // we dropped silently those completions would be lost. So when any member
+  // has already resolved we emit a partial aggregate before discarding.
   async unsubscribe(subscriptionId: string): Promise<void> {
     // Find the matching subscription. Since we don't index by sub id we walk
     // each chat's set — observer counts are small (one per active fan-out).
@@ -165,6 +169,15 @@ export class ObserverRegistry {
     }
     chatSet.delete(target);
     if (chatSet.size === 0) this.byChat.delete(target.chatId);
+
+    const resolved = target.members
+      .filter((m): m is Required<PendingMember> => !!m.resolved)
+      .map((m) => m.resolved);
+    if (resolved.length > 0) {
+      const pendingIds = target.members.filter((m) => !m.resolved).map((m) => m.id);
+      const body = formatAggregateBody(resolved, target.mode, pendingIds);
+      await appendNotification(target.chatId, target.originSessionId, body);
+    }
     await this.store.deleteSubscription(target.chatId, subscriptionId);
   }
 
@@ -218,7 +231,8 @@ export class ObserverRegistry {
       return;
     }
     // subscription: append aggregated notification and delete file.
-    const body = formatAggregateBody(resolved, obs.mode);
+    const subPendingIds = obs.members.filter((m) => !m.resolved).map((m) => m.id);
+    const body = formatAggregateBody(resolved, obs.mode, subPendingIds);
     await appendNotification(obs.chatId, obs.originSessionId, body);
     await this.store.deleteSubscription(obs.chatId, obs.subscriptionId);
   }

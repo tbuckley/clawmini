@@ -162,12 +162,19 @@ export const delegationDelete = apiProcedure
     }
 
     // If this is a running subagent, stop the underlying session before
-    // removing the record so the process doesn't leak.
+    // removing the record so the process doesn't leak. The `markResolved`
+    // guards on `state === 'running'`; the subagent may have completed (or
+    // been stopped) between our read above and here, so tolerate the
+    // resulting error and fall through to deleting the (now terminal) record.
     if (record.kind === 'subagent' && record.state === 'running') {
-      await delegationManager.markResolved(record.id, {
-        state: 'failed',
-        reason: 'Stopped by delegationDelete',
-      });
+      try {
+        await delegationManager.markResolved(record.id, {
+          state: 'failed',
+          reason: 'Stopped by delegationDelete',
+        });
+      } catch {
+        // Already resolved by a concurrent transition — nothing to stop-mark.
+      }
       const session = await createAgentSession({
         chatId,
         agentId: record.targetAgentId,
