@@ -1,5 +1,13 @@
 # clawmini
 
+## 0.0.10
+
+### Patch Changes
+
+- [#213](https://github.com/tbuckley/clawmini/pull/213) [`69f1bcc`](https://github.com/tbuckley/clawmini/commit/69f1bcc82af849898032d1d89421ff77252ad3ab) Thanks [@tbuckley](https://github.com/tbuckley)! - Improve turn log for discord and policy approvals
+
+- [#218](https://github.com/tbuckley/clawmini/pull/218) [`16ac827`](https://github.com/tbuckley/clawmini/commit/16ac82736f22a5b9853dcde611bdad30900ad99e) Thanks [@tbuckley](https://github.com/tbuckley)! - Add `clawmini-lite history` and the underlying `getThreadHistory` agent endpoint, so an agent can read prior turns of the user-visible chat — even ones written by an earlier agent session it did not author. The endpoint returns user/agent messages oldest-first with `--before` cursor pagination, filters out tool/command/policy/subagent traffic and `displayRole: 'agent'` auto-replies, and rejects subagent tokens. The gemini-claw template now points the agent at this command in its `# Messaging` guidance.
+
 ## 0.0.7
 
 ### Patch Changes
