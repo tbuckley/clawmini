@@ -1,263 +1,47 @@
 import { z } from 'zod';
-import { randomUUID } from 'node:crypto';
 import { TRPCError } from '@trpc/server';
-import { getWorkspaceRoot, readChatSettings, updateChatSettings } from '../../shared/workspace.js';
 import { apiProcedure } from './trpc.js';
 import { createChatLogger } from '../agent/chat-logger.js';
-import { on } from 'node:events';
-import { daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED } from '../events.js';
 import { createAgentSession } from '../agent/agent-session.js';
-import { executeSubagent, getSubagentDepth } from './subagent-utils.js';
-import { incrementSubagent, decrementSubagent } from '../agent/turn-registry.js';
-import type { ChatSettings, SubagentTracker } from '../../shared/config.js';
+import { delegationManager } from '../delegation-manager.js';
+import { assertVisibleSubagent } from './subagent-shared.js';
+import type { SubagentDelegation } from '../../shared/delegations.js';
 
-const MAX_SUBAGENT_DEPTH = 2;
+// `subagentSpawn` and `subagentSend` live in `subagent-creation.ts` because
+// they share approval-gating helpers and would push this file over the
+// `max-lines: 300` ESLint rule. The router barrel (`api/index.ts`) imports
+// them from there. The remaining endpoints (stop/delete/list/tail) live
+// here. Ticket 8 removed `subagentWait` — callers use the kind-agnostic
+// `delegationWait` instead.
 
-function assertSubagentAccess(
-  settings: ChatSettings | null | undefined,
-  subagentId: string,
-  callerSubagentId: string | undefined
-): SubagentTracker {
-  const sub = settings?.subagents?.[subagentId];
-  if (!sub) throw new TRPCError({ code: 'NOT_FOUND', message: 'Subagent not found' });
-  if (sub.parentId !== callerSubagentId) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Subagent is not a child of the caller' });
-  }
-  return sub;
-}
-
-export const subagentSpawn = apiProcedure
-  .input(
-    z.object({
-      subagentId: z.string().optional(),
-      targetAgentId: z.string().optional(),
-      prompt: z.string(),
-      async: z.boolean().optional(),
-    })
-  )
-  .mutation(async ({ input, ctx }) => {
-    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
-    const chatId = ctx.tokenPayload.chatId;
-    const parentAgentId = ctx.tokenPayload.agentId;
-    const parentId = ctx.tokenPayload.subagentId;
-    const parentTurnId = ctx.tokenPayload.turnId;
-
-    const id = input.subagentId || randomUUID();
-    const sessionId = randomUUID();
-    const agentId = input.targetAgentId || parentAgentId;
-    let depth = 0;
-
-    // Increment synchronously before any await so a sibling subagent's
-    // completion cannot decrement the parent's counter to zero (firing
-    // turnEnded) during the window before executeSubagent is called.
-    incrementSubagent(parentTurnId);
-    let handedOff = false;
-    try {
-      await updateChatSettings(chatId, (settings) => {
-        settings.subagents = settings.subagents || {};
-
-        depth = getSubagentDepth(settings, parentId);
-        if (depth >= MAX_SUBAGENT_DEPTH) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Max subagent depth reached' });
-        }
-
-        // Make sure the id does not already exist
-        if (settings.subagents[id]) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Subagent ID already exists' });
-        }
-
-        settings.subagents[id] = {
-          id,
-          agentId,
-          sessionId,
-          createdAt: new Date().toISOString(),
-          status: 'active',
-          parentId,
-        };
-
-        return settings;
-      });
-
-      const workspaceRoot = getWorkspaceRoot(process.cwd());
-
-      const isAsync = input.async ?? depth === 0;
-
-      // Execute asynchronously — executeSubagent's finally decrements.
-      handedOff = true;
-      executeSubagent(
-        chatId,
-        id,
-        agentId,
-        sessionId,
-        input.prompt,
-        isAsync,
-        ctx.tokenPayload,
-        workspaceRoot
-      );
-
-      return { id, depth, isAsync };
-    } finally {
-      if (!handedOff) decrementSubagent(parentTurnId);
-    }
-  });
-
-export const subagentSend = apiProcedure
-  .input(
-    z.object({
-      subagentId: z.string(),
-      prompt: z.string(),
-      async: z.boolean().optional(),
-    })
-  )
-  .mutation(async ({ input, ctx }) => {
-    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
-    const chatId = ctx.tokenPayload.chatId;
-    const parentTurnId = ctx.tokenPayload.turnId;
-
-    let sub: SubagentTracker | undefined;
-
-    incrementSubagent(parentTurnId);
-    let handedOff = false;
-    try {
-      await updateChatSettings(chatId, (settings) => {
-        sub = assertSubagentAccess(settings, input.subagentId, ctx.tokenPayload!.subagentId);
-        sub.status = 'active';
-        return settings;
-      });
-
-      const workspaceRoot = getWorkspaceRoot(process.cwd());
-
-      handedOff = true;
-      executeSubagent(
-        chatId,
-        sub!.id,
-        sub!.agentId || 'default',
-        sub!.sessionId || 'default',
-        input.prompt,
-        input.async,
-        ctx.tokenPayload,
-        workspaceRoot
-      );
-
-      return { success: true };
-    } finally {
-      if (!handedOff) decrementSubagent(parentTurnId);
-    }
-  });
-
-async function checkSubagentStatus(
-  chatId: string,
-  subagentId: string,
-  callerSubagentId: string | undefined
-) {
-  const settings = await readChatSettings(chatId);
-  const sub = assertSubagentAccess(settings, subagentId, callerSubagentId);
-
-  if (sub.status === 'completed' || sub.status === 'failed') {
-    let outputContent: string | undefined;
-    if (sub.status === 'completed') {
-      const logger = createChatLogger(chatId, subagentId);
-      const lastLogMessage = await logger.findLastMessage((m) => m.role === 'agent');
-      if (lastLogMessage && 'content' in lastLogMessage) {
-        outputContent = lastLogMessage.content;
-      }
-    }
-    return { status: sub.status, output: outputContent };
-  }
-  return null;
-}
-
-export const subagentWait = apiProcedure
-  .input(z.object({ subagentId: z.string() }))
-  .mutation(async ({ input, ctx, signal }) => {
-    if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
-    const chatId = ctx.tokenPayload.chatId;
-
-    const ac = new AbortController();
-    const timeout = setTimeout(() => ac.abort(), 60000);
-
-    // Bind to the TRPC request abort signal to clean up listeners if client disconnects
-    const onAbort = () => {
-      clearTimeout(timeout);
-      ac.abort();
-    };
-    if (signal) {
-      signal.addEventListener('abort', onAbort);
-    }
-
-    const eventIterator = on(daemonEvents, DAEMON_EVENT_MESSAGE_APPENDED, {
-      signal: ac.signal,
-    });
-
-    try {
-      // Check status immediately before listening, but after event iterator is buffering
-      const initialStatus = await checkSubagentStatus(
-        chatId,
-        input.subagentId,
-        ctx.tokenPayload.subagentId
-      );
-      if (initialStatus) {
-        clearTimeout(timeout);
-        if (signal) signal.removeEventListener('abort', onAbort);
-        return initialStatus;
-      }
-
-      for await (const [event] of eventIterator) {
-        if (event.chatId === chatId && event.message?.subagentId === input.subagentId) {
-          const msg = event.message;
-          if (msg.role === 'subagent_status') {
-            const status = await checkSubagentStatus(
-              chatId,
-              input.subagentId,
-              ctx.tokenPayload.subagentId
-            );
-            if (status) {
-              clearTimeout(timeout);
-              if (signal) signal.removeEventListener('abort', onAbort);
-              return status;
-            }
-          }
-        }
-      }
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'name' in err && err.name === 'AbortError') {
-        return { status: 'active' as const, output: undefined };
-      }
-      throw err;
-    } finally {
-      clearTimeout(timeout);
-      if (signal) signal.removeEventListener('abort', onAbort);
-      ac.abort();
-    }
-
-    return { status: 'active' as const, output: undefined };
-  });
+export { subagentSpawn, subagentSend } from './subagent-creation.js';
 
 export const subagentStop = apiProcedure
   .input(z.object({ subagentId: z.string() }))
   .mutation(async ({ input, ctx }) => {
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
+    const callerSubagentId = ctx.tokenPayload.subagentId;
 
-    let subToStop: SubagentTracker | undefined;
+    const sub = await assertVisibleSubagent(callerSubagentId, input.subagentId, chatId);
 
-    await updateChatSettings(chatId, (settings) => {
-      const sub = assertSubagentAccess(settings, input.subagentId, ctx.tokenPayload!.subagentId);
-      sub.status = 'failed';
-      subToStop = sub;
-      return settings;
-    });
-
-    if (subToStop) {
-      const session = await createAgentSession({
-        chatId,
-        agentId: subToStop.agentId || 'default',
-        sessionId: subToStop.sessionId || 'default',
-        subagentId: input.subagentId,
-        cwd: process.cwd(),
+    // Only mark as failed if the subagent is currently running. If it's
+    // already terminal, the stop is a no-op (matches today's idempotency).
+    if (sub.state === 'running') {
+      await delegationManager.markResolved(sub.id, {
+        state: 'failed',
+        reason: 'Stopped by subagentStop',
       });
-      session.stop();
     }
+
+    const session = await createAgentSession({
+      chatId,
+      agentId: sub.targetAgentId,
+      sessionId: sub.sessionId,
+      subagentId: input.subagentId,
+      cwd: process.cwd(),
+    });
+    session.stop();
 
     return { success: true };
   });
@@ -267,29 +51,22 @@ export const subagentDelete = apiProcedure
   .mutation(async ({ input, ctx }) => {
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
+    const callerSubagentId = ctx.tokenPayload.subagentId;
 
-    let subToDelete: SubagentTracker | undefined;
+    const sub = await assertVisibleSubagent(callerSubagentId, input.subagentId, chatId);
 
-    await updateChatSettings(chatId, (settings) => {
-      subToDelete = assertSubagentAccess(settings, input.subagentId, ctx.tokenPayload!.subagentId);
-      delete settings.subagents![input.subagentId];
-      return settings;
+    const session = await createAgentSession({
+      chatId,
+      agentId: sub.targetAgentId,
+      sessionId: sub.sessionId,
+      subagentId: input.subagentId,
+      cwd: process.cwd(),
     });
+    session.stop();
 
-    if (subToDelete) {
-      const session = await createAgentSession({
-        chatId,
-        agentId: subToDelete.agentId || 'default',
-        sessionId: subToDelete.sessionId || 'default',
-        subagentId: input.subagentId,
-        cwd: process.cwd(),
-      });
-      session.stop();
+    await delegationManager.delete(sub.id, chatId);
 
-      return { success: true, deleted: true };
-    }
-
-    return { success: true, deleted: false };
+    return { success: true, deleted: true };
   });
 
 export const subagentList = apiProcedure
@@ -297,23 +74,47 @@ export const subagentList = apiProcedure
   .query(async ({ input, ctx }) => {
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
-    const settings = await readChatSettings(chatId);
-
-    let subagents = Object.values(settings?.subagents || {});
-
     const isSubagent = !!ctx.tokenPayload.subagentId;
     const myId = ctx.tokenPayload.subagentId;
 
-    subagents = subagents.filter((s) => s.parentId === myId);
+    // Direct children only — matches today's tracker map filter on parentId.
+    // `list` filters `parentId` strictly with `=== filter.parentId`, so passing
+    // `undefined` here naturally matches root-spawned subagents (records that
+    // omit `parentId`).
+    const all = await delegationManager.list({
+      chatId,
+      kind: 'subagent',
+    });
+    const subagents = all
+      .filter((d): d is SubagentDelegation => d.kind === 'subagent')
+      .filter((d) => d.parentId === myId);
 
+    let filtered = subagents;
     if (input?.blocking) {
       if (!isSubagent) {
-        subagents = [];
+        filtered = [];
       } else {
-        subagents = subagents.filter((s) => s.status === 'active');
+        // 'active' tracker == 'running' delegation. Approval-gated pending
+        // records (Ticket 4) are not blocking — they cannot run yet so the
+        // caller has nothing to wait on.
+        filtered = subagents.filter((s) => s.state === 'running');
       }
     }
-    return { subagents };
+
+    // Shape the response so existing CLI/test consumers keep working: they
+    // read `id`, `agentId`, `sessionId`, `createdAt`, `status`, `parentId`.
+    // 'status' is a derived field — 'active' for running, otherwise the
+    // delegation's terminal state.
+    const shaped = filtered.map((d) => ({
+      id: d.id,
+      agentId: d.targetAgentId,
+      sessionId: d.sessionId,
+      createdAt: d.createdAt,
+      status: d.state === 'running' ? 'active' : d.state,
+      ...(d.parentId !== undefined ? { parentId: d.parentId } : {}),
+    }));
+
+    return { subagents: shaped };
   });
 
 export const subagentTail = apiProcedure
@@ -321,9 +122,9 @@ export const subagentTail = apiProcedure
   .query(async ({ input, ctx }) => {
     if (!ctx.tokenPayload) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Missing token' });
     const chatId = ctx.tokenPayload.chatId;
+    const callerSubagentId = ctx.tokenPayload.subagentId;
 
-    const settings = await readChatSettings(chatId);
-    assertSubagentAccess(settings, input.subagentId, ctx.tokenPayload.subagentId);
+    await assertVisibleSubagent(callerSubagentId, input.subagentId, chatId);
 
     const logger = createChatLogger(chatId, input.subagentId);
     const messages = await logger.getMessages(input.limit);

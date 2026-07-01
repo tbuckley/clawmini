@@ -67,10 +67,35 @@ export interface ToolMessage extends BaseMessage {
 
 export interface PolicyRequestMessage extends BaseMessage {
   role: 'policy';
+  /**
+   * Discriminator that distinguishes a true policy-script request from a
+   * subagent approval preview (`kind: 'subagent'`). Optional/absent for
+   * back-compat with chat logs written before Ticket 4 — readers should
+   * treat a missing `kind` as `'policy'`.
+   */
+  kind?: 'policy';
   messageId: string;
   requestId: string;
   commandName: string;
   args: string[];
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+// `role: 'policy'`-style approval preview for a subagent spawn / send awaiting
+// `/approve <id>`. Ticket 4 (§3.4 callout, §7.5). Shares the policy role so
+// existing chat adapters that key off `role === 'policy'` render it the same
+// way. The `kind` discriminator separates it from a true policy request.
+export interface SubagentApprovalMessage extends BaseMessage {
+  role: 'policy';
+  kind: 'subagent';
+  messageId: string;
+  requestId: string;
+  /** Workspace-relative agent path of the spawner. */
+  fromAgent: string;
+  /** Workspace-relative agent path of the target subagent. */
+  toAgent: string;
+  /** 'spawn' for `subagentSpawn`, 'send' for a follow-up message. */
+  operation: 'spawn' | 'send';
   status: 'pending' | 'approved' | 'rejected';
 }
 
@@ -101,6 +126,7 @@ export type ChatMessage =
   | SystemMessage
   | ToolMessage
   | PolicyRequestMessage
+  | SubagentApprovalMessage
   | SubagentStatusMessage
   | LegacyLogMessage;
 

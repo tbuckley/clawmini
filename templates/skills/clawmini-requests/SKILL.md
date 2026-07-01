@@ -51,6 +51,13 @@ To submit a request to execute a policy, use the following syntax:
 clawmini-lite.js request <policy-name> [options] -- [policy-arguments]
 ```
 
+Available options include:
+
+- `--file <var>=<path>`: securely map a sandbox file into the request (see below).
+- `--delivery <manual|notify>`: how the resolved result is delivered.
+  - `notify` (default for root-level requests) appends a `<notification>` to the chat with the result.
+  - `manual` (default for requests submitted from inside a subagent) stores the result on disk only; observe it explicitly via `clawmini-lite.js delegations wait <id>` or `delegations show <id>`.
+
 ### Passing Files Securely
 
 When you need to pass file contents to a policy, you **must** use the `--file` flag to securely map a file in your sandbox to a variable. This prevents security issues and ensures the exact file state is captured.
@@ -69,10 +76,19 @@ clawmini-lite.js request send-email --file body_txt=./report.txt -- --to admin@e
 
 When you submit a request, the CLI usually returns a **Request ID** without blocking. **The request has not run yet** — it is queued for the user to review, and the underlying command will only execute once the user approves it.
 
-When the user approves (or rejects) the request, the result will arrive as a **new user message in this chat**. **Do not poll** — do not run `requests show`, re-invoke the request, or otherwise loop checking for status. Finish any unrelated work that does not depend on this request, then end your turn with a brief message explaining you are blocked on this request.
+For requests with `--delivery notify` (the default for root-level requests), the result will arrive automatically as a **new user message in this chat** when the user approves or rejects. **Do not poll** — do not run `requests show`, re-invoke the request, or otherwise loop checking for status. Finish any unrelated work that does not depend on this request, then end your turn with a brief message explaining you are blocked on this request.
 
-- **If Approved:** The policy executes securely, and the STDOUT/STDERR results will be automatically sent back to you in the chat.
+For requests with `--delivery manual` (the default from inside a subagent), no `<notification>` is appended on resolve. Instead, observe the result explicitly:
+
+- `clawmini-lite.js delegations wait <id>` blocks until the request resolves and prints the record.
+- `clawmini-lite.js delegations show <id>` prints the current record at any time, including the `executionResult` once resolved.
+
+In either case:
+
+- **If Approved:** The policy executes securely, and the STDOUT/STDERR results are captured in the delegation's `executionResult`.
 - **If Rejected:** The user may provide a reason for the rejection, allowing you to correct your request and try again.
+
+> **Note:** The `subagents` rule list in `.clawmini/policies.json` (which gates cross-agent spawn/send approvals) is user-managed — it is not reachable through `manage-policies`. Ask the user to edit `policies.json` directly if you need a rule added.
 
 ## Managing Policies
 

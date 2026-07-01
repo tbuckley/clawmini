@@ -51,8 +51,12 @@ describe('Policy Flows E2E', () => {
     {
       label: 'subagent /reject',
       chat: 'chat-reject-sub',
+      // Ticket 7: the inner `request` from a subagent now defaults to
+      // `delivery: manual`; pass `--delivery notify` explicitly so the
+      // /reject path still fires the executeDirectMessage notification this
+      // test asserts on.
       spawn:
-        'clawmini-lite.js subagents spawn --id sub-reject --async "clawmini-lite.js request test-cmd --async"',
+        'clawmini-lite.js subagents spawn --id sub-reject --delivery notify "clawmini-lite.js request test-cmd --delivery notify"',
       action: 'reject',
       event: 'policy_rejected',
       subagentId: 'sub-reject',
@@ -62,8 +66,10 @@ describe('Policy Flows E2E', () => {
     {
       label: 'subagent /approve',
       chat: 'chat-approve-sub',
+      // Ticket 7: same as above — inner subagent `request` defaults to
+      // `manual` now; need notify for the executeDirectMessage path.
       spawn:
-        'clawmini-lite.js subagents spawn --id sub-approve --async "clawmini-lite.js request test-cmd"',
+        'clawmini-lite.js subagents spawn --id sub-approve --delivery notify "clawmini-lite.js request test-cmd --delivery notify"',
       action: 'approve',
       event: 'policy_approved',
       subagentId: 'sub-approve',
@@ -73,7 +79,7 @@ describe('Policy Flows E2E', () => {
     {
       label: 'main agent /reject',
       chat: 'chat-reject-main',
-      spawn: 'clawmini-lite.js request test-cmd --async',
+      spawn: 'clawmini-lite.js request test-cmd --delivery notify',
       action: 'reject',
       event: 'policy_rejected',
       subagentId: undefined,
@@ -123,8 +129,24 @@ describe('Policy Flows E2E', () => {
       );
       expect(sanitize(actorNotif.content, reqId)).toBe(expectedActorContent);
 
-      const reqPath = path.resolve(env.e2eDir, `.clawmini/tmp/requests/${reqId}.json`);
-      expect(fs.existsSync(reqPath)).toBe(false);
+      // Ticket 2 behavior change: the resolved record is retained on disk
+      // under `.clawmini/tmp/delegations/<chatId>/<id>.json`. Legacy
+      // `RequestStore.delete` removed it on resolve; the new unified store
+      // keeps it so observers can read the executionResult / rejectionReason.
+      const reqPath = path.resolve(
+        env.e2eDir,
+        `.clawmini/tmp/delegations/${chatId}/${reqId}.json`
+      );
+      expect(fs.existsSync(reqPath)).toBe(true);
+      const record = JSON.parse(fs.readFileSync(reqPath, 'utf8'));
+      expect(record.kind).toBe('policy');
+      if (action === 'approve') {
+        expect(record.state).toBe('completed');
+        expect(record.executionResult).toBeDefined();
+      } else {
+        expect(record.state).toBe('rejected');
+        expect(record.rejectionReason).toBe('No reason provided');
+      }
     },
     15000
   );
@@ -156,7 +178,7 @@ describe('Policy Flows E2E', () => {
     expect(reply.content).toContain(`- ID: ${reqId} | Command: test-cmd`);
   }, 15000);
 
-  it('should include a custom reason in /reject notifications and delete the request file', async () => {
+  it('should include a custom reason in /reject notifications and retain the rejected delegation record', async () => {
     await env.addChat('chat-reject-reason');
     chat = await env.connect('chat-reject-reason');
 
@@ -185,8 +207,16 @@ describe('Policy Flows E2E', () => {
     );
     expect(agentMsg.content).toContain('command looked suspicious');
 
-    const reqPath = path.resolve(env.e2eDir, `.clawmini/tmp/requests/${reqId}.json`);
-    expect(fs.existsSync(reqPath)).toBe(false);
+    // Rejected delegations are retained (Ticket 2). Verify the rejectionReason
+    // was persisted along with the state transition.
+    const reqPath = path.resolve(
+      env.e2eDir,
+      `.clawmini/tmp/delegations/chat-reject-reason/${reqId}.json`
+    );
+    expect(fs.existsSync(reqPath)).toBe(true);
+    const record = JSON.parse(fs.readFileSync(reqPath, 'utf8'));
+    expect(record.state).toBe('rejected');
+    expect(record.rejectionReason).toBe('command looked suspicious');
   }, 15000);
 
   describe('validation branches', () => {
@@ -223,12 +253,17 @@ describe('Policy Flows E2E', () => {
 
       await env.sendMessage(`/approve ${reqId}`, { chat: 'chat-intruder' });
 
+      // Ticket 2: delegation records are keyed by chatId on disk, so an
+      // attempt to /approve a foreign request simply fails to find it in
+      // *this* chat — the legacy cross-chat error string is gone, but the
+      // security guarantee (no cross-chat access) is preserved by the
+      // per-chat lookup.
       await secondChat.waitForMessage(
         (m): m is SystemMessage =>
           m.role === 'system' &&
           m.event === 'router' &&
           typeof m.content === 'string' &&
-          m.content.includes('Request belongs to a different chat')
+          m.content.includes(`Request not found: ${reqId}`)
       );
     }, 15000);
 
@@ -254,13 +289,15 @@ describe('Policy Flows E2E', () => {
 
       await env.sendMessage(`/approve ${reqId}`, { chat: 'chat-double-approve' });
 
-      // Approved requests are deleted, so the second /approve sees the request as gone.
+      // Ticket 2: approved delegations are retained on disk in state
+      // 'completed'. The second /approve sees the record but refuses because
+      // it is no longer pending.
       await chat.waitForMessage(
         (m): m is SystemMessage =>
           m.role === 'system' &&
           m.event === 'router' &&
           typeof m.content === 'string' &&
-          m.content.includes(`Request not found: ${reqId}`)
+          m.content.includes(`Request is not pending: ${reqId}`)
       );
     }, 15000);
 

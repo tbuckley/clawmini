@@ -24,6 +24,7 @@ vi.mock('../shared/workspace.js', () => ({
   writeAgentSessionSettings: vi.fn().mockResolvedValue(undefined),
   getAgent: vi.fn().mockResolvedValue(null),
   getWorkspaceRoot: vi.fn().mockImplementation((cwd) => cwd),
+  getClawminiDir: vi.fn().mockReturnValue('/tmp'),
   getActiveEnvironmentName: vi.fn().mockResolvedValue(null),
   getActiveEnvironmentInfo: vi.fn().mockResolvedValue(null),
   getEnvironmentPath: vi.fn().mockReturnValue(''),

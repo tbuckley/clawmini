@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import type { ChatMessage } from '../shared/chats.js';
+import type { Delegation } from '../shared/delegations.js';
 
 export const daemonEvents = new EventEmitter();
 
@@ -7,6 +8,14 @@ export const DAEMON_EVENT_MESSAGE_APPENDED = 'message-appended';
 export const DAEMON_EVENT_TYPING = 'typing';
 export const DAEMON_EVENT_TURN_STARTED = 'turn-started';
 export const DAEMON_EVENT_TURN_ENDED = 'turn-ended';
+/**
+ * Fires when a `Delegation` transitions to a terminal state
+ * (`completed` | `rejected` | `failed`). Emitted by
+ * `DelegationManager.markResolved` for both policy and subagent kinds. The
+ * wait/subscribe path in Ticket 5 listens on this single event instead of
+ * scraping `DAEMON_EVENT_MESSAGE_APPENDED`.
+ */
+export const DAEMON_EVENT_DELEGATION_RESOLVED = 'delegation-resolved';
 /**
  * Unified event carrying both `ChatMessage` appends and turn lifecycle
  * events so a single `waitForMessages` subscription can interleave them
@@ -77,4 +86,13 @@ export function emitTurnEnded(event: TurnEndedEvent) {
     item: { kind: 'turn', event: lifecycle },
   };
   daemonEvents.emit(DAEMON_EVENT_CHAT_STREAM, envelope);
+}
+
+export interface DelegationResolvedEvent {
+  chatId: string;
+  delegation: Delegation;
+}
+
+export function emitDelegationResolved(event: DelegationResolvedEvent) {
+  daemonEvents.emit(DAEMON_EVENT_DELEGATION_RESOLVED, event);
 }

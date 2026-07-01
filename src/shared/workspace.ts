@@ -72,6 +72,35 @@ export function resolveAgentWorkDir(
   return dirPath;
 }
 
+// Workspace-relative agent path used by the subagent approval rules in
+// `policies.json` (§4.4). For an agent whose settings define `directory`, we
+// return that directory; otherwise the agent's id is the path (matches the
+// `resolveAgentWorkDir` fallback). The result is normalised to forward
+// slashes so a `policies.json` written by hand can stay platform-agnostic.
+//
+// `agentId === 'default'` resolves to `'.'` — the workspace root itself. The
+// rule list rarely cares about the root agent (built-in `$self → $self`
+// covers self-spawn from any path) but we still need a non-empty string so
+// callers can compare and prefix-match consistently.
+export async function getAgentPath(
+  agentId: string | undefined,
+  startDir = process.cwd()
+): Promise<string> {
+  if (!agentId || agentId === 'default') return '.';
+  let directory: string | undefined;
+  try {
+    const agent = await getAgent(agentId, startDir);
+    directory = agent?.directory;
+  } catch {
+    // Fall through to the agentId-as-path default.
+  }
+  const raw = directory ?? agentId;
+  // Strip a leading './' and normalise back/forward slashes to forward so the
+  // result matches what users would write in policies.json.
+  const cleaned = raw.replace(/\\/g, '/').replace(/^\.\//, '');
+  return cleaned.length === 0 ? '.' : cleaned;
+}
+
 // Returns null when the agent has explicitly opted out of skills via
 // `"skillsDir": null` in its settings. Callers must handle null by
 // skipping any skill-related install/refresh work.
@@ -854,6 +883,16 @@ export async function readPoliciesFile(startDir = process.cwd()): Promise<Policy
   if (data.policies && typeof data.policies === 'object') {
     return data as unknown as PolicyConfigFile;
   }
+  // A policies.json that omits the `policies` map but defines `subagents` is
+  // still a valid file (Ticket 4 — the subagent rule list is independent of
+  // the policy definitions). Surface it with an empty policies map so
+  // `resolvePolicies` still has somewhere to merge built-ins.
+  if (Array.isArray((data as { subagents?: unknown }).subagents)) {
+    return {
+      policies: {},
+      subagents: (data as { subagents: PolicyConfigFile['subagents'] }).subagents,
+    } as PolicyConfigFile;
+  }
   return null;
 }
 
@@ -885,7 +924,11 @@ export function resolvePolicies(
     if (!fs.existsSync(scriptPath)) continue;
     resolved[name] = resolveCommand(definition);
   }
-  return { policies: resolved };
+  // Subagent rules are passed through verbatim — the built-in tail is
+  // appended at evaluation time inside `resolveSubagentApproval`, not here.
+  return file.subagents
+    ? { policies: resolved, subagents: file.subagents }
+    : { policies: resolved };
 }
 
 async function readBasePolicies(startDir = process.cwd()): Promise<PolicyConfig | null> {
@@ -929,12 +972,16 @@ export async function readPoliciesForPath(
   const base = await readBasePolicies(startDir);
   const envPolicies = await readEnvironmentPoliciesForPath(targetPath, startDir);
   if (Object.keys(envPolicies).length === 0) return base;
-  return {
+  // Preserve `subagents` from the base config when overlaying environment
+  // policies — env overlays only override the `policies` map today.
+  const merged: PolicyConfig = {
     policies: {
       ...(base?.policies || {}),
       ...envPolicies,
     },
   };
+  if (base?.subagents) merged.subagents = base.subagents;
+  return merged;
 }
 
 export function getEnvironmentPath(name: string, startDir = process.cwd()): string {

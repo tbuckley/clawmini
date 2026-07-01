@@ -1,7 +1,31 @@
 import { Command } from 'commander';
 import type { createTRPCClient } from '@trpc/client';
 import type { AgentRouter as AppRouter } from '../daemon/api/index.js';
-import type { SubagentTracker } from '../shared/config.js';
+
+// Subagent-specific CLI surface. Ticket 6 dropped `wait`, `list`, and `delete`
+// from this group — those now live under `delegations` (kind-agnostic, see
+// `delegations-commands.ts`). The remaining commands are `spawn`, `send`,
+// `stop`, and `tail`. Sync spawn/send no longer poll — they call
+// `delegationWait` once and unwrap the subagent's last agent reply for the
+// legacy `<subagent_output>` output.
+//
+// Ticket 7 introduced `--delivery <manual|notify>` as the canonical delivery
+// selector (spec §3.3, §5.5). Ticket 8 removes the deprecated `--async`
+// boolean entirely — `--delivery` is now the only flag.
+
+type DeliveryMode = 'manual' | 'notify';
+
+function parseDelivery(value: string | undefined): DeliveryMode | undefined {
+  if (value === undefined) return undefined;
+  if (value !== 'manual' && value !== 'notify') {
+    throw new Error(`--delivery must be 'manual' or 'notify' (got '${value}')`);
+  }
+  return value;
+}
+
+function printManualHint(id: string): void {
+  console.log(`Use 'clawmini-lite.js delegations wait ${id}' or 'delegations notify-when ${id}'.`);
+}
 
 export function registerSubagentCommands(
   program: Command,
@@ -14,30 +38,33 @@ export function registerSubagentCommands(
     .description('Spawn a new subagent')
     .option('-a, --agent <name>', 'Target agent name')
     .option('-i, --id <subagentId>', 'Optional custom ID for the subagent')
-    .option('--async', 'Run asynchronously without blocking')
+    .option(
+      '--delivery <mode>',
+      "How resolution is delivered: 'notify' (default for root) appends a <notification>; 'manual' (default for subagents) requires `delegations wait`."
+    )
     .action(async (message, options) => {
       try {
         const client = getClient();
+        const delivery = parseDelivery(options.delivery);
         const result = await client.subagentSpawn.mutate({
           targetAgentId: options.agent,
           prompt: message,
           subagentId: options.id,
-          async: options.async,
+          ...(delivery !== undefined ? { delivery } : {}),
         });
         console.log(`Subagent spawned successfully with ID: ${result.id}`);
 
+        if (result.delivery === 'manual') {
+          // Per Ticket 7: a manual-delivery spawn returns immediately and the
+          // caller is expected to observe the result via the `delegations`
+          // group. Print a hint so the agent doesn't have to remember the
+          // exact command names.
+          printManualHint(result.id);
+          return;
+        }
         if (!result.isAsync) {
           console.log(`Waiting for subagent ${result.id} to complete...`);
-          let waitResult;
-          do {
-            waitResult = await client.subagentWait.mutate({ subagentId: result.id });
-          } while (waitResult.status === 'active');
-
-          if (waitResult.status === 'completed' && waitResult.output) {
-            console.log(`\n<subagent_output>\n${waitResult.output}\n</subagent_output>`);
-          } else {
-            console.log(`Subagent status: ${waitResult.status}`);
-          }
+          await waitAndPrintSubagent(client, result.id);
         }
       } catch (err) {
         console.error('Error:', err instanceof Error ? err.message : err);
@@ -49,51 +76,32 @@ export function registerSubagentCommands(
     .command('send <subagentId>')
     .description('Send a message to a subagent')
     .requiredOption('-p, --prompt <prompt>', 'Prompt to send')
-    .option('--async', 'Run asynchronously without blocking')
+    .option(
+      '--delivery <mode>',
+      "How resolution is delivered: 'notify' (default for root) appends a <notification>; 'manual' (default for subagents) requires `delegations wait`."
+    )
     .action(async (subagentId, options) => {
       try {
         const client = getClient();
-        await client.subagentSend.mutate({
+        const delivery = parseDelivery(options.delivery);
+        const result = await client.subagentSend.mutate({
           subagentId,
           prompt: options.prompt,
-          async: options.async,
+          ...(delivery !== undefined ? { delivery } : {}),
         });
         console.log(`Message sent to subagent ${subagentId}`);
 
-        if (!options.async) {
-          let waitResult;
-          do {
-            waitResult = await client.subagentWait.mutate({ subagentId });
-          } while (waitResult.status === 'active');
-
-          if (waitResult.status === 'completed' && waitResult.output) {
-            console.log(`\n<subagent_output>\n${waitResult.output}\n</subagent_output>`);
-          } else {
-            console.log(`Subagent status: ${waitResult.status}`);
-          }
+        if (result.delivery === 'manual') {
+          printManualHint(subagentId);
+          return;
         }
-      } catch (err) {
-        console.error('Error:', err instanceof Error ? err.message : err);
-        process.exit(1);
-      }
-    });
-
-  subagents
-    .command('wait <subagentId>')
-    .description('Wait for a subagent to complete')
-    .action(async (subagentId) => {
-      try {
-        const client = getClient();
-        let result;
-        do {
-          result = await client.subagentWait.mutate({ subagentId });
-        } while (result.status === 'active');
-
-        if (result.status === 'completed' && 'output' in result && result.output) {
-          console.log(result.output);
-        } else {
-          console.log(`Subagent status: ${result.status}`);
+        if (delivery === 'notify') {
+          // The mutation already returned; the subagent runs asynchronously
+          // and will append its own <notification> on completion. Nothing
+          // more to do here.
+          return;
         }
+        await waitAndPrintSubagent(client, subagentId);
       } catch (err) {
         console.error('Error:', err instanceof Error ? err.message : err);
         process.exit(1);
@@ -108,60 +116,6 @@ export function registerSubagentCommands(
         const client = getClient();
         await client.subagentStop.mutate({ subagentId });
         console.log(`Subagent ${subagentId} stopped`);
-      } catch (err) {
-        console.error('Error:', err instanceof Error ? err.message : err);
-        process.exit(1);
-      }
-    });
-
-  subagents
-    .command('delete <subagentId>')
-    .description('Delete a subagent')
-    .action(async (subagentId) => {
-      try {
-        const client = getClient();
-        const result = await client.subagentDelete.mutate({ subagentId });
-        if (result.deleted) {
-          console.log(`Subagent ${subagentId} deleted`);
-        } else {
-          console.log(`Subagent ${subagentId} not found`);
-        }
-      } catch (err) {
-        console.error('Error:', err instanceof Error ? err.message : err);
-        process.exit(1);
-      }
-    });
-
-  subagents
-    .command('list')
-    .description('List all subagents')
-    .option('--blocking', 'Filter for subagents that block the current agent')
-    .option('--json', 'Output as JSON')
-    .action(async (options) => {
-      try {
-        const client = getClient();
-        const result = await client.subagentList.query({ blocking: options.blocking });
-        const subagents = result.subagents;
-
-        if (options.json) {
-          console.log(JSON.stringify(subagents, null, 2));
-          return;
-        }
-
-        if (subagents.length === 0) {
-          console.log('No subagents found.');
-          return;
-        }
-
-        for (const sub of subagents as SubagentTracker[]) {
-          console.log(`\n=== Subagent: ${sub.id || 'N/A'} ===`);
-          console.log(`  Agent:      ${sub.agentId || 'N/A'}`);
-          console.log(`  Status:     ${sub.status || 'N/A'}`);
-          console.log(`  Created:    ${sub.createdAt || 'N/A'}`);
-          console.log(`  Session ID: ${sub.sessionId || 'N/A'}`);
-          if (sub.parentId) console.log(`  Parent ID:  ${sub.parentId}`);
-        }
-        console.log();
       } catch (err) {
         console.error('Error:', err instanceof Error ? err.message : err);
         process.exit(1);
@@ -191,7 +145,11 @@ export function registerSubagentCommands(
             } else if (msg.role === 'agent' || msg.displayRole === 'agent') {
               console.log(`[AGENT] ${msg.content.trim()}`);
             } else if (msg.role === 'policy') {
-              console.log(`[POLICY] ${msg.commandName} ${msg.args.join(' ')}`);
+              if ('commandName' in msg) {
+                console.log(`[POLICY] ${msg.commandName} ${msg.args.join(' ')}`);
+              } else {
+                console.log(`[POLICY] ${msg.operation} ${msg.fromAgent} → ${msg.toAgent}`);
+              }
             } else if (msg.role === 'tool') {
               console.log(`[TOOL] ${msg.name}`);
             } else if (msg.role === 'system') {
@@ -212,4 +170,51 @@ export function registerSubagentCommands(
         process.exit(1);
       }
     });
+}
+
+// Run a single sync delegationWait for `subagentId`, then format the
+// completed subagent's last agent-role reply the same way the legacy
+// poll loop did. Used by both `subagents spawn` (non-async) and
+// `subagents send` (non-async).
+async function waitAndPrintSubagent(
+  client: ReturnType<typeof createTRPCClient<AppRouter>>,
+  subagentId: string
+): Promise<void> {
+  const wait = await client.delegationWait.mutate({
+    ids: [subagentId],
+    mode: 'any',
+    return: 'sync',
+    timeoutMs: 60_000,
+  });
+  if (wait.kind !== 'sync') {
+    console.log(`Subagent status: unknown`);
+    return;
+  }
+  const record = wait.resolved[0] ?? wait.pending[0];
+  if (!record || record.kind !== 'subagent') {
+    console.log(`Subagent status: unknown`);
+    return;
+  }
+  if (record.state === 'running' || record.state === 'pending') {
+    console.log(`Subagent status: active`);
+    return;
+  }
+  if (record.state !== 'completed') {
+    console.log(`Subagent status: ${record.state}`);
+    return;
+  }
+  const tail = await client.subagentTail.query({ subagentId });
+  let output: string | undefined;
+  for (let i = tail.messages.length - 1; i >= 0; i--) {
+    const msg = tail.messages[i];
+    if (msg && msg.role === 'agent' && 'content' in msg) {
+      output = msg.content;
+      break;
+    }
+  }
+  if (output !== undefined) {
+    console.log(`\n<subagent_output>\n${output}\n</subagent_output>`);
+  } else {
+    console.log(`Subagent status: completed`);
+  }
 }

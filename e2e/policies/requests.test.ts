@@ -97,11 +97,24 @@ describe('E2E Requests Tests (Lite)', () => {
     expect(flat).toContain('do not poll');
     expect(flat).toContain('end your turn');
 
-    const requestsDir = path.join(env.e2eDir, '.clawmini', 'tmp', 'requests');
-    const files = (await fsPromises.readdir(requestsDir)).filter((f) => f.endsWith('.json'));
+    // Lite runs against the cached debug-agent credentials whose token is
+    // scoped to chat `__creds__`. Ticket 2 moved on-disk records under
+    // `.clawmini/tmp/delegations/<chatId>/<id>.json`.
+    const delegationsChatDir = path.join(
+      env.e2eDir,
+      '.clawmini',
+      'tmp',
+      'delegations',
+      '__creds__'
+    );
+    const files = (await fsPromises.readdir(delegationsChatDir)).filter((f) => f.endsWith('.json'));
     expect(files.length).toBe(1);
 
-    const req = JSON.parse(await fsPromises.readFile(path.join(requestsDir, files[0]!), 'utf8'));
+    const req = JSON.parse(
+      await fsPromises.readFile(path.join(delegationsChatDir, files[0]!), 'utf8')
+    );
+    expect(req.kind).toBe('policy');
+    expect(req.state).toBe('pending');
     expect(req.commandName).toBe('test-cmd');
     expect(req.args).toEqual(['extra1', 'extra2']);
     expect(req.fileMappings).toHaveProperty('target');

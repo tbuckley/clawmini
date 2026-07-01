@@ -252,7 +252,13 @@ export function formatTurnLogEntry(
   }
 
   if (message.role === 'policy') {
-    const body = `${message.commandName} ${message.args.join(' ')}`.trim();
+    // PolicyRequestMessage carries commandName/args; the Ticket 4
+    // SubagentApprovalMessage shares the policy role but describes a
+    // subagent spawn/send edge instead of a script.
+    const body =
+      'commandName' in message
+        ? `${message.commandName} ${message.args.join(' ')}`.trim()
+        : `${message.operation} ${message.fromAgent} → ${message.toAgent}`.trim();
     const summary = `policy ${message.status}: ${body}`;
     const entry: TurnLogEntry = {
       timestamp,

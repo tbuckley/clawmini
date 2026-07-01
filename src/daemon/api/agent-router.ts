@@ -229,12 +229,18 @@ export const fetchPendingMessages = apiProcedure.mutation(async ({ ctx }) => {
 import {
   subagentSpawn,
   subagentSend,
-  subagentWait,
   subagentStop,
   subagentDelete,
   subagentList,
   subagentTail,
 } from './subagent-router.js';
+import {
+  delegationWait,
+  delegationUnsubscribe,
+  delegationList,
+  delegationShow,
+  delegationDelete,
+} from './delegations-router.js';
 
 export const agentRouter = router({
   logMessage,
@@ -252,11 +258,15 @@ export const agentRouter = router({
   ping,
   subagentSpawn,
   subagentSend,
-  subagentWait,
   subagentStop,
   subagentDelete,
   subagentList,
   subagentTail,
+  delegationWait,
+  delegationUnsubscribe,
+  delegationList,
+  delegationShow,
+  delegationDelete,
 });
 
 export type AgentRouter = typeof agentRouter;

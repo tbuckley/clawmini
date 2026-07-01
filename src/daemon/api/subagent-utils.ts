@@ -1,19 +1,30 @@
 import { randomUUID } from 'node:crypto';
-import { updateChatSettings, readChatSettings } from '../../shared/workspace.js';
+import { readChatSettings } from '../../shared/workspace.js';
 import { executeDirectMessage, applyRouterStateUpdates } from '../message.js';
 import { executeRouterPipeline, resolveRouters } from '../routers.js';
-import type { RouterState } from '../routers/types.js';
+import type { RouterState } from './../routers/types.js';
 import { createChatLogger } from '../agent/chat-logger.js';
-import type { ChatSettings } from '../../shared/config.js';
 import { taskScheduler } from '../agent/task-scheduler.js';
 import { decrementSubagent } from '../agent/turn-registry.js';
+import { delegationManager } from '../delegation-manager.js';
 
-export function getSubagentDepth(settings: ChatSettings, parentId: string | undefined): number {
+// Walk the delegation parent chain to compute spawn depth. Today's
+// MAX_SUBAGENT_DEPTH guard relies on this — depth 0 is the root agent,
+// depth 1 a direct child, etc. Replaces the legacy walk over
+// `ChatSettings.subagents`.
+export async function getSubagentDepth(
+  chatId: string,
+  parentId: string | undefined
+): Promise<number> {
   let depth = 0;
   let currentParentId = parentId;
-  while (currentParentId && settings.subagents?.[currentParentId]) {
+  // Defensive cycle guard: if a corrupted record cycles back on itself we
+  // still terminate. Use depth as the iteration cap.
+  while (currentParentId && depth < 100) {
     depth++;
-    currentParentId = settings.subagents[currentParentId]?.parentId;
+    const record = await delegationManager.get(currentParentId, chatId);
+    if (!record || record.kind !== 'subagent') break;
+    currentParentId = record.parentId;
   }
   return depth;
 }
@@ -85,20 +96,27 @@ export async function executeSubagent(
         return;
       }
 
-      // Update status
-      await updateChatSettings(chatId, (finalSettings) => {
-        if (finalSettings.subagents?.[subagentId]) {
-          finalSettings.subagents[subagentId]!.status = 'completed';
-        }
-        return finalSettings;
-      });
+      // Terminal: subagent finished its turn. Mark the delegation completed.
+      // Guard against races where `subagentStop` flipped us to 'failed' first.
+      // `wasCovered` is true when an unfired observer (sync waiter or
+      // subscription) was watching this id — in that case the manager owns
+      // the wakeup and we suppress the per-id `<notification>` below (Ticket
+      // 5 / spec §5.2 notify-suppression rule).
+      const current = await delegationManager.get(subagentId, chatId);
+      let wasCovered = false;
+      if (current && current.state === 'running') {
+        const outcome = await delegationManager.markResolved(subagentId, { state: 'completed' });
+        wasCovered = outcome.wasCovered;
+      }
 
       const logger = createChatLogger(chatId, subagentId, sessionId, parentTurnId);
 
-      // Emit debug message to wake up waiters
+      // Emit debug message to keep legacy `subagent_status` consumers happy
+      // (the chat log surfaces this in tail output). Ticket 5's wait-core
+      // listens on DAEMON_EVENT_DELEGATION_RESOLVED instead.
       await logger.logSubagentStatus({ subagentId, status: 'completed' });
 
-      if (isAsync) {
+      if (isAsync && !wasCovered) {
         const lastLogMessage = await logger.findLastMessage(
           (m) => m.role === 'agent' || m.displayRole === 'agent'
         );
@@ -107,12 +125,6 @@ export async function executeSubagent(
           outputContent = `\n\n<subagent_output>\n${lastLogMessage.content}\n</subagent_output>`;
         }
 
-        console.log(
-          'Notifying parent',
-          chatId,
-          parentTokenPayload?.agentId,
-          parentTokenPayload?.subagentId
-        );
         // TODO: We need to overhaul the log system in general, and should not try to do it in this PR.
         // Currently, if the parent is the root agent, this notification is logged as a normal user message
         // and appears in the chat UI, violating the PRD requirement to hide orchestration.
@@ -141,12 +153,13 @@ export async function executeSubagent(
       }
     } catch {
       // TODO: Wrap this in a safe try-catch to prevent unhandled promise rejections crashing the daemon if disk errors occur
-      await updateChatSettings(chatId, (errSettings) => {
-        if (errSettings.subagents?.[subagentId]) {
-          errSettings.subagents[subagentId]!.status = 'failed';
-        }
-        return errSettings;
-      });
+      const current = await delegationManager.get(subagentId, chatId);
+      if (current && current.state === 'running') {
+        await delegationManager.markResolved(subagentId, {
+          state: 'failed',
+          reason: 'subagent execution threw',
+        });
+      }
       const logger = createChatLogger(chatId, subagentId, sessionId, parentTurnId);
       await logger.logSubagentStatus({ subagentId, status: 'failed' });
     }

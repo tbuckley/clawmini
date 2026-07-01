@@ -1,69 +1,34 @@
-import { RequestStore, generateRandomAlphaNumericString } from './request-store.js';
-import { createSnapshot, interpolateArgs } from './policy-utils.js';
-import type { PolicyRequest } from '../shared/policies.js';
+import type { PolicyDelegation } from '../shared/delegations.js';
+import type { PolicyDefinition } from '../shared/policies.js';
+import { executeRequest } from './policy-utils.js';
 
-export class PolicyRequestService {
-  private store: RequestStore;
-  private maxPending: number;
-  private agentDir: string;
-  private snapshotDir: string;
+// Pure executor for policy delegations. Ticket 2 moved all storage onto
+// `DelegationManager` — this module no longer touches the file system. It
+// just resolves the policy's `command`/`args`, interpolates the snapshotted
+// `fileMappings` from the delegation, and runs the script in the given cwd.
+//
+// `DelegationManager.approve()` (and the auto-approve path in
+// `agent-policy-endpoints.createPolicyRequest`) calls `execute(delegation,
+// policy, cwd)` and feeds the result back via `markResolved`.
 
-  constructor(store: RequestStore, agentDir: string, snapshotDir: string, maxPending = 100) {
-    this.store = store;
-    this.agentDir = agentDir;
-    this.snapshotDir = snapshotDir;
-    this.maxPending = maxPending;
-  }
+export interface PolicyExecutionResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  commandStr: string;
+}
 
-  async createRequest(
-    commandName: string,
-    args: string[],
-    fileMappings: Record<string, string>,
-    chatId: string,
-    agentId: string,
-    skipSave: boolean = false,
-    subagentId?: string,
-    cwd?: string
-  ): Promise<PolicyRequest> {
-    const allRequests = await this.store.list();
-    const pendingCount = allRequests.filter((r) => r.state === 'Pending').length;
-
-    if (pendingCount >= this.maxPending) {
-      throw new Error(`Maximum number of pending requests (${this.maxPending}) reached.`);
-    }
-
-    const snapshotMappings: Record<string, string> = {};
-
-    for (const [key, requestedPath] of Object.entries(fileMappings)) {
-      snapshotMappings[key] = await createSnapshot(requestedPath, this.agentDir, this.snapshotDir);
-    }
-
-    let id = '';
-    do {
-      id = generateRandomAlphaNumericString(3);
-    } while (allRequests.some((r) => r.id === id));
-
-    const request: PolicyRequest = {
-      id,
-      commandName,
-      args,
-      fileMappings: snapshotMappings,
-      ...(cwd ? { cwd } : {}),
-      state: skipSave ? 'Approved' : 'Pending',
-      createdAt: Date.now(),
-      chatId,
-      agentId,
-      ...(subagentId ? { subagentId } : {}),
-    };
-
-    if (!skipSave) {
-      await this.store.save(request);
-    }
-
-    return request;
-  }
-
-  getInterpolatedArgs(request: PolicyRequest): string[] {
-    return interpolateArgs(request.args, request.fileMappings);
-  }
+export async function executePolicyDelegation(
+  delegation: PolicyDelegation,
+  policy: PolicyDefinition,
+  cwd?: string
+): Promise<PolicyExecutionResult> {
+  // `executeRequest` now takes a structural `{args, fileMappings}` (Ticket 8
+  // dropped the legacy `PolicyRequest` type), which the delegation satisfies
+  // directly — no rebuild needed.
+  return executeRequest(
+    { args: delegation.args, fileMappings: delegation.fileMappings },
+    policy,
+    cwd
+  );
 }

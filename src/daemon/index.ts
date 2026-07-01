@@ -12,15 +12,13 @@ import {
   readEnvironment,
   getEnvironmentPath,
   getWorkspaceRoot,
-  updateChatSettings,
 } from '../shared/workspace.js';
-import { listChats } from '../shared/chats.js';
 import { cronManager } from './cron.js';
 import { SettingsSchema } from '../shared/config.js';
 import { validateToken, getApiContext } from './auth.js';
 import path from 'node:path';
 import { exportLiteToEnvironment } from '../shared/lite.js';
-import { RequestStore } from './request-store.js';
+import { delegationManager } from './delegation-manager.js';
 import { drainPendingReplies } from './pending-replies.js';
 import { getClawminiVersion } from '../shared/version.js';
 
@@ -147,34 +145,15 @@ export async function initDaemon() {
     });
   });
 
-  const cleanOrphanedSubagents = async () => {
-    try {
-      const chats = await listChats();
-      for (const chatId of chats) {
-        await updateChatSettings(chatId, (settings) => {
-          if (settings.subagents) {
-            for (const subagent of Object.values(settings.subagents)) {
-              if (subagent.status === 'active') {
-                subagent.status = 'failed';
-              }
-            }
-          }
-          return settings;
-        });
-      }
-    } catch (err) {
-      console.warn('Failed to clean orphaned subagents:', err);
-    }
-  };
-  await cleanOrphanedSubagents();
-
+  // Wipe the unified delegations tree on daemon start. Per spec §5.6
+  // "Lifecycle invariants", restart is a clean slate for delegations —
+  // `delegationManager.wipeAll()` is the **only** startup cleanup since
+  // Ticket 8 (the legacy `RequestStore.cleanupCompleted` and
+  // `cleanOrphanedSubagents` paths are gone — see Tickets 2 and 3).
   try {
-    const removed = await new RequestStore(getWorkspaceRoot()).cleanupCompleted();
-    if (removed > 0) {
-      console.log(`Cleaned up ${removed} completed policy request file(s).`);
-    }
+    await delegationManager.wipeAll();
   } catch (err) {
-    console.warn('Failed to clean completed policy requests:', err);
+    console.warn('Failed to wipe delegations tree:', err);
   }
 
   await runHooks('up');

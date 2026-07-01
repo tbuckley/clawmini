@@ -35,7 +35,7 @@ describe('E2E Agent subagentEnv Merge', () => {
 
     // 2) Subagent: spawn one that runs env; its log should show overridden
     //    PARENT_VAR and the subagent-only SUBAGENT_VAR.
-    await env.sendMessage('clawmini-lite.js subagents spawn --async "env"', {
+    await env.sendMessage('clawmini-lite.js subagents spawn --delivery notify "env"', {
       chat: 'subenv-chat',
       agent: 'debug-agent',
     });

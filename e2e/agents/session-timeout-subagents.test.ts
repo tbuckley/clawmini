@@ -24,7 +24,7 @@ describe('Session Timeout Subagents E2E', () => {
 
     // Now let the subagent spawn a message
     await env.sendMessage(
-      'clawmini-lite.js subagents spawn --async "echo subagent-hello"',
+      'clawmini-lite.js subagents spawn --delivery notify "echo subagent-hello"',
       { chat: 'chat-timeout', agent: 'debug-agent' }
     );
     const subLog = await chat.waitForMessage(commandWith('[DEBUG] echo subagent-hello:'));
